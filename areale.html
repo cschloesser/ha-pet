@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pika – Areale</title>
+<style>
+  body { margin: 0; padding: 16px; background: #1c1c1e; color: #eee; font-family: system-ui, sans-serif; }
+  .bar { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; align-items: center; }
+  .bar b { font-size: 12px; color: #aaa; width: 70px; }
+  button { padding: 5px 10px; border-radius: 8px; border: 1px solid #555; background: #2c2c2e; color: #eee; cursor: pointer; font-size: 12px; }
+  button.hot { background: #6a4f2e; border-color: #a57a45; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(520px, 1fr)); gap: 16px; margin-top: 12px; }
+  figure { margin: 0; }
+  figcaption { font-size: 13px; font-weight: 700; margin: 0 0 6px 4px; color: #ddd; }
+  figcaption span { font-weight: 400; color: #999; }
+  .slot { background: #2c2c2e; border-radius: 12px; height: 236px; }
+</style>
+</head>
+<body>
+<div class="bar"><b>Pika</b>
+  <button class="hot" id="burrow">In den Bau &amp; rausschauen</button>
+  <button id="out">Rauskommen</button>
+  <button id="hungry">Hungrig machen</button>
+</div>
+<div class="bar"><b>Tageszeit</b>
+  <button data-sun="110,8,0">Morgen</button>
+  <button data-sun="180,28,0">Mittag</button>
+  <button data-sun="245,4,0">Abend</button>
+  <button data-sun="330,-25,1">Nacht (schläft)</button>
+  <button data-sun="real">Echte Zeit</button>
+</div>
+<div class="bar"><b>Wetter</b>
+  <button data-wx="sunny">sonnig</button>
+  <button data-wx="partlycloudy">teils bewölkt</button>
+  <button data-wx="rainy">Regen</button>
+  <button data-wx="lightning-rainy">Gewitter (bleibt im Bau)</button>
+  <button data-wx="snowy">Schnee</button>
+  <button data-wx="fog">Nebel</button>
+</div>
+<div class="grid">
+  <figure><figcaption>A · Felsbau <span>– wie bisher, Steinbogen als Eingang</span></figcaption><div class="slot"><pika-pet-card data-areal="fels"></pika-pet-card></div></figure>
+  <figure><figcaption>B · Erdhügel <span>– Grashügel mit runder Holztür, Namensschild, Laterne</span></figcaption><div class="slot"><pika-pet-card data-areal="huegel"></pika-pet-card></div></figure>
+  <figure><figcaption>C · Baumstumpf <span>– Höhle zwischen den Wurzeln, Fliegenpilze leuchten nachts</span></figcaption><div class="slot"><pika-pet-card data-areal="stumpf"></pika-pet-card></div></figure>
+  <figure><figcaption>D · Geröllhalde <span>– Berge im Hintergrund, Enzian und Edelweiß (wie echte Pikas)</span></figcaption><div class="slot"><pika-pet-card data-areal="alpin"></pika-pet-card></div></figure>
+</div>
+<script src="pika-pet-card.js"></script>
+<script>
+  const states = {
+    'sun.sun': { state: 'above_horizon', attributes: {
+      elevation: 28, azimuth: 180,
+      next_rising: new Date(new Date().setHours(7, 56, 0, 0)).toISOString(),
+      next_setting: new Date(new Date().setHours(18, 33, 0, 0)).toISOString(),
+    } },
+    'weather.forecast_home': {
+      state: 'partlycloudy',
+      attributes: { temperature: 14, temperature_unit: '°C', cloud_coverage: 40, wind_speed: 12, wind_speed_unit: 'km/h', wind_bearing: 240 },
+    },
+  };
+  const cards = [...document.querySelectorAll('pika-pet-card')];
+  const hass = { states, config: { latitude: 51.54, longitude: 7.69 }, callService: () => Promise.resolve() };
+  const push = () => { hass.states = { ...states }; cards.forEach((c) => (c.hass = hass)); };
+  cards.forEach((c) => c.setConfig({ name: 'Pika', areal: c.dataset.areal }));
+  push();
+  // Tagsüber starten, damit man ihn sieht
+  const setSun = (v) => cards.forEach((c) => {
+    if (v === 'real') {
+      c._dbgSleep = c._dbgElev = c._dbgAz = c._dbgDate = null;
+    } else {
+      const [az, el, sleep] = v.split(',').map(Number);
+      Object.assign(c, { _dbgAz: az, _dbgElev: el, _dbgSleep: !!sleep });
+      const d = new Date();
+      d.setHours(Math.round((az / 15 + 24) % 24), 0, 0, 0);
+      c._dbgDate = d.getTime();
+    }
+    c._tick();
+  });
+  setSun('180,28,0');
+  document.querySelectorAll('[data-sun]').forEach((b) => b.addEventListener('click', () => setSun(b.dataset.sun)));
+  document.querySelectorAll('[data-wx]').forEach((b) => b.addEventListener('click', () => {
+    const w = states['weather.forecast_home'];
+    states['weather.forecast_home'] = { state: b.dataset.wx, attributes: { ...w.attributes, wind_speed: b.dataset.wx.startsWith('lightning') ? 30 : 12, cloud_coverage: { sunny: 5, partlycloudy: 40 }[b.dataset.wx] ?? 90 } };
+    push();
+  }));
+  document.getElementById('burrow').addEventListener('click', () => cards.forEach((c) => { c._next = 'burrow'; c._interrupt(); }));
+  document.getElementById('out').addEventListener('click', () => cards.forEach((c) => { c._next = null; c._interrupt(); }));
+  document.getElementById('hungry').addEventListener('click', () => cards.forEach((c) => { c._stats = { s: 20, st: Date.now(), g: 20, gt: Date.now() }; c._renderStats(); }));
+</script>
+</body>
+</html>

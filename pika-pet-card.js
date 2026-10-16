@@ -3,7 +3,8 @@
  *
  *   Pika antippen      → streicheln (Herzchen, Glück steigt)
  *   Löwenzahn-Knopf    → füttern (Futter fällt herunter, er hoppelt hin und frisst)
- *   Nachts             → schläft er mit Zipfelmütze vor seinem Bau (Standard: Sonnenuntergang bis -aufgang)
+ *   Nachts             → schläft er mit Zipfelmütze im Bau (Standard: Sonnenuntergang bis -aufgang)
+ *   Ab und zu, Gewitter → verschwindet er in seinem Bau und schaut heraus
  *   Sonst              → schaut sich um, hoppelt, knabbert Blumen, sammelt Heu, putzt sich
  *
  * Konfiguration:
@@ -14,6 +15,7 @@
  *   sleep_end: sunrise               # Aufwachzeit: "07:00", "sunrise" oder z. B. "sunrise-30" (Minuten)
  *   sun_entity: sun.sun              # Sonnenstand (Höhe + Azimut) für Himmel und Sonne
  *   weather_entity: weather.forecast_home   # Wolken, Regen, Schnee, Nebel, Gewitter, Wind
+ *   areal: huegel                    # Bau: huegel (Erdhügel), fels, stumpf, alpin
  *   show_stats: true                 # Satt-/Glück-Balken anzeigen
  *   height: 180                      # Mindesthöhe in px
  *
@@ -21,7 +23,7 @@
  * werden aus Datum und Standort (hass.config) berechnet.
  */
 (() => {
-  const VERSION = '0.3.0';
+  const VERSION = '0.4.0';
 
   const DEFAULTS = {
     name: 'Pika',
@@ -30,6 +32,7 @@
     sleep_end: 'sunrise',
     sun_entity: 'sun.sun',
     weather_entity: 'weather.forecast_home',
+    areal: 'huegel',
     show_stats: true,
     height: 180,
   };
@@ -169,6 +172,7 @@
           <path d="M88.7 51.6 q2.3 -1.1 4.6 0 q-.6 1.9 -2.3 2.5 q-1.7 -.6 -2.3 -2.5z" fill="#7a4438"/>
           <path d="M91 54.1 v1.5 M91 55.6 q-1.5 1.7 -3 .4 M91 55.6 q1.5 1.7 3 .4"
                 stroke="${OUT}" stroke-width="1" fill="none" stroke-linecap="round"/>
+          <ellipse class="omouth" cx="91" cy="57.6" rx="1.8" ry="2.2" fill="#7a3a30" stroke="${OUT}" stroke-width=".6"/>
         </g>
       </g>
       <g class="mfood">
@@ -205,25 +209,166 @@
     </g>
   </svg>`;
 
-  const ROCKS_SVG = `
-  <svg viewBox="0 0 100 60" aria-hidden="true">
-    <g stroke="#5c6166" stroke-width="1.6">
-      <ellipse cx="50" cy="24" rx="20" ry="14" fill="#a7adb3"/>
-      <ellipse cx="27" cy="40" rx="25" ry="17" fill="#979da4"/>
-      <ellipse cx="74" cy="43" rx="22" ry="15" fill="#8e949b"/>
-    </g>
-    <ellipse cx="43" cy="17" rx="7" ry="3" fill="#fff" opacity=".25"/>
-    <ellipse cx="19" cy="31" rx="8" ry="3.4" fill="#fff" opacity=".2"/>
-    <ellipse cx="68" cy="35" rx="7" ry="3" fill="#fff" opacity=".2"/>
-    <path d="M39 61 Q39 43 51 43 Q63 43 63 61Z" fill="#3a3632" stroke="#5c6166" stroke-width="1.4"/>
-    <g stroke="#5c6166" stroke-width="1.6">
-      <ellipse cx="12" cy="54" rx="13" ry="8" fill="#a3a9ae"/>
-      <ellipse cx="89" cy="55" rx="12" ry="7" fill="#9aa0a6"/>
-    </g>
-    <g fill="#79b25d">
-      <ellipse cx="60" cy="12" rx="5" ry="2.4"/><ellipse cx="33" cy="24.5" rx="4" ry="2"/><ellipse cx="86" cy="49" rx="4" ry="1.8"/>
-    </g>
-  </svg>`;
+  // ---------- Areale ----------
+  // Jedes Areal hat einen Bau mit Eingang. Grafik in viewBox 0 0 100 vh, der Boden liegt bei vh - sink.
+  // w/left: Breite und Lage relativ zur Kartenhöhe bzw. Baubreite. hole: Ausschnitt, in dem der Pika im Bau
+  // zu sehen ist (x1..x2, Bogenoberkante top, Vorderkante lip, unterhalb verschwindet er). hay: linke Kante
+  // des Heuhaufens als Anteil der Baubreite. lights: leuchtet in Dämmerung und Nacht (ungedimmt).
+  const HOLE_GRAD = `<radialGradient id="holeg" cx=".5" cy=".9" r=".85">
+      <stop offset="0" stop-color="#0d0907"/><stop offset="1" stop-color="#3b302a"/></radialGradient>`;
+  const GLOW_GRAD = (id, c) => `<radialGradient id="${id}"><stop offset="0" stop-color="${c}" stop-opacity=".75"/>
+      <stop offset="1" stop-color="${c}" stop-opacity="0"/></radialGradient>`;
+
+  const AREALE = {
+    fels: {
+      name: 'Felsbau', w: 0.72, left: -0.1, vh: 66, sink: 5, hay: 0.86,
+      hole: { x1: 39.5, x2: 60.5, top: 34, lip: 57.5 },
+      svg: `
+        <defs>${HOLE_GRAD}</defs>
+        <g stroke="#5c6166" stroke-width="1.5">
+          <ellipse cx="50" cy="27" rx="27" ry="17" fill="#a7adb3"/>
+          <ellipse cx="19" cy="45" rx="24" ry="19" fill="#979da4"/>
+          <ellipse cx="81" cy="47" rx="22" ry="17" fill="#8e949b"/>
+        </g>
+        <ellipse cx="42" cy="16" rx="8" ry="3" fill="#fff" opacity=".25"/>
+        <ellipse cx="11" cy="34" rx="8" ry="3.4" fill="#fff" opacity=".2"/>
+        <ellipse cx="78" cy="37" rx="7" ry="3" fill="#fff" opacity=".2"/>
+        <path d="M36 64 V45 A14 14 0 0 1 64 45 V64Z" fill="url(#holeg)" stroke="#5c6166" stroke-width="1.4"/>
+        <g stroke="#5c6166" stroke-width="1.2" fill="#b4b9be">
+          <ellipse cx="35.5" cy="46" rx="4" ry="5.5"/><ellipse cx="38.5" cy="35.5" rx="4.6" ry="4"/>
+          <ellipse cx="50" cy="30.5" rx="6" ry="3.6"/><ellipse cx="61.5" cy="35.5" rx="4.6" ry="4"/>
+          <ellipse cx="64.5" cy="46" rx="4" ry="5.5"/>
+        </g>
+        <g stroke="#5c6166" stroke-width="1.3">
+          <ellipse cx="41" cy="61" rx="9" ry="3.8" fill="#a3a9ae"/><ellipse cx="58" cy="61.5" rx="9" ry="3.6" fill="#9aa0a6"/>
+          <ellipse cx="8" cy="60" rx="12" ry="7" fill="#a3a9ae"/><ellipse cx="92" cy="61" rx="11" ry="6" fill="#9aa0a6"/>
+        </g>
+        <g fill="#79b25d">
+          <ellipse cx="63" cy="13" rx="5" ry="2.4"/><ellipse cx="25" cy="28" rx="4" ry="2"/><ellipse cx="90" cy="33" rx="4" ry="1.8"/>
+        </g>`,
+    },
+    huegel: {
+      name: 'Erdhügel', w: 0.82, left: -0.06, vh: 60, sink: 4, hay: 0.84,
+      hole: { x1: 37.5, x2: 62.5, top: 25.5, lip: 52.6 },
+      svg: `
+        <defs>${HOLE_GRAD}</defs>
+        <g stroke="#6b625a" stroke-width="1.1">
+          <rect x="61.5" y="2" width="7" height="14" fill="#a39488"/>
+          <rect x="60.5" y=".4" width="9" height="3" rx=".6" fill="#8c7d72"/>
+          <path d="M61.5 7 H68.5 M64 7 V11.5 M66.5 11.5 V16 M61.5 11.5 H68.5" stroke-width=".6" opacity=".6"/>
+        </g>
+        <path class="mound" d="M-4 60 C-3 30 22 10 50 10 C78 10 103 30 104 60Z" stroke="#5f8f45" stroke-width="1.5"/>
+        <path d="M14 30 Q28 15 46 13" stroke="#fff" stroke-opacity=".35" stroke-width="3" fill="none" stroke-linecap="round"/>
+        <g stroke="#5f8f45" stroke-width="1.2" fill="none" stroke-linecap="round">
+          <path d="M28 16.5 l-2 -4 M31 15 l.5 -4.5 M68 15 l1.5 -4 M72 17 l3 -3.5 M47 10 l-1 -4 M51 10 l1.5 -4.2"/>
+        </g>
+        <g fill="#fff"><circle cx="6" cy="48" r="1.6"/><circle cx="9" cy="42" r="1.3"/><circle cx="90" cy="30" r="1.5"/><circle cx="94" cy="46" r="1.2"/></g>
+        <g fill="#f4c53d"><circle cx="6" cy="48" r=".6"/><circle cx="9" cy="42" r=".5"/><circle cx="90" cy="30" r=".6"/><circle cx="94" cy="46" r=".5"/></g>
+        <g transform="translate(6 1)">
+          <circle cx="74" cy="32" r="6.6" fill="#5e3d26"/>
+          <circle cx="74" cy="32" r="5.6" fill="#9a6a45"/>
+          <circle class="pane" cx="74" cy="32" r="4.3"/>
+          <path d="M70.3 29.4 Q72.6 30 73.4 34.6 L70.4 34.6Z M77.7 29.4 Q75.4 30 74.6 34.6 L77.6 34.6Z" fill="#e58a7a" opacity=".85"/>
+          <path d="M74 27.7 V36.3 M69.7 32 H78.3" stroke="#9a6a45" stroke-width="1"/>
+          <rect x="67" y="38.6" width="14" height="3.4" rx=".8" fill="#9a6a45" stroke="#5e3d26" stroke-width=".8"/>
+          <path d="M69 38.6 q.4 -2.6 1.6 -3.2 M72.5 38.6 q0 -2.6 -.8 -3.4 M76 38.6 q.3 -2.8 1.4 -3.2 M79 38.6 q-.2 -2.4 -1 -3" stroke="#4f8a3a" stroke-width=".7" fill="none"/>
+          <g fill="#f07a95"><circle cx="70.6" cy="35.4" r="1.1"/><circle cx="77.4" cy="35.4" r="1.1"/></g>
+          <g fill="#f6c945"><circle cx="71.7" cy="35.2" r="1"/><circle cx="78" cy="35.8" r=".9"/></g>
+        </g>
+        <path d="M36 60 V38 A14 14 0 0 1 64 38 V60Z" fill="url(#holeg)"/>
+        <path d="M35 57 V38 A15 15 0 0 1 65 38 V57" fill="none" stroke="#5e3d26" stroke-width="5.6"/>
+        <path d="M35 57 V38 A15 15 0 0 1 65 38 V57" fill="none" stroke="#9a6a45" stroke-width="3.8"/>
+        <path d="M35 57 V38 A15 15 0 0 1 65 38 V57" fill="none" stroke="#5e3d26" stroke-width=".5" stroke-dasharray="3 5" opacity=".6"/>
+        <g>
+          <ellipse cx="27" cy="41.5" rx="5" ry="13.5" fill="#6a9c78" stroke="#3d6a4b" stroke-width="1.3"/>
+          <path d="M25 30.5 V52.5 M28.5 29 V54" stroke="#3d6a4b" stroke-width=".6" opacity=".6"/>
+          <circle cx="29.3" cy="42.5" r="1.1" fill="#e2c15a"/>
+        </g>
+        <g transform="rotate(-3 50 17)">
+          <rect x="41" y="13.2" width="18" height="7" rx="1.4" fill="#d2a46c" stroke="#8a5a3b" stroke-width="1.1"/>
+          <text x="50" y="18.6" text-anchor="middle" font-size="5" font-weight="800" fill="#5a4030" letter-spacing=".5">PIKA</text>
+        </g>
+        <path d="M29 53.3 Q50 51.6 71 53.3 L73 58.5 L27 58.5Z" fill="#b8a48a" stroke="#7d6a52" stroke-width="1.2" stroke-linejoin="round"/>
+        <path d="M18 58 V27 Q18 24 15 24 H13 V27" stroke="#4a4a4a" stroke-width="1.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+        <path d="M10 27.6 H16 L15 29 H11Z" fill="#3c3c3c"/>
+        <rect x="11" y="29" width="4" height="6" fill="#ffe7a3" fill-opacity=".45" stroke="#3c3c3c" stroke-width="1"/>
+        <rect x="10.4" y="35" width="5.2" height="1.4" rx=".5" fill="#3c3c3c"/>`,
+      lights: `
+        <defs>${GLOW_GRAD('lg', '#ffd66b')}${GLOW_GRAD('ig', '#ffb347')}</defs>
+        <g class="smoke"><circle cx="65" cy="-1" r="2.2"/><circle cx="65" cy="-1" r="2.2"/><circle cx="65" cy="-1" r="2.2"/></g>
+        <path class="lt" d="M37.5 53 V38 A12.5 12.5 0 0 1 62.5 38 V53Z" fill="url(#ig)" fill-opacity=".7"/>
+        <g transform="translate(6 1)">
+          <circle class="lt" cx="74" cy="32" r="12" fill="url(#ig)" fill-opacity=".6"/>
+          <circle class="lt" cx="74" cy="32" r="4.3" fill="#ffcf70"/>
+          <path class="lt" d="M70.3 29.4 Q72.6 30 73.4 34.6 L70.4 34.6Z M77.7 29.4 Q75.4 30 74.6 34.6 L77.6 34.6Z" fill="#d9705f"/>
+          <path class="lt" d="M74 27.7 V36.3 M69.7 32 H78.3" stroke="#7a5236" stroke-width="1"/>
+        </g>
+        <circle class="lt flk" cx="13" cy="32" r="10" fill="url(#lg)"/>
+        <rect class="lt" x="11.6" y="29.6" width="2.8" height="4.8" fill="#ffd66b"/>`,
+    },
+    stumpf: {
+      name: 'Baumstumpf', w: 0.64, left: -0.06, vh: 84, sink: 5, hay: 0.9,
+      hole: { x1: 38.5, x2: 61.5, top: 42.5, lip: 76.6 },
+      svg: `
+        <defs>${HOLE_GRAD}</defs>
+        <g fill="#7f5434" stroke="#5e3d26" stroke-width="1.4" stroke-linejoin="round">
+          <path d="M1 81 Q12 77 20 62 L27 70 Q17 78 15 81Z"/>
+          <path d="M99 81 Q88 77 80 62 L73 70 Q83 78 85 81Z"/>
+        </g>
+        <path d="M10 81 Q19 74 20 58 L21 24 H79 L80 58 Q81 74 90 81Z" fill="#93633f" stroke="#5e3d26" stroke-width="1.6" stroke-linejoin="round"/>
+        <g stroke="#6f4a2f" stroke-width="1.2" fill="none" stroke-linecap="round" opacity=".8">
+          <path d="M28 30 Q26 40 29 52 M72 31 Q75 42 71 56 M35 29 V37 M65 29 Q63 34 65 39 M25 60 Q24 68 19 75 M76 60 Q78 68 83 75"/>
+        </g>
+        <ellipse class="stump-top" cx="50" cy="24" rx="29" ry="7.5" stroke="#5e3d26" stroke-width="1.6"/>
+        <g fill="none" stroke="#b98c58" stroke-width="1">
+          <ellipse cx="50" cy="24" rx="21" ry="5.2"/><ellipse cx="50" cy="24" rx="13" ry="3.2"/><ellipse cx="50" cy="24" rx="5" ry="1.2"/>
+        </g>
+        <path d="M21 26 Q23 19 33 21.5 Q31 27 25 29 Q22 29 21 26Z" fill="#7fb35c"/>
+        <path d="M20 40 Q23 36 24 44 Q21 47 20 44Z" fill="#7fb35c" opacity=".85"/>
+        <path d="M70 21 Q72 14 76 11" stroke="#4f8a3a" stroke-width="1.4" fill="none" stroke-linecap="round"/>
+        <ellipse cx="78" cy="10.5" rx="3.6" ry="1.8" fill="#6bab4c" transform="rotate(-25 78 10.5)"/>
+        <ellipse cx="72" cy="15" rx="3" ry="1.5" fill="#6bab4c" transform="rotate(30 72 15)"/>
+        <path d="M37 82 V54 A13 13 0 0 1 63 54 V82Z" fill="url(#holeg)" stroke="#5e3d26" stroke-width="1.6"/>
+        <path d="M39 80 V54.5 A11 11 0 0 1 61 54.5 V80" fill="none" stroke="#c99a68" stroke-width="1" opacity=".5"/>
+        <path d="M27 82 Q33 76.4 50 76.4 Q67 76.4 73 82Z" fill="#87593a" stroke="#5e3d26" stroke-width="1.4" stroke-linejoin="round"/>
+        <g stroke="#7a2d22" stroke-width=".8">
+          <rect x="84" y="71" width="3" height="7" rx="1.2" fill="#f3e6d2"/>
+          <path d="M80.5 72.5 Q85.5 63.5 90.5 72.5Z" fill="#d9483b"/>
+          <rect x="90.6" y="75.5" width="2" height="4.5" rx=".9" fill="#f3e6d2"/>
+          <path d="M88.6 76.4 Q91.6 71 94.6 76.4Z" fill="#d9483b"/>
+        </g>
+        <g fill="#fff"><circle cx="83.5" cy="69.5" r=".9"/><circle cx="87" cy="68" r=".8"/><circle cx="85.6" cy="71" r=".6"/><circle cx="91.5" cy="74.4" r=".6"/></g>
+        <g stroke="#6e5130" stroke-width=".7">
+          <rect x="11" y="74" width="1.8" height="5" rx=".8" fill="#efe1c8"/><path d="M8.6 75 Q11.9 70.5 15.2 75Z" fill="#b08a5a"/>
+          <rect x="15.8" y="76" width="1.5" height="4" rx=".7" fill="#efe1c8"/><path d="M14 76.8 Q16.6 73.4 19.2 76.8Z" fill="#b08a5a"/>
+        </g>`,
+      lights: `
+        <defs>${GLOW_GRAD('mg', '#b8ffd9')}</defs>
+        <circle class="lt flk" cx="85.5" cy="70" r="8" fill="url(#mg)"/>
+        <circle class="lt flk" cx="91.6" cy="75" r="5" fill="url(#mg)"/>
+        <circle class="lt flk" cx="12" cy="75" r="5.5" fill="url(#mg)"/>`,
+    },
+    alpin: {
+      name: 'Geröllhalde', w: 0.78, left: -0.1, vh: 64, sink: 4, hay: 0.84, mountains: true,
+      flowers: ['#ffffff', '#3d6fd6', '#ffffff', '#f6c945', '#b99cf0'],
+      hole: { x1: 39, x2: 61, top: 34, lip: 55.3 },
+      svg: `
+        <defs>${HOLE_GRAD}</defs>
+        <g stroke="#565b61" stroke-width="1.4" stroke-linejoin="round">
+          <path d="M28 42 L37 17 L56 11 L73 21 L72 42Z" fill="#adb3b9"/>
+          <path d="M0 62 L3 42 L14 29 L31 31 L39 46 L37 62Z" fill="#9aa1a8"/>
+          <path d="M63 62 L61 44 L72 29 L89 31 L99 46 L98 62Z" fill="#8e959c"/>
+        </g>
+        <g fill="#fff" opacity=".22"><path d="M37 17 L56 11 L49 24Z"/><path d="M14 29 L31 31 L21 37Z"/><path d="M72 29 L89 31 L80 36Z"/></g>
+        <g fill="#000" opacity=".12"><path d="M56 11 L73 21 L72 42 L62 30Z"/><path d="M31 31 L39 46 L37 62 L30 50Z"/><path d="M89 31 L99 46 L98 62 L90 48Z"/></g>
+        <g fill="#c9c86a" opacity=".8"><ellipse cx="45" cy="20" rx="2.4" ry="1.2"/><ellipse cx="10" cy="40" rx="2" ry="1"/><ellipse cx="84" cy="36" rx="2.2" ry="1"/></g>
+        <path d="M38 64 V45 A12 12 0 0 1 62 45 V64Z" fill="url(#holeg)" stroke="#565b61" stroke-width="1.4"/>
+        <path d="M30 56 L51 54.9 L70 56.3 L72 63 L28 63Z" fill="#a3a9ae" stroke="#565b61" stroke-width="1.3" stroke-linejoin="round"/>
+        <g fill="#9aa1a8" stroke="#565b61" stroke-width="1">
+          <path d="M18 63 L21 58.5 L26 59 L27 63Z"/><path d="M74 63 L76 59.5 L80 59.2 L82 63Z"/><path d="M2 63 L4 60 L8 60.4 L9 63Z"/>
+        </g>`,
+    },
+  };
 
   const HAY_SVG = `
   <svg viewBox="0 0 60 40" aria-hidden="true">
@@ -245,6 +390,33 @@
     }
     return `<svg viewBox="0 0 200 12" preserveAspectRatio="none" aria-hidden="true"><rect y="9" width="200" height="3"/><path d="${d}"/></svg>`;
   };
+
+  // Aussichtsstein mit Geröll: von oben pfeift er, wie echte Pikas. Boden bei y 46, flache Oberseite bei y 13.
+  const LOOKOUT_SVG = `
+  <svg viewBox="0 0 100 50" aria-hidden="true">
+    <g stroke="#5c6166" stroke-width="1.2">
+      <path d="M-14 47.5 L-12 40 L-4 37.5 L3 40 L4 47.5Z" fill="#8e949b" stroke-linejoin="round"/>
+      <ellipse cx="-22" cy="47.6" rx="2.4" ry="1.5" fill="#9aa0a6"/><ellipse cx="-17.5" cy="46.8" rx="3.6" ry="2.2" fill="#b0b5ba"/>
+      <ellipse cx="104" cy="46.2" rx="5" ry="3" fill="#a3a9ae"/><ellipse cx="111" cy="47.4" rx="3.2" ry="1.9" fill="#979da4"/>
+      <ellipse cx="116.5" cy="47.9" rx="2" ry="1.3" fill="#b0b5ba"/>
+    </g>
+    <path d="M6 47 L10 27 Q13 16 28 13.5 L72 12.5 Q87 13.5 91 25 L95 47Z" fill="#a3a9ae" stroke="#5c6166" stroke-width="1.5" stroke-linejoin="round"/>
+    <path d="M91 25 L95 47 L70 47 Q80 36 91 25Z" fill="#000" opacity=".1"/>
+    <path d="M28 15.5 Q48 13.6 70 14.4" stroke="#fff" stroke-opacity=".35" stroke-width="2.4" fill="none" stroke-linecap="round"/>
+    <path class="rock-snow" d="M26 14 L74 13 Q86 14 89 21 Q80 17.5 70 18 Q50 16.5 30 18 Q20 18 13 22 Q16 15 26 14Z" fill="#f2f6f9"/>
+    <path d="M42 24 l4 6 l-2 6 M70 30 l-3 5" stroke="#5c6166" stroke-width="1" fill="none" stroke-linecap="round" opacity=".7"/>
+    <g fill="#c9c86a" opacity=".8"><ellipse cx="22" cy="30" rx="2.6" ry="1.3"/><ellipse cx="80" cy="22" rx="2" ry="1"/></g>
+    <g stroke="#5c6166" stroke-width="1.2">
+      <ellipse cx="4" cy="45" rx="6" ry="3.6" fill="#979da4"/><ellipse cx="13" cy="47" rx="4.5" ry="2.6" fill="#b0b5ba"/>
+      <ellipse cx="-6" cy="47.2" rx="4" ry="2.4" fill="#a3a9ae"/><ellipse cx="20" cy="48.2" rx="2.4" ry="1.4" fill="#9aa0a6"/>
+      <ellipse cx="96" cy="45.5" rx="6.5" ry="3.8" fill="#8e949b"/><ellipse cx="86" cy="47.2" rx="4" ry="2.4" fill="#a3a9ae"/>
+      <ellipse cx="79" cy="48.2" rx="2.4" ry="1.4" fill="#b0b5ba"/>
+      <ellipse cx="34" cy="47.6" rx="3.2" ry="1.8" fill="#9aa0a6"/><ellipse cx="64" cy="47.8" rx="3.6" ry="1.9" fill="#b0b5ba"/>
+      <ellipse cx="50" cy="48" rx="2.2" ry="1.4" fill="#979da4"/><ellipse cx="27" cy="48.4" rx="1.8" ry="1.1" fill="#b0b5ba"/>
+      <ellipse cx="71" cy="48.5" rx="1.8" ry="1.1" fill="#979da4"/>
+    </g>
+    <path class="rtuft" d="M18 49 Q19 44 20 42 Q21 45 22 49Z M24 49 Q25 45 27 43.5 Q26.5 46 27 49Z M74 49 Q75 44.5 76.5 42.5 Q77 46 78 49Z M79 49 Q80.5 45.5 82 44.5 Q81.5 47 82 49Z M40 49 Q41 46 42.5 45 Q42 47 43 49Z"/>
+  </svg>`;
 
   const FLOWER_SVG =(c) => `
   <svg viewBox="0 0 20 30" aria-hidden="true">
@@ -375,8 +547,44 @@
   .day.overcast .land, .day.overcast .flowers, .day.overcast .hills { filter: brightness(.9) saturate(.8); }
   .dusk .land, .dusk .flowers, .dusk .foods { filter: brightness(.85) saturate(.85); }
   .night .land, .night .flowers, .night .foods { filter: brightness(.5) saturate(.6); }
-  .rocks { position: absolute; left: var(--rl); width: var(--rw); bottom: calc(var(--H) - var(--gy) - var(--rw) * .04); }
-  .rocks svg, .hay svg, .flower svg, .food svg { display: block; width: 100%; height: auto; overflow: visible; }
+  .burrow, .lights { position: absolute; }
+  .lights { pointer-events: none; }
+  .burrow svg, .lights svg { display: block; width: 100%; height: auto; overflow: visible; }
+  .mound { fill: var(--mound, #94c873); transition: fill 2.5s; }
+  .stump-top { fill: #d9b07c; transition: fill 2.5s; }
+  .snowcover { --mound: #e6edf2; }
+  .snowcover .stump-top { fill: #eef3f6; }
+  .lt { opacity: 0; transition: opacity 2.5s; }
+  .dusk .lt { opacity: .6; }
+  .night .lt { opacity: 1; }
+  .night .lt.flk { animation: flicker 2.8s ease-in-out infinite alternate; }
+  @keyframes flicker { 40% { opacity: .75; } 55% { opacity: 1; } 100% { opacity: .85; } }
+  .lookout { position: absolute; }
+  .lookout svg { display: block; width: 100%; height: auto; overflow: visible; }
+  .rock-snow { display: none; }
+  .snowcover .rock-snow { display: inline; }
+  .rtuft { fill: var(--h3); transition: fill 2.5s; }
+  .pane { fill: #cfe6f2; }
+  /* Schornsteinrauch bei Kälte und abends, zieht mit dem Wind */
+  .smoke circle { fill: #eef1f4; opacity: 0; transform-box: fill-box; transform-origin: center; }
+  .chilly .smoke circle, .dusk .smoke circle, .night .smoke circle { animation: smoke 6s linear infinite; }
+  .smoke circle:nth-child(2) { animation-delay: -2s; }
+  .smoke circle:nth-child(3) { animation-delay: -4s; }
+  .night .smoke circle { fill: #8f99ad; }
+  @keyframes smoke {
+    0% { transform: translate(0, 0) scale(.6); opacity: 0; }
+    15% { opacity: .75; }
+    100% { transform: translate(var(--smx, -6px), -16px) scale(2.3); opacity: 0; }
+  }
+  .hills .mtn { display: none; }
+  .areal-alpin .hills .mtn { display: inline; }
+  .m1 { fill: #8b9bb1; transition: fill 2.5s; }
+  .mcap { fill: #f4f7fa; transition: fill 2.5s; }
+  .dusk .m1 { fill: #6c6f8f; }
+  .dusk .mcap { fill: #e6d3de; }
+  .night .m1 { fill: #222c45; }
+  .night .mcap { fill: #7d88a0; }
+  .hay svg, .flower svg, .food svg { display: block; width: 100%; height: auto; overflow: visible; }
   .tufts {
     position: absolute; left: var(--rl); width: calc(var(--hl) + var(--hw) - var(--rl) + var(--H) * .04);
     bottom: calc(var(--H) - var(--gy) - var(--H) * .05); height: calc(var(--H) * .065);
@@ -463,7 +671,17 @@
     position: absolute; left: 12%; right: 12%; bottom: 0; height: 10%; border-radius: 50%;
     background: radial-gradient(closest-side, rgba(0, 0, 0, .22), transparent);
   }
-  .flip, .jump, .hop { position: absolute; inset: 0; transform-origin: 50% 100%; }
+  .flip, .jump, .hop, .clipw, .depth { position: absolute; inset: 0; transform-origin: 50% 100%; }
+  /* Im Bau: Ausschnitt auf den Eingang (clip-path setzt das Skript), kleiner und dunkler (weiter hinten),
+     --dy schiebt ihn hinter die Vorderkante. Der Kopf steht mittig im Eingang (--hc, --hh je Blickrichtung). */
+  .depth { --hd: 1; }
+  .left .depth { --hd: -1; }
+  .inside .depth {
+    transform: translate(calc(var(--hc) - var(--hh) * var(--hd)), var(--dy)) scale(var(--ds));
+    filter: brightness(.85);
+  }
+  .inside .shadow { opacity: 0; }
+  .pika.inside .brolly { display: none; }
   .flip { transition: transform .25s; }
   .left .flip { transform: scaleX(-1); }
   .pk { display: block; width: 100%; height: 100%; overflow: visible; transition: filter 2.5s; }
@@ -523,7 +741,16 @@
   .sleeping.peek .eye-r { display: inline; }
   .sleeping.peek .seye-r { display: none; }
 
-  .mfood, .paws, .cap, .scarf, .brolly { display: none; }
+  .mfood, .paws, .cap, .scarf, .brolly, .omouth { display: none; }
+  /* Pfiff vom Stein: aufrichten, Kopf hoch, Maul auf */
+  .calling .omouth { display: inline; }
+  .calling .hop { animation: call .6s ease-out; }
+  .calling .face { transform: translate(1.5px, -3px); }
+  .calling .ear { transform: translateY(-2px); }
+  @keyframes call {
+    30% { transform: scale(.94, 1.1); }
+    70% { transform: scale(.97, 1.05); }
+  }
   .cold .scarf, .wet .brolly { display: inline; }
   .sleeping .brolly { display: none; }
   .brolly { transform-box: fill-box; transform-origin: 70% 100%; animation: brolly 2.6s ease-in-out infinite alternate; }
@@ -541,6 +768,7 @@
 
   .anchor { position: absolute; left: 75%; top: 20%; width: 0; height: 0; }
   .left .anchor { left: 25%; }
+  .inside .anchor { left: var(--ax); top: var(--ay); }
   .zzz { display: none; }
   .sleeping .zzz { display: block; }
   .zzz span {
@@ -629,6 +857,10 @@
       this._flowers = [];
       this._foods = [];
       this._asleep = false;
+      this._inside = false; // im Bau
+      this._lift = 0; // Höhe über dem Boden (auf dem Stein)
+      this._poseName = null;
+      this._next = null; // nächste Aktion erzwingen (Vorschau)
       this._stats = null;
       this._elev = null;
       this._az = null;
@@ -642,6 +874,7 @@
     setConfig(config) {
       this._cfg = { ...DEFAULTS, ...(config || {}) };
       if (!this._el) this._build();
+      this._applyAreal();
       this._el.name.textContent = this._cfg.name;
       this._el.stats.hidden = !this._cfg.show_stats;
       this._el.scene.style.minHeight = `${Number(this._cfg.height) || DEFAULTS.height}px`;
@@ -678,9 +911,7 @@
         this._hadHass = true;
         if (this._sleepTime() !== this._asleep) {
           this._stop();
-          this._asleep = !this._asleep;
-          this._el.pika.classList.toggle('sleeping', this._asleep);
-          if (this._asleep) this._setX(this._g.home, true);
+          this._sleepNow(!this._asleep);
           this._start();
         }
       }
@@ -762,20 +993,31 @@
             <div class="moon"><svg viewBox="0 0 100 100"><circle class="moon-dark" cx="50" cy="50" r="50"/><path class="moon-lit"/></svg></div>
             <div class="clouds">${clouds}</div>
             <svg class="hills" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
+              <g class="mtn">
+                <path class="m1" d="M0 58 L10 40 L17 46 L30 22 L40 36 L47 30 L60 50 L70 34 L78 40 L88 18 L100 36 V100 H0Z"/>
+                <path class="mcap" d="M30 22 L34.3 28 L32 27 L30.5 29 L28.5 27.2 L26.75 28Z"/>
+                <path class="mcap" d="M88 18 L92.7 25 L90.5 24 L88.5 26 L86.5 24.2 L84.8 25Z"/>
+                <path class="mcap" d="M70 34 L74 37 L72 36.4 L70.5 37.6 L69 36.5 L68.1 37Z"/>
+                <path class="mcap" d="M47 30 L49.6 34 L48.3 33.5 L47 34.6 L45.8 33.6 L44.6 34Z"/>
+              </g>
               <path class="h1" d="M0 64 Q16 50 36 60 T72 55 T100 50 V100 H0Z"/>
               <path class="h2" d="M0 83 Q25 79 50 83 T100 82 V100 H0Z"/>
             </svg>
             <div class="land">
-              <div class="rocks">${ROCKS_SVG}</div>
+              <div class="burrow"></div>
               <div class="hay">${HAY_SVG}</div>
               <div class="tufts">${TUFTS_SVG()}</div>
+              <div class="lookout">${LOOKOUT_SVG}</div>
             </div>
+            <div class="lights"></div>
             <div class="flowers"></div>
             <div class="foods"></div>
             <div class="ff">${flies}</div>
             <div class="pika" role="button" aria-label="Streicheln">
-              <div class="shadow"></div>
-              <div class="flip"><div class="jump"><div class="hop">${PIKA_SVG}</div></div></div>
+              <div class="clipw">
+                <div class="shadow"></div>
+                <div class="depth"><div class="flip"><div class="jump"><div class="hop">${PIKA_SVG}</div></div></div></div>
+              </div>
               <div class="anchor">
                 <div class="zzz"><span>z</span><span>z</span><span>Z</span></div>
                 <div class="bubble say"></div>
@@ -803,11 +1045,42 @@
         stS: $('.st-s'), stG: $('.st-g'), feed: $('.feed'), say: $('.say'), think: $('.think'),
         sun: $('.sun'), moon: $('.moon'), moonLit: $('.moon-lit'), clouds: [...this.shadowRoot.querySelectorAll('.cloud')],
         precip: $('.precip'), flash: $('.flash'),
+        burrow: $('.burrow'), lights: $('.lights'), clipw: $('.clipw'), depth: $('.depth'), rock: $('.lookout'),
       };
       this._el.pika.addEventListener('click', (e) => (e.stopPropagation(), this._onPet()));
       this._el.feed.addEventListener('click', (e) => (e.stopPropagation(), this._onFeed()));
       this._el.scene.addEventListener('click', (e) => this._onLookAt(e));
       this._loadHay();
+    }
+
+    _areal() {
+      return AREALE[this._arealKey] || AREALE.huegel;
+    }
+
+    // Bau-Grafik einsetzen. Wechselt das Areal bei laufender Karte (Editor), fängt die Wiese neu an.
+    _applyAreal() {
+      const key = AREALE[this._cfg.areal] ? this._cfg.areal : 'huegel';
+      if (key === this._arealKey) return;
+      const sc = this._el.scene.classList;
+      if (this._arealKey) sc.remove(`areal-${this._arealKey}`);
+      this._arealKey = key;
+      sc.add(`areal-${key}`);
+      const A = this._areal();
+      const svg = (body) => (body ? `<svg viewBox="0 0 100 ${A.vh}" aria-hidden="true">${body}</svg>` : '');
+      this._el.burrow.innerHTML = svg(A.svg);
+      this._el.lights.innerHTML = svg(A.lights);
+      if (this._g) {
+        this._stop();
+        this._g = null;
+        this._flowers.forEach((f) => f.el.remove());
+        this._flowers = [];
+        this._asleep = this._inside = false;
+        this._lift = 0;
+        this._poseName = null;
+        this._el.pika.classList.remove('sleeping', 'inside');
+        this._el.clipw.style.clipPath = '';
+        this._layout();
+      }
     }
 
     _layout() {
@@ -821,33 +1094,71 @@
       const pH = clamp(H * 0.4, 48, 170);
       const pW = pH * 1.2;
       const gy = H * 0.9;
-      const rW = H * 0.62;
-      const rL = -rW * 0.12;
+      // Bau: viewBox-Einheit u, Boden der Grafik liegt auf gy
+      const A = this._areal();
+      const bW = H * A.w;
+      const bL = bW * A.left;
+      const u = bW / 100;
+      const Y = (v) => gy - (A.vh - A.sink - v) * u;
+      const hole = { l: bL + A.hole.x1 * u, r: bL + A.hole.x2 * u, top: Y(A.hole.top), lip: Y(A.hole.lip) };
+      hole.cx = (hole.l + hole.r) / 2;
       const hW = H * 0.26;
-      const hL = rL + rW * 0.84;
+      const hL = bL + bW * A.hay;
+      // Aussichtsstein rechts, links neben dem Futterknopf
+      const kW = H * 0.6;
+      const ku = kW / 100;
+      const kL = Math.max(hL + hW + pW * 0.4, W - 66 - kW);
+      const rock = { l: kL, w: kW, cx: kL + kW / 2, lift: (46 - 13) * ku };
+      const rs = this._el.rock.style;
+      rs.left = `${kL}px`;
+      rs.top = `${gy - 46 * ku}px`;
+      rs.width = `${kW}px`;
       this._g = {
-        pH, pW, gy,
-        home: rL + rW * 0.51,
+        pH, pW, gy, hole, rock,
+        home: hole.cx,
         hay: hL + hW / 2,
+        // Blumen und Futter zwischen Heuhaufen und Stein
         fMin: (hL + hW + pW * 0.3) / W,
-        fMax: (W - 16) / W,
+        fMax: Math.max((hL + hW + pW * 0.3) / W + 0.08, (kL - H * 0.03) / W),
       };
-      const vars = { W, H, pw: pW, ph: pH, gy, rw: rW, rl: rL, hw: hW, hl: hL, fw: H * 0.085, dw: H * 0.13 };
+      for (const el of [this._el.burrow, this._el.lights]) {
+        el.style.left = `${bL}px`;
+        el.style.top = `${Y(0)}px`;
+        el.style.width = `${bW}px`;
+      }
+      const vars = { W, H, pw: pW, ph: pH, gy, rl: bL, hw: hW, hl: hL, fw: H * 0.085, dw: H * 0.13 };
       for (const [k, v] of Object.entries(vars)) this._el.scene.style.setProperty(`--${k}`, `${v}px`);
 
       if (first) {
         this._initFlowers();
-        if (this._sleepTime()) {
-          this._asleep = true;
-          this._el.pika.classList.add('sleeping');
-          this._setX(this._g.home, true);
-        } else {
-          this._setX(rnd(this._g.home, W * 0.7), true);
-        }
+        if (this._sleepTime()) this._sleepNow(true);
+        else this._setX(rnd(this._g.home + pW, W * 0.7), true);
         this._updateSky();
         this._start();
+      } else if (this._inside) {
+        this._setX(this._g.home, true);
+        this._pose(this._poseName, 0);
+      } else if (this._lift > 0) {
+        this._lift = rock.lift;
+        this._setX(rock.cx, true);
       } else {
         this._setX(this._x * ratio, true);
+      }
+    }
+
+    // Ohne Übergang einschlafen (im Bau) bzw. aufwachen (vor dem Bau)
+    _sleepNow(on) {
+      const p = this._el.pika;
+      this._asleep = on;
+      this._lift = 0;
+      p.classList.toggle('sleeping', on);
+      if (on) {
+        this._setX(this._g.home, true);
+        this._inside = true;
+        this._pose('sleep', 0);
+      } else if (this._inside) {
+        this._inside = false;
+        this._pose('out', 0);
       }
     }
 
@@ -907,26 +1218,38 @@
 
     async _step() {
       if (!this._g) return this._wait(500);
+      // Unterbrochen, während er auf dem Stein stand: erst herunter
+      if (this._lift > 0) return this._run('hopDown');
       const sleepy = this._sleepTime();
       if (sleepy && !this._asleep) return this._run('goSleep');
       if (!sleepy && this._asleep) return this._run('wakeUp');
       if (this._asleep) return this._wait(60000);
 
       const food = this._foods.find((f) => f.landed);
+      const wx = this._wx;
+      const next = this._next;
+      const stayIn = next ? next === 'burrow' : wx.shelter && !food;
+      if (this._inside && !stayIn) return this._run('comeOut');
+      if (next) {
+        this._next = null;
+        return this._run(next);
+      }
       if (food) return this._run('eatFood', food);
+      // Bei Starkregen und Gewitter im Bau bleiben und ab und zu herausschauen
+      if (wx.shelter) return this._run(this._inside ? 'hideout' : 'shelter');
 
       const s = this._get('s');
       const g = this._get('g');
       this._el.pika.classList.toggle('sad', g < 25 || s < 15);
-      const wx = this._wx;
-      if (wx.shelter && Math.abs(this._x - this._g.home) > this._g.pW * 0.4) return this._run('shelter');
       // Unter Schnee gibt es keine Blumen, bei Regen bleibt das Heu trocken (kein Sammeln)
       const hasFlowers = this._flowers.length > 0 && !wx.snowcover;
       const act = weighted([
         [3, 'idle'],
         [3, 'look'],
-        [wx.shelter ? 0 : 3, 'wander'],
-        [hasFlowers && !wx.shelter ? (s < 50 ? 3 : 1.2) : 0, 'nibble'],
+        [3, 'wander'],
+        [wx.wet ? 2 : 1, 'burrow'],
+        [wx.wet ? 0.4 : 1.6, 'lookout'],
+        [hasFlowers ? (s < 50 ? 3 : 1.2) : 0, 'nibble'],
         [hasFlowers && !wx.wet && this._hay < 12 ? 1.4 : 0, 'gather'],
         [wx.snowcover || wx.wet ? 1.2 : 0, 'haySnack'],
         [wx.wet ? 0 : 1.4, 'groom'], // eine Pfote hält bei Regen das Blatt
@@ -970,10 +1293,179 @@
       await this._wait(rnd(400, 1400));
     }
 
+    // ---------- Aussichtsstein ----------
+
+    // Auf den Stein springen, Ausschau halten und pfeifen, wieder herunter
+    async _lookout() {
+      const { rock } = this._g;
+      await this._walkTo((this._x > rock.cx && this._footX(1)) || this._footX(-1));
+      await this._wait(rnd(200, 600));
+      await this._hopTo(rock.cx, rock.lift);
+      await this._wait(rnd(400, 900));
+      const n = 3 + Math.floor(rnd(0, 3));
+      for (let i = 0; i < n; i++) {
+        const r = Math.random();
+        if (r < 0.5 || i === 0) await this._call();
+        else if (r < 0.75) this._face(-this._dir);
+        else {
+          this._el.pika.classList.add('look-up');
+          await this._wait(rnd(800, 1400));
+          this._el.pika.classList.remove('look-up');
+        }
+        await this._wait(rnd(700, 1800));
+      }
+      await this._hopDown();
+    }
+
+    // Pfiff: aufrichten, Maul auf, iiep – manchmal zweimal hintereinander
+    async _call() {
+      const p = this._el.pika;
+      const twice = Math.random() < 0.3;
+      for (let i = 0; i < (twice ? 2 : 1); i++) {
+        p.classList.remove('calling');
+        void p.offsetWidth;
+        p.classList.add('calling');
+        this._say(pick(['iiiep!', 'iiep!', 'iiiiep!', 'mip!']), 900);
+        await this._wait(650);
+        p.classList.remove('calling');
+        if (twice) await this._wait(250);
+      }
+      await this._wait(300);
+    }
+
+    async _hopDown() {
+      await this._hopTo((Math.random() < 0.5 && this._footX(1)) || this._footX(-1), 0);
+    }
+
+    // Absprungstelle neben dem Stein (side -1 links, 1 rechts). Rechts null, wenn dort kein Platz ist.
+    _footX(side) {
+      const { rock, pW } = this._g;
+      const x = rock.cx + side * (rock.w / 2 + pW * 0.15);
+      if (side > 0) return x > this._W - pW * 0.45 ? null : x;
+      return Math.max(x, pW * 0.45);
+    }
+
+    async _hopTo(x, lift) {
+      if (Math.abs(x - this._x) > 2) this._face(x > this._x ? 1 : -1);
+      const p = this._el.pika;
+      p.style.transition = 'transform .55s cubic-bezier(.3, .6, .4, 1)';
+      this._lift = lift;
+      this._setX(x);
+      this._jump('hop1');
+      await this._wait(620);
+    }
+
+    // ---------- Bau ----------
+
+    // Rein, ein paarmal herausschauen, wieder raus
+    async _burrow() {
+      if (!this._inside) await this._enterBurrow();
+      await this._wait(rnd(1500, 4000));
+      const n = 1 + Math.floor(rnd(0, 3));
+      for (let i = 0; i < n; i++) {
+        await this._peekOut();
+        if (i < n - 1) {
+          await this._to('hidden', 450);
+          await this._wait(rnd(1200, 3500));
+        }
+      }
+      await this._comeOut();
+    }
+
     async _shelter() {
-      await this._walkTo(this._g.home, 1.3);
-      this._face(1);
-      await this._wait(rnd(800, 1500));
+      this._say('!');
+      await this._enterBurrow(1.4);
+      await this._wait(rnd(800, 1600));
+      await this._peekOut();
+    }
+
+    async _hideout() {
+      if (this._poseName !== 'hidden') await this._to('hidden', 450);
+      await this._wait(rnd(2500, 7000));
+      await this._peekOut();
+    }
+
+    async _enterBurrow(speed = 1) {
+      await this._walkTo(this._g.home, speed);
+      this._setX(this._g.home, true);
+      this._inside = true;
+      await this._to('door', 450);
+      await this._wait(150);
+      await this._to('hidden', 500);
+    }
+
+    async _peekOut() {
+      await this._to('peek', 550);
+      const p = this._el.pika;
+      const n = 2 + Math.floor(rnd(0, 3));
+      for (let i = 0; i < n; i++) {
+        await this._wait(rnd(600, 1500));
+        const r = Math.random();
+        if (r < 0.45) this._face(-this._dir);
+        else if (r < 0.7) {
+          p.classList.add('look-up');
+          await this._wait(rnd(700, 1200));
+          p.classList.remove('look-up');
+        } else if (r < 0.85) this._say(pick(['iiep!', 'mip!']));
+        else this._twitch();
+      }
+      await this._wait(rnd(500, 1000));
+    }
+
+    async _comeOut() {
+      if (this._poseName !== 'peek') await this._to('peek', 450);
+      await this._wait(rnd(300, 700));
+      await this._to('door', 350);
+      this._inside = false;
+      await this._to('out', 450);
+      this._jump('hop1');
+      await this._wait(500);
+    }
+
+    async _to(name, ms) {
+      this._pose(name, ms);
+      await this._wait(ms);
+    }
+
+    // Haltung im Bau: door = steht im Eingang, peek = Kopf schaut heraus, sleep = Mütze und Augen,
+    // hidden = ganz drin, out = draußen in voller Größe
+    _pose(name, ms) {
+      if (!this._g || !name) return;
+      this._poseName = name;
+      const { pH, pW, gy, hole } = this._g;
+      const p = this._el.pika;
+      const cw = this._el.clipw;
+      const top = gy - pH * 0.945;
+      const L = this._x - pW / 2;
+      const open = `inset(${-pH}px ${-pW}px ${-pH * 0.3}px ${-pW}px round 0px 0px 0px 0px)`;
+      // clip-path lässt sich nur zwischen gleichen Formen überblenden
+      if (!cw.style.clipPath) {
+        cw.style.transition = 'none';
+        cw.style.clipPath = open;
+        void cw.offsetWidth;
+      }
+      const tr = ms ? `${ms}ms cubic-bezier(.45, 0, .4, 1)` : '0s';
+      cw.style.transition = `clip-path ${tr}`;
+      this._el.depth.style.transition = `transform ${tr}, filter ${tr}`;
+      if (name === 'out') {
+        p.classList.remove('inside');
+        cw.style.clipPath = open;
+        return;
+      }
+      const hw = hole.r - hole.l;
+      const ds = clamp((0.85 * hw) / (0.43 * pW), 0.4, 0.9);
+      const v = { door: 0.945, peek: 0.6, sleep: 0.53, hidden: -0.15 }[name];
+      const px = (n) => `${n.toFixed(1)}px`;
+      cw.style.clipPath = `inset(${px(hole.top - top)} ${px(L + pW - hole.r)} ${px(top + pH - hole.lip)} ${px(hole.l - L)} `
+        + `round ${px(hw / 2)} ${px(hw / 2)} 0px 0px)`;
+      const s = p.style;
+      s.setProperty('--ds', ds.toFixed(3));
+      s.setProperty('--dy', px(hole.lip + pH * ds * (1 - v) - (top + pH)));
+      s.setProperty('--hc', px(hole.cx - this._x));
+      s.setProperty('--hh', px(0.22 * pW * ds));
+      s.setProperty('--ax', px(hole.r - L - hw * 0.1));
+      s.setProperty('--ay', px(hole.top - top + pH * 0.05));
+      p.classList.add('inside');
     }
 
     async _haySnack() {
@@ -1044,17 +1536,19 @@
     async _goSleep() {
       this._say('*gähn*');
       await this._wait(1200);
-      await this._walkTo(this._g.home, 0.7);
+      if (!this._inside) await this._enterBurrow(0.7);
+      await this._wait(900);
       this._face(1);
-      await this._wait(500);
-      this._asleep = true;
       this._el.pika.classList.add('sleeping');
+      this._pose('sleep', 1400);
+      this._asleep = true;
       this._updateSky();
     }
 
     async _wakeUp() {
       this._asleep = false;
       const p = this._el.pika;
+      if (this._inside) this._pose('peek', 900);
       p.classList.remove('sleeping', 'peek');
       p.classList.add('stretch');
       this._updateSky();
@@ -1108,7 +1602,7 @@
       const p = this._el.pika;
       this._x = x;
       if (instant) p.style.transition = 'none';
-      p.style.transform = `translateX(${(x - this._g.pW / 2).toFixed(1)}px)`;
+      p.style.transform = `translate(${(x - this._g.pW / 2).toFixed(1)}px, ${(-this._lift).toFixed(1)}px)`;
       if (instant) void p.offsetWidth;
     }
 
@@ -1119,8 +1613,15 @@
       return t && t !== 'none' ? new DOMMatrixReadOnly(t).m41 + this._g.pW / 2 : this._x;
     }
 
+    _liveLift() {
+      const t = getComputedStyle(this._el.pika).transform;
+      return t && t !== 'none' ? -new DOMMatrixReadOnly(t).m42 : this._lift;
+    }
+
     _freeze() {
-      this._setX(this._liveX(), true);
+      const x = this._liveX();
+      this._lift = Math.max(0, this._liveLift());
+      this._setX(x, true);
     }
 
     _face(dir) {
@@ -1162,9 +1663,13 @@
     }
 
     _hearts(n) {
-      const { pW, pH, gy } = this._g;
-      const x = this._liveX() + this._dir * pW * 0.25;
-      const y = gy - pH * 0.945 + pH * 0.25;
+      const { pW, pH, gy, hole } = this._g;
+      let x = this._liveX() + this._dir * pW * 0.25;
+      let y = gy - pH * 0.945 + pH * 0.25 - this._liveLift();
+      if (this._inside) {
+        x = hole.cx;
+        y = hole.top + (hole.lip - hole.top) * 0.2;
+      }
       for (let i = 0; i < n; i++) {
         const h = document.createElement('span');
         h.className = 'heart';
@@ -1225,6 +1730,8 @@
         return;
       }
       this._happy();
+      // Im Bau: kommt zum Streicheln an den Eingang
+      if (this._inside) return this._pose('peek', 300);
       if (!p.classList.contains('walking')) this._jump(Math.random() < 0.25 ? 'binky' : 'hop1');
       if (Math.random() < 0.35) this._say(pick(['iiep!', 'mip!', '♥']));
     }
@@ -1287,7 +1794,7 @@
         xf = rnd(fMin, fMax);
         if (this._flowers.every((f) => Math.abs(f.xf - xf) * this._W > 26)) break;
       }
-      const color = pick(FLOWER_COLORS);
+      const color = pick(this._areal().flowers || FLOWER_COLORS);
       const el = document.createElement('div');
       el.className = grow ? 'flower grow' : 'flower';
       el.style.setProperty('--xf', xf.toFixed(4));
@@ -1515,6 +2022,7 @@
         storm: !!def.storm,
         windy: !!def.wind || raw.wind >= 30,
         cold: raw.temp != null && raw.temp < 3,
+        chilly: raw.temp != null && raw.temp < 12, // Ofen an, Schornstein raucht
         snowcover: raw.cond === 'snowy' || (raw.cond === 'snowy-rainy' && raw.temp != null && raw.temp <= 0),
       };
       fx.wet = fx.rain > 0 || fx.flash; // Blatt als Regenschirm
@@ -1533,6 +2041,7 @@
       sc.toggle('foggy', fx.fog);
       sc.toggle('windy', fx.windy);
       sc.toggle('snowcover', fx.snowcover);
+      sc.toggle('chilly', fx.chilly);
       sc.toggle('wind-w', fromWest);
       const st = this._el.scene.style;
       const lean = Math.min(raw.wind * 0.7, 28) * (fromWest ? -1 : 1);
@@ -1540,6 +2049,7 @@
       st.setProperty('--slant', `${lean.toFixed(1)}deg`);
       st.setProperty('--sw1', fromWest ? '-14deg' : '-2deg');
       st.setProperty('--sw2', fromWest ? '2deg' : '14deg');
+      st.setProperty('--smx', `${((fromWest ? -1 : 1) * (4 + Math.min(raw.wind, 40) / 4)).toFixed(1)}px`);
       st.setProperty('--starop', (0.85 * (1 - cover / 110)).toFixed(2));
       const n = Math.round((cover / 100) * this._el.clouds.length);
       this._el.clouds.forEach((c, i) => c.classList.toggle('on', i < n));

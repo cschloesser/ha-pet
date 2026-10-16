@@ -5,7 +5,9 @@ Ein kleiner Pika (Pfeifhase) wohnt in deinem Home-Assistant-Dashboard.
 - **Antippen** → streicheln: Herzchen, Freudensprung, Glück steigt
 - **Löwenzahn-Knopf** → füttern: Futter fällt herunter, er hoppelt hin und frisst
 - **Tagsüber** schaut er sich um, hoppelt herum, knabbert Blumen, trägt Blüten zu seinem Heuhaufen, putzt sich und piepst ab und zu
-- **Nachts** (Standard: Sonnenuntergang bis Sonnenaufgang) schläft er mit Zipfelmütze vor seinem Bau
+- **Bau**: Ab und zu verschwindet er in seinem Bau und schaut ein paarmal heraus, bevor er wieder rauskommt
+- **Aussichtsstein**: Wie echte Pikas springt er auf den Stein mit Geröll, richtet sich auf und pfeift
+- **Nachts** (Standard: Sonnenuntergang bis Sonnenaufgang) schläft er mit Zipfelmütze im Eingang seines Baus
 - **Hunger und Glück** sinken langsam. Hat er Hunger, denkt er an Löwenzahn und lässt die Ohren hängen
 
 ## Himmel und Wetter
@@ -20,10 +22,19 @@ Der Blick geht nach Süden: Osten (Sonnenaufgang) ist links, Westen rechts.
   - Wolken ziehen und Blumen biegen sich mit Windstärke und Windrichtung
 - **Pika** reagiert darauf:
   - Bei Regen hält er sich ein Blatt als Schirm über den Kopf und bleibt in der Nähe seines Baus.
-  - Bei Starkregen und Gewitter wartet er vor dem Bau und erschrickt bei Blitzen.
+  - Bei Starkregen und Gewitter verkriecht er sich im Bau, schaut ab und zu heraus und erschrickt bei Blitzen.
   - Unter 3 °C trägt er einen Schal.
   - Bei Schnee knabbert er an seinem Heuvorrat.
 - Im Sommer gibt es nachts Glühwürmchen.
+
+## Areale
+
+Mit `areal` wählst du den Bau:
+
+- `huegel` (Standard): Grashügel mit runder Holztür, Namensschild, Rundfenster mit Blumenkasten und Laterne. Nachts brennt Licht, bei unter 12 °C und abends raucht der Schornstein.
+- `fels`: Steinhaufen mit Steinbogen als Eingang
+- `stumpf`: Baumstumpf mit Höhle zwischen den Wurzeln, Fliegenpilze leuchten nachts
+- `alpin`: Geröllhalde mit Bergen im Hintergrund, Enzian und Edelweiß
 
 ## Installation (HACS)
 
@@ -42,6 +53,7 @@ sleep_start: sunset              # Schlafenszeit (Standard: Sonnenuntergang)
 sleep_end: sunrise               # Aufwachzeit (Standard: Sonnenaufgang)
 sun_entity: sun.sun              # Sonnenstand
 weather_entity: weather.forecast_home   # Wetter (Standard: met.no-Integration)
+areal: huegel                    # Bau: huegel, fels, stumpf, alpin
 show_stats: true                 # Satt-/Glück-Balken
 height: 180                      # Mindesthöhe in px (im Abschnitts-Layout zählt die Zeilenhöhe)
 ```
@@ -52,4 +64,4 @@ Im Text-Helfer steht der Zustand als `satt,zeit,glück,zeit`. Hunger und Glück 
 
 ## Entwicklung
 
-`preview.html` lädt die Karte mit einem simulierten `hass`-Objekt. Dafür den Ordner über einen beliebigen lokalen Webserver öffnen.
+`preview.html` lädt die Karte mit einem simulierten `hass`-Objekt. Dafür den Ordner über einen beliebigen lokalen Webserver öffnen. `areale.html` zeigt alle vier Areale nebeneinander.

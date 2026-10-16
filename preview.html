@@ -36,6 +36,8 @@
 <div class="bar"><b>Sonstiges</b>
   <button id="cold">Kalt/Warm</button>
   <button id="hungry">Hungrig machen</button>
+  <button id="burrow">In den Bau &amp; rausschauen</button>
+  <button id="lookout">Auf den Stein &amp; pfeifen</button>
 </div>
 <div class="wrap">
   <div class="slot" style="width:600px;height:248px"><pika-pet-card id="a"></pika-pet-card></div>
@@ -109,6 +111,8 @@
     states['weather.forecast_home'] = { ...w, attributes: { ...w.attributes, temperature: w.attributes.temperature < 3 ? 14 : -2 } };
     push();
   });
+  document.getElementById('burrow').addEventListener('click', () => cards.forEach((c) => { c._next = 'burrow'; c._interrupt(); }));
+  document.getElementById('lookout').addEventListener('click', () => cards.forEach((c) => { c._next = 'lookout'; c._interrupt(); }));
   document.getElementById('hungry').addEventListener('click', () => {
     const now = Math.round(Date.now() / 1000);
     hass.callService('input_text', 'set_value', { entity_id: 'input_text.pika_status', value: `20.0,${now},20.0,${now}` });
