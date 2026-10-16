@@ -46,7 +46,12 @@
 <script>
   const log = (t) => (document.getElementById('log').textContent = t);
   const states = {
-    'sun.sun': { state: 'above_horizon', attributes: { elevation: 28, azimuth: 180 } },
+    'sun.sun': { state: 'above_horizon', attributes: {
+      elevation: 28, azimuth: 180,
+      // Uhrzeiten für sleep_start/sleep_end: heute 07:56 und 18:33 Ortszeit (Datum egal, zählt nur die Uhrzeit)
+      next_rising: new Date(new Date().setHours(7, 56, 0, 0)).toISOString(),
+      next_setting: new Date(new Date().setHours(18, 33, 0, 0)).toISOString(),
+    } },
     'weather.forecast_home': {
       state: 'partlycloudy',
       attributes: { temperature: 14, temperature_unit: '°C', cloud_coverage: 40, wind_speed: 12, wind_speed_unit: 'km/h', wind_bearing: 240 },

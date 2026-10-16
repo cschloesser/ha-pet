@@ -3,15 +3,15 @@
  *
  *   Pika antippen      → streicheln (Herzchen, Glück steigt)
  *   Löwenzahn-Knopf    → füttern (Futter fällt herunter, er hoppelt hin und frisst)
- *   Nachts             → schläft er mit Zipfelmütze vor seinem Bau
+ *   Nachts             → schläft er mit Zipfelmütze vor seinem Bau (Standard: Sonnenuntergang bis -aufgang)
  *   Sonst              → schaut sich um, hoppelt, knabbert Blumen, sammelt Heu, putzt sich
  *
  * Konfiguration:
  *   type: custom:pika-pet-card
  *   name: Pika                       # Name in der Statusanzeige
  *   entity: input_text.pika_status   # optional: Zustand geräteübergreifend speichern
- *   sleep_start: "21:00"             # Schlafenszeit
- *   sleep_end: "07:00"               # Aufwachzeit
+ *   sleep_start: sunset              # Schlafenszeit: "21:00", "sunset" oder z. B. "sunset+01:00"
+ *   sleep_end: sunrise               # Aufwachzeit: "07:00", "sunrise" oder z. B. "sunrise-30" (Minuten)
  *   sun_entity: sun.sun              # Sonnenstand (Höhe + Azimut) für Himmel und Sonne
  *   weather_entity: weather.forecast_home   # Wolken, Regen, Schnee, Nebel, Gewitter, Wind
  *   show_stats: true                 # Satt-/Glück-Balken anzeigen
@@ -21,13 +21,13 @@
  * werden aus Datum und Standort (hass.config) berechnet.
  */
 (() => {
-  const VERSION = '0.2.2';
+  const VERSION = '0.3.0';
 
   const DEFAULTS = {
     name: 'Pika',
     entity: null,
-    sleep_start: '21:00',
-    sleep_end: '07:00',
+    sleep_start: 'sunset',
+    sleep_end: 'sunrise',
     sun_entity: 'sun.sun',
     weather_entity: 'weather.forecast_home',
     show_stats: true,
@@ -673,6 +673,17 @@
       const az = Number(sun?.attributes?.azimuth);
       this._elev = sun ? (Number.isFinite(elev) ? elev : sun.state === 'above_horizon' ? 10 : -10) : null;
       this._az = Number.isFinite(az) ? az : null;
+      // Erste Sonnenzeiten: Lag die Karte schon ohne hass, sofort richtig schlafen/wach sein statt hinzulaufen
+      if (!this._hadHass && this._g) {
+        this._hadHass = true;
+        if (this._sleepTime() !== this._asleep) {
+          this._stop();
+          this._asleep = !this._asleep;
+          this._el.pika.classList.toggle('sleeping', this._asleep);
+          if (this._asleep) this._setX(this._g.home, true);
+          this._start();
+        }
+      }
       const w = hass.states[c.weather_entity];
       if (w !== this._lastWeather) {
         this._lastWeather = w;
@@ -1397,9 +1408,24 @@
       if (this._dbgSleep != null) return this._dbgSleep;
       const now = new Date();
       const m = now.getHours() * 60 + now.getMinutes();
-      const a = minutes(this._cfg.sleep_start);
-      const b = minutes(this._cfg.sleep_end);
+      const a = this._sleepMinutes(this._cfg.sleep_start, 21 * 60);
+      const b = this._sleepMinutes(this._cfg.sleep_end, 7 * 60);
       return a > b ? m >= a || m < b : m >= a && m < b;
+    }
+
+    // "21:00", "sunset", "sunset+01:00", "sunrise-30" (Minuten) → Minuten nach Mitternacht.
+    // Sonnenauf- und -untergang kommen aus sun.sun (next_rising/next_setting); deren Uhrzeit
+    // verschiebt sich von Tag zu Tag nur um wenige Minuten, das reicht für die Schlafenszeit.
+    _sleepMinutes(spec, fallback) {
+      const m = String(spec ?? '').trim().toLowerCase()
+        .match(/^(sunrise|sunset)\s*(?:([+-])\s*(?:(\d{1,2}):(\d{2})|(\d+)))?$/);
+      if (!m) return minutes(spec);
+      const attr = m[1] === 'sunrise' ? 'next_rising' : 'next_setting';
+      const t = new Date(this._hass?.states[this._cfg.sun_entity]?.attributes?.[attr] ?? NaN);
+      if (Number.isNaN(t.getTime())) return fallback;
+      const sign = m[2] === '-' ? -1 : 1;
+      const off = m[3] != null ? Number(m[3]) * 60 + Number(m[4]) : Number(m[5] || 0);
+      return (((t.getHours() * 60 + t.getMinutes() + sign * off) % 1440) + 1440) % 1440;
     }
 
     _updateSky() {

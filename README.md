@@ -5,7 +5,7 @@ Ein kleiner Pika (Pfeifhase) wohnt in deinem Home-Assistant-Dashboard.
 - **Antippen** → streicheln: Herzchen, Freudensprung, Glück steigt
 - **Löwenzahn-Knopf** → füttern: Futter fällt herunter, er hoppelt hin und frisst
 - **Tagsüber** schaut er sich um, hoppelt herum, knabbert Blumen, trägt Blüten zu seinem Heuhaufen, putzt sich und piepst ab und zu
-- **Nachts** schläft er mit Zipfelmütze vor seinem Bau
+- **Nachts** (Standard: Sonnenuntergang bis Sonnenaufgang) schläft er mit Zipfelmütze vor seinem Bau
 - **Hunger und Glück** sinken langsam. Hat er Hunger, denkt er an Löwenzahn und lässt die Ohren hängen
 
 ## Himmel und Wetter
@@ -38,13 +38,15 @@ Der Blick geht nach Süden: Osten (Sonnenaufgang) ist links, Westen rechts.
 type: custom:pika-pet-card
 name: Pika                       # Name in der Statusanzeige
 entity: input_text.pika_status   # optional, sonst nur lokal im Browser gespeichert
-sleep_start: "21:00"             # Schlafenszeit
-sleep_end: "07:00"               # Aufwachzeit
+sleep_start: sunset              # Schlafenszeit (Standard: Sonnenuntergang)
+sleep_end: sunrise               # Aufwachzeit (Standard: Sonnenaufgang)
 sun_entity: sun.sun              # Sonnenstand
 weather_entity: weather.forecast_home   # Wetter (Standard: met.no-Integration)
 show_stats: true                 # Satt-/Glück-Balken
 height: 180                      # Mindesthöhe in px (im Abschnitts-Layout zählt die Zeilenhöhe)
 ```
+
+Für `sleep_start` und `sleep_end` gehen feste Uhrzeiten (`"21:00"`) oder `sunset`/`sunrise` aus `sun.sun`, auch mit Versatz: `"sunset+01:00"` (eine Stunde nach Sonnenuntergang), `"sunrise-30"` (30 Minuten vor Sonnenaufgang). Ohne `sun.sun` gilt 21:00 bis 07:00.
 
 Im Text-Helfer steht der Zustand als `satt,zeit,glück,zeit`. Hunger und Glück werden daraus beim Anzeigen berechnet, deshalb braucht es keine Automation.
 
