@@ -21,7 +21,7 @@
  * werden aus Datum und Standort (hass.config) berechnet.
  */
 (() => {
-  const VERSION = '0.2.0';
+  const VERSION = '0.2.1';
 
   const DEFAULTS = {
     name: 'Pika',
@@ -525,7 +525,7 @@
 
   .mfood, .paws, .cap, .scarf, .brolly { display: none; }
   .cold .scarf, .wet .brolly { display: inline; }
-  .sleeping .brolly, .groom .brolly { display: none; }
+  .sleeping .brolly { display: none; }
   .brolly { transform-box: fill-box; transform-origin: 70% 100%; animation: brolly 2.6s ease-in-out infinite alternate; }
   @keyframes brolly { from { transform: rotate(-3deg); } to { transform: rotate(3deg); } }
   .carry .mfood, .eating .mfood { display: inline; }
@@ -918,7 +918,7 @@
         [hasFlowers && !wx.shelter ? (s < 50 ? 3 : 1.2) : 0, 'nibble'],
         [hasFlowers && !wx.wet && this._hay < 12 ? 1.4 : 0, 'gather'],
         [wx.snowcover || wx.wet ? 1.2 : 0, 'haySnack'],
-        [1.4, 'groom'],
+        [wx.wet ? 0 : 1.4, 'groom'], // eine Pfote hält bei Regen das Blatt
         [0.8, 'squeak'],
         [wx.wet ? 0 : g > 70 ? 1.2 : g > 40 ? 0.4 : 0, 'binky'],
         [s < 30 ? 3 : 0, 'hungry'],
