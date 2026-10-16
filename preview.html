@@ -38,6 +38,7 @@
   <button id="hungry">Hungrig machen</button>
   <button id="burrow">In den Bau &amp; rausschauen</button>
   <button id="lookout">Auf den Stein &amp; pfeifen</button>
+  <button id="gather">Blüte zum Heu bringen</button>
 </div>
 <div class="wrap">
   <div class="slot" style="width:600px;height:248px"><pika-pet-card id="a"></pika-pet-card></div>
@@ -113,6 +114,7 @@
   });
   document.getElementById('burrow').addEventListener('click', () => cards.forEach((c) => { c._next = 'burrow'; c._interrupt(); }));
   document.getElementById('lookout').addEventListener('click', () => cards.forEach((c) => { c._next = 'lookout'; c._interrupt(); }));
+  document.getElementById('gather').addEventListener('click', () => cards.forEach((c) => { if (c._flowers.length) { c._next = 'gather'; c._interrupt(); } }));
   document.getElementById('hungry').addEventListener('click', () => {
     const now = Math.round(Date.now() / 1000);
     hass.callService('input_text', 'set_value', { entity_id: 'input_text.pika_status', value: `20.0,${now},20.0,${now}` });

@@ -23,7 +23,7 @@
  * werden aus Datum und Standort (hass.config) berechnet.
  */
 (() => {
-  const VERSION = '0.4.0';
+  const VERSION = '0.4.1';
 
   const DEFAULTS = {
     name: 'Pika',
@@ -174,6 +174,9 @@
                 stroke="${OUT}" stroke-width="1" fill="none" stroke-linecap="round"/>
           <ellipse class="omouth" cx="91" cy="57.6" rx="1.8" ry="2.2" fill="#7a3a30" stroke="${OUT}" stroke-width=".6"/>
         </g>
+        <g class="callfx" fill="none" stroke="#fff" stroke-width="1.8" stroke-linecap="round">
+          <path d="M113 51 q4 5 0 10"/><path d="M118 47.5 q6 8.5 0 17"/><path d="M123 44 q8 12 0 24"/>
+        </g>
       </g>
       <g class="mfood">
         <path d="M92 58 Q100 58 106 61" stroke="#4f8a3a" stroke-width="1.6" fill="none" stroke-linecap="round"/>
@@ -275,7 +278,7 @@
           <g fill="#f07a95"><circle cx="70.6" cy="35.4" r="1.1"/><circle cx="77.4" cy="35.4" r="1.1"/></g>
           <g fill="#f6c945"><circle cx="71.7" cy="35.2" r="1"/><circle cx="78" cy="35.8" r=".9"/></g>
         </g>
-        <path d="M36 60 V38 A14 14 0 0 1 64 38 V60Z" fill="url(#holeg)"/>
+        <path d="M36 55 V38 A14 14 0 0 1 64 38 V55Z" fill="url(#holeg)"/>
         <path d="M35 57 V38 A15 15 0 0 1 65 38 V57" fill="none" stroke="#5e3d26" stroke-width="5.6"/>
         <path d="M35 57 V38 A15 15 0 0 1 65 38 V57" fill="none" stroke="#9a6a45" stroke-width="3.8"/>
         <path d="M35 57 V38 A15 15 0 0 1 65 38 V57" fill="none" stroke="#5e3d26" stroke-width=".5" stroke-dasharray="3 5" opacity=".6"/>
@@ -288,8 +291,11 @@
           <rect x="41" y="13.2" width="18" height="7" rx="1.4" fill="#d2a46c" stroke="#8a5a3b" stroke-width="1.1"/>
           <text x="50" y="18.6" text-anchor="middle" font-size="5" font-weight="800" fill="#5a4030" letter-spacing=".5">PIKA</text>
         </g>
-        <path d="M29 53.3 Q50 51.6 71 53.3 L73 58.5 L27 58.5Z" fill="#b8a48a" stroke="#7d6a52" stroke-width="1.2" stroke-linejoin="round"/>
-        <path d="M18 58 V27 Q18 24 15 24 H13 V27" stroke="#4a4a4a" stroke-width="1.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+        <path d="M30 53.4 Q50 51.6 70 53.4 L72.5 55 V57.6 H27.5 V55Z" fill="#b8a48a" stroke="#7d6a52" stroke-width="1.2" stroke-linejoin="round"/>
+        <path d="M28.1 55.2 H71.9 V57 H28.1Z" fill="#8f7c62"/>
+        <path d="M33 53.6 Q50 52.2 67 53.6" stroke="#fff" stroke-opacity=".3" stroke-width=".9" fill="none" stroke-linecap="round"/>
+        <path d="M18 57.5 V27 Q18 24 15 24 H13 V27" stroke="#4a4a4a" stroke-width="1.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+        <path d="M14.6 57 Q15 54.4 18 54.2 Q21 54.4 21.4 57Z" fill="#9aa0a6" stroke="#5c6166" stroke-width=".8"/>
         <path d="M10 27.6 H16 L15 29 H11Z" fill="#3c3c3c"/>
         <rect x="11" y="29" width="4" height="6" fill="#ffe7a3" fill-opacity=".45" stroke="#3c3c3c" stroke-width="1"/>
         <rect x="10.4" y="35" width="5.2" height="1.4" rx=".5" fill="#3c3c3c"/>`,
@@ -377,24 +383,28 @@
       <path d="M12 34 Q18 24 26 20"/><path d="M22 37 Q30 27 40 22"/><path d="M38 36 Q44 30 50 28"/>
       <path d="M28 10 Q26 4 21 2"/><path d="M33 11 Q37 5 43 4"/><path d="M8 26 Q14 20 18 18"/>
     </g>
+    <g class="hayb"></g>
   </svg>`;
 
-  // Grashalme vor Steinen und Heuhaufen, damit deren Unterkante im Gras verschwindet
+  // Grasstreifen über die ganze Breite: Boden (soil, Wiesenfarbe) ab y 9 = Bodenlinie, davor Halme in
+  // Büscheln, damit Stiele, Pfosten, Steine und Heu unten im Gras verschwinden
   const TUFTS_SVG = () => {
     let d = '';
-    for (let x = 0; x < 200; x += rnd(2.2, 3.6)) {
-      const h = rnd(5, 12);
-      const tip = x + 1.2 + rnd(-1.6, 1.6);
-      d += `M${x.toFixed(1)} 12 Q${(x + 0.6).toFixed(1)} ${(12 - h / 2).toFixed(1)} ${tip.toFixed(1)} ${(12 - h).toFixed(1)}`
-        + ` Q${(x + 1.6).toFixed(1)} ${(12 - h / 2).toFixed(1)} ${(x + 2.6).toFixed(1)} 12Z`;
+    for (let x = 0; x < 400; x += rnd(1.6, 3.2)) {
+      const tall = Math.sin(x * 0.11) + Math.sin(x * 0.037) > 0.6; // Büschel
+      const h = tall ? rnd(5, 9) : rnd(2, 5);
+      const tip = x + 1.1 + rnd(-1.4, 1.4);
+      d += `M${x.toFixed(1)} 10.5 Q${(x + 0.5).toFixed(1)} ${(10.5 - h / 2).toFixed(1)} ${tip.toFixed(1)} ${(10.5 - h).toFixed(1)}`
+        + ` Q${(x + 1.5).toFixed(1)} ${(10.5 - h / 2).toFixed(1)} ${(x + 2.3).toFixed(1)} 10.5Z`;
     }
-    return `<svg viewBox="0 0 200 12" preserveAspectRatio="none" aria-hidden="true"><rect y="9" width="200" height="3"/><path d="${d}"/></svg>`;
+    return `<svg viewBox="0 0 400 12" preserveAspectRatio="none" aria-hidden="true">`
+      + `<rect class="soil" y="9" width="400" height="3"/><path class="blades" d="${d}"/></svg>`;
   };
 
   // Aussichtsstein mit Geröll: von oben pfeift er, wie echte Pikas. Boden bei y 46, flache Oberseite bei y 13.
   const LOOKOUT_SVG = `
   <svg viewBox="0 0 100 50" aria-hidden="true">
-    <g stroke="#5c6166" stroke-width="1.2">
+    <g stroke="#5c6166" stroke-width="1.2" transform="translate(0 -1.6)">
       <path d="M-14 47.5 L-12 40 L-4 37.5 L3 40 L4 47.5Z" fill="#8e949b" stroke-linejoin="round"/>
       <ellipse cx="-22" cy="47.6" rx="2.4" ry="1.5" fill="#9aa0a6"/><ellipse cx="-17.5" cy="46.8" rx="3.6" ry="2.2" fill="#b0b5ba"/>
       <ellipse cx="104" cy="46.2" rx="5" ry="3" fill="#a3a9ae"/><ellipse cx="111" cy="47.4" rx="3.2" ry="1.9" fill="#979da4"/>
@@ -406,7 +416,7 @@
     <path class="rock-snow" d="M26 14 L74 13 Q86 14 89 21 Q80 17.5 70 18 Q50 16.5 30 18 Q20 18 13 22 Q16 15 26 14Z" fill="#f2f6f9"/>
     <path d="M42 24 l4 6 l-2 6 M70 30 l-3 5" stroke="#5c6166" stroke-width="1" fill="none" stroke-linecap="round" opacity=".7"/>
     <g fill="#c9c86a" opacity=".8"><ellipse cx="22" cy="30" rx="2.6" ry="1.3"/><ellipse cx="80" cy="22" rx="2" ry="1"/></g>
-    <g stroke="#5c6166" stroke-width="1.2">
+    <g stroke="#5c6166" stroke-width="1.2" transform="translate(0 -1.6)">
       <ellipse cx="4" cy="45" rx="6" ry="3.6" fill="#979da4"/><ellipse cx="13" cy="47" rx="4.5" ry="2.6" fill="#b0b5ba"/>
       <ellipse cx="-6" cy="47.2" rx="4" ry="2.4" fill="#a3a9ae"/><ellipse cx="20" cy="48.2" rx="2.4" ry="1.4" fill="#9aa0a6"/>
       <ellipse cx="96" cy="45.5" rx="6.5" ry="3.8" fill="#8e949b"/><ellipse cx="86" cy="47.2" rx="4" ry="2.4" fill="#a3a9ae"/>
@@ -544,9 +554,9 @@
   .snowcover .flowers { opacity: 0; }
 
   .land, .flowers, .foods { position: absolute; inset: 0; transition: filter 2.5s, opacity 2s; }
-  .day.overcast .land, .day.overcast .flowers, .day.overcast .hills { filter: brightness(.9) saturate(.8); }
-  .dusk .land, .dusk .flowers, .dusk .foods { filter: brightness(.85) saturate(.85); }
-  .night .land, .night .flowers, .night .foods { filter: brightness(.5) saturate(.6); }
+  .day.overcast .land, .day.overcast .flowers, .day.overcast .hills, .day.overcast .fore { filter: brightness(.9) saturate(.8); }
+  .dusk .land, .dusk .flowers, .dusk .foods, .dusk .fore { filter: brightness(.85) saturate(.85); }
+  .night .land, .night .flowers, .night .foods, .night .fore { filter: brightness(.5) saturate(.6); }
   .burrow, .lights { position: absolute; }
   .lights { pointer-events: none; }
   .burrow svg, .lights svg { display: block; width: 100%; height: auto; overflow: visible; }
@@ -585,17 +595,45 @@
   .night .m1 { fill: #222c45; }
   .night .mcap { fill: #7d88a0; }
   .hay svg, .flower svg, .food svg { display: block; width: 100%; height: auto; overflow: visible; }
-  .tufts {
-    position: absolute; left: var(--rl); width: calc(var(--hl) + var(--hw) - var(--rl) + var(--H) * .04);
-    bottom: calc(var(--H) - var(--gy) - var(--H) * .05); height: calc(var(--H) * .065);
+  /* Durchgehender Grasstreifen ganz vorn: Boden in Wiesenfarbe, davor Halme. Alles, was auf dem Boden
+     steht, sinkt ein paar Pixel ein und verschwindet unten im Gras. */
+  .grass {
+    position: absolute; left: 0; right: 0; top: calc(var(--gy) - var(--H) * .045); bottom: 0;
+    pointer-events: none; z-index: 3; transition: filter 2.5s;
   }
-  .tufts svg { display: block; width: 100%; height: 100%; fill: var(--h3); transition: fill 2.5s; }
+  .grass svg { display: block; width: 100%; height: calc(var(--H) * .06); }
+  .grass::after {
+    content: ''; position: absolute; left: 0; right: 0; top: calc(var(--H) * .06 - 1px); bottom: 0;
+    background: var(--h2); transition: background 2.5s;
+  }
+  .grass .blades { fill: var(--h3); transition: fill 2.5s; }
+  .grass .soil { fill: var(--h2); transition: fill 2.5s; }
+  .day.overcast .grass { filter: brightness(.9) saturate(.8); }
+  /* Heuhaufen vor dem Pika, damit man sieht, wie er Blüten hineinlegt */
+  .fore { position: absolute; inset: 0; pointer-events: none; z-index: 3; transition: filter 2.5s; }
   .hay {
-    position: absolute; left: var(--hl); width: var(--hw); bottom: calc(var(--H) - var(--gy) - 2px);
+    position: absolute; left: var(--hl); width: var(--hw); bottom: calc(var(--H) - var(--gy) - 4px);
     transform-origin: 50% 100%; transform: scale(var(--hs, .6)); transition: transform .5s cubic-bezier(.3, 1.6, .5, 1);
   }
+  .hay.boing { animation: boing .5s ease-out; }
+  @keyframes boing {
+    35% { transform: scale(calc(var(--hs) * 1.1), calc(var(--hs) * .86)); }
+    70% { transform: scale(calc(var(--hs) * .96), calc(var(--hs) * 1.06)); }
+  }
+  .toss { position: absolute; width: calc(var(--H) * .04); height: calc(var(--H) * .04); margin: calc(var(--H) * -.02); z-index: 4; }
+  .toss svg { display: block; width: 100%; height: 100%; }
+  .puff {
+    position: absolute; width: calc(var(--H) * .05); height: calc(var(--H) * .035); margin-left: calc(var(--H) * -.025);
+    border-radius: 50%; background: rgba(240, 232, 215, .85); pointer-events: none;
+    animation: puff .6s ease-out forwards;
+  }
+  .night .puff { background: rgba(150, 150, 170, .5); }
+  @keyframes puff {
+    from { transform: translate(0, 0) scale(.4); opacity: .9; }
+    to { transform: translate(var(--px), calc(var(--H) * -.03)) scale(1.3); opacity: 0; }
+  }
   .flower {
-    position: absolute; left: calc(var(--xf) * var(--W) - var(--fw) / 2); bottom: calc(var(--H) - var(--gy) - 2px);
+    position: absolute; left: calc(var(--xf) * var(--W) - var(--fw) / 2); bottom: calc(var(--H) - var(--gy) - 5px);
     width: var(--fw); transform-origin: 50% 100%; animation: sway 3.6s ease-in-out infinite alternate;
   }
   .flower.grow { animation: grow 1.4s ease-out, sway 3.6s 1.4s ease-in-out infinite alternate; }
@@ -637,7 +675,7 @@
   @keyframes grow { from { transform: scale(0); } }
   @keyframes picked { to { transform: translateY(-30%) scale(.2); opacity: 0; } }
   .food {
-    position: absolute; left: calc(var(--xf) * var(--W) - var(--dw) / 2); bottom: calc(var(--H) - var(--gy) - 3px);
+    position: absolute; left: calc(var(--xf) * var(--W) - var(--dw) / 2); bottom: calc(var(--H) - var(--gy) - 6px);
     width: var(--dw); transform-origin: 50% 100%;
   }
   .food.drop { animation: drop .8s cubic-bezier(.45, 0, .7, 1) both; }
@@ -744,6 +782,22 @@
   .mfood, .paws, .cap, .scarf, .brolly, .omouth { display: none; }
   /* Pfiff vom Stein: aufrichten, Kopf hoch, Maul auf */
   .calling .omouth { display: inline; }
+  .callfx { display: none; filter: drop-shadow(0 0 1px rgba(60, 40, 30, .55)); }
+  .calling .callfx { display: inline; }
+  .callfx path { opacity: 0; transform-box: fill-box; animation: wave .6s ease-out forwards; }
+  .callfx path:nth-child(2) { animation-delay: .08s; }
+  .callfx path:nth-child(3) { animation-delay: .16s; }
+  @keyframes wave {
+    from { opacity: 0; transform: translateX(-2px) scale(.8); }
+    35% { opacity: 1; }
+    to { opacity: 0; transform: translateX(3px) scale(1.1); }
+  }
+  /* Anlauf vor dem Sprung */
+  .crouch .hop { transform: scale(1.1, .84); transition: transform .16s ease-out; }
+  /* Ohren wippen beim Hoppeln */
+  .walking .ear-l { animation: earbob .36s ease-in-out infinite alternate; }
+  .walking .ear-r { animation: earbob .36s .1s ease-in-out infinite alternate; }
+  @keyframes earbob { from { transform: rotate(-7deg); } to { transform: rotate(5deg); } }
   .calling .hop { animation: call .6s ease-out; }
   .calling .face { transform: translate(1.5px, -3px); }
   .calling .ear { transform: translateY(-2px); }
@@ -1005,8 +1059,6 @@
             </svg>
             <div class="land">
               <div class="burrow"></div>
-              <div class="hay">${HAY_SVG}</div>
-              <div class="tufts">${TUFTS_SVG()}</div>
               <div class="lookout">${LOOKOUT_SVG}</div>
             </div>
             <div class="lights"></div>
@@ -1024,6 +1076,8 @@
                 <div class="bubble think">${FOOD.lz.svg}</div>
               </div>
             </div>
+            <div class="fore"><div class="hay">${HAY_SVG}</div></div>
+            <div class="grass">${TUFTS_SVG()}</div>
             <div class="precip"></div>
             <div class="fog"><i></i><i></i></div>
             <div class="flash"></div>
@@ -1126,7 +1180,7 @@
         el.style.top = `${Y(0)}px`;
         el.style.width = `${bW}px`;
       }
-      const vars = { W, H, pw: pW, ph: pH, gy, rl: bL, hw: hW, hl: hL, fw: H * 0.085, dw: H * 0.13 };
+      const vars = { W, H, pw: pW, ph: pH, gy, hw: hW, hl: hL, fw: H * 0.085, dw: H * 0.13 };
       for (const [k, v] of Object.entries(vars)) this._el.scene.style.setProperty(`--${k}`, `${v}px`);
 
       if (first) {
@@ -1210,7 +1264,7 @@
     _cleanup() {
       const p = this._el.pika;
       if (p.classList.contains('walking')) this._freeze();
-      p.classList.remove('walking', 'eating', 'groom', 'carry', 'look-f', 'look-b', 'look-up', 'happy');
+      p.classList.remove('walking', 'eating', 'groom', 'carry', 'look-f', 'look-b', 'look-up', 'happy', 'calling', 'crouch');
       this._mouth(null);
       this._bubble(this._el.think, false);
       this._action = null;
@@ -1301,6 +1355,7 @@
       await this._walkTo((this._x > rock.cx && this._footX(1)) || this._footX(-1));
       await this._wait(rnd(200, 600));
       await this._hopTo(rock.cx, rock.lift);
+      this._puff(rock.cx, this._g.gy - rock.lift, 2);
       await this._wait(rnd(400, 900));
       const n = 3 + Math.floor(rnd(0, 3));
       for (let i = 0; i < n; i++) {
@@ -1335,6 +1390,22 @@
 
     async _hopDown() {
       await this._hopTo((Math.random() < 0.5 && this._footX(1)) || this._footX(-1), 0);
+      this._puff(this._x, this._g.gy, 3);
+    }
+
+    // Staubwölkchen bei der Landung
+    _puff(x, y, n) {
+      const { pW } = this._g;
+      for (let i = 0; i < n; i++) {
+        const el = document.createElement('span');
+        el.className = 'puff';
+        const side = i % 2 ? 1 : -1;
+        el.style.left = `${x + side * rnd(pW * 0.1, pW * 0.3)}px`;
+        el.style.top = `${y - this._H * 0.03}px`;
+        el.style.setProperty('--px', `${side * rnd(this._H * 0.03, this._H * 0.07)}px`);
+        this._el.fx.appendChild(el);
+        setTimeout(() => el.remove(), 650);
+      }
     }
 
     // Absprungstelle neben dem Stein (side -1 links, 1 rechts). Rechts null, wenn dort kein Platz ist.
@@ -1345,9 +1416,14 @@
       return Math.max(x, pW * 0.45);
     }
 
-    async _hopTo(x, lift) {
+    async _hopTo(x, lift, crouch = true) {
       if (Math.abs(x - this._x) > 2) this._face(x > this._x ? 1 : -1);
       const p = this._el.pika;
+      if (crouch) {
+        p.classList.add('crouch');
+        await this._wait(180);
+        p.classList.remove('crouch');
+      }
       p.style.transition = 'transform .55s cubic-bezier(.3, .6, .4, 1)';
       this._lift = lift;
       this._setX(x);
@@ -1394,8 +1470,18 @@
       await this._to('hidden', 500);
     }
 
+    // Erst die Ohrspitzen, kurz lauschen, dann der ganze Kopf. Manchmal duckt er sich noch einmal weg.
     async _peekOut() {
-      await this._to('peek', 550);
+      await this._to('ears', 420);
+      this._twitch();
+      await this._wait(rnd(500, 1100));
+      if (Math.random() < 0.25) {
+        await this._to('hidden', 220);
+        await this._wait(rnd(600, 1200));
+        await this._to('ears', 300);
+        await this._wait(rnd(300, 600));
+      }
+      await this._to('peek', 380);
       const p = this._el.pika;
       const n = 2 + Math.floor(rnd(0, 3));
       for (let i = 0; i < n; i++) {
@@ -1417,9 +1503,11 @@
       await this._wait(rnd(300, 700));
       await this._to('door', 350);
       this._inside = false;
-      await this._to('out', 450);
-      this._jump('hop1');
-      await this._wait(500);
+      // groß werden und dabei aus der Tür nach vorn hüpfen
+      this._face(1);
+      this._pose('out', 450);
+      await this._hopTo(this._g.home + this._g.pW * 0.35, 0, false);
+      this._puff(this._x, this._g.gy, 2);
     }
 
     async _to(name, ms) {
@@ -1454,7 +1542,7 @@
       }
       const hw = hole.r - hole.l;
       const ds = clamp((0.85 * hw) / (0.43 * pW), 0.4, 0.9);
-      const v = { door: 0.945, peek: 0.6, sleep: 0.53, hidden: -0.15 }[name];
+      const v = { door: 0.945, peek: 0.6, sleep: 0.53, ears: 0.25, hidden: -0.15 }[name];
       const px = (n) => `${n.toFixed(1)}px`;
       cw.style.clipPath = `inset(${px(hole.top - top)} ${px(L + pW - hole.r)} ${px(top + pH - hole.lip)} ${px(hole.l - L)} `
         + `round ${px(hw / 2)} ${px(hw / 2)} 0px 0px)`;
@@ -1493,10 +1581,45 @@
       this._el.pika.classList.add('carry');
       await this._walkTo(this._g.hay + this._g.pW * 0.34);
       this._face(-1);
-      await this._wait(450);
+      await this._wait(350);
+      // Blüte im Bogen auf den Haufen werfen, dort bleibt sie liegen
       this._el.pika.classList.remove('carry');
-      this._addHay();
+      const spot = this._haySpot();
+      this._toss(f.color, spot);
+      await this._wait(460);
+      this._addHay(f.color, spot);
       await this._wait(900);
+    }
+
+    // Zufällige Stelle auf der Oberfläche des Heuhaufens (Koordinaten der Heu-Grafik, 60 × 40)
+    _haySpot() {
+      const sx = rnd(15, 45);
+      const top = 10 + ((sx - 30) / 28) ** 2 * 26;
+      return { sx: +sx.toFixed(1), sy: +rnd(top + 3, Math.min(35, top + 11)).toFixed(1) };
+    }
+
+    _toss(color, spot) {
+      const { pW, pH, gy, hay } = this._g;
+      const x0 = this._x + this._dir * 0.4 * pW;
+      const y0 = gy - pH * 0.335 - this._lift;
+      // Ziel bei der Größe, die der Haufen gleich hat
+      const hW = this._H * 0.26;
+      const hs = 0.4 + Math.min(12, this._hay + 1) * 0.055;
+      const dx = hay + ((spot.sx - 30) / 60) * hW * hs - x0;
+      const dy = gy + 4 - ((40 - spot.sy) / 40) * hW * (2 / 3) * hs - y0;
+      const el = document.createElement('span');
+      el.className = 'toss';
+      el.innerHTML = `<svg viewBox="0 0 10 10"><circle cx="5" cy="5" r="4.4" fill="${color}" stroke="rgba(0,0,0,.15)" stroke-width=".6"/>`
+        + '<circle cx="5" cy="5" r="1.6" fill="#e0a032" opacity=".8"/></svg>';
+      el.style.left = `${x0}px`;
+      el.style.top = `${y0}px`;
+      this._el.fx.appendChild(el);
+      el.animate([
+        { transform: 'translate(0, 0) rotate(0deg)' },
+        { transform: `translate(${dx * 0.5}px, ${Math.min(dy, 0) - pH * 0.28}px) rotate(200deg)`, offset: 0.5 },
+        { transform: `translate(${dx}px, ${dy}px) rotate(360deg) scale(.75)` },
+      ], { duration: 460, easing: 'ease-in-out', fill: 'forwards' });
+      setTimeout(() => el.remove(), 480);
     }
 
     async _groom() {
@@ -1505,9 +1628,13 @@
     }
 
     async _squeak() {
+      const p = this._el.pika;
+      p.classList.add('calling');
       this._say(pick(['iiep!', 'iiep!', 'mip!', 'iiiep!']));
       this._jump('hop1');
-      await this._wait(1600);
+      await this._wait(650);
+      p.classList.remove('calling');
+      await this._wait(950);
     }
 
     async _binky() {
@@ -1830,26 +1957,38 @@
 
     _loadHay() {
       this._hay = 3;
+      this._blooms = []; // eingesammelte Blüten auf dem Haufen: { color, sx, sy }
       try {
         const h = JSON.parse(localStorage.getItem('pika-pet-card-hay') || 'null');
         if (h) {
           const days = Math.floor((Date.now() - h.t) / 864e5);
           this._hay = clamp(h.n - days * 2, 1, 12);
+          if (Array.isArray(h.b)) this._blooms = h.b.slice(-Math.min(this._hay, 10));
         }
       } catch (e) { /* kein Speicher – egal */ }
       this._renderHay();
     }
 
-    _addHay() {
+    _addHay(color, spot) {
       this._hay = Math.min(12, this._hay + 1);
-      this._renderHay();
+      if (color && spot) this._blooms = [...this._blooms, { color, ...spot }].slice(-10);
+      this._renderHay(true);
       try {
-        localStorage.setItem('pika-pet-card-hay', JSON.stringify({ n: this._hay, t: Date.now() }));
+        localStorage.setItem('pika-pet-card-hay', JSON.stringify({ n: this._hay, t: Date.now(), b: this._blooms }));
       } catch (e) { /* egal */ }
     }
 
-    _renderHay() {
-      this._el.hay.style.setProperty('--hs', (0.4 + this._hay * 0.055).toFixed(3));
+    _renderHay(bounce) {
+      const hay = this._el.hay;
+      hay.style.setProperty('--hs', (0.4 + this._hay * 0.055).toFixed(3));
+      hay.querySelector('.hayb').innerHTML = this._blooms.map((b) =>
+        `<circle cx="${b.sx}" cy="${b.sy}" r="2.4" fill="${b.color}" stroke="rgba(0,0,0,.15)" stroke-width=".4"/>`
+        + `<circle cx="${b.sx}" cy="${b.sy}" r=".9" fill="#e0a032" opacity=".8"/>`).join('');
+      if (bounce) {
+        hay.classList.remove('boing');
+        void hay.offsetWidth;
+        hay.classList.add('boing');
+      }
     }
 
     // ---------- Zustand ----------
