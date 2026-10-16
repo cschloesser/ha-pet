@@ -17,7 +17,7 @@
  *   height: 180                      # Mindesthöhe in px
  */
 (() => {
-  const VERSION = '0.1.0';
+  const VERSION = '0.1.1';
 
   const DEFAULTS = {
     name: 'Pika',
@@ -165,7 +165,19 @@
     </g>
   </svg>`;
 
-  const FLOWER_SVG = (c) => `
+  // Grashalme vor Steinen und Heuhaufen, damit deren Unterkante im Gras verschwindet
+  const TUFTS_SVG = () => {
+    let d = '';
+    for (let x = 0; x < 200; x += rnd(2.2, 3.6)) {
+      const h = rnd(5, 12);
+      const tip = x + 1.2 + rnd(-1.6, 1.6);
+      d += `M${x.toFixed(1)} 12 Q${(x + 0.6).toFixed(1)} ${(12 - h / 2).toFixed(1)} ${tip.toFixed(1)} ${(12 - h).toFixed(1)}`
+        + ` Q${(x + 1.6).toFixed(1)} ${(12 - h / 2).toFixed(1)} ${(x + 2.6).toFixed(1)} 12Z`;
+    }
+    return `<svg viewBox="0 0 200 12" preserveAspectRatio="none" aria-hidden="true"><rect y="9" width="200" height="3"/><path d="${d}"/></svg>`;
+  };
+
+  const FLOWER_SVG =(c) => `
   <svg viewBox="0 0 20 30" aria-hidden="true">
     <path d="M10 30 Q9 20 10 11" stroke="#4f8a3a" stroke-width="1.6" fill="none"/>
     <ellipse cx="6.5" cy="22" rx="3.6" ry="1.5" fill="#6bab4c" transform="rotate(-30 6.5 22)"/>
@@ -217,10 +229,10 @@
     position: relative; height: 100%; overflow: hidden; border-radius: inherit;
     user-select: none; -webkit-user-select: none; -webkit-tap-highlight-color: transparent;
     font-family: var(--ha-font-family-body, var(--paper-font-body1_-_font-family, system-ui, sans-serif));
-    --h1: #a9d68f; --h2: #86c46b;
+    --h1: #a9d68f; --h2: #86c46b; --h3: #7ab960;
   }
-  .scene.dusk { --h1: #8fa98a; --h2: #6e9562; }
-  .scene.night { --h1: #2c4547; --h2: #26433a; }
+  .scene.dusk { --h1: #8fa98a; --h2: #6e9562; --h3: #648c58; }
+  .scene.night { --h1: #2c4547; --h2: #26433a; --h3: #223d34; }
 
   .sky { position: absolute; inset: 0; opacity: 0; transition: opacity 2.5s; }
   .sky-day { background: linear-gradient(#93cdf0, #dff1fa 78%); }
@@ -271,7 +283,12 @@
   .dusk .land, .dusk .flowers, .dusk .foods { filter: brightness(.85) saturate(.85); }
   .night .land, .night .flowers, .night .foods { filter: brightness(.5) saturate(.6); }
   .rocks { position: absolute; left: var(--rl); width: var(--rw); bottom: calc(var(--H) - var(--gy) - var(--rw) * .04); }
-  .rocks svg, .hay svg, .flower svg, .food svg { display: block; width: 100%; height: auto; }
+  .rocks svg, .hay svg, .flower svg, .food svg { display: block; width: 100%; height: auto; overflow: visible; }
+  .tufts {
+    position: absolute; left: var(--rl); width: calc(var(--hl) + var(--hw) - var(--rl) + var(--H) * .04);
+    bottom: calc(var(--H) - var(--gy) - var(--H) * .05); height: calc(var(--H) * .065);
+  }
+  .tufts svg { display: block; width: 100%; height: 100%; fill: var(--h3); transition: fill 2.5s; }
   .hay {
     position: absolute; left: var(--hl); width: var(--hw); bottom: calc(var(--H) - var(--gy) - 2px);
     transform-origin: 50% 100%; transform: scale(var(--hs, .6)); transition: transform .5s cubic-bezier(.3, 1.6, .5, 1);
@@ -593,6 +610,7 @@
             <div class="land">
               <div class="rocks">${ROCKS_SVG}</div>
               <div class="hay">${HAY_SVG}</div>
+              <div class="tufts">${TUFTS_SVG()}</div>
             </div>
             <div class="flowers"></div>
             <div class="foods"></div>
