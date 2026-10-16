@@ -8,7 +8,22 @@ Ein kleiner Pika (Pfeifhase) wohnt in deinem Home-Assistant-Dashboard.
 - **Nachts** schläft er mit Zipfelmütze vor seinem Bau
 - **Hunger und Glück** sinken langsam. Hat er Hunger, denkt er an Löwenzahn und lässt die Ohren hängen
 
-Der Himmel folgt `sun.sun` (Tag, Dämmerung, Nacht mit Mond und Sternen, im Sommer Glühwürmchen).
+## Himmel und Wetter
+
+Der Blick geht nach Süden: Osten (Sonnenaufgang) ist links, Westen rechts.
+
+- **Sonne** steht nach Azimut und Höhe aus `sun.sun` am Himmel und geht hinter dem Hügel unter. Der Himmel wechselt zwischen Tag, Dämmerung und Nacht.
+- **Mond** mit echter Phase und echtem Stand, berechnet aus Datum und Standort (`hass.config`). Tagsüber ist er blass zu sehen, wenn er über dem Horizont steht.
+- **Wetter** aus `weather_entity`:
+  - Wolken nach Bedeckung, grauer Himmel bei bedecktem Wetter
+  - Regen, Starkregen, Gewitter mit Blitzen, Schnee mit verschneiten Hügeln, Nebelschwaden
+  - Wolken ziehen und Blumen biegen sich mit Windstärke und Windrichtung
+- **Pika** reagiert darauf:
+  - Bei Regen hält er sich ein Blatt als Schirm über den Kopf und bleibt in der Nähe seines Baus.
+  - Bei Starkregen und Gewitter wartet er vor dem Bau und erschrickt bei Blitzen.
+  - Unter 3 °C trägt er einen Schal.
+  - Bei Schnee knabbert er an seinem Heuvorrat.
+- Im Sommer gibt es nachts Glühwürmchen.
 
 ## Installation (HACS)
 
@@ -25,7 +40,8 @@ name: Pika                       # Name in der Statusanzeige
 entity: input_text.pika_status   # optional, sonst nur lokal im Browser gespeichert
 sleep_start: "21:00"             # Schlafenszeit
 sleep_end: "07:00"               # Aufwachzeit
-sun_entity: sun.sun              # Himmel nach Sonnenstand
+sun_entity: sun.sun              # Sonnenstand
+weather_entity: weather.forecast_home   # Wetter (Standard: met.no-Integration)
 show_stats: true                 # Satt-/Glück-Balken
 height: 180                      # Mindesthöhe in px (im Abschnitts-Layout zählt die Zeilenhöhe)
 ```

@@ -12,12 +12,16 @@
  *   entity: input_text.pika_status   # optional: Zustand geräteübergreifend speichern
  *   sleep_start: "21:00"             # Schlafenszeit
  *   sleep_end: "07:00"               # Aufwachzeit
- *   sun_entity: sun.sun              # für Tag/Dämmerung/Nacht-Himmel
+ *   sun_entity: sun.sun              # Sonnenstand (Höhe + Azimut) für Himmel und Sonne
+ *   weather_entity: weather.forecast_home   # Wolken, Regen, Schnee, Nebel, Gewitter, Wind
  *   show_stats: true                 # Satt-/Glück-Balken anzeigen
  *   height: 180                      # Mindesthöhe in px
+ *
+ * Der Blick geht nach Süden: Osten (Sonnenaufgang) links, Westen rechts. Mondphase und Mondstand
+ * werden aus Datum und Standort (hass.config) berechnet.
  */
 (() => {
-  const VERSION = '0.1.1';
+  const VERSION = '0.2.0';
 
   const DEFAULTS = {
     name: 'Pika',
@@ -25,6 +29,7 @@
     sleep_start: '21:00',
     sleep_end: '07:00',
     sun_entity: 'sun.sun',
+    weather_entity: 'weather.forecast_home',
     show_stats: true,
     height: 180,
   };
@@ -49,7 +54,58 @@
     return (h || 0) * 60 + (m || 0);
   };
 
-  const freshStats = () => ({ s: 80, st: Date.now(), g: 80, gt: Date.now() });
+  // ---------- Himmel ----------
+
+  // Mondstand nach den vereinfachten Formeln aus "Astronomical Algorithms" (Meeus), auf ~1° genau.
+  const RAD = Math.PI / 180;
+  const moonPosition = (date, lat, lng) => {
+    const d = date / 864e5 - 0.5 + 2440588 - 2451545;
+    const L = RAD * (218.316 + 13.176396 * d);
+    const M = RAD * (134.963 + 13.064993 * d);
+    const F = RAD * (93.272 + 13.22935 * d);
+    const l = L + RAD * 6.289 * Math.sin(M);
+    const b = RAD * 5.128 * Math.sin(F);
+    const e = RAD * 23.4397;
+    const ra = Math.atan2(Math.sin(l) * Math.cos(e) - Math.tan(b) * Math.sin(e), Math.cos(l));
+    const dec = Math.asin(Math.sin(b) * Math.cos(e) + Math.cos(b) * Math.sin(e) * Math.sin(l));
+    const H = RAD * (280.16 + 360.9856235 * d) + RAD * lng - ra;
+    const phi = RAD * lat;
+    const alt = Math.asin(Math.sin(phi) * Math.sin(dec) + Math.cos(phi) * Math.cos(dec) * Math.cos(H));
+    const az = Math.atan2(Math.sin(H), Math.cos(H) * Math.sin(phi) - Math.tan(dec) * Math.cos(phi));
+    return { alt: alt / RAD, az: az / RAD + 180 }; // Azimut ab Norden
+  };
+  // 0 = Neumond, 0.5 = Vollmond (Bezug: Neumond 6. 1. 2000 18:14 UTC)
+  const moonPhase = (date) => {
+    const p = ((date - Date.UTC(2000, 0, 6, 18, 14)) / 864e5 / 29.530588853) % 1;
+    return p < 0 ? p + 1 : p;
+  };
+  // Beleuchteter Teil der Mondscheibe (Nordhalbkugel: zunehmend rechts hell), viewBox 0 0 100 100
+  const moonPath = (p) => {
+    const rx = Math.abs(Math.cos(2 * Math.PI * p)) * 50;
+    const waxing = p < 0.5;
+    const outer = waxing ? 1 : 0;
+    const term = waxing ? (p < 0.25 ? 0 : 1) : p > 0.75 ? 1 : 0;
+    return `M50 0 A50 50 0 0 ${outer} 50 100 A${rx.toFixed(2)} 50 0 0 ${term} 50 0Z`;
+  };
+  // Position am Bildhimmel in %: Azimut 90° (Ost) links, 270° (West) rechts; Höhe 0° am Hügelrand.
+  const skyPos = (az, alt) => ({
+    x: clamp((az - 90) / 180, 0.04, 0.96) * 100,
+    y: 56 - (clamp(alt, -12, 62) / 62) * 47,
+  });
+
+  // Wetterlage → Bedeckung in %, Niederschlag (Tropfen, Flocken)
+  const WEATHER = {
+    sunny: { cover: 5 }, 'clear-night': { cover: 5 }, partlycloudy: { cover: 45 },
+    cloudy: { cover: 90 }, fog: { cover: 80, fog: true }, windy: { cover: 35, wind: true },
+    'windy-variant': { cover: 60, wind: true }, exceptional: { cover: 70 },
+    rainy: { cover: 85, rain: 40 }, pouring: { cover: 95, rain: 95, storm: true },
+    hail: { cover: 90, rain: 60, storm: true },
+    lightning: { cover: 90, flash: true, storm: true },
+    'lightning-rainy': { cover: 95, rain: 70, flash: true, storm: true },
+    snowy: { cover: 90, snow: 55 }, 'snowy-rainy': { cover: 90, rain: 25, snow: 25 },
+  };
+
+  const freshStats = () =>({ s: 80, st: Date.now(), g: 80, gt: Date.now() });
   const serialize = (st) =>
     [st.s.toFixed(1), Math.round(st.st / 1000), st.g.toFixed(1), Math.round(st.gt / 1000)].join(',');
   const parseStats = (str) => {
@@ -132,6 +188,19 @@
         <circle cx="91" cy="22" r="1.3" fill="#fff" opacity=".8"/>
         <path d="M76 28 Q90 22 104 27" stroke="#fff" stroke-width="5" fill="none" stroke-linecap="round"/>
         <circle cx="62" cy="9" r="4.2" fill="#fff" stroke="${OUT}" stroke-width="1.2"/>
+      </g>
+      <g class="scarf">
+        <path d="M68 63 Q87 73 107 63" stroke="#d9534f" stroke-width="6.5" fill="none" stroke-linecap="round"/>
+        <path d="M70 64 Q87 73.5 105 64.6" stroke="#f6f1ea" stroke-width="1.6" fill="none" stroke-dasharray="3 4"/>
+        <path d="M73 66 L69 80 L76.5 80.6 L79 67.5Z" fill="#d9534f" stroke="#a83a37" stroke-width=".8" stroke-linejoin="round"/>
+        <path d="M70.5 75 L77.5 75.6" stroke="#f6f1ea" stroke-width="1.4"/>
+      </g>
+      <g class="brolly">
+        <path d="M105 63 Q115 34 99 3" stroke="#4f8a3a" stroke-width="2.2" fill="none" stroke-linecap="round"/>
+        <path d="M52 14 Q68 -16 100 -10 Q127 -4 125 18 Q113 6 101 8 Q93 0 84 8 Q72 2 52 14Z"
+              fill="#5fae4a" stroke="#3f7f31" stroke-width="1.4" stroke-linejoin="round"/>
+        <path d="M56 11 Q87 -10 121 14" stroke="#8fd16f" stroke-width="1.1" fill="none" stroke-linecap="round"/>
+        <ellipse cx="105" cy="63" rx="4" ry="4.6" fill="#ecdcc6" stroke="${OUT}" stroke-width="1.4"/>
       </g>
     </g>
   </svg>`;
@@ -239,47 +308,71 @@
   .sky-dusk { background: linear-gradient(#5f62ad, #d996b2 55%, #f7c48e 88%); }
   .sky-night { background: linear-gradient(#0d1734, #27386a 85%); }
   .day .sky-day, .dusk .sky-dusk, .night .sky-night { opacity: 1; }
+  .sky-grey { background: linear-gradient(#8f9eab, #d3dbe1 80%); }
+  .dusk .sky-grey { background: linear-gradient(#5d6079, #b1a3ad 80%); }
+  .night .sky-grey { background: linear-gradient(#141b2b, #2b3449 85%); }
+  .overcast .sky-grey { opacity: .9; }
 
+  /* Sonne und Mond: left/top setzt das Skript nach dem echten Stand, Wechsel gleiten langsam */
+  .sun, .moon {
+    position: absolute; left: 80%; top: 20%; aspect-ratio: 1; border-radius: 50%; transform: translate(-50%, -50%);
+    opacity: 0; transition: opacity 2.5s, left 90s linear, top 90s linear, background 2.5s;
+  }
   .sun {
-    position: absolute; right: 13%; top: 12%; width: calc(var(--H) * .15); aspect-ratio: 1; border-radius: 50%;
+    width: calc(var(--H) * .15);
     background: radial-gradient(#fff8d2, #ffd75a 70%); box-shadow: 0 0 22px 8px rgba(255, 222, 110, .45);
-    opacity: 0; transition: opacity 2.5s, top 2.5s, background 2.5s;
   }
-  .day .sun { opacity: 1; }
-  .dusk .sun { opacity: .9; top: 58%; background: radial-gradient(#ffe0b0, #ff9a5c 70%); }
-  .moon {
-    position: absolute; right: 14%; top: 11%; width: calc(var(--H) * .13); aspect-ratio: 1; border-radius: 50%;
-    box-shadow: inset calc(var(--H) * -.03) calc(var(--H) * .012) 0 0 #f4efcf;
-    filter: drop-shadow(0 0 6px rgba(244, 239, 207, .5)); opacity: 0; transition: opacity 2.5s;
-  }
-  .night .moon { opacity: 1; }
+  .day .sun, .dusk .sun { opacity: 1; }
+  .sun-low .sun { background: radial-gradient(#ffe0b0, #ff9a5c 70%); box-shadow: 0 0 22px 8px rgba(255, 150, 90, .4); }
+  .overcast .sun { opacity: .25; }
+  .sun-down .sun { opacity: 0; }
+  .moon { width: calc(var(--H) * .12); filter: drop-shadow(0 0 6px rgba(244, 239, 207, .55)); }
+  .moon svg { display: block; width: 100%; height: 100%; }
+  .moon-lit { fill: #f4efcf; }
+  .moon-dark { fill: rgba(44, 56, 92, .55); }
+  .day .moon-dark, .dusk .moon-dark { fill: rgba(255, 255, 255, .12); }
+  .moon-up.night .moon, .moon-up.dusk .moon { opacity: 1; }
+  .moon-up.day .moon { opacity: .5; filter: none; }
+  .moon-up.overcast .moon { opacity: .2; }
   .stars i {
     position: absolute; width: 2px; height: 2px; border-radius: 50%; background: #fff;
     opacity: 0; transition: opacity 3s;
   }
-  .night .stars i { opacity: .85; animation: twinkle 3s ease-in-out infinite alternate; }
-  .dusk .stars i:nth-child(3n) { opacity: .5; }
+  .night .stars i { opacity: var(--starop, .85); animation: twinkle 3s ease-in-out infinite alternate; }
+  .dusk .stars i:nth-child(3n) { opacity: calc(var(--starop, .85) * .6); }
   @keyframes twinkle { to { opacity: .25; } }
 
+  /* Wolken: das Skript schaltet so viele ein, wie es die Bedeckung verlangt; Wind macht sie schneller */
   .cloud {
-    position: absolute; left: calc(var(--H) * -.5); width: calc(var(--H) * .42); height: calc(var(--H) * .1);
-    border-radius: 999px; background: #fff; opacity: 0; transition: opacity 2.5s;
-    animation: drift 110s linear infinite;
+    position: absolute; left: calc(var(--H) * -.6); width: calc(var(--H) * .42 * var(--s)); height: calc(var(--H) * .1 * var(--s));
+    border-radius: 999px; background: var(--cloud, #fff); opacity: 0; transition: opacity 3s, background 3s;
+    animation: drift calc(var(--d) * var(--cs, 1)) linear infinite; animation-delay: calc(var(--dl) * var(--cs, 1));
   }
   .cloud::before, .cloud::after { content: ''; position: absolute; background: inherit; border-radius: 50%; }
   .cloud::before { width: 45%; aspect-ratio: 1; left: 15%; bottom: 30%; }
   .cloud::after { width: 32%; aspect-ratio: 1; left: 50%; bottom: 35%; }
-  .cloud.c1 { top: 16%; animation-delay: -45s; }
-  .cloud.c2 { top: 34%; width: calc(var(--H) * .3); height: calc(var(--H) * .075); animation-duration: 150s; animation-delay: -100s; }
-  .day .cloud { opacity: .92; }
-  .dusk .cloud { opacity: .45; background: #f6d3e0; }
-  @keyframes drift { to { transform: translateX(calc(var(--W) + var(--H))); } }
+  .wind-w .cloud { animation-direction: reverse; }
+  .cloud.on { opacity: .92; }
+  .dusk .cloud.on { opacity: .65; }
+  .night .cloud.on { opacity: .5; }
+  .scene.dusk { --cloud: #f1cfdd; }
+  .scene.night { --cloud: #4a5674; }
+  .scene.overcast { --cloud: #e1e6ea; }
+  .scene.storm { --cloud: #a9b2ba; }
+  .scene.dusk.overcast { --cloud: #b9aab8; }
+  .scene.night.overcast { --cloud: #3a4560; }
+  @keyframes drift { to { transform: translateX(calc(var(--W) + var(--H) * 1.2)); } }
 
-  .hills { position: absolute; inset: 0; width: 100%; height: 100%; }
+  .hills { position: absolute; inset: 0; width: 100%; height: 100%; transition: filter 2.5s; }
   .hills .h1 { fill: var(--h1); transition: fill 2.5s; }
   .hills .h2 { fill: var(--h2); transition: fill 2.5s; }
+  .scene.snowcover { --h1: #e9eff3; --h2: #dfe7ed; --h3: #cfdbe3; }
+  .scene.dusk.snowcover { --h1: #b9bdd0; --h2: #aeb4c8; --h3: #a1a9bf; }
+  .scene.night.snowcover { --h1: #55627c; --h2: #4c5974; --h3: #44516b; }
+  .snowcover .flowers { opacity: 0; }
 
-  .land, .flowers, .foods { position: absolute; inset: 0; transition: filter 2.5s; }
+  .land, .flowers, .foods { position: absolute; inset: 0; transition: filter 2.5s, opacity 2s; }
+  .day.overcast .land, .day.overcast .flowers, .day.overcast .hills { filter: brightness(.9) saturate(.8); }
   .dusk .land, .dusk .flowers, .dusk .foods { filter: brightness(.85) saturate(.85); }
   .night .land, .night .flowers, .night .foods { filter: brightness(.5) saturate(.6); }
   .rocks { position: absolute; left: var(--rl); width: var(--rw); bottom: calc(var(--H) - var(--gy) - var(--rw) * .04); }
@@ -300,6 +393,39 @@
   .flower.grow { animation: grow 1.4s ease-out, sway 3.6s 1.4s ease-in-out infinite alternate; }
   .flower.picked { animation: picked .35s forwards; }
   @keyframes sway { from { transform: rotate(-4deg); } to { transform: rotate(4deg); } }
+  .windy .flower { animation: sway-wind 1.1s ease-in-out infinite alternate; }
+  @keyframes sway-wind { from { transform: rotate(var(--sw1, -2deg)); } to { transform: rotate(var(--sw2, 14deg)); } }
+
+  /* Regen, Schnee, Nebel, Blitz */
+  .precip { position: absolute; inset: -10% -25%; pointer-events: none; z-index: 4; transform: skewX(var(--slant, 0deg)); }
+  .precip i { position: absolute; top: 0; }
+  .precip .r {
+    width: 1.5px; height: calc(var(--H) * .08); border-radius: 1px;
+    background: linear-gradient(rgba(255, 255, 255, 0), rgba(215, 232, 255, .85)); animation: rain .6s linear infinite;
+  }
+  @keyframes rain { from { transform: translateY(-100%); } to { transform: translateY(calc(var(--H) * 1.25)); } }
+  .precip .s { border-radius: 50%; background: #fff; animation: snow 7s linear infinite; }
+  @keyframes snow {
+    0% { transform: translate(0, -10px); }
+    25% { transform: translate(8px, calc(var(--H) * .3)); }
+    50% { transform: translate(-6px, calc(var(--H) * .6)); }
+    75% { transform: translate(6px, calc(var(--H) * .9)); }
+    100% { transform: translate(0, calc(var(--H) * 1.22)); }
+  }
+  .fog { position: absolute; inset: 0; pointer-events: none; z-index: 4; opacity: 0; transition: opacity 3s; }
+  .foggy .fog { opacity: 1; }
+  .fog i {
+    position: absolute; left: -50%; width: 200%; height: 50%;
+    background: radial-gradient(closest-side, rgba(236, 240, 244, .8), rgba(236, 240, 244, 0));
+    animation: fogdrift 40s ease-in-out infinite alternate;
+  }
+  .fog i:nth-child(1) { top: 28%; }
+  .fog i:nth-child(2) { top: 55%; animation-duration: 55s; animation-delay: -20s; }
+  .night .fog i { background: radial-gradient(closest-side, rgba(120, 132, 155, .55), rgba(120, 132, 155, 0)); }
+  @keyframes fogdrift { to { transform: translateX(22%); } }
+  .flash { position: absolute; inset: 0; background: #fff; opacity: 0; pointer-events: none; z-index: 4; }
+  .flash.go { animation: flash .7s; }
+  @keyframes flash { 8% { opacity: .75; } 16% { opacity: .1; } 26% { opacity: .55; } }
   @keyframes grow { from { transform: scale(0); } }
   @keyframes picked { to { transform: translateY(-30%) scale(.2); opacity: 0; } }
   .food {
@@ -397,7 +523,11 @@
   .sleeping.peek .eye-r { display: inline; }
   .sleeping.peek .seye-r { display: none; }
 
-  .mfood, .paws, .cap { display: none; }
+  .mfood, .paws, .cap, .scarf, .brolly { display: none; }
+  .cold .scarf, .wet .brolly { display: inline; }
+  .sleeping .brolly, .groom .brolly { display: none; }
+  .brolly { transform-box: fill-box; transform-origin: 70% 100%; animation: brolly 2.6s ease-in-out infinite alternate; }
+  @keyframes brolly { from { transform: rotate(-3deg); } to { transform: rotate(3deg); } }
   .carry .mfood, .eating .mfood { display: inline; }
   .mbloom { fill: var(--mf, #f6c945); stroke: rgba(0, 0, 0, .15); stroke-width: .5; }
   .mfood.shrink { transform-box: fill-box; transform-origin: 0% 30%; animation: shrink var(--eat, 3s) linear forwards; }
@@ -501,6 +631,8 @@
       this._asleep = false;
       this._stats = null;
       this._elev = null;
+      this._az = null;
+      this._wx = {};
       this._timers = [];
       this._loops = [];
       this._dbgSleep = null;
@@ -538,7 +670,14 @@
       }
       const sun = hass.states[c.sun_entity];
       const elev = Number(sun?.attributes?.elevation);
+      const az = Number(sun?.attributes?.azimuth);
       this._elev = sun ? (Number.isFinite(elev) ? elev : sun.state === 'above_horizon' ? 10 : -10) : null;
+      this._az = Number.isFinite(az) ? az : null;
+      const w = hass.states[c.weather_entity];
+      if (w !== this._lastWeather) {
+        this._lastWeather = w;
+        this._readWeather(w);
+      }
       this._updateSky();
     }
 
@@ -567,6 +706,7 @@
       document.addEventListener('visibilitychange', this._onVis);
       this._loop(() => this._blink(), 2200, 6000);
       this._loop(() => this._twitch(), 5000, 13000);
+      this._loop(() => this._lightning(), 6000, 16000);
       this._timers.push(setInterval(() => this._tick(), 20000));
       this._timers.push(setInterval(() => this._regrow(), 150000));
       this._layout();
@@ -594,15 +734,22 @@
       const flies = Array.from({ length: 6 }, () =>
         `<i style="left:${rnd(25, 90).toFixed(1)}%;top:${rnd(45, 80).toFixed(1)}%;animation-delay:${rnd(-9, 0).toFixed(2)}s,${rnd(0, 1.8).toFixed(2)}s"></i>`
       ).join('');
+      // Sechs Wolken in verschiedenen Höhen, Größen und Geschwindigkeiten (Dauer --d, Versatz --dl)
+      const clouds = [
+        [14, 1, 110, -45], [32, 0.72, 150, -100], [8, 0.85, 130, -15],
+        [24, 1.15, 95, -70], [40, 0.6, 170, -140], [18, 0.95, 120, -95],
+      ].map(([top, s, d, dl]) => `<div class="cloud" style="top:${top}%;--s:${s};--d:${d}s;--dl:${dl}s"></div>`).join('');
 
       this.shadowRoot.innerHTML = `
         <style>${STYLE}</style>
         <ha-card>
           <div class="scene day">
             <div class="sky sky-day"></div><div class="sky sky-dusk"></div><div class="sky sky-night"></div>
+            <div class="sky sky-grey"></div>
             <div class="stars">${stars}</div>
-            <div class="sun"></div><div class="moon"></div>
-            <div class="cloud c1"></div><div class="cloud c2"></div>
+            <div class="sun"></div>
+            <div class="moon"><svg viewBox="0 0 100 100"><circle class="moon-dark" cx="50" cy="50" r="50"/><path class="moon-lit"/></svg></div>
+            <div class="clouds">${clouds}</div>
             <svg class="hills" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
               <path class="h1" d="M0 64 Q16 50 36 60 T72 55 T100 50 V100 H0Z"/>
               <path class="h2" d="M0 83 Q25 79 50 83 T100 82 V100 H0Z"/>
@@ -624,6 +771,9 @@
                 <div class="bubble think">${FOOD.lz.svg}</div>
               </div>
             </div>
+            <div class="precip"></div>
+            <div class="fog"><i></i><i></i></div>
+            <div class="flash"></div>
             <div class="fx"></div>
             <div class="stats">
               <span class="nm"></span>
@@ -640,6 +790,8 @@
         flowers: $('.flowers'), foods: $('.foods'), fx: $('.fx'), hay: $('.hay'),
         stats: $('.stats'), name: $('.nm'), barS: $('.bar-s'), barG: $('.bar-g'),
         stS: $('.st-s'), stG: $('.st-g'), feed: $('.feed'), say: $('.say'), think: $('.think'),
+        sun: $('.sun'), moon: $('.moon'), moonLit: $('.moon-lit'), clouds: [...this.shadowRoot.querySelectorAll('.cloud')],
+        precip: $('.precip'), flash: $('.flash'),
       };
       this._el.pika.addEventListener('click', (e) => (e.stopPropagation(), this._onPet()));
       this._el.feed.addEventListener('click', (e) => (e.stopPropagation(), this._onFeed()));
@@ -755,16 +907,20 @@
       const s = this._get('s');
       const g = this._get('g');
       this._el.pika.classList.toggle('sad', g < 25 || s < 15);
-      const hasFlowers = this._flowers.length > 0;
+      const wx = this._wx;
+      if (wx.shelter && Math.abs(this._x - this._g.home) > this._g.pW * 0.4) return this._run('shelter');
+      // Unter Schnee gibt es keine Blumen, bei Regen bleibt das Heu trocken (kein Sammeln)
+      const hasFlowers = this._flowers.length > 0 && !wx.snowcover;
       const act = weighted([
         [3, 'idle'],
         [3, 'look'],
-        [3, 'wander'],
-        [hasFlowers ? (s < 50 ? 3 : 1.2) : 0, 'nibble'],
-        [hasFlowers && this._hay < 12 ? 1.4 : 0, 'gather'],
+        [wx.shelter ? 0 : 3, 'wander'],
+        [hasFlowers && !wx.shelter ? (s < 50 ? 3 : 1.2) : 0, 'nibble'],
+        [hasFlowers && !wx.wet && this._hay < 12 ? 1.4 : 0, 'gather'],
+        [wx.snowcover || wx.wet ? 1.2 : 0, 'haySnack'],
         [1.4, 'groom'],
         [0.8, 'squeak'],
-        [g > 70 ? 1.2 : g > 40 ? 0.4 : 0, 'binky'],
+        [wx.wet ? 0 : g > 70 ? 1.2 : g > 40 ? 0.4 : 0, 'binky'],
         [s < 30 ? 3 : 0, 'hungry'],
       ]);
       return this._run(act);
@@ -794,11 +950,27 @@
 
     async _wander() {
       const { pW, home } = this._g;
-      const x = Math.random() < 0.3
+      let x = Math.random() < 0.3
         ? rnd(home, this._W)
         : this._x + rnd(pW * 0.6, Math.max(pW, this._W * 0.4)) * pick([-1, 1]);
+      // Bei Regen nicht weit weg vom Bau
+      if (this._wx.wet) x = rnd(home, home + this._W * 0.35);
       await this._walkTo(x);
       await this._wait(rnd(400, 1400));
+    }
+
+    async _shelter() {
+      await this._walkTo(this._g.home, 1.3);
+      this._face(1);
+      await this._wait(rnd(800, 1500));
+    }
+
+    async _haySnack() {
+      await this._walkTo(this._g.hay + this._g.pW * 0.34);
+      this._face(-1);
+      await this._wait(300);
+      await this._eat('#dcbc6a', rnd(2500, 3500));
+      await this._wait(rnd(300, 900));
     }
 
     async _nibble() {
@@ -1239,6 +1411,145 @@
       sc.add(mode);
       const month = new Date().getMonth();
       sc.toggle('summer', month >= 4 && month <= 8);
+      sc.toggle('sun-low', e != null && e < 8);
+      sc.toggle('sun-down', e != null && e < -1);
+
+      const az = this._dbgAz ?? this._az;
+      if (e != null && az != null) this._place(this._el.sun, skyPos(az, e));
+
+      // Mond höchstens alle 30 s neu berechnen, er bewegt sich gemächlich
+      const now = this._dbgDate ?? Date.now();
+      const cfg = this._hass?.config;
+      if (cfg && Number.isFinite(cfg.latitude) && (this._dbgDate || !this._moonT || now - this._moonT > 30000)) {
+        this._moonT = now;
+        const m = moonPosition(now, cfg.latitude, cfg.longitude);
+        const ph = moonPhase(now);
+        this._place(this._el.moon, skyPos(m.az, m.alt));
+        this._el.moonLit.setAttribute('d', moonPath(ph));
+        this._moonUp = m.alt > 2 && ph > 0.03 && ph < 0.97;
+      }
+      sc.toggle('moon-up', !!this._moonUp);
+    }
+
+    _place(el, { x, y }) {
+      const prev = el._pos;
+      if (prev && Math.abs(prev.x - x) < 0.05 && Math.abs(prev.y - y) < 0.05) return;
+      el._pos = { x, y };
+      if (!prev) el.style.transition = 'none';
+      el.style.left = `${x.toFixed(2)}%`;
+      el.style.top = `${y.toFixed(2)}%`;
+      if (!prev) {
+        void el.offsetWidth;
+        el.style.transition = '';
+      }
+    }
+
+    // ---------- Wetter ----------
+
+    _readWeather(w) {
+      if (w) {
+        const a = w.attributes || {};
+        let wind = Number(a.wind_speed);
+        const unit = String(a.wind_speed_unit || 'km/h');
+        if (unit === 'm/s') wind *= 3.6;
+        else if (unit === 'mph') wind *= 1.609;
+        else if (unit === 'kn') wind *= 1.852;
+        let temp = Number(a.temperature);
+        if (a.temperature_unit === '°F') temp = (temp - 32) / 1.8;
+        this._wxRaw = {
+          cond: w.state,
+          cover: Number(a.cloud_coverage),
+          wind: Number.isFinite(wind) ? wind : 0,
+          bearing: Number(a.wind_bearing),
+          temp: Number.isFinite(temp) ? temp : null,
+        };
+      } else {
+        this._wxRaw = null;
+      }
+      this._applyWeather();
+    }
+
+    _applyWeather() {
+      if (!this._el) return;
+      const raw = { cond: null, wind: 0, temp: null, ...(this._wxRaw || {}), ...(this._dbgWeather || {}) };
+      const def = WEATHER[raw.cond] || { cover: 25 };
+      // Bei trockener Lage zählt die gemeldete Bedeckung, bei Regen, Schnee & Co. die Wetterlage
+      const dry = !def.rain && !def.snow && !def.storm && !def.fog;
+      const cover = dry && Number.isFinite(raw.cover) ? raw.cover : def.cover;
+      const fx = {
+        cover,
+        rain: def.rain || 0,
+        snow: def.snow || 0,
+        fog: !!def.fog,
+        flash: !!def.flash,
+        storm: !!def.storm,
+        windy: !!def.wind || raw.wind >= 30,
+        cold: raw.temp != null && raw.temp < 3,
+        snowcover: raw.cond === 'snowy' || (raw.cond === 'snowy-rainy' && raw.temp != null && raw.temp <= 0),
+      };
+      fx.wet = fx.rain > 0 || fx.flash; // Blatt als Regenschirm
+      fx.shelter = fx.storm; // bei Starkregen und Gewitter bleibt er vor seinem Bau
+      // Windrichtung = woher der Wind kommt. Aus Westen ziehen Wolken nach Osten, im Bild also nach links.
+      const fromWest = !(raw.bearing > 0 && raw.bearing < 180);
+      const key = JSON.stringify([fx, Math.round(raw.wind / 5), fromWest]);
+      if (key === this._wxKey) return;
+      this._wxKey = key;
+      const wasShelter = this._wx.shelter;
+      this._wx = fx;
+
+      const sc = this._el.scene.classList;
+      sc.toggle('overcast', cover >= 70);
+      sc.toggle('storm', fx.storm);
+      sc.toggle('foggy', fx.fog);
+      sc.toggle('windy', fx.windy);
+      sc.toggle('snowcover', fx.snowcover);
+      sc.toggle('wind-w', fromWest);
+      const st = this._el.scene.style;
+      const lean = Math.min(raw.wind * 0.7, 28) * (fromWest ? -1 : 1);
+      st.setProperty('--cs', clamp(1.3 - raw.wind / 35, 0.3, 1.3).toFixed(2));
+      st.setProperty('--slant', `${lean.toFixed(1)}deg`);
+      st.setProperty('--sw1', fromWest ? '-14deg' : '-2deg');
+      st.setProperty('--sw2', fromWest ? '2deg' : '14deg');
+      st.setProperty('--starop', (0.85 * (1 - cover / 110)).toFixed(2));
+      const n = Math.round((cover / 100) * this._el.clouds.length);
+      this._el.clouds.forEach((c, i) => c.classList.toggle('on', i < n));
+      this._setPrecip(fx.rain, fx.snow);
+      const p = this._el.pika.classList;
+      p.toggle('wet', fx.wet);
+      p.toggle('cold', fx.cold);
+      if (fx.shelter && !wasShelter && !this._asleep && this._action !== 'eatFood') this._interrupt();
+    }
+
+    _setPrecip(rain, snow) {
+      const k = `${rain}/${snow}`;
+      if (k === this._precipKey) return;
+      this._precipKey = k;
+      let html = '';
+      for (let i = 0; i < rain; i++) {
+        html += `<i class="r" style="left:${rnd(0, 100).toFixed(1)}%;animation-delay:${rnd(-1, 0).toFixed(2)}s;`
+          + `animation-duration:${rnd(0.45, 0.75).toFixed(2)}s;opacity:${rnd(0.45, 0.95).toFixed(2)}"></i>`;
+      }
+      for (let i = 0; i < snow; i++) {
+        const s = rnd(2.5, 5).toFixed(1);
+        html += `<i class="s" style="left:${rnd(0, 100).toFixed(1)}%;width:${s}px;height:${s}px;animation-delay:${rnd(-9, 0).toFixed(2)}s;`
+          + `animation-duration:${rnd(5.5, 9.5).toFixed(2)}s;opacity:${rnd(0.6, 1).toFixed(2)}"></i>`;
+      }
+      this._el.precip.innerHTML = html;
+    }
+
+    _lightning() {
+      if (!this._wx.flash) return;
+      const f = this._el.flash;
+      f.classList.remove('go');
+      void f.offsetWidth;
+      f.classList.add('go');
+      if (!this._asleep && this._g) {
+        // erschrickt kurz
+        setTimeout(() => {
+          this._jump('hop1');
+          this._say('!', 900);
+        }, 250);
+      }
     }
   }
 

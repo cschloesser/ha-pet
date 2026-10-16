@@ -6,19 +6,35 @@
 <title>Pika Pet Card – Vorschau</title>
 <style>
   body { margin: 0; padding: 16px; background: #1c1c1e; color: #eee; font-family: system-ui, sans-serif; }
-  .bar { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 16px; align-items: center; }
-  button { padding: 6px 12px; border-radius: 8px; border: 1px solid #555; background: #2c2c2e; color: #eee; cursor: pointer; }
-  .wrap { display: flex; flex-wrap: wrap; gap: 16px; align-items: flex-start; }
+  .bar { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; align-items: center; }
+  .bar b { font-size: 12px; color: #aaa; width: 70px; }
+  button { padding: 5px 10px; border-radius: 8px; border: 1px solid #555; background: #2c2c2e; color: #eee; cursor: pointer; font-size: 12px; }
+  .wrap { display: flex; flex-wrap: wrap; gap: 16px; align-items: flex-start; margin-top: 12px; }
   .slot { background: #2c2c2e; border-radius: 12px; }
   #log { font: 12px monospace; color: #aaa; margin-top: 12px; white-space: pre; }
 </style>
 </head>
 <body>
-<div class="bar">
-  <button data-mode="day">Tag</button>
-  <button data-mode="dusk">Dämmerung</button>
-  <button data-mode="night">Nacht (schläft)</button>
-  <button data-mode="auto">Echte Uhrzeit</button>
+<div class="bar"><b>Tageszeit</b>
+  <button data-sun="110,8,0">Morgen</button>
+  <button data-sun="180,28,0">Mittag</button>
+  <button data-sun="245,4,0">Abend</button>
+  <button data-sun="330,-25,1">Nacht (schläft)</button>
+  <button data-sun="real">Echte Zeit</button>
+</div>
+<div class="bar"><b>Wetter</b>
+  <button data-wx="sunny">sonnig</button>
+  <button data-wx="partlycloudy">teils bewölkt</button>
+  <button data-wx="cloudy">bewölkt</button>
+  <button data-wx="rainy">Regen</button>
+  <button data-wx="pouring">Starkregen</button>
+  <button data-wx="lightning-rainy">Gewitter</button>
+  <button data-wx="snowy">Schnee</button>
+  <button data-wx="fog">Nebel</button>
+  <button data-wx="windy">windig</button>
+</div>
+<div class="bar"><b>Sonstiges</b>
+  <button id="cold">Kalt/Warm</button>
   <button id="hungry">Hungrig machen</button>
 </div>
 <div class="wrap">
@@ -30,35 +46,64 @@
 <script>
   const log = (t) => (document.getElementById('log').textContent = t);
   const states = {
-    'sun.sun': { state: 'above_horizon', attributes: { elevation: 30 } },
+    'sun.sun': { state: 'above_horizon', attributes: { elevation: 28, azimuth: 180 } },
+    'weather.forecast_home': {
+      state: 'partlycloudy',
+      attributes: { temperature: 14, temperature_unit: '°C', cloud_coverage: 40, wind_speed: 12, wind_speed_unit: 'km/h', wind_bearing: 240 },
+    },
     'input_text.pika_status': { state: 'unknown', attributes: {} },
   };
   const cards = [document.getElementById('a'), document.getElementById('b')];
-  const push = () => cards.forEach((c) => (c.hass = hass));
   const hass = {
     states,
+    config: { latitude: 51.54, longitude: 7.69 },
     callService(domain, service, data) {
       states[data.entity_id] = { state: data.value, attributes: {} };
-      hass.states = { ...states };
       log(`${domain}.${service} → ${data.value}`);
       setTimeout(push, 50);
       return Promise.resolve();
     },
   };
-  cards[0].setConfig({ name: 'Pika', entity: 'input_text.pika_status' });
-  cards[1].setConfig({ name: 'Pika', entity: 'input_text.pika_status' });
+  function push() {
+    hass.states = { ...states };
+    cards.forEach((c) => (c.hass = hass));
+  }
+  cards.forEach((c) => c.setConfig({ name: 'Pika', entity: 'input_text.pika_status' }));
   push();
 
-  document.querySelectorAll('[data-mode]').forEach((b) =>
+  document.querySelectorAll('[data-sun]').forEach((b) =>
     b.addEventListener('click', () => {
-      const m = b.dataset.mode;
+      const v = b.dataset.sun;
       for (const c of cards) {
-        c._dbgSleep = m === 'auto' ? null : m === 'night';
-        c._dbgElev = m === 'auto' ? null : { day: 30, dusk: 0, night: -20 }[m];
+        if (v === 'real') {
+          c._dbgSleep = c._dbgElev = c._dbgAz = c._dbgDate = null;
+        } else {
+          const [az, el, sleep] = v.split(',').map(Number);
+          c._dbgAz = az;
+          c._dbgElev = el;
+          c._dbgSleep = !!sleep;
+          // Mond passend zur gewählten Tageszeit: heute, Stunde aus dem Azimut geschätzt
+          const d = new Date();
+          d.setHours(Math.round((az / 15 + 24) % 24), 0, 0, 0);
+          c._dbgDate = d.getTime();
+        }
         c._tick();
       }
     })
   );
+  document.querySelectorAll('[data-wx]').forEach((b) =>
+    b.addEventListener('click', () => {
+      const w = states['weather.forecast_home'];
+      const wind = b.dataset.wx === 'windy' ? 45 : b.dataset.wx === 'pouring' || b.dataset.wx.startsWith('lightning') ? 30 : 12;
+      states['weather.forecast_home'] = { state: b.dataset.wx, attributes: { ...w.attributes, wind_speed: wind, cloud_coverage: { sunny: 5, partlycloudy: 40 }[b.dataset.wx] ?? 90 } };
+      push();
+    })
+  );
+  document.getElementById('cold').addEventListener('click', () => {
+    const w = states['weather.forecast_home'];
+    states['weather.forecast_home'] = { ...w, attributes: { ...w.attributes, temperature: w.attributes.temperature < 3 ? 14 : -2 } };
+    push();
+  });
   document.getElementById('hungry').addEventListener('click', () => {
     const now = Math.round(Date.now() / 1000);
     hass.callService('input_text', 'set_value', { entity_id: 'input_text.pika_status', value: `20.0,${now},20.0,${now}` });
