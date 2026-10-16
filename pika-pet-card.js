@@ -21,7 +21,7 @@
  * werden aus Datum und Standort (hass.config) berechnet.
  */
 (() => {
-  const VERSION = '0.2.1';
+  const VERSION = '0.2.2';
 
   const DEFAULTS = {
     name: 'Pika',
@@ -1101,11 +1101,15 @@
       if (instant) void p.offsetWidth;
     }
 
+    // Wo der Pika gerade wirklich steht. Beim Laufen ist this._x schon das Ziel, die CSS-Transition
+    // bewegt ihn erst noch dorthin.
+    _liveX() {
+      const t = getComputedStyle(this._el.pika).transform;
+      return t && t !== 'none' ? new DOMMatrixReadOnly(t).m41 + this._g.pW / 2 : this._x;
+    }
+
     _freeze() {
-      const p = this._el.pika;
-      const t = getComputedStyle(p).transform;
-      const m41 = t && t !== 'none' ? new DOMMatrixReadOnly(t).m41 : this._x - this._g.pW / 2;
-      this._setX(m41 + this._g.pW / 2, true);
+      this._setX(this._liveX(), true);
     }
 
     _face(dir) {
@@ -1148,7 +1152,7 @@
 
     _hearts(n) {
       const { pW, pH, gy } = this._g;
-      const x = this._x + this._dir * pW * 0.25;
+      const x = this._liveX() + this._dir * pW * 0.25;
       const y = gy - pH * 0.945 + pH * 0.25;
       for (let i = 0; i < n; i++) {
         const h = document.createElement('span');
@@ -1251,7 +1255,7 @@
     _onLookAt(e) {
       if (this._asleep || !this._g || this._action === 'eatFood') return;
       const x = e.clientX - this._el.scene.getBoundingClientRect().left;
-      const c = Math.sign(x - this._x) === this._dir ? 'look-f' : 'look-b';
+      const c = Math.sign(x - this._liveX()) === this._dir ? 'look-f' : 'look-b';
       const p = this._el.pika;
       p.classList.remove('look-f', 'look-b', 'look-up');
       p.classList.add(c);
