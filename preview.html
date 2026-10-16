@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pika Pet Card – Vorschau</title>
+<style>
+  body { margin: 0; padding: 16px; background: #1c1c1e; color: #eee; font-family: system-ui, sans-serif; }
+  .bar { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 16px; align-items: center; }
+  button { padding: 6px 12px; border-radius: 8px; border: 1px solid #555; background: #2c2c2e; color: #eee; cursor: pointer; }
+  .wrap { display: flex; flex-wrap: wrap; gap: 16px; align-items: flex-start; }
+  .slot { background: #2c2c2e; border-radius: 12px; }
+  #log { font: 12px monospace; color: #aaa; margin-top: 12px; white-space: pre; }
+</style>
+</head>
+<body>
+<div class="bar">
+  <button data-mode="day">Tag</button>
+  <button data-mode="dusk">Dämmerung</button>
+  <button data-mode="night">Nacht (schläft)</button>
+  <button data-mode="auto">Echte Uhrzeit</button>
+  <button id="hungry">Hungrig machen</button>
+</div>
+<div class="wrap">
+  <div class="slot" style="width:600px;height:248px"><pika-pet-card id="a"></pika-pet-card></div>
+  <div class="slot" style="width:380px;height:184px"><pika-pet-card id="b"></pika-pet-card></div>
+</div>
+<div id="log"></div>
+<script src="pika-pet-card.js"></script>
+<script>
+  const log = (t) => (document.getElementById('log').textContent = t);
+  const states = {
+    'sun.sun': { state: 'above_horizon', attributes: { elevation: 30 } },
+    'input_text.pika_status': { state: 'unknown', attributes: {} },
+  };
+  const cards = [document.getElementById('a'), document.getElementById('b')];
+  const push = () => cards.forEach((c) => (c.hass = hass));
+  const hass = {
+    states,
+    callService(domain, service, data) {
+      states[data.entity_id] = { state: data.value, attributes: {} };
+      hass.states = { ...states };
+      log(`${domain}.${service} → ${data.value}`);
+      setTimeout(push, 50);
+      return Promise.resolve();
+    },
+  };
+  cards[0].setConfig({ name: 'Pika', entity: 'input_text.pika_status' });
+  cards[1].setConfig({ name: 'Pika', entity: 'input_text.pika_status' });
+  push();
+
+  document.querySelectorAll('[data-mode]').forEach((b) =>
+    b.addEventListener('click', () => {
+      const m = b.dataset.mode;
+      for (const c of cards) {
+        c._dbgSleep = m === 'auto' ? null : m === 'night';
+        c._dbgElev = m === 'auto' ? null : { day: 30, dusk: 0, night: -20 }[m];
+        c._tick();
+      }
+    })
+  );
+  document.getElementById('hungry').addEventListener('click', () => {
+    const now = Math.round(Date.now() / 1000);
+    hass.callService('input_text', 'set_value', { entity_id: 'input_text.pika_status', value: `20.0,${now},20.0,${now}` });
+  });
+</script>
+</body>
+</html>
