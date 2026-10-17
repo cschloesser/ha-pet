@@ -1058,11 +1058,12 @@
   .fi .nite { opacity: 0; transition: opacity 2.5s; }
   .dusk .fi .nite { opacity: .75; }
   .night .fi .nite { opacity: 1; }
-  .fflk { animation: fflk 2.2s ease-in-out infinite alternate; }
+  /* Flackern und Blinken nur in Dämmerung und Nacht: tags ist .nite unsichtbar, das Neuzeichnen spart sich das Tablet */
+  .dusk .fflk, .night .fflk { animation: fflk 2.2s ease-in-out infinite alternate; }
   @keyframes fflk { 0% { opacity: 1; } 25% { opacity: .7; } 40% { opacity: .95; } 65% { opacity: .78; } 100% { opacity: 1; } }
   .flm { transform-box: fill-box; transform-origin: 50% 100%; animation: fflame .45s ease-in-out infinite alternate; }
   @keyframes fflame { from { transform: scale(.88, 1.06) rotate(-5deg); } to { transform: scale(1.06, .9) rotate(4deg); } }
-  .fbl { animation: fblink 2.8s ease-in-out infinite alternate; }
+  .dusk .fbl, .night .fbl { animation: fblink 2.8s ease-in-out infinite alternate; }
   @keyframes fblink { 0%, 45% { opacity: 1; } 100% { opacity: .3; } }
   .lsw { transform-box: view-box; animation: flsw 2.6s ease-in-out infinite alternate; }
   .flan .lsw { transform-origin: 13.5px 2px; }
@@ -1083,10 +1084,16 @@
   .fmai .rb { transform-box: view-box; transform-origin: 20px 46px; animation: frib 1.2s ease-in-out infinite alternate; }
   @keyframes frib { from { transform: rotate(-4deg) skewY(3deg); } to { transform: rotate(5deg) skewY(-4deg); } }
   .windy .fmai .rb { animation-duration: .55s; }
-  /* Wimpel und Girlande */
-  .fpn { transform-box: fill-box; transform-origin: 50% 0; animation: fpn 1.8s ease-in-out infinite alternate; }
+  /* Wimpel und Girlande: die Grafik ist kartengroß, darum ohne Filter (der müsste jedes Bild neu gerechnet
+     werden); abgedunkelt wird über die Deckkraft, nachts hängen die Wimpel still */
+  .scene .fi.fwim .b { filter: none; transition: none; }
+  .fwim { transition: opacity 2.5s; }
+  .dusk .fwim { opacity: .85; }
+  .night .fwim { opacity: .6; }
+  .fpn { transform-box: fill-box; transform-origin: 50% 0; animation: fpn 2.4s ease-in-out infinite alternate; }
   @keyframes fpn { from { transform: rotate(-5deg); } to { transform: rotate(5deg); } }
-  .windy .fpn { animation-duration: .7s; }
+  .windy .fpn { animation-duration: .9s; }
+  .night .fpn { animation-play-state: paused; }
   /* Hüte am Pika: Weihnachtsmütze ersetzt beim Schlafen die Zipfelmütze, die anderen nur wach */
   .hats > g { display: none; }
   .fest-witch .hat-witch, .fest-party .hat-party, .fest-xmas .hat-xmas { display: inline; }
@@ -1170,9 +1177,10 @@
   };
 
   // ==================== Freund-Pika: Konstanten, Grafiken und Stil ====================
-  // Pino ist 0,85-mal so groß wie der Pika, rötlicher, mit hellem Fleck auf der Stirn. Seine Grafik entsteht
-  // aus PIKA_SVG: eigene ids für Fellverlauf und Bauch-Clip (sonst griffe er auf die des Pikas zu), wärmere
-  // Fell-, Bauch- und Ohrenfarben. Zubehör, das er nie braucht, entfernt _friendBuild aus seinem DOM.
+  // Pino ist 0,85-mal so groß wie der Pika, ingwerfarben, mit hellem Fleck auf der Stirn und türkisem Halstuch
+  // (so ist er auch auf dem kleinen Tablet gleich zu erkennen). Seine Grafik entsteht aus PIKA_SVG: eigene ids
+  // für Fellverlauf und Bauch-Clip (sonst griffe er auf die des Pikas zu), warme Fell-, Bauch- und Ohrenfarben.
+  // Zubehör, das er nie braucht, entfernt _friendBuild aus seinem DOM.
   const FRIEND_SCALE = 0.85;
   // Besuchsplan wie bei Vögelchen und Maus aus der Uhr: 45-Minuten-Fenster, in jedem ein Besuch (p 1, im Mittel
   // 45 Min wie früher 25–60 Min Pause + 1,5–4 Min Besuch), Start in den ersten 20 Minuten, also 21–65 Min
@@ -1181,13 +1189,22 @@
   const FRIEND_SVG = [
     ['id="fur"', 'id="fur2"'], ['url(#fur)', 'url(#fur2)'],
     ['id="bodyclip"', 'id="bodyclip2"'], ['url(#bodyclip)', 'url(#bodyclip2)'],
-    ['#d0ad8d', '#e0b08a'], ['#b08a68', '#c48860'], ['#8a664b', '#9a6040'], // Fellverlauf
-    ['#f0e2cf', '#f8e3c8'], // Bauch
-    ['#efe3d3', '#f6e2cc'], ['#e3a990', '#eea08c'], // Ohrenrand, Ohr innen
-    ['#d6b796', '#e6b48c'], // Rückansicht
+    ['#d0ad8d', '#f2b36e'], ['#b08a68', '#dc8640'], ['#8a664b', '#a9592a'], // Fellverlauf
+    ['#f0e2cf', '#fbe7cb'], // Bauch
+    ['#efe3d3', '#f8e4cc'], ['#e3a990', '#f0a184'], // Ohrenrand, Ohr innen
+    ['#d6b796', '#efb47c'], // Rückansicht
   ].reduce((svg, [a, b]) => svg.split(a).join(b), PIKA_SVG)
     .replace('<g clip-path="url(#bodyclip2)">',
-      '$&<ellipse class="blaze" cx="89.5" cy="32.5" rx="4.8" ry="3.2" fill="#fbf0e2" opacity=".92"/>');
+      '$&<ellipse class="blaze" cx="89.5" cy="32.5" rx="4.8" ry="3.2" fill="#fbf0e2" opacity=".92"/>')
+    // Halstuch unter dem Kinn, hinter Pfoten und Blume (vor .mfood), der Winterschal liegt darüber
+    .replace('<g class="mfood">', `<g class="bandana">
+        <path d="M70.5 62 Q87.5 70.5 105 61.6" stroke="${OUT}" stroke-width="5.4" fill="none" stroke-linecap="round"/>
+        <path d="M70.5 62 Q87.5 70.5 105 61.6" stroke="#22b5a6" stroke-width="3.8" fill="none" stroke-linecap="round"/>
+        <path d="M79.5 65.2 L95.5 65.6 L86.6 76.4Z" fill="#22b5a6" stroke="${OUT}" stroke-width="1.2" stroke-linejoin="round"/>
+        <g fill="#f4fbf8"><circle cx="84.4" cy="67.6" r="1"/><circle cx="90.4" cy="67.8" r="1"/><circle cx="87" cy="71.6" r=".9"/>
+          <circle cx="75" cy="64.6" r=".8"/><circle cx="100" cy="64.2" r=".8"/></g>
+      </g>
+      $&`);
   // Gemeinsame Spiele (Aktionen des Pikas). Solange eine läuft, steuert sie auch Pino.
   const FRIEND_ACTS = new Set(['greetFriend', 'chaseFriend', 'sitWithFriend', 'rockWithFriend', 'nibbleWithFriend', 'squeakDuet']);
   // Pinos eigener Ablauf gibt die Kontrolle ab (gemeinsames Spiel, Streicheln, Abschied)
@@ -1202,6 +1219,11 @@
   .friend {
     position: absolute; left: 0; top: calc(var(--gy) - var(--ph) * .945); width: var(--pw); height: var(--ph);
     z-index: 3; cursor: pointer; pointer-events: auto; will-change: transform;
+  }
+  /* Pinos Sprechblase: gleiche Lage wie .friend, aber über dem Pika (beide z 3, der Pika liegt im DOM dahinter) */
+  .frsay {
+    position: absolute; left: 0; top: calc(var(--gy) - var(--ph) * .945); width: var(--pw); height: var(--ph);
+    z-index: 4; pointer-events: none;
   }
   /* Nasenstupsen und Heranrücken: kurz nach vorn zum anderen lehnen (Pika und Pino) */
   .pika.nuzzle .hop, .friend.nuzzle .hop { animation: nuzzle .8s ease-in-out; }
@@ -1746,6 +1768,7 @@
 
   .land, .flowers, .foods, .birds, .mice, .mice-f { position: absolute; inset: 0; transition: filter 2.5s, opacity 2s; }
   .birds, .mice, .mice-f { pointer-events: none; }
+  .birds { z-index: 2; } /* über der Festdeko am Bau (.fon, z 1), hinter Pika, Pino, Heu und Gras (z 3) */
   .day.overcast .land, .day.overcast .flowers, .day.overcast .hills, .day.overcast .fore,
   .day.overcast .birds, .day.overcast .mice, .day.overcast .mice-f { filter: brightness(.9) saturate(.8); }
   .dusk .land, .dusk .flowers, .dusk .foods, .dusk .fore, .dusk .birds, .dusk .mice, .dusk .mice-f { filter: brightness(.85) saturate(.85); }
@@ -3982,6 +4005,8 @@
       clearTimeout(this._festFwT);
       this._festFwT = null;
       clearTimeout(this._festCakeT);
+      // Der Zeitgeber, der die Kerze wieder anzündet, ist weg: also gleich wieder an (sonst bliebe sie den Tag aus)
+      this._festCakeOut = false;
       this._festT?.forEach((t) => clearTimeout(t));
       this._festT?.clear();
       if (this._festEls) this._festEls.sky.innerHTML = this._festEls.cf.innerHTML = '';
@@ -4100,11 +4125,15 @@
         if ((md === 430 && h >= 18) || md === 501) f.maibaum = true;
         if (md === 621) f.sommer = true;
       }
-      // Geburtstage "MM-DD" (auch "YYYY-MM-DD" oder "TT.MM."); der 29. 2. wird sonst am 28. 2. gefeiert
+      // Geburtstage "MM-DD" (auch "YYYY-MM-DD" oder "TT.MM."); der 29. 2. wird sonst am 28. 2. gefeiert.
+      // Ohne Anführungszeichen macht YAML daraus andere Typen: 14.10 → Zahl 14.1 (als TT.MM mit zwei Stellen
+      // lesen), 1990-03-14 → Date-Objekt bzw. "1990-03-14T00:00:00.000Z" (Tag aus dem Datumsteil, UTC)
       const leap = new Date(y, 1, 29).getMonth() === 1;
       const names = (Array.isArray(this._cfg?.birthdays) ? this._cfg.birthdays : []).filter((b) => {
-        const s = String(b?.date ?? '').trim();
-        let m = s.match(/^(?:\d{4}-)?(\d{1,2})-(\d{1,2})$/);
+        const v = b?.date;
+        const s = v instanceof Date ? (isNaN(v) ? '' : `${v.getUTCMonth() + 1}-${v.getUTCDate()}`)
+          : typeof v === 'number' ? v.toFixed(2) : String(v ?? '').trim();
+        let m = s.match(/^(?:\d{4}-)?(\d{1,2})-(\d{1,2})(?:[T ][\d:.]+(?:Z|[+-]\d{2}:?\d{2})?)?$/i);
         let bm;
         let bd;
         if (m) [bm, bd] = [Number(m[1]), Number(m[2])];
@@ -4163,20 +4192,35 @@
       const back = [];
       const on = [];
       const front = [];
+      // Bodenrechtecke der Deko in px: { x: Mitte, l: linke Kante, top, w, h }. Der Haus-Bote stellt seine
+      // Geräte so, dass sie diese Flächen meiden (_boteLayout); darum steht hier jedes Stück am Boden drin.
       const pos = {};
-      const hayR = hay + H * 0.13;
-      const slots = { R: hole.r + H * 0.1, L: hole.l - H * 0.075, M: (hayR + rock.l) / 2 };
+      // Heuhaufen in voller Größe (wächst bis scale 1,06 von H · 0,26)
+      const hayL = hay - H * 0.138;
+      const hayR = hay + H * 0.138;
+      // Plätze: Wunschmitte x und freier Bereich a..b (Tür, Heu, Stein). Passt eine Grafik nicht hinein
+      // (schmale Karte), wird sie bis auf 70 % kleiner, statt ins Heu zu ragen oder wegzufallen.
+      const slots = {
+        R: { x: hole.r + H * 0.1, a: hole.r, b: Math.max(hole.r + H * 0.1, hayL) },
+        L: { x: hole.l - H * 0.075, a: 4, b: hole.l + H * 0.01 },
+        M: { x: (hay + H * 0.13 + rock.l) / 2, a: hayR, b: Math.max(hayR + H * 0.1, rock.l) },
+      };
       const used = new Set();
+      // Erster freier Platz der Wunschliste; sind alle belegt, der erste (lieber eng als gar nicht)
       const slot = (...prefs) => {
-        const s = prefs.find((k) => !used.has(k));
-        if (!s) return null;
+        const s = prefs.find((k) => !used.has(k)) || prefs[0];
         used.add(s);
         return slots[s];
+      };
+      // Breite und Mitte im Platz s für Wunschbreite w
+      const fit = (s, w) => {
+        const w2 = Math.max(w * 0.7, Math.min(w, s.b - s.a));
+        return [w2 > s.b - s.a ? (s.a + s.b) / 2 : clamp(s.x, s.a + w2 / 2, s.b - w2 / 2), w2];
       };
       // Grafik mit Boden bei bottom, mittig über x
       const item = (cls, x, bottom, w, art, name, style = '') => {
         const h = (w * art.vb[1]) / art.vb[0];
-        if (name) pos[name] = { x, top: bottom - h, w, h };
+        if (name) pos[name] = { x, l: x - w / 2, top: bottom - h, w, h };
         return `<div class="fi ${cls}" style="left:${festF1(x - w / 2)}px;top:${festF1(bottom - h)}px;width:${festF1(w)}px;height:${festF1(h)}px${style}">`
           + `${festSvg(art.vb, art.b, 'b')}${art.g ? festSvg(art.vb, art.g, 'g') : ''}</div>`;
       };
@@ -4186,12 +4230,15 @@
         + `${art.g ? festSvg([100, A.vh], art.g, 'g') : ''}</div>`;
       const edge = FEST_EDGE[this._arealKey] || FEST_EDGE.huegel;
 
-      if (f.halloween) front.push(item('fpump', slot('L', 'R', 'M'), gy + 1, H * 0.14, FEST_PUMPKIN, 'pumpkin'));
-      if (f.boot) front.push(item('fboot', slot('L', 'R', 'M'), gy + 1, H * 0.11, FEST_BOOT(f.boot.full), 'boot'));
-      if (f.advent) front.push(item('fwreath', slot('R', 'L', 'M'), gy, H * 0.2, FEST_WREATH(f.advent.candles), 'wreath'));
-      if (f.birthday) {
-        front.push(item(`fcake${this._festCakeOut ? ' out' : ''}`, slot('R', 'L', 'M'), gy + 1, H * 0.14, FEST_CAKE, 'cake'));
-      }
+      // Boden-Deko auf einem Platz (prefs: Wunschreihenfolge)
+      const ground = (cls, prefs, bottom, w, art, name) => {
+        const [x, w2] = fit(slot(...prefs), w);
+        front.push(item(cls, x, bottom, w2, art, name));
+      };
+      if (f.halloween) ground('fpump', ['L', 'R', 'M'], gy + 1, H * 0.14, FEST_PUMPKIN, 'pumpkin');
+      if (f.boot) ground('fboot', ['L', 'R', 'M'], gy + 1, H * 0.11, FEST_BOOT(f.boot.full), 'boot');
+      if (f.advent) ground('fwreath', ['R', 'L', 'M'], gy, H * 0.2, FEST_WREATH(f.advent.candles), 'wreath');
+      if (f.birthday) ground(`fcake${this._festCakeOut ? ' out' : ''}`, ['R', 'L', 'M'], gy + 1, H * 0.14, FEST_CAKE, 'cake');
       if (f.lights) on.push(onBur('flights', FEST_LIGHTS(edge)));
       if (f.karneval) on.push(onBur('fstream', FEST_STREAMERS(edge)));
       if (f.martin) {
@@ -4207,8 +4254,10 @@
       if (f.xmas) {
         used.add('M');
         const tw = (H * 0.42 * 50) / 66;
-        back.push(item('ftree', slots.M, gy + 2, tw, FEST_TREE, 'tree'));
-        front.push(item('fgift', slots.M - tw * 0.32, gy - 1, H * 0.1, FEST_GIFT));
+        back.push(item('ftree', slots.M.x, gy + 2, tw, FEST_TREE, 'tree'));
+        // Geschenk vorn unter dem Baum, nicht vor dem Heu
+        const gw = H * 0.1;
+        front.push(item('fgift', Math.min(slots.M.x, Math.max(slots.M.x - tw * 0.32, hayR + gw / 2)), gy - 1, gw, FEST_GIFT, 'gift'));
       }
       if (f.maibaum) {
         // hinter dem Bau, die Krone unterhalb der Statusleiste
@@ -4220,8 +4269,10 @@
           + `--wd:${this._windDir < 0 ? -1 : 1}">${festSvg(FEST_MAI.vb, FEST_MAI.b, 'b')}</div>`);
       }
       if (f.birthday || f.sommer) back.push(this._festString(f.birthday ? ['A', 'L', 'L', 'E', 'S', '♥', 'G', 'U', 'T', 'E'] : null));
-      // Wiese für Eier und Raketenstäbe: rechts neben der Tür bis vor den Futterknopf
-      const lo = hole.r + H * 0.12;
+      // Wiese für Eier und Raketenstäbe: rechts neben der Tür bis vor den Futterknopf, rechts von dem, was
+      // schon neben der Tür steht (Kuchen an Ostern oder Neujahr)
+      let lo = hole.r + H * 0.12;
+      for (const p of Object.values(pos)) if (p.x < lo + H * 0.15) lo = Math.max(lo, p.l + p.w + H * 0.02);
       const hi = Math.max(lo + H * 0.3, Math.min(W - 64, rock.l + rock.w * 0.75));
       const eggX = [];
       if (f.ostern) {
@@ -4237,6 +4288,7 @@
           const h = w * 1.25;
           const b = gy + 1 + r(4) * 2.5;
           eggX.push(x);
+          pos[`egg${i}`] = { x, l: x - w / 2, top: b - h, w, h };
           front.push(`<div class="fi fegg" role="button" aria-label="Osterei" style="left:${festF1(x - w / 2 - 6)}px;top:${festF1(b - h - 6)}px;`
             + `width:${festF1(w + 12)}px;height:${festF1(h + 12)}px">`
             + `<svg class="b" viewBox="0 0 12 15" aria-hidden="true" style="rotate:${festF1((r(5) - 0.5) * 24)}deg">${FEST_EGG(c1, c2, Math.floor(r(6) * 3))}</svg></div>`);
@@ -4245,7 +4297,7 @@
       if (f.sticks) {
         [[0.3, -6], [0.68, 9]].forEach(([t, rot], i) => {
           const x = lo + (hi - lo) * (t + (seeded(f.year, 31, i) - 0.5) * 0.1);
-          front.push(item('fstick', x, gy - H * 0.018, H * 0.2, FEST_STICK, null, `;rotate:${rot}deg`));
+          front.push(item('fstick', x, gy - H * 0.018, H * 0.2, FEST_STICK, `stick${i}`, `;rotate:${rot}deg`));
         });
       }
 
@@ -4258,6 +4310,8 @@
         el.addEventListener('click', (e) => (e.stopPropagation(), this._festWobble(el)));
         return { el, x: eggX[i] };
       });
+      // Haus-Bote: Geräte weichen der Deko aus
+      this._boteLayout?.();
     }
 
     // Wimpelkette zwischen Bau und Stein (Sommerfest) bzw. Girlande „Alles Gute“ (Geburtstag), in px.
@@ -4714,20 +4768,24 @@
       if (!this._attached || document.hidden || this._critOn) return;
       this._critOn = true;
       const id = ++this._critId;
+      // Start des letzten Besuchs je Art, über Neustarts hinweg (Display aus/an, Areal): kein Besuch kommt zweimal
+      this._critLast ??= {};
+      // je Art nur der eine Timer bis zum nächsten Start
+      this._critT = {};
       // Timer bis zum nächsten berechneten Start; after: Start des letzten, damit keiner zweimal kommt
       const plan = (kind, after) => {
         const now = this._visitNow();
         const nx = this._critNext(kind, now, after);
-        const t = setTimeout(async () => {
+        this._critT[kind] = setTimeout(async () => {
           if (id !== this._critId) return;
+          this._critLast[kind] = nx.at;
           const late = this._visitNow() - nx.at;
           if (late <= CRIT_LATE) await this._visit(kind, id, false, nx.pick, Math.max(0, late));
           if (id === this._critId) plan(kind, nx.at);
         }, Math.max(0, nx.at - now));
-        this._critT.push(t);
       };
-      plan('bird');
-      plan('mouse');
+      plan('bird', this._critLast.bird);
+      plan('mouse', this._critLast.mouse);
     }
 
     // Uhr der Besuche: echte Zeit (Vorschau: um _dbgShiftMs vorgestellt). Nicht _dbgDate, das steht fest.
@@ -4751,7 +4809,7 @@
     _critPick(kind, r) {
       if (kind === 'bird') {
         return { bird: Math.floor(r(2) * BIRDS.length), spot: r(3), rockX: 35 + r(4) * 30,
-          side: r(5) < 0.5 ? -1 : 1, out: r(6) < 0.5 ? -1 : 1, stay: 15000 + r(7) * 30000 };
+          side: r(5) < 0.5 ? -1 : 1, out: r(6) < 0.5 ? -1 : 1, stay: 15000 + r(7) * 30000, alt: r(8) };
       }
       const k = r(2); // wie früher seitlich : oben : auf die Wiese = 3 : 2 : 3
       return { kind: k < 0.375 ? 'side' : k < 0.625 ? 'top' : 'run', x: 30 + r(3) * 40 };
@@ -4760,13 +4818,19 @@
     _stopCritters() {
       this._critOn = false;
       this._critId++;
-      this._critT.forEach((t) => clearTimeout(t));
-      this._critT = [];
+      Object.values(this._critT).forEach((t) => clearTimeout(t));
+      this._critT = {};
       for (const c of [this._bird, this._mouse]) c?.el.remove();
       this._bird = this._mouse = null;
     }
 
+    // Neue Größe oder neues Areal: wer gerade zu Besuch ist, kommt gleich wieder (falls sein Start höchstens
+    // CRIT_LATE her ist); wer schon fertig war, nicht noch einmal
     _restartCritters() {
+      if (this._critLast) {
+        if (this._bird) delete this._critLast.bird;
+        if (this._mouse) delete this._critLast.mouse;
+      }
       this._stopCritters();
       this._startCritters();
     }
@@ -4820,11 +4884,17 @@
     async _birdVisit(id, force, pk, late = 0) {
       const { rock, bur } = this._g;
       const spots = this._areal().perches.map(([x, y], i) => ({ id: `p${i}`, x: bur.l + x * bur.u, y: bur.base + y * bur.u }));
-      // Platz fest: Sitzplätze des Areals, dahinter der Stein. Ist der Pika gerade oben, der letzte Sitzplatz.
+      // Platz fest aus dem Seed: Sitzplätze des Areals, dahinter der Stein. Ist der Pika gerade oben, wartet der
+      // Vogel kurz; ist der Stein dann noch besetzt, nimmt er den Ersatzplatz, ebenfalls aus dem Seed.
       const si = Math.floor(pk.spot * (spots.length + 1));
+      const rockBusy = () => this._lift !== 0 || this._action === 'lookout';
+      let waited = 0;
+      if (si >= spots.length) {
+        for (; waited < 6000 && rockBusy(); waited += 500) await this._cw(id, 500);
+      }
       const spot = si < spots.length ? spots[si]
-        : this._lift === 0 && this._action !== 'lookout' ? { id: 'rock', x: rock.l + pk.rockX * rock.ku, y: rock.top0 + 13 * rock.ku }
-          : spots[spots.length - 1];
+        : !rockBusy() ? { id: 'rock', x: rock.l + pk.rockX * rock.ku, y: rock.top0 + 13 * rock.ku }
+          : spots[Math.floor(pk.alt * spots.length)];
       const v = BIRDS[pk.bird];
       const el = document.createElement('div');
       el.className = 'bird flying';
@@ -4858,7 +4928,7 @@
         this._noticeCritter(spot.x, true);
         await this._cw(id, 350, b);
         el.classList.remove('land');
-        const until = Date.now() + Math.max(4000, pk.stay - late);
+        const until = Date.now() + Math.max(4000, pk.stay - late - waited);
         while (!b.scared && Date.now() < until && (force || this._critterWeather('bird'))) {
           await this._cw(id, rnd(900, 2600), b);
           if (b.scared) break;
@@ -5167,8 +5237,8 @@
     // Liefert den nächsten Besuch, der noch nicht vorbei ist: nextInMs bis zur Ankunft (0, wenn er gerade
     // fällig ist), stayMs Dauer ab Ankunft (bei einem laufenden Besuch: was davon noch übrig ist), side -1 von
     // links, 1 von rechts. Aus der Uhrzeit berechnet (FRIEND_WIN, seedRnd), darum auf allen Geräten gleich.
-    // Ob er wirklich kommt (Pika wach, Tag, trocken), prüft _friendDue; ein Besuch, der war oder ausfiel,
-    // wird nicht wiederholt (_frUsed).
+    // Ob er wirklich kommt (Pika wach, Tag, trocken), prüft _friendDue; passt es gerade nicht, kommt er später
+    // im selben Fenster. Ein Besuch, der mit Abschied endete, wird nicht wiederholt (_frUsed).
     _friendSchedule() {
       const now = this._visitNow();
       const { win, p, spread, stay: [s0, s1] } = FRIEND_WIN;
@@ -5188,7 +5258,7 @@
       return !!this._cfg?.friend && !!this._attached && !document.hidden;
     }
 
-    // Nächsten Besuch einplanen. Einer, der schon war oder ausfiel, zählt nicht noch einmal:
+    // Nächsten Besuch einplanen. Einer, der schon mit Abschied endete, zählt nicht noch einmal:
     // dann erst nach seinem Ende wieder nachfragen.
     _friendPlan() {
       clearTimeout(this._frT);
@@ -5206,9 +5276,17 @@
       if (!this._friendOn() || this._fr) return;
       const s = this._friendSchedule();
       if (s.nextInMs > 1000) return this._friendPlan(); // Plan hat sich verschoben
-      this._frUsed = this._visitNow() + s.nextInMs + s.stayMs;
+      const end = this._visitNow() + s.nextInMs + s.stayMs;
+      if (end <= (this._frUsed || 0) + 500) return this._friendPlan();
+      // Für einen kurzen Rest lohnt sich das Hereinhoppeln nicht mehr: Fenster abhaken
+      if (s.stayMs < 45000) {
+        this._frUsed = end;
+        return this._friendPlan();
+      }
       if (this._g && !this._friendBad()) this._friendCome(s.side, s.stayMs);
-      else this._friendPlan();
+      // Passt es gerade nicht (Pika wacht auf, kurzer Niesel, Tab war weg), in 20 s noch einmal: solange das
+      // Fenster läuft, kommt er dann eben mitten darin
+      else this._frT = setTimeout(() => this._friendDue(), 20000);
     }
 
     // Was gegen Besuch spricht (Bits): 1 Pika schläft oder geht schlafen, 2 Regen/Gewitter, 4 nicht Tag
@@ -5273,16 +5351,20 @@
       el.setAttribute('role', 'button');
       el.setAttribute('aria-label', `${this._frName()} streicheln`);
       el.innerHTML = '<div class="clipw"><div class="shadow"></div><div class="depth"><div class="flip"><div class="jump">'
-        + `<div class="hop">${FRIEND_SVG}</div></div></div></div></div><div class="anchor"><div class="bubble say"></div></div>`;
+        + `<div class="hop">${FRIEND_SVG}</div></div></div></div></div>`;
       el.querySelectorAll('.book, .gb, .tab, .kpaw, .bk, .brolly, .cap').forEach((n) => n.remove());
+      // Sprechblase in eigener Hülle über dem Pika (z 4); sie läuft mit Pino mit (_frSetX, _frFace)
+      const sw = document.createElement('div');
+      sw.className = 'frsay';
+      sw.innerHTML = '<div class="anchor"><div class="bubble say"></div></div>';
       const fr = {
-        el, jump: el.querySelector('.jump'), say: el.querySelector('.say'), mfood: el.querySelector('.mfood'),
+        el, sw, jump: el.querySelector('.jump'), say: sw.querySelector('.say'), mfood: el.querySelector('.mfood'),
         x: 0, dir: 1, lift: 0, tok: 0, arrived: false, greeted: false, leaving: false, hurry: false, busy: false, want: null,
       };
       fr.kickP = new Promise((r) => (fr.kick = r));
       el.addEventListener('click', (e) => (e.stopPropagation(), this._frPet(fr)));
       el.classList.toggle('cold', !!this._wx.cold);
-      this._el.friends.appendChild(el);
+      this._el.friends.append(el, sw);
       return fr;
     }
 
@@ -5292,6 +5374,7 @@
       this._frTake(fr); // wartende Schritte wecken, sie brechen dann ab
       for (const t of ['sayT', 'callT', 'jumpT', 'happyT', 'lookT']) clearTimeout(fr[t]);
       fr.el.remove();
+      fr.sw.remove();
       if (FRIEND_ACTS.has(this._action)) this._interrupt();
     }
 
@@ -5365,6 +5448,9 @@
       if (!fr || fr.leaving) return;
       fr.leaving = true;
       fr.hurry = now;
+      // nach dem Abschied kommt er in diesem Fenster nicht wieder (auch nicht nach Display aus/an)
+      const s = this._friendSchedule();
+      if (!s.nextInMs) this._frUsed = Math.max(this._frUsed || 0, this._visitNow() + s.stayMs);
       this._frTake(fr);
       if (!sleep && !this._asleep) {
         this._frBye = { x: fr.x, until: Date.now() + 15000, done: false };
@@ -5502,10 +5588,11 @@
 
     // ---------- Pinos Bausteine ----------
 
-    // Pinos Wiese: rechts vom Bau bis zum rechten Rand (in den Bau darf er nicht)
+    // Pinos Wiese: rechts vom Bau bis zum rechten Rand (in den Bau darf er nicht). Auf schmalen Karten auch
+    // rechts vom Heu (volle Größe, halbe Breite H · 0,13), sonst verschwände er dahinter (.fore liegt vorn).
     _frRange() {
-      const { pW, home } = this._g;
-      const lo = home + pW * 0.8;
+      const { pW, home, hay } = this._g;
+      const lo = Math.max(home + pW * 0.8, hay + this._H * 0.13 + pW * FRIEND_SCALE * 0.3);
       return [lo, Math.max(lo, this._W - pW * FRIEND_SCALE * 0.45)];
     }
 
@@ -5550,9 +5637,10 @@
       fr.x = x;
       fr.lift = lift;
       fr.mv = ms > 0 ? { ...from, x1: x, l1: lift, t0: performance.now(), ms } : null;
-      const s = fr.el.style;
-      s.transition = ms > 0 ? `transform ${Math.round(ms)}ms ${ease}` : 'none';
-      s.transform = `translate(${(x - (this._g.pW * FRIEND_SCALE) / 2).toFixed(1)}px, ${(-lift).toFixed(1)}px)`;
+      for (const s of [fr.el.style, fr.sw.style]) {
+        s.transition = ms > 0 ? `transform ${Math.round(ms)}ms ${ease}` : 'none';
+        s.transform = `translate(${(x - (this._g.pW * FRIEND_SCALE) / 2).toFixed(1)}px, ${(-lift).toFixed(1)}px)`;
+      }
       if (!(ms > 0)) void fr.el.offsetWidth;
     }
 
@@ -5575,6 +5663,7 @@
     _frFace(fr, dir) {
       fr.dir = dir;
       fr.el.classList.toggle('left', dir < 0);
+      fr.sw.classList.toggle('left', dir < 0);
     }
 
     _frJump(fr, kind) {
@@ -5944,8 +6033,15 @@
           await w(rnd(600, 1200));
         }
         F.remove('look-up');
-        if (both) await this._frHopDown(fr, w);
-        await this._hopDown();
+        if (both) {
+          // Pino springt zuerst; der Pika nimmt die andere Seite des Steins. Ist rechts kein Platz (beide links),
+          // rückt Pino vorher ein Stück zur Seite.
+          await this._frHopDown(fr, w);
+          const x = this._footX(fr.x >= rock.cx ? -1 : 1);
+          if (x == null) await this._friendWalkTo(fr, fr.x - pW * 0.8, 1, w);
+          await this._hopTo(x ?? this._footX(-1), 0);
+          this._puff(this._x, gy, 3);
+        } else await this._hopDown();
         if (!both) {
           this._frFace(fr, this._x >= fr.x ? 1 : -1);
           this._frJump(fr, 'hop1');
@@ -6033,16 +6129,20 @@
       const where = () => (this._fr ? this._frLive(this._fr).x : bye.x);
       this._face(where() >= this._x ? 1 : -1);
       P.add('look-f');
-      await this._wait(800);
-      this._say(`tschüss, ${this._frName()}!`, 1500);
-      const end = Date.now() + 5000;
-      while (this._fr && Date.now() < end) {
-        await this._wait(300);
-        this._face(where() >= this._x ? 1 : -1);
+      // auch bei Abbruch (Streicheln, Futter, Schlaf) nicht traurig hängen bleiben: sad räumt _cleanup nicht ab
+      try {
+        await this._wait(800);
+        this._say(`tschüss, ${this._frName()}!`, 1500);
+        const end = Date.now() + 5000;
+        while (this._fr && Date.now() < end) {
+          await this._wait(300);
+          this._face(where() >= this._x ? 1 : -1);
+        }
+        P.add('sad');
+        await this._wait(rnd(2200, 3200));
+      } finally {
+        P.remove('sad', 'look-f');
       }
-      P.add('sad');
-      await this._wait(rnd(2200, 3200));
-      P.remove('sad', 'look-f');
       await this._wait(rnd(300, 700));
     }
     // ==================== Ende Freund-Pika ====================
@@ -6515,9 +6615,11 @@
       ];
     }
 
-    // Sommer = Mai bis September, nach der Vorschau-Uhr, falls gesetzt
+    // Sommer = Mai bis September, nach der Vorschau-Uhr, falls gesetzt; auf der Südhalbkugel
+    // (hass.config.latitude < 0) ein halbes Jahr versetzt, also November bis März
     _skySummer() {
-      const month = new Date(this._dbgDate ?? Date.now()).getMonth();
+      let month = new Date(this._dbgDate ?? Date.now()).getMonth();
+      if (this._hass?.config?.latitude < 0) month = (month + 6) % 12;
       return month >= 4 && month <= 8;
     }
 
@@ -6579,7 +6681,7 @@
 
     // Jedem Glühwürmchen einen Ort und einen eigenen Driftweg (vier Punkte, px) geben. Gut die Hälfte schwirrt
     // tief über der Wiese, ein Drittel um den Heuhaufen (--hl, --hw), der Rest etwas höher. Kein Weg führt
-    // über die Statusleiste oder den Futterknopf.
+    // über die Statusleiste oder den Futterknopf, durchs Heu oder ins Gras (beide liegen vorn, z 3).
     _ffPlace() {
       const g = this._g;
       const flies = this._el.ff.children;
@@ -6596,11 +6698,15 @@
           avoid.push({ l: el.offsetLeft - 10, t: el.offsetTop - 10, r: el.offsetLeft + el.offsetWidth + 10, b: el.offsetTop + el.offsetHeight + 10 });
         }
       }
+      // Heuhaufen in voller Größe (wächst bis scale 1,06; Grafik 60 × 40, Spitze bei y 10)
+      const hs = hw * 1.06;
+      avoid.push({ l: g.hay - hs / 2, r: g.hay + hs / 2, t: gy + 4 - hs * 0.5 - 4, b: gy });
+      const grass = gy - H * 0.05; // Oberkante der Grashalme
       const zone = (i) => {
         const z = i % 3 === 0 ? 'hay' : i % 5 === 4 ? 'high' : 'low';
         if (z === 'hay') return [rnd(hl - hw * 0.4, hl + hw * 1.4), rnd(gy - H * 0.32, gy - H * 0.06)];
         if (z === 'high') return [rnd(W * 0.12, W * 0.95), rnd(H * 0.3, H * 0.55)];
-        return [rnd(W * 0.04, W * 0.96), rnd(gy - H * 0.2, gy - H * 0.03)];
+        return [rnd(W * 0.04, W * 0.96), rnd(gy - H * 0.2, gy - H * 0.06)];
       };
       [...flies].forEach((el, i) => {
         let pts = null;
@@ -6613,7 +6719,7 @@
           const xs = p.map((q) => q[0]);
           const ys = p.map((q) => q[1]);
           const box = { l: Math.min(...xs) - 4, r: Math.max(...xs) + 4, t: Math.min(...ys) - 4, b: Math.max(...ys) + 4 };
-          const inside = box.l > 0 && box.r < W && box.t > H * 0.06 && box.b < gy;
+          const inside = box.l > 0 && box.r < W && box.t > H * 0.06 && box.b < grass;
           if (inside && !avoid.some((a) => box.l < a.r && box.r > a.l && box.t < a.b && box.b > a.t)) pts = p;
         }
         // kein freier Platz gefunden (sehr kleine Karte): dieses eine bleibt dunkel
@@ -6658,18 +6764,20 @@
       }
     }
 
-    // Eine Sternschnuppe: Start im oberen Himmel (3–45 % der Höhe), 15–35 % der Breite weit, leicht abwärts
+    // Eine Sternschnuppe: Start im oberen Himmel (ab 3 % der Höhe), 15–35 % der Breite weit (höchstens 0,9 H),
+    // leicht abwärts. Das Ende bleibt über der halben Höhe, sonst verschwänden Schweif und Aufleuchten hinter
+    // den Hügeln (breite Karten).
     _meteor(bolide = false) {
       if (!this._g) return;
       const W = this._W;
       const H = this._H;
       const dir = Math.random() < 0.5 ? 1 : -1;
       const tilt = rnd(8, 26);
-      const len = W * rnd(0.15, 0.35);
+      const len = Math.min(W * rnd(0.15, 0.35), H * 0.9);
       const dx = len * Math.cos(tilt * RAD);
       const dy = len * Math.sin(tilt * RAD);
       const x = dir > 0 ? rnd(W * 0.04, Math.max(W * 0.05, W * 0.96 - dx)) : rnd(Math.min(W * 0.95, W * 0.04 + dx), W * 0.96);
-      const y = H * rnd(0.03, 0.45);
+      const y = rnd(H * 0.03, Math.max(H * 0.04, Math.min(H * 0.45, H * 0.5 - dy)));
       const dur = bolide ? rnd(0.95, 1.2) : rnd(0.5, 1.1);
       const el = document.createElement('div');
       el.className = `met${bolide ? ' bolide' : ''}`;

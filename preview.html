@@ -270,6 +270,7 @@
       } else log('Besuchsuhr: echte Zeit');
       for (const c of cards) {
         c._dbgShiftMs = shift;
+        c._critLast = {}; // die Uhr springt (auch zurück): gemerkte Besuche gelten nicht mehr
         c._restartCritters();
         // Pino bleibt, wenn nur Vogel oder Maus vorgezogen werden (beides zusammen ansehen)
         if (k === 'bird' || k === 'mouse') continue;
