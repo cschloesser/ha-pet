@@ -7849,7 +7849,8 @@
     // Festdeko am Boden, Heuhaufen, Futter- und Blumenwiese, Klo-Ecke am Stein; Futterknopf und Stein bleiben frei.
     // Stufen: erst alles frei lassen, dann Laden/Laterne, dann die Futterwiese hergeben. Jedes Requisit bleibt
     // möglichst auf seinem Platz und wird dort allein kleiner, danach weicht es aus und wird bis 0,55 verkleinert.
-    // Passt es dann noch nicht, rücken die Requisiten eines Platzes überlappend zusammen (weiter vorn = davor).
+    // Vorn und hinten meiden einander (kein vorderes Requisit vor einem hinteren, etwa der Wäscheleine). Passt es
+    // dann noch nicht, kommt es dorthin, wo es am wenigsten überdeckt (überlappend, weiter vorn = davor).
     // Setzt nur Positionen und tut nichts, wenn sich nichts ändert (auch von der Festdeko aus aufgerufen).
     _boteLayout() {
       const B = this._bote;
@@ -7880,21 +7881,29 @@
         const l = p.l ?? p.x - p.w / 2;
         keep.push([l, l + p.w, /^(egg|stick)/.test(n) ? 2 : 0]);
       }
-      // freie Stücke eines Platzes bei Stufe lv (9 = ohne Sperrbereiche), in Füllreihenfolge
-      const segs = (z, lv) => {
+      const gap = 0.025 * H;
+      // je Platz: Requisiten, Sperrstufe und ihre Lage ({a, w, l, dy})
+      const st = zones.map(() => ({ items: [], lv: 0, pos: [] }));
+      const ov = (l1, r1, l2, r2) => Math.max(0, Math.min(r1, r2) - Math.max(l1, l2));
+      // Was in der anderen Ebene (vorn bzw. hinten) schon steht: vorn soll nicht vor einem hinteren Requisit stehen
+      const other = (z) => st.flatMap((zs, i) => (!zones[i].fr !== !zones[z].fr ? zs.pos.map((p) => [p.l, p.l + p.w]) : []));
+      // freie Stücke eines Platzes bei Stufe lv (9 = ohne Sperrbereiche), in Füllreihenfolge;
+      // cross: die Requisiten der anderen Ebene meiden
+      const segs = (z, lv, cross) => {
         const zo = zones[z];
+        const cuts = keep.filter(([, , k, fo]) => lv < 9 && !(k && lv >= k) && !(fo && !zo.fr));
+        if (cross) cuts.push(...other(z).map(([l, r]) => [l - 0.01 * H, r + 0.01 * H]));
         let s = [[zo.a, zo.b]];
-        for (const [l, r, k, fo] of keep) {
-          if (lv >= 9 || (k && lv >= k) || (fo && !zo.fr)) continue;
-          s = s.flatMap(([a, b]) => [[a, Math.min(b, l)], [Math.max(a, r), b]]);
-        }
+        for (const [l, r] of cuts) s = s.flatMap(([a, b]) => [[a, Math.min(b, l)], [Math.max(a, r), b]]);
         s = s.filter(([a, b]) => b - a > 2);
         return zo.al === 1 ? s.reverse() : s;
       };
-      const gap = 0.025 * H;
-      // Requisiten (nach idx) in die Stücke verteilen; force: notfalls in das Stück mit dem meisten Platz, überlappend
-      const pack = (z, items, lv, force) => {
-        const ss = segs(z, lv).map(([a, b]) => ({ a, b, items: [], used: -gap }));
+      // Requisiten (nach idx) in die Stücke verteilen und setzen. Passt alles: mit Abstand nach der Ausrichtung des
+      // Platzes. force: sonst ins Stück mit dem meisten Platz, dort gleichmäßig überlappend, jedes zweite etwas
+      // tiefer (näher am Betrachter) und davor.
+      const pack = (z, items, lv, cross, force) => {
+        const zo = zones[z];
+        const ss = segs(z, lv, cross).map(([a, b]) => ({ a, b, items: [], used: -gap }));
         if (!ss.length) return null;
         for (const it of items) {
           let q = ss.find((o) => o.used + gap + it.w <= o.b - o.a);
@@ -7905,19 +7914,33 @@
           q.items.push(it);
           q.used += gap + it.w;
         }
-        return ss;
+        const pos = [];
+        const lim = zo.fr ? right : W - 2;
+        for (const q of ss) {
+          const n = q.items.length;
+          if (!n) continue;
+          const len = q.b - q.a;
+          const over = q.used > len + 0.5;
+          const sum = q.items.reduce((t, it) => t + it.w, 0);
+          const g = over && n > 1 ? (len - sum) / (n - 1) : gap;
+          let x = q.a + (over ? (n > 1 ? 0 : (len - sum) * zo.al) : (len - q.used) * zo.al);
+          q.items.forEach((it, i) => {
+            pos.push({ a: it.a, w: it.w, l: clamp(x, 2, Math.max(2, lim - it.w)), dy: over && i % 2 ? 0.02 * H : 0 });
+            x += it.w + g;
+          });
+        }
+        return pos;
       };
-      const st = zones.map(() => ({ items: [], lv: 0 }));
-      const tryAt = (a, z, s, lv, force) => {
+      const entry = (a, z, s) => ({ a, w: a.spec.vb[2] * BOTE_K * H * s * (zones[z].fr ? BOTE_FRONT : 1) });
+      const tryAt = (a, z, s, lv) => {
         const zo = zones[z];
         if (zo.fr && a.spec.back) return false;
         // die hohe Wäscheleine darf statt der Laterne gleich auch die Futterwiese nehmen (sonst winzig)
         const L = Math.max(a.spec.back && lv === 1 ? 2 : lv, st[z].lv);
-        const items = [...st[z].items, { a, w: a.spec.vb[2] * BOTE_K * H * s * (zo.fr ? BOTE_FRONT : 1) }];
-        items.sort((x, y) => x.a.idx - y.a.idx);
-        if (!pack(z, items, L, force)) return false;
-        st[z].items = items;
-        st[z].lv = L;
+        const items = [...st[z].items, entry(a, z, s)].sort((x, y) => x.a.idx - y.a.idx);
+        const pos = pack(z, items, L, true, false);
+        if (!pos) return false;
+        Object.assign(st[z], { items, lv: L, pos });
         return true;
       };
       const all = zones.map((_, i) => i);
@@ -7932,36 +7955,32 @@
           || steps.some(([lv, sc]) => (pz != null && sc.some((s) => tryAt(a, pz, s, lv)))
           || sc.some((s) => all.some((z) => tryAt(a, z, s, lv))));
         if (ok) continue;
-        // letzte Stufe: in den Platz mit dem meisten freien Raum, dort überlappend; gibt es keinen, ohne Sperrbereiche
-        const room = (z) => {
-          if (zones[z].fr && a.spec.back) return -Infinity;
-          const ss = segs(z, Math.max(2, st[z].lv));
-          return ss.length ? ss.reduce((t, [l, r]) => t + r - l, 0) - st[z].items.reduce((t, it) => t + it.w + gap, 0) : -Infinity;
-        };
-        const z = all.reduce((p, i) => (room(i) > room(p) ? i : p), pz ?? 0);
-        if (!(room(z) > -Infinity && tryAt(a, z, 0.55, 2, true))) tryAt(a, 3, 0.55, 9, true);
-      }
-      // Reihen setzen: passt alles, mit Abstand nach der Ausrichtung des Platzes; sonst gleichmäßig überlappend,
-      // jedes zweite Requisit etwas tiefer (näher am Betrachter) und davor
-      const out = [];
-      st.forEach((zs, z) => {
-        if (!zs.items.length) return;
-        const zo = zones[z];
-        const lim = zo.fr ? right : W - 2;
-        for (const q of pack(z, zs.items, zs.lv, true) || []) {
-          const n = q.items.length;
-          if (!n) continue;
-          const len = q.b - q.a;
-          const over = q.used > len + 0.5;
-          const sum = q.items.reduce((t, it) => t + it.w, 0);
-          const g = over && n > 1 ? (len - sum) / (n - 1) : gap;
-          let x = q.a + (over ? (n > 1 ? 0 : (len - sum) * zo.al) : (len - q.used) * zo.al);
-          q.items.forEach((it, i) => {
-            out.push({ a: it.a, z, fr: !!zo.fr, w: it.w, l: clamp(x, 2, Math.max(2, lim - it.w)), dy: over && i % 2 ? 0.02 * H : 0 });
-            x += it.w + g;
-          });
+        // letzte Stufe: dorthin, wo es am wenigsten überdeckt (im eigenen Platz und vor/hinter der anderen Ebene);
+        // gibt es nirgends ein freies Stück, ohne Sperrbereiche auf die Wiese
+        let best = null;
+        for (const z of pz == null ? all : [pz, ...all.filter((i) => i !== pz)]) {
+          if (zones[z].fr && a.spec.back) continue;
+          const L = Math.max(2, st[z].lv);
+          const items = [...st[z].items, entry(a, z, 0.55)].sort((x, y) => x.a.idx - y.a.idx);
+          for (const cross of [true, false]) {
+            const pos = pack(z, items, L, cross, true);
+            if (!pos) continue;
+            const oth = other(z);
+            let cost = 0;
+            pos.forEach((p, i) => {
+              for (const q of pos.slice(i + 1)) cost += ov(p.l, p.l + p.w, q.l, q.l + q.w);
+              for (const [l, r] of oth) cost += ov(p.l, p.l + p.w, l, r);
+            });
+            if (!best || cost < best.cost - 0.5) best = { z, items, L, pos, cost };
+          }
         }
-      });
+        if (!best) {
+          const items = [...st[3].items, entry(a, 3, 0.55)].sort((x, y) => x.a.idx - y.a.idx);
+          best = { z: 3, items, L: 9, pos: pack(3, items, 9, false, true) };
+        }
+        Object.assign(st[best.z], { items: best.items, lv: best.L, pos: best.pos });
+      }
+      const out = st.flatMap((zs, z) => zs.pos.map((p) => ({ ...p, z, fr: !!zones[z].fr })));
       const sig = `${W}x${H}|${out.map((p) => `${p.a.idx}${p.a.view}:${p.z}:${p.l.toFixed(1)}:${p.w.toFixed(1)}:${p.dy.toFixed(1)}`).join('|')}`;
       if (sig === B.sig) return;
       B.sig = sig;
