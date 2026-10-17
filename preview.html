@@ -85,6 +85,14 @@
 
 <!-- ==================== Vorschau-Knöpfe Freund-Pika (Pino kommt zu Besuch) ==================== -->
 <div class="bar" id="bar-friend"><b>Freund-Pika</b>
+  <button id="fr-come">Pino kommt</button>
+  <button id="fr-go">Pino geht</button>
+  <button data-fr="greetFriend">Pika: begrüßen</button>
+  <button data-fr="chaseFriend">Pika: Fangen</button>
+  <button data-fr="sitWithFriend">Pika: zusammen sitzen</button>
+  <button data-fr="rockWithFriend">Pika: auf den Stein</button>
+  <button data-fr="nibbleWithFriend">Pika: zusammen knabbern</button>
+  <button data-fr="squeakDuet">Pika: Piep-Duett</button>
 </div>
 <!-- ==================== Ende Freund-Pika ==================== -->
 
@@ -276,6 +284,14 @@
   // ==================== Ende Vorschau Festtage ====================
 
   // ==================== Vorschau Freund-Pika ====================
+  // Pino kommt sofort (auch bei Regen oder nachts) bzw. geht mit Abschied; Spiele nur, solange er da ist
+  document.getElementById('fr-come').addEventListener('click', () => cards.forEach((c) => c._friendCome(undefined, undefined, true)));
+  document.getElementById('fr-go').addEventListener('click', () => cards.forEach((c) => c._friendLeave(true)));
+  document.querySelectorAll('[data-fr]').forEach((b) =>
+    b.addEventListener('click', () => cards.forEach((c) => {
+      if (c._fr?.arrived && !c._fr.leaving) { c._next = b.dataset.fr; c._interrupt(); }
+    }))
+  );
   // ==================== Ende Vorschau Freund-Pika ====================
 
   // ==================== Vorschau Haus-Bote ====================
