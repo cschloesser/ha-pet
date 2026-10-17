@@ -57,7 +57,39 @@ Höchstens alle 12–20 Minuten (die erste nach 2–6 Minuten) sucht er sich ein
 
 ## Haus-Bote
 
-_(wird ergänzt)_
+Der Pika zeigt, was Waschmaschine, Trockner und Spülmaschine (Home Connect) gerade machen. Jedes Gerät bekommt ein kleines Requisit am Bau:
+
+| Gerät | Läuft | Fertig, noch zu | Ausgeräumt |
+|---|---|---|---|
+| Waschmaschine | Holzzuber mit Seifenschaum, Blasen steigen auf | Korb mit nasser Wäsche daneben, es tropft | Wäscheleine mit vier bunten Stücken, die im Wind wehen |
+| Trockner | Holztrommel auf einem Gestell dreht sich, im Bullauge purzeln Socken, warme Luft steigt auf | Stapel flauschiger Handtücher, der dampft | Trommel mit offener Luke |
+| Spülmaschine | Tisch mit Spülschüssel, ein Teller taucht ein | Stapel glänzender Teller, der funkelt | leere Schüssel, Geschirrtuch über der Tischkante |
+
+- **Läuft**: Unter dem Requisit zeigt ein schmaler Balken den Fortschritt (ohne Prozentwert läuft er hin und her). Ab und zu beschäftigt sich der Pika damit: Er rührt im Zuber und bekommt eine Seifenblase auf die Nase, legt sich vor die Trommel und schaut ihr zu (die Augen drehen mit), oder er tunkt einen Teller in die Schüssel. Bei Pause und Startvorwahl steht alles still, bei Störung oder „Hilfe nötig“ blinkt ein rotes Ausrufezeichen.
+- **Fertig**: Das Requisit hüpft alle paar Sekunden kurz. Der Pika hoppelt alle 3–6 Minuten hin, tätschelt oder stupst es, dreht den Kopf zu dir und sagt Bescheid („Wäsche!“, „flauschig!“, „Geschirr!“, „fertig!“).
+- **Ausgeräumt**: Sobald das Gerät nicht mehr auf „fertig“ steht oder die Tür aufgeht, ist es ausgeräumt. Siehst du gerade zu, räumt der Pika sichtbar mit auf: Er hängt die Wäsche Stück für Stück an die Leine, trägt ein Handtuch in seinen Bau oder poliert einen Teller und bringt ihn hinein. Danach freut er sich. Alle anderen Geräte zeigen das Ausgeräumt-Requisit, solange das Gerät seit weniger als 20 Minuten auf `ready` oder `inactive` steht (aus `last_changed`). Danach verschwindet alles bis zum nächsten Lauf.
+- **Antippen** eines Requisits blendet ein Fähnchen ein (nach 9 s geht es wieder zu): Gerätename und Stand, z. B. „62 % · fertig um 14:35“, „fertig seit 35 Min“ oder „ausgeräumt“.
+- Mehrere Geräte stehen nebeneinander zwischen Eingang und Heuhaufen, auf der Wiese vor dem Stein und links neben dem Eingang. Wird es eng, werden alle etwas kleiner.
+
+```yaml
+appliances:
+  - type: washer                 # washer | dryer | dishwasher
+    name: Waschmaschine          # optional, Standard je Typ: Waschmaschine / Trockner / Spülmaschine
+    state: sensor.waschmaschine_betriebszustand
+    progress: sensor.waschmaschine_programm_fortschritt   # optional, Fortschritt in %
+    end: sensor.waschmaschine_programm_endzeit             # optional, Endzeit (Zeitstempel)
+  - type: dryer
+    state: sensor.trockner_betriebszustand
+    progress: sensor.trockner_programm_fortschritt
+    end: sensor.trockner_programm_endzeit
+  - type: dishwasher
+    state: sensor.geschirrspuler_betriebszustand
+    progress: sensor.geschirrspuler_programm_fortschritt
+    end: sensor.geschirrspuler_programm_endzeit
+    door: sensor.geschirrspuler_tur                        # optional, open/closed/locked oder on/off
+```
+
+Betriebszustände: `run`, `pause`, `delayedstart`, `actionrequired`, `error`, `aborting` zählen als „läuft“, `finished` als „fertig“, `ready` und `inactive` als „aus“. Schaltet sich ein Gerät nach dem Ausräumen ab (`ready` → `inactive`), verlängert das die 20 Minuten nicht. Ohne `appliances` passiert nichts.
 
 ## Flugzeuge
 
@@ -129,6 +161,7 @@ show_stats: true                 # Satt-/Glück-/Sauber-Balken
 friend: true                     # Freund-Pika kommt zu Besuch (false = nie)
 friend_name: Pino                # Name des Freund-Pikas
 height: 180                      # Mindesthöhe in px (im Abschnitts-Layout zählt die Zeilenhöhe)
+appliances:                      # Waschmaschine, Trockner, Spülmaschine, siehe Haus-Bote
 ```
 
 Für `sleep_start` und `sleep_end` gehen feste Uhrzeiten (`"21:00"`) oder `sunset`/`sunrise` aus `sun.sun`, auch mit Versatz: `"sunset+01:00"` (eine Stunde nach Sonnenuntergang), `"sunrise-30"` (30 Minuten vor Sonnenaufgang). Ohne `sun.sun` gilt 21:00 bis 07:00.

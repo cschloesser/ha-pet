@@ -892,7 +892,376 @@
   // ---------- Stil ----------
 
   // ==================== Haus-Bote: Konstanten, Grafiken und Stil ====================
-  const STYLE_BOTE = ``;
+  // Waschmaschine, Trockner und Spülmaschine (Home Connect) stehen als kleine Requisiten am Bau. Phasen je
+  // Gerät: run (läuft), done (fertig, noch nicht geöffnet), empty (ausgeräumt, 20 Minuten lang).
+  // Grafiken in Einheiten von BOTE_K × Kartenhöhe; vb = viewBox, ground = Bodenlinie, vt = sichtbare
+  // Oberkante (für das Fähnchen), part = Hauptteil in x (Fortschrittsbalken, Hingehen).
+  const BOTE_K = 0.004;
+  const BOTE_EMPTY_MS = 20 * 60000;
+  const BOTE_RUN = new Set(['run', 'pause', 'delayedstart', 'actionrequired', 'error', 'aborting']);
+  const BOTE_HALT = new Set(['pause', 'delayedstart', 'actionrequired', 'error', 'aborting']);
+  const BOTE_IDLE = new Set(['ready', 'inactive', 'off', 'standby']);
+  const BOTE_TYPE = {
+    washer: 'washer', washingmachine: 'washer', waschmaschine: 'washer',
+    dryer: 'dryer', tumbledryer: 'dryer', trockner: 'dryer',
+    dishwasher: 'dishwasher', dish: 'dishwasher', geschirrspueler: 'dishwasher', geschirrspuler: 'dishwasher',
+    'geschirrspüler': 'dishwasher', spuelmaschine: 'dishwasher', 'spülmaschine': 'dishwasher',
+  };
+  const BOTE_NAME = { washer: 'Waschmaschine', dryer: 'Trockner', dishwasher: 'Spülmaschine' };
+  const BOTE_COLOR = { washer: '#5fb9de', dryer: '#f0a04b', dishwasher: '#7cc35a' };
+  const BOTE_ACT = { washer: 'boteStir', dryer: 'boteWatchDrum', dishwasher: 'boteDip' };
+  const BOTE_SAY = { washer: ['Wäsche!', 'fertig!', 'Wäsche!'], dryer: ['fertig!', 'Trockner!'], dishwasher: ['Geschirr!', 'fertig!', 'Geschirr!'] };
+
+  const BOTE_BUBS = (pts) => `<g class="hb-bubs">${pts.map(([x, y, r], i) =>
+    `<circle cx="${x}" cy="${y}" r="${r}" style="animation-delay:${(-i * 0.65).toFixed(2)}s"/>`).join('')}</g>`;
+  const BOTE_DROP = (x, y, d) => `<g transform="translate(${x} ${y})"><path class="hb-drip" style="animation-delay:${d}s" d="M0 0 q1.3 2 0 3 q-1.3 -1 0 -3z"/></g>`;
+
+  // Holzzuber mit Seifenschaum (x 4..42, Boden y 42); im Betrieb steigen Blasen auf
+  const BOTE_TUB = (run) => `
+    <path d="M4 18 H42 L38.6 41 Q23 43.4 7.4 41Z" fill="#ad8664" stroke="${OUT}" stroke-width="1.4" stroke-linejoin="round"/>
+    <path d="M13.5 19 L14.6 42 M23 19 V42.6 M32.5 19 L31.4 42" stroke="#8a664b" stroke-width=".9"/>
+    <path d="M4.8 24.6 Q23 27.6 41.2 24.6 M6.3 35 Q23 38 39.7 35" stroke="#76838f" stroke-width="2.1" fill="none" stroke-linecap="round"/>
+    <path d="M5 24 Q23 27 41 24 M6.5 34.4 Q23 37.4 39.5 34.4" stroke="#b5c0c9" stroke-width=".6" fill="none"/>
+    <ellipse cx="23" cy="18" rx="19.5" ry="4.6" fill="#c9a27e" stroke="${OUT}" stroke-width="1.3"/>
+    <ellipse cx="23" cy="18.4" rx="16.2" ry="3.1" fill="#8fc8e2"/>
+    <g class="hb-paddle"><path d="M30 16 L38 1.6" stroke="${OUT}" stroke-width="3.6" stroke-linecap="round"/>
+      <path d="M30 16 L38 1.6" stroke="#c9a27e" stroke-width="2" stroke-linecap="round"/></g>
+    <g class="hb-foam" fill="#fff" stroke="#c9dde8" stroke-width=".5">
+      <circle cx="12.5" cy="16.8" r="3.6"/><circle cx="18.5" cy="15.2" r="4.4"/><circle cx="26.2" cy="15.4" r="4.1"/>
+      <circle cx="33" cy="16.8" r="3.4"/><circle cx="22.4" cy="17.8" r="3.2"/>
+    </g>
+    <g fill="#e3f3fb"><circle cx="17.2" cy="13.6" r="1.1"/><circle cx="25.4" cy="13.8" r="1"/><circle cx="32" cy="15.6" r=".7"/></g>
+    ${run ? BOTE_BUBS([[15, 11, 1.8], [24, 10, 2.3], [30.5, 12, 1.5], [20, 11.5, 1.3]]) : ''}`;
+
+  // Wäschekorb, Rand oben links bei (0, 0), 32 breit, Boden bei y 14.6. .hb-lau = nasse Wäsche (tropft)
+  const BOTE_BASKET = `
+    <g class="hb-lau">
+      <path d="M3 2 Q3 -5 9 -4 Q12 -9 18 -6 Q23 -9 26 -4 Q31 -4 30 2Z" fill="#7cb4e0" stroke="${OUT}" stroke-width="1"/>
+      <path d="M13 -.6 Q15 -6.5 20 -4.6 Q23.5 -5.4 24.4 0Z" fill="#f2a7b8" stroke="${OUT}" stroke-width=".8"/>
+      <circle cx="7.6" cy="-.4" r="3.4" fill="#f6c945" stroke="${OUT}" stroke-width=".8"/>
+    </g>
+    <path d="M1 1.4 H31 L28.4 13.6 Q16 15.4 3.6 13.6Z" fill="#d9b07c" stroke="${OUT}" stroke-width="1.3" stroke-linejoin="round"/>
+    <path d="M2.2 5.8 Q16 7.4 29.8 5.8 M3 9.8 Q16 11.4 29 9.8" stroke="#b08550" stroke-width=".8" fill="none"/>
+    <path d="M7 2.6 L7.7 14.2 M12 2.6 L12.3 14.8 M17 2.6 V15 M22 2.6 L21.7 14.8 M27 2.6 L26.3 14.2" stroke="#b08550" stroke-width=".7"/>
+    <rect x="0" y="0" width="32" height="3.2" rx="1.6" fill="#c99a5f" stroke="${OUT}" stroke-width="1"/>
+    <g class="hb-lau">
+      <path d="M27 2 Q30.8 2.6 30.4 9 L28 9.2 Q28.2 5 25.6 3.6Z" fill="#7cb4e0" stroke="${OUT}" stroke-width=".8"/>
+      ${BOTE_DROP(29.2, 9.2, 0)}${BOTE_DROP(3, 4, -0.8)}
+    </g>`;
+
+  // Wäscheleine: [x, Höhe der Leine, Form, Klammern]. Ursprung jedes Stücks = Punkt auf der Leine.
+  const BOTE_LINE = [
+    [19, 13.07, '<path d="M-7 0 L-2.6 0 Q0 2.4 2.6 0 L7 0 L11 4.6 L8 7.6 L6 6 V17 H-6 V6 L-8 7.6 L-11 4.6Z" fill="#6fa8dc"/><circle cx="2.6" cy="9.4" r="1.5" fill="#fff" stroke="none" opacity=".7"/>', [-4.6, 4.6]],
+    [35, 14.82, '<path d="M-2.6 0 H3.6 V10 Q3.6 12.6 6.6 13.4 Q9.6 14.2 9 16.6 Q8.4 18.6 4.4 18 Q-2.6 17 -2.6 11Z" fill="#e8584e"/><path d="M-2.6 3.4 H3.6 M-2.6 6.4 H3.6" stroke="#fff" stroke-width="1.2"/>', [0.5]],
+    [51, 14.7, '<path d="M-7 0 H7 L8.4 15 H2.2 L0 7 L-2.2 15 H-8.4Z" fill="#f6c945"/><path d="M-6.8 2.2 H6.8" stroke="#e0a032" stroke-width="1"/>', [-4.6, 4.6]],
+    [67, 12.72, '<rect x="-6" y="0" width="12" height="18" rx="1.2" fill="#f2a7b8"/><path d="M-6 13 H6 M-6 15.2 H6" stroke="#fff" stroke-width=".9"/>', [-3.6, 3.6]],
+  ];
+  const BOTE_CLOTHESLINE = `
+    <path d="M6 111 V8 M78 111 V8" stroke="${OUT}" stroke-width="4.2" stroke-linecap="round"/>
+    <path d="M6 111 V8 M78 111 V8" stroke="#ad8664" stroke-width="2.6" stroke-linecap="round"/>
+    <path d="M2.6 8.6 H9.4 M74.6 8.6 H81.4" stroke="${OUT}" stroke-width="2.8" stroke-linecap="round"/>
+    <path d="M2.6 8.6 H9.4 M74.6 8.6 H81.4" stroke="#c9a27e" stroke-width="1.3" stroke-linecap="round"/>
+    <path d="M5 10 Q42 20 79 10" stroke="${OUT}" stroke-width="1.4" fill="none" opacity=".5"/>
+    <path d="M5 10 Q42 20 79 10" stroke="#f6f1ea" stroke-width=".7" fill="none"/>
+    ${BOTE_LINE.map(([x, y, shape, pins], i) => `<g transform="translate(${x} ${y})"><g class="hb-cl hb-c${i}">
+      <g class="hb-cs" style="animation-delay:${(-i * 0.7).toFixed(1)}s;animation-duration:calc(var(--hbs, 2.4s) * ${[1, 0.8, 1.15, 0.9][i]})">
+        <g stroke="${OUT}" stroke-width=".9" stroke-linejoin="round">${shape}</g></g>
+      ${pins.map((p) => `<rect x="${p - 1}" y="-2.4" width="2" height="4.6" rx=".7" fill="#c9a27e" stroke="${OUT}" stroke-width=".5"/>`).join('')}
+    </g></g>`).join('')}
+    <g transform="translate(42 95.6)">${BOTE_BASKET}</g>`;
+
+  // Trommel des Trockners: Dauben, Nieten und ein Herzchen-Aufkleber drehen sich um (23, 24)
+  const BOTE_DRUM_ROT = (() => {
+    let s = '<circle cx="23" cy="24" r="16.4" fill="none"/>';
+    for (let i = 0; i < 8; i++) {
+      const r = (i * Math.PI) / 4;
+      const c = Math.cos(r);
+      const n = Math.sin(r);
+      s += `<path d="M${(23 + c * 11).toFixed(2)} ${(24 + n * 11).toFixed(2)} L${(23 + c * 16.2).toFixed(2)} ${(24 + n * 16.2).toFixed(2)}" stroke="#8a664b" stroke-width="1"/>`;
+    }
+    for (let i = 0; i < 4; i++) {
+      const r = ((i * 90 + 22.5) * Math.PI) / 180;
+      s += `<circle cx="${(23 + Math.cos(r) * 13.6).toFixed(2)}" cy="${(24 + Math.sin(r) * 13.6).toFixed(2)}" r=".9" fill="#76838f"/>`;
+    }
+    const h = (-62 * Math.PI) / 180;
+    return s + `<path transform="translate(${(23 + Math.cos(h) * 13.6).toFixed(2)} ${(24 + Math.sin(h) * 13.6).toFixed(2)})" `
+      + 'd="M0 1.7 L-1.7 0 Q-2.5 -1 -1.5 -1.8 Q-.6 -2.2 0 -1.2 Q.6 -2.2 1.5 -1.8 Q2.5 -1 1.7 0Z" fill="#f07a95"/>';
+  })();
+  const BOTE_SOCK = (fill) => `<path d="M-2 -4 H1.6 V.4 Q1.6 1.6 3 2 L4 2.3 Q5.2 2.9 4.4 4.2 L1 4 Q-2 3.4 -2 .8Z" fill="${fill}" stroke="${OUT}" stroke-width=".5"/>`;
+  const BOTE_WAVES = (cls, xs, y, d) => `<g class="${cls}" fill="none" stroke-linecap="round">${xs.map((x, i) =>
+    `<path d="M${x} ${y + (i % 2) * 1.5} q1.6 -1.8 0 -3.6 q-1.6 -1.8 0 -3.6" style="animation-delay:${(-i * d).toFixed(2)}s"/>`).join('')}</g>`;
+
+  // Teller zum Tragen (Vorderansicht) und gefaltetes Handtuch im Maul
+  const BOTE_PLATE_SVG = `<svg viewBox="-7 -7 14 14" aria-hidden="true"><circle r="6.3" fill="#fff" stroke="${OUT}" stroke-width="1"/>
+    <circle r="4" fill="none" stroke="#7cb4e0" stroke-width=".9"/><path d="M-3.8 -2.4 Q-2.4 -4.2 0 -4.6" stroke="#dbeaf3" stroke-width="1" fill="none" stroke-linecap="round"/></svg>`;
+  const BOTE_TOWEL_SVG = `<svg viewBox="-9 -4 18 16" aria-hidden="true"><path d="M-6.4 -2 H6.4 Q7.6 -2 7.6 -.8 V9.4 H-7.6 V-.8 Q-7.6 -2 -6.4 -2Z"
+    fill="#fff3c4" stroke="${OUT}" stroke-width=".9" stroke-linejoin="round"/><path d="M-7.6 1.4 H7.6" stroke="#e6c97a" stroke-width=".7" stroke-dasharray="1.2 1.2"/>
+    <path d="M-7.6 6 H7.6 M-7.6 7.6 H7.6" stroke="#f2a7b8" stroke-width=".9"/><path d="M-6 9.4 v1.2 M-3 9.4 v1.2 M0 9.4 v1.2 M3 9.4 v1.2 M6 9.4 v1.2" stroke="#e6c97a" stroke-width=".8"/></svg>`;
+
+  // Spülschüssel auf dem Tisch (x 9.5..40.5, Rand y 19); voll mit Wasser, Schaum und eintauchendem Teller
+  const BOTE_BASIN = (full) => `
+    <ellipse cx="25" cy="19" rx="15.5" ry="3.4" fill="#e9f3fb" stroke="${OUT}" stroke-width="1"/>
+    <ellipse cx="25" cy="19.4" rx="13.2" ry="2.3" fill="${full ? '#8fc8e2' : '#c4dce8'}"/>
+    ${full ? `<g class="hb-dip"><circle cx="21" cy="13.6" r="6.2" fill="#fff" stroke="${OUT}" stroke-width="1"/>
+      <circle cx="21" cy="13.6" r="4" fill="none" stroke="#7cb4e0" stroke-width=".9"/></g>
+      <path d="M11.8 19.4 A13.2 2.3 0 0 0 38.2 19.4Z" fill="#8fc8e2" opacity=".85"/>` : ''}
+    <path d="M9.5 19 Q10.4 31 25 31 Q39.6 31 40.5 19 Q25 23.6 9.5 19Z" fill="#6fa8dc" stroke="${OUT}" stroke-width="1.2" stroke-linejoin="round"/>
+    <path d="M9.7 19.3 Q25 23.8 40.3 19.3" stroke="#e9f3fb" stroke-width="1.3" fill="none"/>
+    <g fill="#fff" opacity=".75"><circle cx="16" cy="25.6" r="1"/><circle cx="25" cy="27.4" r="1"/><circle cx="34" cy="25.6" r="1"/></g>
+    ${full ? `<g class="hb-foam" fill="#fff" stroke="#c9dde8" stroke-width=".5"><circle cx="16.4" cy="19.2" r="2.2"/>
+      <circle cx="27.4" cy="19.6" r="2.6"/><circle cx="33" cy="19" r="2"/></g>
+      ${BOTE_BUBS([[18, 15, 1.5], [28, 14.5, 1.9], [33, 16, 1.2]])}` : ''}`;
+  const BOTE_TWINKLE = (pts) => pts.map(([x, y], i) =>
+    `<g transform="translate(${x} ${y}) scale(.34) translate(-12 -12)"><path class="hb-tw" style="animation-delay:${(-i * 0.6).toFixed(1)}s" d="${STAR}"/></g>`).join('');
+
+  const BOTE_SVG = {
+    washer(view) {
+      if (view === 'empty') return { vb: [0, 0, 84, 112], ground: 110, vt: 8, part: [6, 78], svg: BOTE_CLOTHESLINE };
+      const done = view === 'done';
+      return {
+        vb: [0, 0, done ? 64 : 46, 44], ground: 42, vt: 2, part: done ? [4, 63] : [4, 42],
+        svg: BOTE_TUB(view === 'run') + (done ? `<g transform="translate(31 27.6)">${BOTE_BASKET}</g>` : ''),
+      };
+    },
+    dryer(view, id) {
+      const done = view === 'done';
+      const stand = `
+        <path d="M9 49 L17 30 M37 49 L29 30" stroke="${OUT}" stroke-width="4.2" stroke-linecap="round"/>
+        <path d="M9 49 L17 30 M37 49 L29 30" stroke="#8a664b" stroke-width="2.6" stroke-linecap="round"/>
+        <path d="M11.5 42 H34.5" stroke="${OUT}" stroke-width="3.4" stroke-linecap="round"/>
+        <path d="M11.5 42 H34.5" stroke="#8a664b" stroke-width="1.8" stroke-linecap="round"/>`;
+      const glass = view === 'empty'
+        ? `<circle cx="23" cy="24" r="7" fill="#3b302a"/>
+          <ellipse cx="35.2" cy="24" rx="3.4" ry="8.6" fill="#8d99a5" stroke="${OUT}" stroke-width="1"/>
+          <ellipse cx="35.5" cy="24" rx="2.1" ry="6.8" fill="#d6ecf6"/>`
+        : `<circle cx="23" cy="24" r="7" fill="#d6ecf6"/>
+          <clipPath id="hb-dc${id}"><circle cx="23" cy="24" r="7"/></clipPath>
+          <g clip-path="url(#hb-dc${id})"><g class="hb-sock"><circle cx="23" cy="24" r="7" fill="none"/>
+            <g transform="translate(20.4 26) rotate(-24)">${BOTE_SOCK('#e8584e')}</g>
+            <g transform="translate(25.8 21.6) rotate(150)">${BOTE_SOCK('#6fa8dc')}</g></g></g>
+          <path d="M18.6 20.4 A6 6 0 0 1 24.4 18.2" stroke="#fff" stroke-width="1.3" fill="none" stroke-linecap="round" opacity=".85"/>`;
+      const towels = done ? `<g class="hb-towels">
+          <g class="hb-t1"><rect x="34" y="40.8" width="27" height="7.6" rx="3.7" fill="#f2a7b8" stroke="${OUT}" stroke-width="1"/>
+            <path d="M37 44.6 H58" stroke="#fff" stroke-opacity=".75" stroke-width=".8" stroke-dasharray="1.4 1.6"/></g>
+          <g class="hb-t2"><rect x="35.4" y="33.6" width="25" height="7.6" rx="3.7" fill="#a7d3f2" stroke="${OUT}" stroke-width="1"/>
+            <path d="M38.4 37.4 H57.4" stroke="#fff" stroke-opacity=".75" stroke-width=".8" stroke-dasharray="1.4 1.6"/></g>
+          <g class="hb-t3"><rect x="36.6" y="26.4" width="23" height="7.6" rx="3.7" fill="#fff3c4" stroke="${OUT}" stroke-width="1"/>
+            <path d="M39.6 30.2 H56.6" stroke="#e6c97a" stroke-width=".8" stroke-dasharray="1.4 1.6"/></g>
+        </g>${BOTE_WAVES('hb-steam', [42, 48, 54], 24, 0.9)}` : '';
+      return {
+        vb: [0, -12, done ? 64 : 46, 62], ground: 48, vt: 7, part: done ? [6, 62] : [6, 40],
+        svg: `${stand}<circle cx="23" cy="24" r="17" fill="#ad8664" stroke="${OUT}" stroke-width="1.6"/>
+          <g class="hb-rot">${BOTE_DRUM_ROT}</g>
+          <circle cx="23" cy="24" r="10.6" fill="#8a664b" stroke="${OUT}" stroke-width="1"/>
+          <circle cx="23" cy="24" r="8.6" fill="#8d99a5" stroke="${OUT}" stroke-width="1"/>
+          ${glass}${view === 'run' ? BOTE_WAVES('hb-heat', [14, 23, 32], 5, 0.7) : ''}${towels}`,
+      };
+    },
+    dishwasher(view) {
+      const table = `
+        <path d="M8 50.5 V35 M44 50.5 V35" stroke="${OUT}" stroke-width="4.2" stroke-linecap="round"/>
+        <path d="M8 50.5 V35 M44 50.5 V35" stroke="#8a664b" stroke-width="2.6" stroke-linecap="round"/>
+        <path d="M8 44 H44" stroke="${OUT}" stroke-width="3" stroke-linecap="round"/><path d="M8 44 H44" stroke="#8a664b" stroke-width="1.5"/>
+        <rect x="2" y="31" width="48" height="5" rx="2" fill="#ad8664" stroke="${OUT}" stroke-width="1.3"/>
+        <path d="M5 32.6 H47" stroke="#c9a27e" stroke-width="1" stroke-linecap="round"/>
+        <rect x="42.4" y="27.6" width="7" height="3.6" rx="1" fill="#f6c945" stroke="${OUT}" stroke-width=".7"/>
+        <path d="M42.8 28.4 H49" stroke="#6bab4c" stroke-width="1.2"/>`;
+      let top;
+      if (view === 'done') {
+        top = `<g class="hb-plates">${[0, 1, 2, 3, 4].map((i) => {
+          const y = 29.4 - i * 2.5;
+          return `<g class="hb-p${i}"><ellipse cx="25" cy="${y}" rx="11" ry="2.8" fill="#fff" stroke="${OUT}" stroke-width=".9"/>`
+            + `<path d="M15.6 ${(y + 0.8).toFixed(1)} Q25 ${(y + 3.6).toFixed(1)} 34.4 ${(y + 0.8).toFixed(1)}" stroke="#cfe0ea" stroke-width=".8" fill="none"/>`
+            + (i === 4 ? '<ellipse cx="25" cy="19.4" rx="6.6" ry="1.5" fill="none" stroke="#7cb4e0" stroke-width=".8"/>'
+              + '<path d="M17.6 18.6 Q20.6 17.5 23.6 17.4" stroke="#fff" stroke-width="1" fill="none" stroke-linecap="round"/>' : '')
+            + '</g>';
+        }).join('')}</g>${BOTE_TWINKLE([[10, 14], [39, 16], [30, 8]])}`;
+      } else if (view === 'empty') {
+        top = `${BOTE_BASIN(false)}
+          <path d="M5 33 H17 V43 L14.6 41.6 L12.2 43 L9.8 41.6 L7.4 43 L5 41.6Z" fill="#fff" stroke="${OUT}" stroke-width=".8" stroke-linejoin="round"/>
+          <path d="M5 36 H17 M5 39 H17 M8 33 V42 M11 33 V42.4 M14 33 V42" stroke="#e8584e" stroke-width=".8" opacity=".75"/>`;
+      } else top = BOTE_BASIN(true);
+      return { vb: [0, -6, 52, 56], ground: 50, vt: view === 'done' ? 12 : 8, part: [2, 50], svg: table + top };
+    },
+  };
+
+  const STYLE_BOTE = `
+  .props { position: absolute; inset: 0; pointer-events: none; }
+  /* Requisit: left/top/width setzt das Skript, Boden der Grafik knapp unter der Bodenlinie (im Gras) */
+  .hb { position: absolute; left: 0; top: 0; pointer-events: auto; cursor: pointer; transition: filter 2.5s, opacity .5s; }
+  .hb.hb-placed { transition: left .5s ease, top .5s ease, width .5s ease, filter 2.5s, opacity .5s; }
+  .hb::after { content: ''; position: absolute; inset: -8px -4px 0; }
+  .hb.hb-front { z-index: 4; }
+  .hb.hb-bye { opacity: 0; pointer-events: none; }
+  .hb-i { transform-origin: 50% 100%; }
+  .hb svg { display: block; width: 100%; height: auto; overflow: visible; }
+  .day.overcast .hb, .day.overcast .hb-carry, .day.overcast .hb-stick, .day.overcast .hb-dipw { filter: brightness(.9) saturate(.8); }
+  .dusk .hb, .dusk .hb-carry, .dusk .hb-stick, .dusk .hb-dipw { filter: brightness(.85) saturate(.85); }
+  .night .hb, .night .hb-carry, .night .hb-stick, .night .hb-dipw { filter: brightness(.5) saturate(.6); }
+  /* Fertig: hüpft alle paar Sekunden kurz (Aufmerksamkeit), Antippen durch den Pika wackelt */
+  .hb.hb-done:not(.hb-live) .hb-i { animation: hb-nudge 4s ease-in-out infinite; }
+  .hb.hb-in .hb-i { animation: hb-pin .55s cubic-bezier(.3, 1.6, .5, 1) both; }
+  .hb.hb-boop .hb-i { animation: hb-boop .45s ease-out; }
+  @keyframes hb-pin { from { transform: scale(.4); opacity: 0; } }
+  @keyframes hb-nudge {
+    0%, 78%, 100% { transform: none; }
+    84% { transform: scale(1.05, .94); }
+    90% { transform: translateY(-5%) scale(.97, 1.04); }
+    95% { transform: scale(1.02, .98); }
+  }
+  @keyframes hb-boop { 30% { transform: scale(1.06, .92) rotate(-2deg); } 65% { transform: scale(.97, 1.04) rotate(1.5deg); } }
+  .hb.hb-pause *:not(.hb-a) { animation-play-state: paused !important; }
+  .hb .hb-gone { opacity: 0; transition: opacity .7s; }
+  /* Störung oder Hilfe nötig: rotes Ausrufezeichen */
+  .hb-a {
+    position: absolute; right: -4%; top: -8%; display: none; width: calc(var(--H) * .07); height: calc(var(--H) * .07);
+    border-radius: 50%; background: #e8584e; color: #fff; font-weight: 800; font-size: calc(var(--H) * .05);
+    line-height: calc(var(--H) * .07); text-align: center; box-shadow: 0 1px 3px rgba(0, 0, 0, .25);
+    animation: hb-alert .9s ease-in-out infinite alternate;
+  }
+  .hb.hb-alert .hb-a { display: block; }
+  @keyframes hb-alert { to { transform: translateY(-15%) scale(1.08); } }
+  /* Waschzuber: Schaum wogt, Blasen steigen, nasse Wäsche tropft */
+  .hb-foam { transform-box: fill-box; transform-origin: 50% 100%; }
+  .hb-run .hb-foam { animation: hb-foam 1.6s ease-in-out infinite alternate; }
+  @keyframes hb-foam { to { transform: scale(1.04, 1.12); } }
+  .hb-bubs circle {
+    opacity: 0; fill: rgba(255, 255, 255, .55); stroke: #8fc0d8; stroke-width: .6;
+    transform-box: fill-box; transform-origin: center; animation: hb-bub 2.6s ease-out infinite;
+  }
+  @keyframes hb-bub {
+    0% { transform: translate(0, 0) scale(.4); opacity: 0; }
+    20% { opacity: 1; }
+    100% { transform: translate(2px, -13px) scale(1.15); opacity: 0; }
+  }
+  .hb-drip { fill: #8fd0f0; stroke: #5f9fc0; stroke-width: .4; opacity: 0; transform-box: fill-box; transform-origin: 50% 0; animation: hb-drip 1.6s ease-in infinite; }
+  @keyframes hb-drip {
+    0% { transform: scale(.2); opacity: 0; }
+    25% { transform: scale(1); opacity: 1; }
+    100% { transform: translateY(9px); opacity: 0; }
+  }
+  .hb-busy .hb-paddle, .hb-busy .hb-dip { display: none; }
+  /* Wäscheleine: Stücke wehen mit dem Wind (--hbw Winkel samt Richtung, --hbs Tempo) */
+  .hb-cs { transform-box: fill-box; transform-origin: 50% 0; animation: hb-sway var(--hbs, 2.4s) ease-in-out infinite alternate; }
+  @keyframes hb-sway {
+    from { transform: rotate(calc(var(--hbw, 5deg) * -.3)); }
+    to { transform: rotate(var(--hbw, 5deg)); }
+  }
+  .hb-cl { transform-box: fill-box; transform-origin: 50% 0; transition: opacity .25s, transform .4s cubic-bezier(.3, 1.6, .5, 1); }
+  .hb-hang .hb-cl:not(.on) { opacity: 0; transform: translateY(-3px) scale(.4); }
+  .hb-empty:not(.hb-hang) .hb-lau { display: none; }
+  .hb-lau { transition: opacity .7s; }
+  .hb-emptied .hb-lau { opacity: 0; }
+  /* Trockner: Trommel dreht sich, Socken purzeln, warme Luft steigt; fertig dampfen die Handtücher */
+  .hb-rot, .hb-sock { transform-box: fill-box; transform-origin: 50% 50%; }
+  .hb-run .hb-rot { animation: hb-spin 2.6s linear infinite; }
+  .hb-run .hb-sock { animation: hb-spin 1.2s linear infinite; }
+  @keyframes hb-spin { to { transform: rotate(360deg); } }
+  .hb-heat path, .hb-steam path { opacity: 0; transform-box: fill-box; animation: hb-heat 2.2s ease-out infinite; }
+  .hb-heat path { stroke: #f3a25a; stroke-width: 1.1; }
+  .hb-steam path { stroke: #fff; stroke-width: 1.3; filter: drop-shadow(0 0 .6px rgba(90, 64, 48, .5)); animation-duration: 2.8s; }
+  @keyframes hb-heat {
+    0% { transform: translateY(2px); opacity: 0; }
+    35% { opacity: .9; }
+    100% { transform: translateY(-7px); opacity: 0; }
+  }
+  .hb-towels > g { transition: opacity .6s; }
+  /* Spülschüssel: Teller taucht ein; fertig funkelt der Tellerstapel */
+  .hb-dip { transform-box: fill-box; transform-origin: 50% 50%; }
+  .hb-run .hb-dip { animation: hb-dip 2.8s ease-in-out infinite; }
+  @keyframes hb-dip { 0%, 100% { transform: none; } 45% { transform: translateY(7px) rotate(-8deg); } 62% { transform: translateY(6px) rotate(6deg); } }
+  .hb-tw { fill: #fff6b8; transform-box: fill-box; transform-origin: center; animation: hb-twk 1.8s ease-in-out infinite; filter: drop-shadow(0 0 1.5px rgba(255, 220, 110, .95)); }
+  @keyframes hb-twk { 0%, 100% { transform: scale(0); opacity: 0; } 40% { transform: scale(1) rotate(35deg); opacity: 1; } 70% { transform: scale(.25); opacity: .3; } }
+  .hb-plates > g { transition: opacity .6s; }
+
+  /* Ebenen vor dem Pika: Werkzeug und Getragenes (z 4), Fähnchen über Statusleiste und Futterknopf (z 6) */
+  .hb-f, .hb-t { position: absolute; inset: 0; pointer-events: none; }
+  .hb-f { z-index: 4; }
+  .hb-t { z-index: 6; }
+  .hb-bar {
+    position: absolute; left: 0; top: 0; height: clamp(3px, calc(var(--H) * .018), 6px); border-radius: 99px;
+    background: rgba(255, 255, 255, .78); box-shadow: 0 0 0 1px rgba(90, 64, 48, .4); overflow: hidden;
+    opacity: 0; transition: opacity .5s, left .5s, top .5s, width .5s;
+  }
+  .hb-bar.on { opacity: 1; }
+  .hb-bar b { display: block; height: 100%; width: var(--p, 0%); border-radius: inherit; background: var(--bc, #5fb9de); transition: width .8s; }
+  .hb-bar.ind b { width: 34%; animation: hb-ind 1.5s ease-in-out infinite alternate; }
+  .hb-bar.pause b { opacity: .45; animation-play-state: paused; }
+  @keyframes hb-ind { from { transform: translateX(-15%); } to { transform: translateX(210%); } }
+  .night .hb-bar { background: rgba(190, 200, 225, .55); }
+  .hb-stick {
+    position: absolute; width: calc(var(--H) * .014); margin-left: calc(var(--H) * -.007); border-radius: 99px;
+    background: linear-gradient(90deg, #a07a58, #d8b48e 45%, #a07a58); box-shadow: 0 0 0 1px #5a4030;
+    transform-origin: 50% 100%; transform: rotate(var(--ba)); animation: hb-stick .8s ease-in-out infinite;
+  }
+  @keyframes hb-stick { 0%, 100% { transform: rotate(calc(var(--ba) - 8deg)); } 50% { transform: rotate(calc(var(--ba) + 8deg)); } }
+  .hb-ring {
+    position: absolute; width: calc(var(--H) * .065); height: calc(var(--H) * .026); margin: calc(var(--H) * -.014) 0 0 calc(var(--H) * -.0325);
+    border-radius: 50%; background: radial-gradient(#fff 50%, #e6f2f8); box-shadow: 0 0 0 1px #c9dde8;
+    animation: hb-foam .8s ease-in-out infinite alternate;
+  }
+  .hb-bbl {
+    position: absolute; width: calc(var(--H) * .022); height: calc(var(--H) * .022); margin: calc(var(--H) * -.011);
+    border-radius: 50%; border: 1px solid rgba(120, 175, 205, .9); background: rgba(255, 255, 255, .55);
+    opacity: 0; animation: hb-bblup 1.1s ease-out forwards;
+  }
+  @keyframes hb-bblup {
+    0% { transform: translate(0, 0) scale(.4); opacity: 0; }
+    20% { opacity: 1; }
+    100% { transform: translate(var(--dx, 0px), calc(var(--H) * -.09)) scale(1.1); opacity: 0; }
+  }
+  /* Seifenblase, die auf der Nase landet (Unterkante auf dem Punkt) */
+  .hb-soap { position: absolute; left: 0; top: 0; width: 0; height: 0; }
+  .hb-soap i {
+    position: absolute; display: block; width: calc(var(--H) * .055); height: calc(var(--H) * .055);
+    left: calc(var(--H) * -.0275); top: calc(var(--H) * -.052); border-radius: 50%;
+    background: radial-gradient(circle at 32% 30%, rgba(255, 255, 255, .95) 0 12%, rgba(255, 255, 255, .2) 30%, rgba(170, 220, 255, .25) 65%, rgba(255, 170, 230, .55) 100%);
+    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .8), 0 0 2px rgba(120, 170, 210, .6);
+    animation: hb-wob 1.1s ease-in-out infinite alternate;
+  }
+  .hb-soap.pop i { animation: hb-pop .28s ease-out forwards; }
+  @keyframes hb-wob { to { transform: scale(1.07, .94); } }
+  @keyframes hb-pop { to { transform: scale(1.8); opacity: 0; } }
+  /* Was der Pika trägt: folgt ihm (translate setzt das Skript), Mitte des Bilds auf dem Haltepunkt */
+  .hb-carry { position: absolute; left: 0; top: 0; width: 0; height: 0; transition: opacity .35s; }
+  .hb-carry > i { position: absolute; display: block; width: var(--cw); left: calc(var(--cw) * -.5); top: calc(var(--cw) * -.4); }
+  .hb-carry svg { display: block; width: 100%; height: auto; overflow: visible; }
+  .hb-carry.hb-gone { opacity: 0; }
+  .hb-carry.hb-shine > i { animation: hb-plw .26s ease-in-out infinite alternate; }
+  @keyframes hb-plw { from { transform: rotate(-14deg); } to { transform: rotate(14deg); } }
+  /* Teller eintauchen: der Rahmen schneidet an der Wasserlinie ab */
+  .hb-dipw { position: absolute; overflow: hidden; }
+  .hb-dipw > i { position: absolute; display: block; }
+  .hb-dipw svg { display: block; width: 100%; height: auto; }
+
+  /* Haltungen des Pika bei der Arbeit */
+  .pika.hb-hold .paws, .pika.hb-stir .paws, .pika.hb-polish .paws, .pika.hb-pat .paws { display: inline; }
+  .pika.hb-stir .paws { transform-box: fill-box; animation: hb-stirp .8s linear infinite; }
+  @keyframes hb-stirp { 0%, 100% { transform: translate(-1.6px, 0); } 25% { transform: translate(0, 1.2px); } 50% { transform: translate(1.6px, 0); } 75% { transform: translate(0, -1.2px); } }
+  .pika.hb-stir .hop { animation: hb-stir .8s ease-in-out infinite; }
+  @keyframes hb-stir { 50% { transform: translateX(1.5%) scale(1.03, .97); } }
+  .pika.hb-polish .paws { transform-box: fill-box; animation: hb-pol .24s ease-in-out infinite alternate; }
+  @keyframes hb-pol { from { transform: translateX(-2px); } to { transform: translateX(2px); } }
+  .pika.hb-pat .hop { animation: hb-pat .45s ease-in-out; }
+  @keyframes hb-pat { 40% { transform: translateX(4%) scale(1.04, .92); } }
+  .pika.hb-drum .face { animation: hb-drumf 1.3s linear infinite; }
+  @keyframes hb-drumf { 0%, 100% { transform: translate(2.2px, 0); } 25% { transform: translate(0, 2.2px); } 50% { transform: translate(-2.2px, 0); } 75% { transform: translate(0, -2.2px); } }
+  /* Kopf zum Betrachter gedreht */
+  .pika.hb-look .face { transform: translate(-3.5px, .5px); }
+
+  /* Fähnchen wie beim Flugzeug: Gerätename und Stand */
+  .hb-tag {
+    position: absolute; left: 0; top: 0; padding: .12em .7em .18em; border-radius: .9em;
+    font-size: clamp(10px, calc(var(--H) * .05), 14px); line-height: 1.35; white-space: nowrap;
+    color: #4a3a2c; background: rgba(255, 255, 255, .86); box-shadow: 0 1px 3px rgba(0, 0, 0, .15);
+    opacity: 0; transform: translateY(4px); pointer-events: none; cursor: pointer;
+    transition: opacity .25s, transform .25s, background 2.5s, color 2.5s;
+  }
+  .hb-tag.open { opacity: 1; transform: none; pointer-events: auto; }
+  .hb-tag b { font-weight: 700; letter-spacing: .02em; }
+  .hb-tag .more { font-size: .9em; opacity: .85; }
+  .night .hb-tag { color: #e4e9f6; background: rgba(22, 32, 62, .78); }
+  `;
   // ==================== Ende Haus-Bote ====================
 
   const STYLE = `
@@ -5542,13 +5911,847 @@
     }
 
     // ==================== Haus-Bote: Methoden ====================
-    _hassBote(hass) {}
-    _attachBote() {}
-    _detachBote() {}
-    _hiddenBote(hidden) {}
-    _layoutBote(first) {}
-    _tickBote() {}
-    _boteActs(ctx) { return []; }
+    // Waschmaschine, Trockner, Spülmaschine aus `appliances`. Jedes Gerät hat ein Requisit am Bau (.hb in .props),
+    // das seine Phase zeigt: run (läuft), done (fertig, noch zu), empty (ausgeräumt, 20 Minuten).
+    // "Ausgeräumt" wird zweigleisig erkannt: live (fertig → ready/inactive oder Tür auf, der Pika räumt sichtbar
+    // auf) und für alle Geräte gleich aus last_changed (ready/inactive seit weniger als 20 Minuten).
+
+    _hassBote(hass) {
+      const B = this._boteSync();
+      if (!B.list.length) return;
+      const S = hass.states;
+      const now = Date.now();
+      for (const a of B.list) {
+        const c = a.cfg;
+        const o = [S[c.state], c.progress && S[c.progress], c.end && S[c.end], c.door && S[c.door]];
+        if (a.seen && o.every((v, i) => v === a.objs[i])) continue;
+        a.objs = o;
+        this._boteRead(a, o, now);
+      }
+    }
+
+    _attachBote() {
+      if (this._boteSync().list.length) this._boteRefresh();
+    }
+
+    _detachBote() {
+      if (!this._bote) return;
+      this._boteFxClear();
+      for (const a of this._bote.list) this._boteTag(a, false);
+    }
+
+    _hiddenBote(hidden) {
+      if (!hidden && this._bote?.list.length) this._boteRefresh();
+    }
+
+    _layoutBote(first) {
+      const B = this._boteSync();
+      if (!B.list.length || !this._g) return;
+      for (const a of B.list) this._boteRender(a, true);
+      this._boteLayout();
+    }
+
+    _tickBote() {
+      const B = this._boteSync();
+      if (!B.list.length) return;
+      // Live-Aufräumen, das der Pika nicht innerhalb von 3 Minuten geschafft hat: einfach ausgeräumt zeigen
+      const now = Date.now();
+      for (const a of B.queue) if (now - a.liveAt > 180000) a.live = false;
+      B.queue = B.queue.filter((a) => a.live);
+      this._boteRefresh();
+    }
+
+    _boteActs(ctx) {
+      const B = this._bote;
+      if (!B?.list.length || !this._g) return [];
+      B.queue = B.queue.filter((a) => a.live && a.phase === 'empty');
+      if (B.queue.length) return [[1000, 'boteEmpty']];
+      const now = Date.now();
+      const acts = [];
+      // Fertig und noch zu: alle 3–6 Minuten hinhoppeln und Bescheid sagen
+      if (B.list.some((a) => a.phase === 'done' && a.el && !a.live && now >= a.nudgeAt)) acts.push([8, 'boteNudge']);
+      // Läuft: ab und zu damit beschäftigen, höchstens alle 2 Minuten
+      if (now - B.runAt > 120000) {
+        for (const a of B.list) if (a.phase === 'run' && a.el && !BOTE_HALT.has(a.st)) acts.push([0.6, BOTE_ACT[a.type]]);
+      }
+      return acts;
+    }
+
+    // ---------- Haus-Bote: Zustand ----------
+
+    // Geräteliste aus der Konfiguration; ändert sie sich, fängt alles neu an. Ohne Geräte entsteht kein Element.
+    _boteSync() {
+      const cfg = this._cfg?.appliances;
+      const B0 = this._bote;
+      if (B0 && B0.ref === cfg) return B0;
+      const key = Array.isArray(cfg) && cfg.length ? JSON.stringify(cfg) : '';
+      if (B0 && B0.key === key) {
+        B0.ref = cfg;
+        return B0;
+      }
+      if (B0) this._boteDrop(B0);
+      const list = [];
+      if (key) {
+        cfg.forEach((c, i) => {
+          const type = BOTE_TYPE[String(c?.type || '').toLowerCase().replace(/[\s_-]/g, '')];
+          if (!type || !c.state) return;
+          list.push({ idx: i, type, cfg: c, name: String(c.name || BOTE_NAME[type]), phase: null, view: null, nudgeAt: 0, objs: [] });
+        });
+      }
+      this._bote = { ref: cfg, key, list, queue: [], runAt: 0, f: null, t: null };
+      return this._bote;
+    }
+
+    _boteDrop(B) {
+      cancelAnimationFrame(this._boteRaf);
+      for (const a of B.list) {
+        clearTimeout(a.tagT);
+        a.el?.remove();
+        a.bar?.remove();
+        a.tag?.remove();
+      }
+      B.f?.remove();
+      B.t?.remove();
+    }
+
+    // Neue Zustände eines Geräts lesen. Home Connect bleibt nach Programmende auf "finished", bis die Tür
+    // aufgeht, dann "ready", später "inactive".
+    _boteRead(a, [st, pr, en, dr], now) {
+      const norm = (v) => String(v ?? '').split('.').pop().toLowerCase().replace(/[\s_-]/g, '');
+      const first = !a.seen;
+      a.seen = true;
+      const s = norm(st?.state);
+      const door = !!dr && ['open', 'on', 'opened', 'offen', 'auf', 'ajar'].includes(norm(dr.state));
+      const changed = Math.min(now, Date.parse(st?.last_changed) || Date.parse(st?.last_updated) || now);
+      const doorChanged = Math.min(now, Date.parse(dr?.last_changed) || changed);
+      const pct = Number.parseFloat(pr?.state);
+      const end = en && !/^(unavailable|unknown|none)?$/i.test(String(en.state)) ? Date.parse(en.state) : NaN;
+      const prevSt = a.st;
+      const prevDoor = a.door;
+      Object.assign(a, {
+        st: s, door, changed,
+        pct: Number.isFinite(pct) ? clamp(pct, 0, 100) : null,
+        end: Number.isFinite(end) ? end : null,
+      });
+      // Frist für "ausgeräumt" (emptyUntil): 0 = keine
+      const idle = BOTE_IDLE.has(s) || (s === 'finished' && door);
+      let live = false;
+      if (BOTE_RUN.has(s) || (s === 'finished' && !door)) a.emptyUntil = null;
+      else if (first) a.emptyUntil = idle ? (s === 'finished' ? doorChanged : changed) + BOTE_EMPTY_MS : 0;
+      else if (s !== prevSt || door !== prevDoor) {
+        if (prevSt === 'finished' && !prevDoor && idle) {
+          a.emptyUntil = now + BOTE_EMPTY_MS;
+          live = true;
+        } else if (idle && (BOTE_RUN.has(prevSt) || (prevSt === 'inactive' && s === 'ready'))) {
+          a.emptyUntil = changed + BOTE_EMPTY_MS;
+        } else if (a.emptyUntil == null) {
+          // z. B. ready → inactive (Gerät schaltet ab): keine neue Frist, eine laufende behält ihr Ende
+          a.emptyUntil = 0;
+        }
+      }
+      const ph = this._botePhase(a, now);
+      const from = a.phase;
+      if (ph !== from) {
+        a.phase = ph;
+        if (ph === 'done') a.nudgeAt = now + (first ? rnd(20000, 60000) : rnd(5000, 12000));
+        if (ph !== 'empty') a.live = false;
+        // Programm vorbei, während er gerade damit spielt: aufhören
+        if (from === 'run' && this._action === BOTE_ACT[a.type]) this._interrupt();
+        if (live && from === 'done' && ph === 'empty') this._boteLive(a);
+      }
+      this._boteRender(a);
+    }
+
+    _botePhase(a, now) {
+      if (BOTE_RUN.has(a.st)) return 'run';
+      if (a.st === 'finished' && !a.door) return 'done';
+      return a.emptyUntil && now < a.emptyUntil ? 'empty' : null;
+    }
+
+    // Zeitabhängiges neu bewerten (Frist abgelaufen, "fertig seit …"), Wind für die Wäscheleine
+    _boteRefresh() {
+      const B = this._bote;
+      if (!B?.list.length) return;
+      const now = Date.now();
+      for (const a of B.list) {
+        if (!a.seen) continue;
+        const ph = this._botePhase(a, now);
+        if (ph !== a.phase) {
+          a.phase = ph;
+          if (ph !== 'empty') a.live = false;
+        }
+        this._boteRender(a, true);
+      }
+      this._boteLayout();
+    }
+
+    // Gerade live ausgeräumt: Der Pika räumt sichtbar auf, wenn man zuschaut und er wach ist
+    _boteLive(a) {
+      if (!this._g || !this._attached || document.hidden || this._asleep) return;
+      const B = this._bote;
+      a.live = true;
+      a.liveAt = Date.now();
+      if (!B.queue.includes(a)) B.queue.push(a);
+      if (this._running && !this._wx.shelter && !this._next
+        && !['eatFood', 'goSleep', 'wakeUp', 'poop', 'boteEmpty'].includes(this._action)) this._interrupt();
+    }
+
+    _boteText(a) {
+      const hm = (t) => new Date(t).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
+      if (a.phase === 'run') {
+        const p = [];
+        const s = a.st;
+        const label = { pause: 'Pause', delayedstart: 'Startvorwahl', actionrequired: 'braucht Hilfe', error: 'Störung', aborting: 'bricht ab' }[s];
+        if (label) p.push(label);
+        if (a.pct != null && s !== 'delayedstart') p.push(`${Math.round(a.pct)} %`);
+        else if (!p.length) p.push('läuft');
+        if (a.end && s !== 'aborting') p.push(`fertig um ${hm(a.end)}`);
+        return p.join(' · ');
+      }
+      if (a.phase === 'done') {
+        const m = Math.floor((Date.now() - a.changed) / 60000);
+        if (m < 1) return 'gerade fertig';
+        return `fertig seit ${m < 60 ? `${m} Min` : `${Math.floor(m / 60)} Std.${m % 60 ? ` ${m % 60} Min` : ''}`}`;
+      }
+      return 'ausgeräumt';
+    }
+
+    // ---------- Haus-Bote: Requisiten ----------
+
+    _boteLayers() {
+      const B = this._bote;
+      if (B.f) return;
+      B.f = document.createElement('div');
+      B.f.className = 'hb-f';
+      B.t = document.createElement('div');
+      B.t.className = 'hb-t';
+      this._el.props.append(B.f, B.t);
+    }
+
+    // Requisit an die Phase angleichen. Beim Live-Aufräumen bleibt das Bild davor stehen (Wäsche im Korb,
+    // Handtuchstapel, Tellerstapel), bis der Pika fertig ist.
+    _boteRender(a, noLayout) {
+      if (!this._g || !this._el) return;
+      const view = a.phase && a.live ? (a.type === 'washer' ? 'empty' : 'done') : a.phase;
+      if (!view) {
+        if (a.el) {
+          const { el, bar } = a;
+          a.el = a.bar = a.spec = a.view = a.zone = null;
+          el.classList.add('hb-bye');
+          bar.classList.remove('on');
+          setTimeout(() => (el.remove(), bar.remove()), 600);
+          this._boteTag(a, false);
+          if (!noLayout) this._boteLayout();
+        }
+        return;
+      }
+      this._boteLayers();
+      let relayout = false;
+      if (!a.el) {
+        const el = document.createElement('div');
+        el.className = `hb hb-${a.type}`;
+        el.setAttribute('role', 'button');
+        el.innerHTML = '<div class="hb-i"></div><span class="hb-a">!</span>';
+        el.addEventListener('click', (e) => {
+          e.stopPropagation();
+          this._boteTag(a, !a.tag?.classList.contains('open'));
+        });
+        this._el.props.insertBefore(el, this._bote.f);
+        const bar = document.createElement('div');
+        bar.className = 'hb-bar';
+        bar.innerHTML = '<b></b>';
+        bar.style.setProperty('--bc', BOTE_COLOR[a.type]);
+        this._bote.f.appendChild(bar);
+        a.el = el;
+        a.bar = bar;
+      }
+      const el = a.el;
+      if (view !== a.view) {
+        a.view = view;
+        a.spec = BOTE_SVG[a.type](view, a.idx);
+        el.firstElementChild.innerHTML = `<svg viewBox="${a.spec.vb.join(' ')}" aria-hidden="true">${a.spec.svg}</svg>`;
+        el.classList.remove('hb-in', 'hb-emptied', 'hb-boop');
+        void el.offsetWidth;
+        el.classList.add('hb-in');
+        clearTimeout(a.inT);
+        a.inT = setTimeout(() => el.classList.remove('hb-in'), 650);
+        relayout = true;
+      }
+      const cl = el.classList;
+      for (const p of ['run', 'done', 'empty']) cl.toggle(`hb-${p}`, view === p);
+      cl.toggle('hb-live', !!a.live);
+      cl.toggle('hb-hang', !!a.live && a.type === 'washer');
+      if (!a.live) cl.remove('hb-emptied');
+      const halt = view === 'run' && BOTE_HALT.has(a.st);
+      cl.toggle('hb-pause', halt);
+      cl.toggle('hb-alert', view === 'run' && (a.st === 'error' || a.st === 'actionrequired'));
+      // Wind: Richtung aus dem Wetter, Stärke macht das Wehen weiter und schneller
+      const wind = this._wind || 0;
+      el.style.setProperty('--hbw', `${(-(this._windDir || -1) * clamp(3 + wind / 3.5, 3, 18)).toFixed(1)}deg`);
+      el.style.setProperty('--hbs', `${clamp(2.6 - wind / 25, 0.8, 2.6).toFixed(2)}s`);
+      const bar = a.bar;
+      bar.classList.toggle('on', view === 'run');
+      bar.classList.toggle('ind', a.pct == null);
+      bar.classList.toggle('pause', halt);
+      if (a.pct != null) bar.style.setProperty('--p', `${a.pct.toFixed(1)}%`);
+      const text = this._boteText(a);
+      el.setAttribute('aria-label', `${a.name}: ${text}`);
+      if (a.tag?.classList.contains('open')) this._boteTagText(a);
+      if (relayout && !noLayout) this._boteLayout();
+    }
+
+    // Plätze: (A) zwischen Eingang und Heuhaufen, (B) zwischen Heuhaufen und Aussichtsstein (vor dem Geröll),
+    // (C) links neben dem Eingang. Reicht der Platz nicht, werden alle etwas kleiner.
+    _boteLayout() {
+      const B = this._bote;
+      if (!this._g || !B?.list.length) return;
+      const { hole, hay, rock } = this._g;
+      const H = this._H;
+      const hh = 0.13 * H * (0.4 + (this._hay || 3) * 0.055); // halbe sichtbare Breite des Heuhaufens
+      const zones = [
+        { a: hole.r + 0.015 * H, b: hay - hh + 0.06 * H, al: 0.5 },
+        { a: hay + hh - 0.04 * H, b: Math.min(rock.l + 0.03 * H, this._W - 72), al: 0 },
+        { a: 4, b: hole.l - 0.02 * H, al: 1 },
+      ];
+      const vis = B.list.filter((a) => a.el && a.spec);
+      if (!vis.length) return;
+      const gap = 0.025 * H;
+      const fit = (s) => {
+        const rows = zones.map(() => []);
+        const room = (i, w) => zones[i].b - zones[i].a >= rows[i].reduce((t, r) => t + r.w + gap, 0) + w;
+        // Wer schon steht, bleibt möglichst auf seinem Platz; die anderen nehmen den ersten freien
+        const rest = [];
+        for (const a of vis) {
+          const w = a.spec.vb[2] * BOTE_K * H * s;
+          if (a.zone != null && room(a.zone, w)) rows[a.zone].push({ a, w });
+          else rest.push({ a, w });
+        }
+        for (const r of rest) {
+          const zi = zones.findIndex((z, i) => room(i, r.w));
+          if (zi < 0) return null;
+          rows[zi].push(r);
+        }
+        rows.forEach((row) => row.sort((x, y) => x.a.idx - y.a.idx));
+        return rows;
+      };
+      let rows = null;
+      for (const s of [1, 0.9, 0.8, 0.7]) if ((rows = fit(s))) break;
+      // notfalls alle hintereinander auf die Wiese
+      if (!rows) rows = [[], vis.map((a) => ({ a, w: a.spec.vb[2] * BOTE_K * H * 0.7 })), []];
+      rows.forEach((row, i) => {
+        if (!row.length) return;
+        const z = zones[i];
+        const total = row.reduce((t, r) => t + r.w, 0) + gap * (row.length - 1);
+        let x = z.a + Math.max(0, z.b - z.a - total) * z.al;
+        for (const r of row) {
+          r.a.zone = i;
+          this._botePlace(r.a, x, r.w);
+          x += r.w + gap;
+        }
+      });
+    }
+
+    _botePlace(a, l, w) {
+      const sp = a.spec;
+      const k = w / sp.vb[2];
+      const { gy } = this._g;
+      Object.assign(a, { l, k, w, x: l + w / 2, top: gy + 0.006 * this._H - (sp.ground - sp.vb[1]) * k });
+      a.vTop = this._boteY(a, sp.vt);
+      const s = a.el.style;
+      s.left = `${l.toFixed(1)}px`;
+      s.top = `${a.top.toFixed(1)}px`;
+      s.width = `${w.toFixed(1)}px`;
+      if (!a.el.classList.contains('hb-placed')) requestAnimationFrame(() => a.el?.classList.add('hb-placed'));
+      // Fortschrittsbalken vorn im Gras unter dem Requisit
+      const [u0, u1] = sp.part;
+      const bw = Math.min((u1 - u0) * k * 0.72, this._H * 0.16);
+      const bs = a.bar.style;
+      bs.left = `${(this._boteX(a, (u0 + u1) / 2) - bw / 2).toFixed(1)}px`;
+      bs.top = `${(gy - this._H * 0.014).toFixed(1)}px`;
+      bs.width = `${bw.toFixed(1)}px`;
+      if (a.tag?.classList.contains('open')) this._boteTagPos(a);
+    }
+
+    _boteX(a, u) {
+      return a.l + u * a.k;
+    }
+
+    _boteY(a, v) {
+      return a.top + (v - a.spec.vb[1]) * a.k;
+    }
+
+    // Fähnchen: Gerätename und Stand, schließt nach 9 s; liegt über Statusleiste und Futterknopf
+    _boteTag(a, open) {
+      clearTimeout(a.tagT);
+      if (!open) {
+        a.tag?.classList.remove('open');
+        return;
+      }
+      if (!a.el) return;
+      // immer nur ein Fähnchen offen, damit sie sich nicht überdecken
+      for (const o of this._bote.list) if (o !== a) this._boteTag(o, false);
+      if (!a.tag) {
+        a.tag = document.createElement('div');
+        a.tag.className = 'hb-tag';
+        a.tag.addEventListener('click', (e) => (e.stopPropagation(), this._boteTag(a, false)));
+        this._bote.t.appendChild(a.tag);
+      }
+      a.tag.classList.add('open');
+      this._boteTagText(a);
+      a.tagT = setTimeout(() => this._boteTag(a, false), 9000);
+    }
+
+    _boteTagText(a) {
+      const html = `<b>${esc(a.name)}</b><div class="more">${esc(this._boteText(a))}</div>`;
+      if (html !== a.tagHtml) {
+        a.tagHtml = html;
+        a.tag.innerHTML = html;
+      }
+      this._boteTagPos(a);
+    }
+
+    _boteTagPos(a) {
+      if (!a.tag || !a.el || !this._g) return;
+      const w = a.tag.offsetWidth;
+      const h = a.tag.offsetHeight;
+      a.tag.style.left = `${clamp(a.x - w / 2, 4, this._W - w - 4).toFixed(1)}px`;
+      a.tag.style.top = `${clamp(a.vTop - h - 6, 2, this._H - h - 4).toFixed(1)}px`;
+    }
+
+    // ---------- Haus-Bote: Aktionen ----------
+
+    // Ziel-Gerät: Wunsch aus der Vorschau (_boteFocus = Typ oder Index), sonst das erste passende
+    _boteFind(type, phase) {
+      const f = this._boteFocus;
+      this._boteFocus = null;
+      const ok = (a) => a.el && a.spec && a.phase === phase && !a.live && (!type || a.type === type);
+      const list = this._bote?.list || [];
+      return list.find((a) => ok(a) && f != null && (a.type === f || a.idx === f)) || list.find(ok) || null;
+    }
+
+    // Standplatz neben einem Bereich L..R im Abstand off (px, von der Pika-Mitte): die nähere Seite, wenn dort Platz ist
+    _boteSpot(L, R, off) {
+      const { pW } = this._g;
+      const lo = pW * 0.45;
+      const hi = this._W - pW * 0.45;
+      const xl = L - off;
+      const xr = R + off;
+      const cur = this._liveX();
+      let face = Math.abs(cur - xl) <= Math.abs(cur - xr) ? 1 : -1;
+      if (face > 0 && xl < lo) face = -1;
+      else if (face < 0 && xr > hi) face = 1;
+      return { x: face > 0 ? xl : xr, face };
+    }
+
+    _boteCls(...names) {
+      this._boteC ??= new Set();
+      for (const n of names) {
+        this._boteC.add(n);
+        this._el.pika.classList.add(n);
+      }
+    }
+
+    _boteUncls() {
+      for (const n of this._boteC || []) this._el.pika.classList.remove(n);
+      this._boteC?.clear();
+    }
+
+    // Tätscheln/Stupsen: nach vorn lehnen, das Requisit wackelt
+    _botePat(a, boop = true) {
+      const p = this._el.pika;
+      p.classList.remove('hb-pat');
+      void p.offsetWidth;
+      this._boteCls('hb-pat');
+      if (boop && a.el) {
+        a.el.classList.remove('hb-boop');
+        void a.el.offsetWidth;
+        a.el.classList.add('hb-boop');
+      }
+    }
+
+    _boteFxClear() {
+      cancelAnimationFrame(this._boteRaf);
+      this._boteRaf = 0;
+      this._bote?.f?.querySelectorAll('.hb-fx').forEach((e) => e.remove());
+    }
+
+    _boteBubbles(x, y, n) {
+      for (let i = 0; i < n; i++) {
+        const b = document.createElement('span');
+        b.className = 'hb-bbl hb-fx';
+        b.style.left = `${(x + rnd(-0.025, 0.025) * this._H).toFixed(1)}px`;
+        b.style.top = `${y.toFixed(1)}px`;
+        b.style.setProperty('--dx', `${rnd(-8, 8).toFixed(1)}px`);
+        b.style.animationDelay = `${i * 140}ms`;
+        this._bote.f.appendChild(b);
+        setTimeout(() => b.remove(), 1300 + i * 140);
+      }
+    }
+
+    // Etwas, das der Pika trägt: folgt ihm bei jedem Bild (Hoppeln und Sprünge eingerechnet).
+    // rx/ry = Haltepunkt in Anteilen der Pika-Grafik (Pfoten 0.758/0.6, Maul 0.9/0.6), size = Breite × Kartenhöhe
+    _boteCarry(svg, rx, ry, size) {
+      const el = document.createElement('div');
+      el.className = 'hb-carry hb-fx';
+      el.style.setProperty('--cw', `${(this._H * size).toFixed(1)}px`);
+      el.innerHTML = `<i>${svg}</i>`;
+      this._bote.f.appendChild(el);
+      const hop = this.shadowRoot.querySelector('.hop');
+      const ty = (e) => {
+        const t = e && getComputedStyle(e).transform;
+        return t && t !== 'none' ? new DOMMatrixReadOnly(t).m42 : 0;
+      };
+      cancelAnimationFrame(this._boteRaf);
+      const step = () => {
+        if (!el.isConnected || !this._g) return;
+        const { pW, pH, gy } = this._g;
+        const d = this._dir;
+        const x = this._liveX() + d * (rx - 0.5) * pW;
+        const y = gy - 0.945 * pH + ry * pH - this._liveLift() + ty(hop) + ty(this._el.jump);
+        el.style.transform = `translate(${x.toFixed(1)}px, ${y.toFixed(1)}px) scaleX(${d})`;
+        this._boteRaf = requestAnimationFrame(step);
+      };
+      step();
+      return el;
+    }
+
+    // Rührstock von der Pfote (px, py) schräg in den Schaum (tx, ty), mit Schaumkragen
+    _boteStick(px, py, tx, ty) {
+      const len = Math.hypot(px - tx, py - ty) + this._H * 0.025;
+      const s = document.createElement('div');
+      s.className = 'hb-stick hb-fx';
+      s.style.left = `${tx.toFixed(1)}px`;
+      s.style.top = `${(ty - len).toFixed(1)}px`;
+      s.style.height = `${len.toFixed(1)}px`;
+      s.style.setProperty('--ba', `${((Math.atan2(px - tx, ty - py) * 180) / Math.PI).toFixed(1)}deg`);
+      const r = document.createElement('div');
+      r.className = 'hb-ring hb-fx';
+      r.style.left = `${tx.toFixed(1)}px`;
+      r.style.top = `${ty.toFixed(1)}px`;
+      this._bote.f.append(s, r);
+    }
+
+    // Waschmaschine läuft: hinter dem Zuber stehen und umrühren, dann landet eine Seifenblase auf der Nase
+    async _boteStir() {
+      const a = this._boteFind('washer', 'run');
+      if (!a) return;
+      this._bote.runAt = Date.now();
+      const { pW, pH, gy } = this._g;
+      const H = this._H;
+      const tc = this._boteX(a, 23);
+      const s = this._boteSpot(tc, tc, 0.258 * pW + 0.012 * H);
+      await this._walkTo(s.x, 0.9);
+      this._face(s.face);
+      const p = this._el.pika;
+      try {
+        await this._wait(250);
+        a.el?.classList.add('hb-front', 'hb-busy');
+        this._boteCls('hb-stir');
+        const px = this._x + s.face * 0.258 * pW;
+        this._boteStick(px, gy - 0.335 * pH - this._lift, tc + s.face * 0.012 * H, this._boteY(a, 16.8));
+        const until = Date.now() + rnd(4500, 7000);
+        while (Date.now() < until) {
+          await this._wait(rnd(1300, 2100));
+          if (a.el) this._boteBubbles(tc, this._boteY(a, 14), 2);
+          if (Math.random() < 0.3) this._say(pick(['rühr, rühr…', 'blubb!', 'schaumig!']), 1100);
+        }
+        this._boteFxClear();
+        this._boteUncls();
+        a.el?.classList.remove('hb-busy');
+        if (!a.el) return;
+        // Seifenblase steigt aus dem Schaum, schwebt hoch und landet auf der Nase
+        const nx = this._x + s.face * 0.258 * pW;
+        const ny = gy - 0.42 * pH - this._lift;
+        const fx = tc;
+        const fy = this._boteY(a, 13);
+        const b = document.createElement('div');
+        b.className = 'hb-soap hb-fx';
+        b.innerHTML = '<i></i>';
+        this._bote.f.appendChild(b);
+        b.animate([
+          { transform: `translate(${fx}px, ${fy}px) scale(.3)`, opacity: 0 },
+          { transform: `translate(${(fx + nx) / 2 + rnd(-6, 6)}px, ${Math.min(fy, ny) - H * 0.12}px) scale(.9)`, opacity: 1, offset: 0.55 },
+          { transform: `translate(${nx}px, ${ny}px) scale(1)`, opacity: 1 },
+        ], { duration: 2200, easing: 'ease-in-out', fill: 'forwards' });
+        p.classList.add('look-up');
+        await this._wait(1300);
+        p.classList.remove('look-up');
+        await this._wait(900);
+        this._blink();
+        await this._wait(900);
+        this._twitch();
+        await this._wait(500);
+        b.classList.add('pop');
+        this._squeak(nx, ny - H * 0.06, 'plopp!');
+        this._jump('hop1');
+        await this._wait(400);
+        this._say(pick(['hihi!', 'hatschi!', 'hihi']), 1200);
+        await this._wait(1500);
+      } finally {
+        a.el?.classList.remove('hb-front', 'hb-busy');
+        p.classList.remove('look-up');
+        this._boteFxClear();
+        this._boteUncls();
+      }
+    }
+
+    // Trockner läuft: der Trommel zuschauen, oft im Liegen; Augen und Kopf drehen mit
+    async _boteWatchDrum() {
+      const a = this._boteFind('dryer', 'run');
+      if (!a) return;
+      this._bote.runAt = Date.now();
+      const { pW } = this._g;
+      const s = this._boteSpot(this._boteX(a, 6), this._boteX(a, 40), 0.55 * pW);
+      await this._walkTo(s.x, 0.8);
+      this._face(s.face);
+      const p = this._el.pika;
+      try {
+        p.classList.add('look-f');
+        await this._wait(rnd(800, 1400));
+        this._boteCls('hb-drum');
+        if (Math.random() < 0.6) {
+          p.classList.add('lying');
+          await this._wait(500);
+        }
+        const until = Date.now() + rnd(7000, 12000);
+        while (Date.now() < until) {
+          await this._wait(rnd(1500, 3000));
+          const r = Math.random();
+          if (r < 0.25) this._say(pick(['rundherum…', 'hui!', 'oh!', 'Socken!']), 1100);
+          else if (r < 0.45) this._twitch();
+        }
+        this._boteUncls();
+        p.classList.remove('lying');
+        await this._wait(500);
+        if (Math.random() < 0.3) this._say('*gähn*', 1200);
+        else this._jump('hop1');
+        await this._wait(900);
+      } finally {
+        p.classList.remove('lying', 'look-f');
+        this._boteUncls();
+      }
+    }
+
+    // Spülmaschine läuft: hinter dem Tisch einen Teller ein paarmal in die Schüssel tunken
+    async _boteDip() {
+      const a = this._boteFind('dishwasher', 'run');
+      if (!a) return;
+      this._bote.runAt = Date.now();
+      const { pW, pH, gy } = this._g;
+      const H = this._H;
+      const bc = this._boteX(a, 22);
+      const s = this._boteSpot(bc, bc, 0.258 * pW);
+      await this._walkTo(s.x, 0.9);
+      this._face(s.face);
+      try {
+        await this._wait(250);
+        a.el?.classList.add('hb-front', 'hb-busy');
+        this._boteCls('hb-hold');
+        const px = this._x + s.face * 0.258 * pW;
+        const py = gy - 0.335 * pH - this._lift;
+        const wy = this._boteY(a, 19.6);
+        const r = 0.032 * H;
+        const top = py - 2.4 * r;
+        const w = document.createElement('div');
+        w.className = 'hb-dipw hb-fx';
+        Object.assign(w.style, { left: `${px - 1.5 * r}px`, top: `${top}px`, width: `${3 * r}px`, height: `${Math.max(r, wy - top)}px` });
+        w.innerHTML = `<i style="left:${0.5 * r}px;top:${1.4 * r}px;width:${2 * r}px">${BOTE_PLATE_SVG}</i>`;
+        this._bote.f.appendChild(w);
+        const plate = w.firstElementChild;
+        const deep = `translateY(${(wy - py + 1.25 * r).toFixed(1)}px)`;
+        const n = 2 + Math.floor(rnd(0, 2));
+        for (let i = 0; i < n; i++) {
+          await this._wait(rnd(500, 900));
+          plate.animate([{ transform: 'none' }, { transform: `${deep} rotate(-10deg)` }, { transform: 'none' }], { duration: 1200, easing: 'ease-in-out' });
+          await this._wait(600);
+          this._boteBubbles(px, wy, 3);
+          if (i === 0) this._say(pick(['blubb!', 'plitsch!']), 900);
+          await this._wait(600);
+        }
+        this._say(pick(['sauber!', 'blitzblank!', 'hihi']), 1100);
+        await this._wait(700);
+        // zurück in die Schüssel
+        plate.animate([{ transform: 'none' }, { transform: deep }], { duration: 600, easing: 'ease-in', fill: 'forwards' });
+        await this._wait(650);
+        this._boteBubbles(px, wy, 2);
+        await this._wait(700);
+      } finally {
+        a.el?.classList.remove('hb-front', 'hb-busy');
+        this._boteFxClear();
+        this._boteUncls();
+      }
+    }
+
+    // Fertig: hinhoppeln, tätscheln/stupsen, zum Betrachter schauen und Bescheid sagen
+    async _boteNudge() {
+      const B = this._bote;
+      const f = this._boteFocus;
+      this._boteFocus = null;
+      const done = (B?.list || []).filter((o) => o.phase === 'done' && o.el && !o.live);
+      const a = done.find((o) => f != null && (o.type === f || o.idx === f))
+        || done.sort((x, y) => x.nudgeAt - y.nudgeAt)[0];
+      if (!a) return;
+      const { pW } = this._g;
+      const p = this._el.pika;
+      let patted = false;
+      try {
+        const [u0, u1] = a.spec.part;
+        const s = this._boteSpot(this._boteX(a, u0), this._boteX(a, u1), 0.35 * pW);
+        if (Math.abs(this._liveX() - s.x) > pW) {
+          this._say('!', 700);
+          await this._wait(450);
+        }
+        await this._walkTo(s.x, 1.3);
+        this._face(s.face);
+        await this._wait(250);
+        const n = 2 + (Math.random() < 0.5 ? 1 : 0);
+        for (let i = 0; i < n; i++) {
+          if (!a.el) return;
+          this._botePat(a);
+          await this._wait(560);
+        }
+        patted = true;
+        this._boteUncls();
+        if (a.type === 'dryer') {
+          this._say('flauschig!', 1100);
+          this._happy(1000);
+          await this._wait(1200);
+        }
+        // Kopf zum Betrachter, Maul auf: "Wäsche!"
+        this._boteCls('hb-look');
+        p.classList.add('calling');
+        this._say(pick(BOTE_SAY[a.type]), 1600);
+        this._jump('hop1');
+        await this._wait(900);
+        p.classList.remove('calling');
+        await this._wait(1000);
+        this._boteUncls();
+        await this._wait(rnd(400, 900));
+      } finally {
+        p.classList.remove('calling');
+        this._boteUncls();
+        a.el?.classList.remove('hb-boop');
+        a.nudgeAt = Date.now() + (patted ? rnd(3, 6) * 60000 : 30000);
+      }
+    }
+
+    // Gerade ausgeräumt (live): aufhängen, Handtuch oder Teller in den Bau tragen, dann Freude
+    async _boteEmpty() {
+      const B = this._bote;
+      if (!B?.list.length) return;
+      const f = this._boteFocus;
+      this._boteFocus = null;
+      let a = f != null ? B.list.find((o) => (o.type === f || o.idx === f) && o.phase === 'empty' && o.el) : null;
+      a ||= B.queue.find((o) => o.live && o.phase === 'empty');
+      if (!a) return;
+      B.queue = B.queue.filter((o) => o !== a);
+      a.live = true;
+      a.liveAt = Date.now();
+      this._boteRender(a);
+      try {
+        this._say('!', 800);
+        await this._wait(500);
+        if (a.type === 'washer') await this._boteHang(a);
+        else if (a.type === 'dryer') await this._boteTowel(a);
+        else await this._botePlate(a);
+        this._happy();
+        this._jump('binky');
+        this._say(pick(['fertig!', 'geschafft!', '♥']), 1300);
+        await this._wait(1300);
+      } finally {
+        this._boteFxClear();
+        this._boteUncls();
+        a.live = false;
+        this._boteRender(a);
+      }
+    }
+
+    // Wäsche aus dem Korb holen und Stück für Stück an die Leine hängen (hochspringen, Klammer dran)
+    async _boteHang(a) {
+      if (!a.el) return;
+      a.el.querySelectorAll('.hb-cl').forEach((g) => g.classList.remove('on'));
+      a.el.classList.remove('hb-emptied');
+      const { pW } = this._g;
+      const kx = this._boteX(a, 58);
+      const s = this._boteSpot(kx, kx, 0.4 * pW);
+      await this._walkTo(s.x, 1.1);
+      this._face(s.face);
+      await this._wait(200);
+      this._botePat(a, false);
+      await this._wait(600);
+      this._boteUncls();
+      const xs = BOTE_LINE.map(([u]) => this._boteX(a, u));
+      const order = this._x > this._boteX(a, 42) ? [3, 2, 1, 0] : [0, 1, 2, 3];
+      for (const i of order) {
+        await this._walkTo(xs[i], 1.1);
+        await this._wait(150);
+        this._jump('hop1');
+        await this._wait(280);
+        a.el?.querySelector(`.hb-c${i}`)?.classList.add('on');
+        await this._wait(520);
+      }
+      a.el?.classList.add('hb-emptied');
+      this._face(this._x < this._W / 2 ? 1 : -1);
+      await this._wait(400);
+    }
+
+    // Trockner ausgeräumt: oberstes Handtuch nehmen ("flauschig!") und in den Bau tragen, der Stapel ist weg
+    async _boteTowel(a) {
+      if (!a.el) return;
+      const { pW } = this._g;
+      const s = this._boteSpot(this._boteX(a, 36), this._boteX(a, 60), 0.32 * pW);
+      await this._walkTo(s.x, 1.1);
+      this._face(s.face);
+      await this._wait(250);
+      this._botePat(a, false);
+      await this._wait(500);
+      this._boteUncls();
+      a.el?.querySelector('.hb-t3')?.classList.add('hb-gone');
+      this._boteCarry(BOTE_TOWEL_SVG, 0.9, 0.6, 0.085);
+      this._say('flauschig!', 1200);
+      await this._wait(800);
+      a.el?.querySelectorAll('.hb-t1, .hb-t2, .hb-steam').forEach((e) => e.classList.add('hb-gone'));
+      await this._boteToBurrow();
+    }
+
+    // Spülmaschine ausgeräumt: obersten Teller nehmen, polieren (funkelt) und in den Bau tragen
+    async _botePlate(a) {
+      if (!a.el) return;
+      const { pW, pH, gy } = this._g;
+      const s = this._boteSpot(this._boteX(a, 14), this._boteX(a, 36), 0.3 * pW);
+      await this._walkTo(s.x, 1.1);
+      this._face(s.face);
+      await this._wait(250);
+      this._botePat(a, false);
+      await this._wait(450);
+      this._boteUncls();
+      a.el?.querySelector('.hb-p4')?.classList.add('hb-gone');
+      this._boteCls('hb-polish');
+      const c = this._boteCarry(BOTE_PLATE_SVG, 0.758, 0.6, 0.065);
+      c.classList.add('hb-shine');
+      for (let i = 0; i < 4; i++) {
+        await this._wait(650);
+        this._sparkle(this._x + this._dir * 0.258 * pW, gy - 0.345 * pH - this._lift, 1);
+      }
+      this._say('blitzblank!', 1200);
+      this._boteUncls();
+      this._boteCls('hb-hold');
+      c.classList.remove('hb-shine');
+      a.el?.querySelectorAll('.hb-plates > g, .hb-tw').forEach((e) => e.classList.add('hb-gone'));
+      await this._wait(500);
+      await this._boteToBurrow();
+    }
+
+    // Zum Eingang tragen, Getragenes verschwindet an der Tür, kurz drinnen, wieder heraus
+    async _boteToBurrow() {
+      await this._walkTo(this._g.home, 0.9);
+      this._bote.f.querySelectorAll('.hb-carry').forEach((e) => e.classList.add('hb-gone'));
+      await this._enterBurrow();
+      this._boteFxClear();
+      this._boteUncls();
+      await this._wait(rnd(1400, 2200));
+      await this._comeOut();
+    }
     // ==================== Ende Haus-Bote ====================
 
   }
