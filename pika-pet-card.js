@@ -44,7 +44,7 @@
  * werden aus Datum und Standort (hass.config) berechnet.
  */
 (() => {
-  const VERSION = '0.14.0';
+  const VERSION = '0.14.1';
 
   const DEFAULTS = {
     name: 'Pika',
@@ -224,6 +224,10 @@
     <circle class="bcn" cx="60" cy="13.6" r="1.2"/><circle class="strobe" cx="6.5" cy="11.2" r="1"/></svg>`,
   };
   const PLANE_SIZE = { jet: 1, prop: 0.55, heli: 0.5 };
+  // Takt der Flieger in Sekunden. Zwischen zwei Meldungen fliegen sie geradeaus weiter, darum genügt alle 5 s ein
+  // Zielpunkt (5 s voraus), den ein linearer Übergang gleich lang ansteuert: Weg und Tempo bleiben exakt gleich.
+  // Muss zu den 5s-Übergängen bei .plane, .pl-s, .pl-f, .phit und .ptag passen.
+  const PLANE_STEP = 5;
 
   // Fernsehbild: wechselt alle paar Sekunden die Farbe (Schnitt), daraus Licht im Eingang und Lichtsaum
   const TV_COLORS = ['#9fd0ff', '#e8f4ff', '#a8f0c6', '#ffd59e', '#c8b6ff', '#ff9fb2', '#9fe7ff'];
@@ -1980,9 +1984,14 @@
     position: absolute; width: 2px; height: 2px; border-radius: 50%; background: #fff;
     opacity: 0; transition: opacity 3s;
   }
-  .night .stars i { opacity: var(--starop, .85); animation: twinkle 3s ease-in-out infinite alternate; }
-  .dusk .stars i:nth-child(3n) { opacity: calc(var(--starop, .85) * .6); }
-  @keyframes twinkle { to { opacity: .25; } }
+  .night .stars i { opacity: var(--starop, .85); }
+  .dusk .stars i:nth-child(3n + 1) { opacity: calc(var(--starop, .85) * .6); }
+  /* Funkeln pro Ebene (je acht Sterne), mit eigenem Takt und Versatz, damit es nicht im Gleichschritt pulsiert */
+  .stars b { position: absolute; inset: 0; }
+  .night .stars b { animation: twinkle 3s ease-in-out infinite alternate; }
+  .night .stars b:nth-child(2) { animation-duration: 2.6s; animation-delay: -1.9s; }
+  .night .stars b:nth-child(3) { animation-duration: 3.4s; animation-delay: -4.1s; }
+  @keyframes twinkle { to { opacity: .3; } }
 
   /* Wolken: das Skript schaltet so viele ein, wie es die Bedeckung verlangt; Wind macht sie schneller */
   .cloud {
@@ -2147,20 +2156,20 @@
 
   /* Regen, Schnee, Nebel, Blitz */
   .precip { position: absolute; inset: -10% -25%; pointer-events: none; z-index: 4; transform: skewX(var(--slant, 0deg)); }
-  .precip i { position: absolute; top: 0; }
+  /* Tropfen und Flocken fallen nicht einzeln, sondern in drei Ebenen (fern, mitte, nah) mit eigenem Tempo.
+     Jede Ebene ist doppelt so hoch wie der Niederschlagsbereich und enthält ihr Muster zweimal übereinander.
+     Sie rutscht genau eine Höhe nach unten und beginnt von vorn: nahtlos, ohne Wiederholung im Bild, und statt
+     bis zu 55 Animationen laufen nur drei (Schnee: sechs, das Schaukeln liegt auf einer eigenen Hülle). */
+  .precip .pl { position: absolute; left: 0; right: 0; top: -100%; height: 200%; animation: pfall var(--pd) linear infinite; }
+  @keyframes pfall { to { transform: translateY(50%); } }
+  .precip .pw { position: absolute; inset: 0; animation: psway var(--pw) ease-in-out infinite; }
+  @keyframes psway { 25% { transform: translateX(8px); } 50% { transform: translateX(-6px); } 75% { transform: translateX(6px); } }
+  .precip i { position: absolute; }
   .precip .r {
     width: 1.5px; height: calc(var(--H) * .08); border-radius: 1px;
-    background: linear-gradient(rgba(255, 255, 255, 0), rgba(215, 232, 255, .85)); animation: rain .6s linear infinite;
+    background: linear-gradient(rgba(255, 255, 255, 0), rgba(215, 232, 255, .85));
   }
-  @keyframes rain { from { transform: translateY(-100%); } to { transform: translateY(calc(var(--H) * 1.25)); } }
-  .precip .s { border-radius: 50%; background: #fff; animation: snow 7s linear infinite; }
-  @keyframes snow {
-    0% { transform: translate(0, -10px); }
-    25% { transform: translate(8px, calc(var(--H) * .3)); }
-    50% { transform: translate(-6px, calc(var(--H) * .6)); }
-    75% { transform: translate(6px, calc(var(--H) * .9)); }
-    100% { transform: translate(0, calc(var(--H) * 1.22)); }
-  }
+  .precip .s { border-radius: 50%; background: #fff; }
   .fog { position: absolute; inset: 0; pointer-events: none; z-index: 4; opacity: 0; transition: opacity 3s; }
   .foggy .fog { opacity: 1; }
   .fog i {
@@ -2616,16 +2625,17 @@
   .ptags { z-index: 4; }
   /* Offenes Fähnchen ist die wichtigste Info: dann liegt die Ebene vor Statusleiste und Futterknopf */
   .ptags.top { z-index: 6; }
-  .plane { position: absolute; left: 0; top: 0; opacity: 0; transition: transform 1s linear, opacity 2s; will-change: transform; }
-  .plane.on { opacity: var(--pa, 1); }
+  /* Übergänge 5 s = PLANE_STEP; Randausblendung (--pa) auf .pl-f, damit sie mitgleitet statt zu springen */
+  .plane { position: absolute; left: 0; top: 0; opacity: 0; transition: transform 5s linear, opacity 2s; will-change: transform; }
+  .plane.on { opacity: 1; }
   /* Unsichtbare Tippfläche über dem Flugzeug (die Flugzeuge selbst liegen hinter den Hügeln) */
-  .phit { position: absolute; left: 0; top: 0; display: none; pointer-events: auto; cursor: pointer; transition: transform 1s linear; }
+  .phit { position: absolute; left: 0; top: 0; display: none; pointer-events: auto; cursor: pointer; transition: transform 5s linear; }
   .phit.on { display: block; }
   .plane .pl-s {
     position: absolute; width: calc(var(--H) * .3); left: calc(var(--H) * -.15); top: calc(var(--H) * -.06);
-    transition: transform 1s linear, opacity 3s;
+    transition: transform 5s linear, opacity 3s;
   }
-  .plane .pl-f { position: relative; transition: transform 1.2s ease-in-out; }
+  .plane .pl-f { position: relative; opacity: var(--pa, 1); transition: transform 1.2s ease-in-out, opacity 5s linear; }
   .plane.left .pl-f { transform: scaleX(-1); }
   .plane svg { position: relative; display: block; width: 100%; height: auto; overflow: visible; }
   .plane .pl-body { transition: filter 2.5s; }
@@ -2658,7 +2668,7 @@
     box-sizing: border-box; max-width: calc(100% - 8px); overflow: hidden; text-overflow: ellipsis;
     font-size: clamp(10px, calc(var(--H) * .05), 14px); line-height: 1.35; white-space: nowrap;
     color: #2f4256; background: rgba(255, 255, 255, .8); box-shadow: 0 1px 3px rgba(0, 0, 0, .15);
-    pointer-events: none; cursor: pointer; opacity: 0; transition: transform 1s linear, opacity .3s, background 2.5s, color 2.5s;
+    pointer-events: none; cursor: pointer; opacity: 0; transition: transform 5s linear, opacity .3s, background 2.5s, color 2.5s;
   }
   .ptag.on.open { opacity: 1; pointer-events: auto; z-index: 1; }
   .ptag b { font-weight: 700; letter-spacing: .02em; }
@@ -2825,7 +2835,7 @@
       this._attached = true;
       this._ro = new ResizeObserver(() => this._layout());
       this._ro.observe(this._el.scene);
-      this._onVis = () => (document.hidden ? (this._stop(), this._stopCritters(), this._hiddenFeatures(true)) : (this._start(), this._startCritters(), this._hiddenFeatures(false)));
+      this._onVis = () => (document.hidden ? (this._stop(), this._stopCritters(), this._hiddenFeatures(true)) : (this._start(), this._startCritters(), this._hiddenFeatures(false), this._planeSnap()));
       document.addEventListener('visibilitychange', this._onVis);
       this._loop(() => this._blink(), 2200, 6000);
       this._loop(() => this._twitch(), 5000, 13000);
@@ -2865,9 +2875,10 @@
     // ---------- Aufbau ----------
 
     _build() {
-      const stars = Array.from({ length: 24 }, () =>
-        `<i style="left:${rnd(2, 98).toFixed(1)}%;top:${rnd(3, 55).toFixed(1)}%;animation-delay:${rnd(0, 3).toFixed(2)}s;transform:scale(${rnd(0.7, 1.3).toFixed(2)})"></i>`
-      ).join('');
+      // 24 Sterne in drei Ebenen zu je acht: funkeln ebenenweise versetzt, also drei Animationen statt 24
+      const stars = Array.from({ length: 3 }, () => '<b>' + Array.from({ length: 8 }, () =>
+        `<i style="left:${rnd(2, 98).toFixed(1)}%;top:${rnd(3, 55).toFixed(1)}%;transform:scale(${rnd(0.7, 1.3).toFixed(2)})"></i>`
+      ).join('') + '</b>').join('');
       const flies = Array.from({ length: 6 }, () =>
         `<i style="left:${rnd(25, 90).toFixed(1)}%;top:${rnd(45, 80).toFixed(1)}%;animation-delay:${rnd(-9, 0).toFixed(2)}s,${rnd(0, 1.8).toFixed(2)}s"></i>`
       ).join('');
@@ -3103,6 +3114,7 @@
       this._layoutFriend(first);
       this._layoutBote(first);
       if (!first) {
+        this._planeSnap();
         this._placePiles();
         // Besucher sitzen an festen Pixeln: bei Größenänderung lieber neu kommen lassen
         if (this._bird || this._mouse) this._restartCritters();
@@ -7461,10 +7473,20 @@
       p.tw = 0;
     }
 
+    // Auch bei laufendem Takt gleich neu rechnen (neue Meldung): Jeder Schritt startet am gerade sichtbaren Punkt
+    // und steuert den Punkt PLANE_STEP voraus an, ein früherer Schritt ändert also Weg und Tempo nicht
     _planeLoop() {
-      if (!this._planes.size || !this._attached || this._planeT) return;
-      this._planeT = setInterval(() => this._planeTick(), 1000);
+      if (!this._planes.size || !this._attached) return;
+      clearInterval(this._planeT);
+      this._planeT = setInterval(() => this._planeTick(), PLANE_STEP * 1000);
       this._planeTick();
+    }
+
+    // Neue Kartengröße oder zurück aus dem Hintergrund: Flieger gleich an den richtigen Platz setzen statt sie
+    // einen ganzen Takt lang dorthin gleiten zu lassen
+    _planeSnap() {
+      for (const p of this._planes.values()) p.snap = true;
+      this._planeLoop();
     }
 
     _planeTick() {
@@ -7482,7 +7504,10 @@
       const fresh = [];
       const pos = [];
       for (const [id, p] of this._planes) {
-        const dt = (now - p.t0) / 1000;
+        const age = (now - p.t0) / 1000;
+        // Ziel: wo er am Ende des Übergangs ist. Neue/versetzte erst ohne Übergang auf den Punkt von jetzt (der
+        // zweite Durchlauf unten schickt sie dann wie alle anderen los)
+        const dt = age + (p.fresh || p.snap ? 0 : PLANE_STEP);
         const e = p.e + p.ve * dt;
         const n = p.n + p.vn * dt;
         const alt = Math.max(80, p.alt + p.vz * Math.min(dt, 30));
@@ -7495,7 +7520,7 @@
         Object.assign(p, { x, y, slant, altNow: alt });
         const out = x < -W * 0.2 || x > W * 1.2;
         // Ohne neue Meldung nach 75 s ausblenden, ein verlassenes spätestens nach 45 s
-        const ending = p.gone ? out || now - p.gone > 45000 : dt > 75;
+        const ending = p.gone ? out || now - p.gone > 45000 : age > 75;
         if (ending && !p.dead) p.dead = now;
         if (p.dead && now - p.dead > 2500) {
           clearTimeout(p.openT);
@@ -7519,8 +7544,9 @@
         // ein- und ausblenden, sonst taucht ein Flieger, der nördlich oder südlich vorbeizieht, mitten im Bild auf
         const pa = clamp((R - Math.max(Math.abs(e), Math.abs(n))) / (0.2 * R), 0, 1);
         p.el.style.setProperty('--pa', pa.toFixed(2));
-        if (p.fresh) {
+        if (p.fresh || p.snap) {
           p.el.style.transition = p.s.style.transition = p.tag.style.transition = p.hit.style.transition = 'none';
+          p.s.firstElementChild.style.transition = 'none'; // .pl-f: Randausblendung gleich auf dem richtigen Wert
           fresh.push(p);
         }
         p.show = !p.dead && !out && pa > 0.02;
@@ -7535,10 +7561,15 @@
         p.el.style.transform = `translate(${x.toFixed(1)}px, ${y.toFixed(1)}px)`;
         p.s.style.transform = `scale(${sc.toFixed(3)})`;
         // Tippfläche so groß wie das Flugzeug, aber mindestens fingergroß
-        const hw = Math.max(44, H * 0.3 * sc);
-        const hh = Math.max(36, H * 0.12 * sc);
-        p.hit.style.width = `${hw.toFixed(0)}px`;
-        p.hit.style.height = `${hh.toFixed(0)}px`;
+        const hw = Math.max(44, Math.round(H * 0.3 * sc));
+        const hh = Math.max(36, Math.round(H * 0.12 * sc));
+        // Größe nur schreiben, wenn sie sich ändert (sonst jedes Mal neues Layout)
+        if (p.hw !== hw || p.hh !== hh) {
+          p.hw = hw;
+          p.hh = hh;
+          p.hit.style.width = `${hw}px`;
+          p.hit.style.height = `${hh}px`;
+        }
         p.hit.style.transform = `translate(${(x - hw / 2).toFixed(1)}px, ${(y - hh / 2).toFixed(1)}px)`;
         if (p.show) shown.push({ p, x, y, half: H * 0.06 * sc });
       }
@@ -7569,9 +7600,13 @@
         void this._el.planes.offsetWidth;
         for (const p of fresh) {
           p.el.style.transition = p.s.style.transition = p.tag.style.transition = p.hit.style.transition = '';
-          p.fresh = false;
-          if (p.show && p.altNow < 5000 && p.slant < 8) this._noticeCritter(p.x, true);
+          p.s.firstElementChild.style.transition = '';
+          if (p.fresh && p.show && p.altNow < 5000 && p.slant < 8) this._noticeCritter(p.x, true);
+          p.fresh = p.snap = false;
         }
+        // Gleich weiter: jetzt mit Übergang auf den Punkt PLANE_STEP voraus (bei den übrigen ändert sich nichts)
+        this._planeTick();
+        return;
       }
       for (const p of this._planes.values()) {
         p.el.classList.toggle('on', !!p.show);
@@ -7712,15 +7747,26 @@
       const k = `${rain}/${snow}`;
       if (k === this._precipKey) return;
       this._precipKey = k;
+      // Jedes Teilchen steht zweimal in seiner Ebene, eine halbe Ebenenhöhe auseinander (siehe .precip .pl)
+      const twice = (cls, y, style) => `<i class="${cls}" style="top:${y.toFixed(1)}%;${style}"></i>`
+        + `<i class="${cls}" style="top:${(y + 50).toFixed(1)}%;${style}"></i>`;
+      // Dauer einer Runde (1,2 Kartenhöhen): Regen 1,85–2,75 Höhen/s, Schnee 0,14–0,21 Höhen/s wie bisher
+      const layers = (n, durs, sways, one) => durs.map((d, l) => {
+        let h = '';
+        for (let i = l; i < n; i += durs.length) h += one(rnd(0, 50));
+        const inner = sways ? `<div class="pw" style="--pw:${sways[l]}s">${h}</div>` : h;
+        return `<div class="pl" style="--pd:${d}s;animation-delay:${rnd(-d, 0).toFixed(2)}s">${inner}</div>`;
+      }).join('');
       let html = '';
-      for (let i = 0; i < rain; i++) {
-        html += `<i class="r" style="left:${rnd(0, 100).toFixed(1)}%;animation-delay:${rnd(-1, 0).toFixed(2)}s;`
-          + `animation-duration:${rnd(0.45, 0.75).toFixed(2)}s;opacity:${rnd(0.45, 0.95).toFixed(2)}"></i>`;
+      if (rain) {
+        html += layers(rain, [0.65, 0.53, 0.44], null, (y) =>
+          twice('r', y, `left:${rnd(0, 100).toFixed(1)}%;opacity:${rnd(0.45, 0.95).toFixed(2)}`));
       }
-      for (let i = 0; i < snow; i++) {
-        const s = rnd(2.5, 5).toFixed(1);
-        html += `<i class="s" style="left:${rnd(0, 100).toFixed(1)}%;width:${s}px;height:${s}px;animation-delay:${rnd(-9, 0).toFixed(2)}s;`
-          + `animation-duration:${rnd(5.5, 9.5).toFixed(2)}s;opacity:${rnd(0.6, 1).toFixed(2)}"></i>`;
+      if (snow) {
+        html += layers(snow, [8.6, 7.1, 5.7], [7.7, 6.3, 5.3], (y) => {
+          const s = rnd(2.5, 5).toFixed(1);
+          return twice('s', y, `left:${rnd(0, 100).toFixed(1)}%;width:${s}px;height:${s}px;opacity:${rnd(0.6, 1).toFixed(2)}`);
+        });
       }
       this._el.precip.innerHTML = html;
     }
