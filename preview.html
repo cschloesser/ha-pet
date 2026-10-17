@@ -86,6 +86,29 @@
 
 <!-- ==================== Vorschau-Knöpfe Haus-Bote (Waschmaschine, Trockner, Spüler) ==================== -->
 <div class="bar" id="bar-bote"><b>Haus-Bote</b>
+  <span style="width:96px;font-size:12px;color:#ccc">Waschmaschine</span>
+  <button data-hb="washer:run30">läuft 30 %</button>
+  <button data-hb="washer:run85">läuft 85 %</button>
+  <button data-hb="washer:done">fertig</button>
+  <button data-hb="washer:empty">ausgeräumt</button>
+  <button data-hb="washer:off">aus</button>
+  <button data-hb="washer:go">Pika: hingehen</button>
+  <i style="flex-basis:100%"></i><b></b>
+  <span style="width:96px;font-size:12px;color:#ccc">Trockner</span>
+  <button data-hb="dryer:run30">läuft 30 %</button>
+  <button data-hb="dryer:run85">läuft 85 %</button>
+  <button data-hb="dryer:done">fertig</button>
+  <button data-hb="dryer:empty">ausgeräumt</button>
+  <button data-hb="dryer:off">aus</button>
+  <button data-hb="dryer:go">Pika: hingehen</button>
+  <i style="flex-basis:100%"></i><b></b>
+  <span style="width:96px;font-size:12px;color:#ccc">Spülmaschine</span>
+  <button data-hb="dishwasher:run30">läuft 30 %</button>
+  <button data-hb="dishwasher:run85">läuft 85 %</button>
+  <button data-hb="dishwasher:done">fertig</button>
+  <button data-hb="dishwasher:empty">ausgeräumt</button>
+  <button data-hb="dishwasher:off">aus</button>
+  <button data-hb="dishwasher:go">Pika: hingehen</button>
 </div>
 <!-- ==================== Ende Haus-Bote ==================== -->
 
@@ -253,6 +276,54 @@
   // ==================== Ende Vorschau Freund-Pika ====================
 
   // ==================== Vorschau Haus-Bote ====================
+  // Home-Connect-Sensoren wie beim echten Haus; last_changed als ISO-String, "aus" liegt lange zurück
+  const HB = {
+    washer: { type: 'washer', state: 'sensor.waschmaschine_betriebszustand', progress: 'sensor.waschmaschine_programm_fortschritt', end: 'sensor.waschmaschine_programm_endzeit' },
+    dryer: { type: 'dryer', state: 'sensor.trockner_betriebszustand', progress: 'sensor.trockner_programm_fortschritt', end: 'sensor.trockner_programm_endzeit' },
+    dishwasher: { type: 'dishwasher', state: 'sensor.geschirrspuler_betriebszustand', progress: 'sensor.geschirrspuler_programm_fortschritt',
+      end: 'sensor.geschirrspuler_programm_endzeit', door: 'sensor.geschirrspuler_tur' },
+  };
+  const hbAgo = (min) => new Date(Date.now() - min * 60000).toISOString();
+  const hbSet = (id, state, min = 0) => (states[id] = { state, attributes: {}, last_changed: hbAgo(min), last_updated: hbAgo(min) });
+  for (const d of Object.values(HB)) {
+    hbSet(d.state, 'inactive', 180);
+    hbSet(d.progress, 'unavailable', 180);
+    hbSet(d.end, 'unavailable', 180);
+    if (d.door) hbSet(d.door, 'closed', 180);
+  }
+  cards.forEach((c) => c.setConfig({ name: 'Pika', entity: 'input_text.pika_status', appliances: Object.values(HB) }));
+  push();
+  const HB_ACT = { washer: 'boteStir', dryer: 'boteWatchDrum', dishwasher: 'boteDip' };
+  document.querySelectorAll('[data-hb]').forEach((b) =>
+    b.addEventListener('click', () => {
+      const [type, what] = b.dataset.hb.split(':');
+      const d = HB[type];
+      if (what === 'go') {
+        cards.forEach((c) => {
+          const a = c._bote?.list.find((o) => o.type === type);
+          if (!a?.phase) return;
+          c._boteFocus = type;
+          c._next = a.phase === 'run' ? HB_ACT[type] : a.phase === 'done' ? 'boteNudge' : 'boteEmpty';
+          c._interrupt();
+        });
+        return;
+      }
+      if (what.startsWith('run')) {
+        const p = Number(what.slice(3));
+        // läuft schon: last_changed bleibt
+        if (states[d.state].state !== 'run') hbSet(d.state, 'run');
+        hbSet(d.progress, String(p));
+        hbSet(d.end, new Date(Date.now() + (100 - p) * 1.4 * 60000).toISOString());
+        if (d.door) hbSet(d.door, 'locked');
+      } else {
+        hbSet(d.state, { done: 'finished', empty: 'ready', off: 'inactive' }[what], what === 'off' ? 120 : 0);
+        hbSet(d.progress, 'unavailable');
+        hbSet(d.end, 'unavailable');
+        if (d.door) hbSet(d.door, what === 'empty' ? 'open' : 'closed');
+      }
+      push();
+    })
+  );
   // ==================== Ende Vorschau Haus-Bote ====================
 </script>
 </body>
