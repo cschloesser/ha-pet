@@ -1295,12 +1295,36 @@
   // Waschmaschine, Trockner und Spülmaschine (Home Connect) stehen als kleine Requisiten am Bau. Phasen je
   // Gerät: run (läuft), done (fertig, noch nicht geöffnet), empty (ausgeräumt, 20 Minuten lang).
   // Grafiken in Einheiten von BOTE_K × Kartenhöhe; vb = viewBox, ground = Bodenlinie, vt = sichtbare
-  // Oberkante (für das Fähnchen), part = Hauptteil in x (Fortschrittsbalken, Hingehen).
+  // Oberkante (für das Fähnchen), part = Hauptteil in x (Fortschrittsbalken, Hingehen), back = zu hoch für den
+  // vorderen Wiesenstreifen (bleibt hinten).
   const BOTE_K = 0.004;
   const BOTE_EMPTY_MS = 20 * 60000;
+  // Spüler mit AutoOpen öffnen die Tür am Programmende selbst einen Spalt: so lange zählt Tür auf nicht als ausgeräumt
+  const BOTE_AUTOOPEN_MS = 2 * 60000;
+  // Vorn auf dem Wiesenstreifen: so viel größer und so viel × Kartenhöhe tiefer als hinten
+  const BOTE_FRONT = 1.1;
+  const BOTE_FRONT_DY = 0.06;
   const BOTE_RUN = new Set(['run', 'pause', 'delayedstart', 'actionrequired', 'error', 'aborting']);
   const BOTE_HALT = new Set(['pause', 'delayedstart', 'actionrequired', 'error', 'aborting']);
   const BOTE_IDLE = new Set(['ready', 'inactive', 'off', 'standby']);
+  // Kein echter Zustand (WLAN weg, Neustart): Gerät behält, was es zuletzt war
+  const BOTE_DEAD = new Set(['', 'unavailable', 'unknown', 'none', 'notconnected']);
+  const BOTE_WARNED = new Set(); // schon gemeldete Konfigurationsfehler (console.warn nur einmal)
+  // Zustandsnamen anderer Integrationen (Miele, LG ThinQ, SmartThings …) auf Home Connect abbilden.
+  // Schlüssel wie norm() in _boteRead: klein, ohne Leerzeichen, _ und -.
+  const BOTE_ALIAS = {
+    running: 'run', inuse: 'run', washing: 'run', rinsing: 'run', spinning: 'run', drying: 'run', cooling: 'run',
+    detecting: 'run', steam: 'run', rinse: 'run', spin: 'run', wash: 'run', dry: 'run', active: 'run',
+    paused: 'pause', rinsehold: 'pause',
+    waitingtostart: 'delayedstart', reservation: 'delayedstart', reserved: 'delayedstart', delayed: 'delayedstart', scheduled: 'delayedstart',
+    failure: 'error', fault: 'error', programinterrupted: 'error', service: 'actionrequired',
+    programended: 'finished', end: 'finished', finish: 'finished', done: 'finished', complete: 'finished', completed: 'finished',
+    on: 'ready', idle: 'ready', programmed: 'ready', initial: 'ready', stop: 'ready', standby: 'ready',
+    off: 'inactive', poweroff: 'inactive', sleep: 'inactive',
+  };
+  // Sperrbereiche je Areal in Bau-Einheiten [x1, x2, Stufe]: Stufe 0 = nie verdecken, 1 = nur wenn sonst kein Platz
+  // (Hügel: Blumenkasten unter dem Fenster; Laternenpfahl und grüner Laden)
+  const BOTE_KEEP = { huegel: [[71, 89, 0], [10, 33, 1]] };
   const BOTE_TYPE = {
     washer: 'washer', washingmachine: 'washer', waschmaschine: 'washer',
     dryer: 'dryer', tumbledryer: 'dryer', trockner: 'dryer',
@@ -1388,8 +1412,11 @@
       + 'd="M0 1.7 L-1.7 0 Q-2.5 -1 -1.5 -1.8 Q-.6 -2.2 0 -1.2 Q.6 -2.2 1.5 -1.8 Q2.5 -1 1.7 0Z" fill="#f07a95"/>';
   })();
   const BOTE_SOCK = (fill) => `<path d="M-2 -4 H1.6 V.4 Q1.6 1.6 3 2 L4 2.3 Q5.2 2.9 4.4 4.2 L1 4 Q-2 3.4 -2 .8Z" fill="${fill}" stroke="${OUT}" stroke-width=".5"/>`;
-  const BOTE_WAVES = (cls, xs, y, d) => `<g class="${cls}" fill="none" stroke-linecap="round">${xs.map((x, i) =>
-    `<path d="M${x} ${y + (i % 2) * 1.5} q1.6 -1.8 0 -3.6 q-1.6 -1.8 0 -3.6" style="animation-delay:${(-i * d).toFixed(2)}s"/>`).join('')}</g>`;
+  // Aufsteigende Wellen; mit Rand (Dampf) liegt unter jeder Welle ein dunkler Strich statt eines drop-shadow
+  const BOTE_WAVES = (cls, xs, y, d, rim) => `<g class="${cls}" fill="none" stroke-linecap="round">${xs.map((x, i) => {
+    const p = `d="M${x} ${y + (i % 2) * 1.5} q1.6 -1.8 0 -3.6 q-1.6 -1.8 0 -3.6"`;
+    return `<g style="animation-delay:${(-i * d).toFixed(2)}s">${rim ? `<path class="hb-rim" ${p}/>` : ''}<path ${p}/></g>`;
+  }).join('')}</g>`;
 
   // Teller zum Tragen (Vorderansicht) und gefaltetes Handtuch im Maul
   const BOTE_PLATE_SVG = `<svg viewBox="-7 -7 14 14" aria-hidden="true"><circle r="6.3" fill="#fff" stroke="${OUT}" stroke-width="1"/>
@@ -1416,7 +1443,7 @@
 
   const BOTE_SVG = {
     washer(view) {
-      if (view === 'empty') return { vb: [0, 0, 84, 112], ground: 110, vt: 8, part: [6, 78], svg: BOTE_CLOTHESLINE };
+      if (view === 'empty') return { vb: [0, 0, 84, 112], ground: 110, vt: 8, part: [6, 78], back: true, svg: BOTE_CLOTHESLINE };
       const done = view === 'done';
       return {
         vb: [0, 0, done ? 64 : 46, 44], ground: 42, vt: 2, part: done ? [4, 63] : [4, 42],
@@ -1447,7 +1474,7 @@
             <path d="M38.4 37.4 H57.4" stroke="#fff" stroke-opacity=".75" stroke-width=".8" stroke-dasharray="1.4 1.6"/></g>
           <g class="hb-t3"><rect x="36.6" y="26.4" width="23" height="7.6" rx="3.7" fill="#fff3c4" stroke="${OUT}" stroke-width="1"/>
             <path d="M39.6 30.2 H56.6" stroke="#e6c97a" stroke-width=".8" stroke-dasharray="1.4 1.6"/></g>
-        </g>${BOTE_WAVES('hb-steam', [42, 48, 54], 24, 0.9)}` : '';
+        </g>${BOTE_WAVES('hb-steam', [42, 48, 54], 24, 0.9, true)}` : '';
       return {
         vb: [0, -12, done ? 64 : 46, 62], ground: 48, vt: 7, part: done ? [6, 62] : [6, 40],
         svg: `${stand}<circle cx="23" cy="24" r="17" fill="#ad8664" stroke="${OUT}" stroke-width="1.6"/>
@@ -1491,15 +1518,17 @@
   .hb { position: absolute; left: 0; top: 0; pointer-events: auto; cursor: pointer; transition: filter 2.5s, opacity .5s; }
   .hb.hb-placed { transition: left .5s ease, top .5s ease, width .5s ease, filter 2.5s, opacity .5s; }
   .hb::after { content: ''; position: absolute; inset: -8px -4px 0; }
-  .hb.hb-front { z-index: 4; }
+  /* Vorn auf dem Wiesenstreifen: näher am Betrachter, also vor Pika, Gras und Heu (unter Regen, Statusleiste, Futterknopf) */
+  .hb.hb-fr, .hb-bar.hb-fr { z-index: 4; }
   .hb.hb-bye { opacity: 0; pointer-events: none; }
   .hb-i { transform-origin: 50% 100%; }
   .hb svg { display: block; width: 100%; height: auto; overflow: visible; }
   .day.overcast .hb, .day.overcast .hb-carry, .day.overcast .hb-stick, .day.overcast .hb-dipw { filter: brightness(.9) saturate(.8); }
   .dusk .hb, .dusk .hb-carry, .dusk .hb-stick, .dusk .hb-dipw { filter: brightness(.85) saturate(.85); }
   .night .hb, .night .hb-carry, .night .hb-stick, .night .hb-dipw { filter: brightness(.5) saturate(.6); }
-  /* Fertig: hüpft alle paar Sekunden kurz (Aufmerksamkeit), Antippen durch den Pika wackelt */
-  .hb.hb-done:not(.hb-live) .hb-i { animation: hb-nudge 4s ease-in-out infinite; }
+  /* Fertig: hüpft alle paar Sekunden kurz (Aufmerksamkeit), Antippen durch den Pika wackelt. Einblenden und
+     Antippen haben Vorrang (die Regel greift dann nicht), im Schlaf und nachts ruht es. */
+  .hb.hb-done:not(.hb-live):not(.hb-boop):not(.hb-in):not(.hb-still) .hb-i { animation: hb-nudge 4s ease-in-out infinite; }
   .hb.hb-in .hb-i { animation: hb-pin .55s cubic-bezier(.3, 1.6, .5, 1) both; }
   .hb.hb-boop .hb-i { animation: hb-boop .45s ease-out; }
   @keyframes hb-pin { from { transform: scale(.4); opacity: 0; } }
@@ -1511,6 +1540,9 @@
   }
   @keyframes hb-boop { 30% { transform: scale(1.06, .92) rotate(-2deg); } 65% { transform: scale(.97, 1.04) rotate(1.5deg); } }
   .hb.hb-pause *:not(.hb-a) { animation-play-state: paused !important; }
+  /* Pika schläft (oder Nacht und das Gerät läuft nicht): Endlos-Animationen anhalten, spart dem Tablet das
+     ständige Neuzeichnen unter dem Nachtfilter */
+  .hb.hb-still .hb-i *, .hb.hb-still .hb-a, .hb-bar.hb-still b { animation-play-state: paused !important; }
   .hb .hb-gone { opacity: 0; transition: opacity .7s; }
   /* Störung oder Hilfe nötig: rotes Ausrufezeichen */
   .hb-a {
@@ -1557,9 +1589,11 @@
   .hb-run .hb-rot { animation: hb-spin 2.6s linear infinite; }
   .hb-run .hb-sock { animation: hb-spin 1.2s linear infinite; }
   @keyframes hb-spin { to { transform: rotate(360deg); } }
-  .hb-heat path, .hb-steam path { opacity: 0; transform-box: fill-box; animation: hb-heat 2.2s ease-out infinite; }
+  .hb-heat > g, .hb-steam > g { opacity: 0; transform-box: fill-box; animation: hb-heat 2.2s ease-out infinite; }
   .hb-heat path { stroke: #f3a25a; stroke-width: 1.1; }
-  .hb-steam path { stroke: #fff; stroke-width: 1.3; filter: drop-shadow(0 0 .6px rgba(90, 64, 48, .5)); animation-duration: 2.8s; }
+  .hb-steam > g { animation-duration: 2.8s; }
+  .hb-steam path { stroke: #fff; stroke-width: 1.3; }
+  .hb-steam path.hb-rim { stroke: rgba(90, 64, 48, .35); stroke-width: 2.3; }
   @keyframes hb-heat {
     0% { transform: translateY(2px); opacity: 0; }
     35% { opacity: .9; }
@@ -1570,16 +1604,18 @@
   .hb-dip { transform-box: fill-box; transform-origin: 50% 50%; }
   .hb-run .hb-dip { animation: hb-dip 2.8s ease-in-out infinite; }
   @keyframes hb-dip { 0%, 100% { transform: none; } 45% { transform: translateY(7px) rotate(-8deg); } 62% { transform: translateY(6px) rotate(6deg); } }
-  .hb-tw { fill: #fff6b8; transform-box: fill-box; transform-origin: center; animation: hb-twk 1.8s ease-in-out infinite; filter: drop-shadow(0 0 1.5px rgba(255, 220, 110, .95)); }
+  .hb-tw { fill: #fff6b8; transform-box: fill-box; transform-origin: center; animation: hb-twk 1.8s ease-in-out infinite;
+    stroke: rgba(240, 190, 70, .9); stroke-width: 2.4; stroke-linejoin: round; paint-order: stroke; }
   @keyframes hb-twk { 0%, 100% { transform: scale(0); opacity: 0; } 40% { transform: scale(1) rotate(35deg); opacity: 1; } 70% { transform: scale(.25); opacity: .3; } }
   .hb-plates > g { transition: opacity .6s; }
 
-  /* Ebenen vor dem Pika: Werkzeug und Getragenes (z 4), Fähnchen über Statusleiste und Futterknopf (z 6) */
-  .hb-f, .hb-t { position: absolute; inset: 0; pointer-events: none; }
+  /* Ebenen vor dem Pika: Werkzeug und Getragenes (z 4), Fähnchen über Statusleiste und Futterknopf (z 6).
+     Der Fortschrittsbalken liegt wie sein Requisit: hinten unter dem Pika (über dem Gras), vorn davor. */
+  .hb-f, .hb-t, .hb-bars { position: absolute; inset: 0; pointer-events: none; }
   .hb-f { z-index: 4; }
   .hb-t { z-index: 6; }
   .hb-bar {
-    position: absolute; left: 0; top: 0; height: clamp(3px, calc(var(--H) * .018), 6px); border-radius: 99px;
+    position: absolute; left: 0; top: 0; height: clamp(3px, calc(var(--H) * .018), 6px); border-radius: 99px; pointer-events: none;
     background: rgba(255, 255, 255, .78); box-shadow: 0 0 0 1px rgba(90, 64, 48, .4); overflow: hidden;
     opacity: 0; transition: opacity .5s, left .5s, top .5s, width .5s;
   }
@@ -1636,6 +1672,9 @@
 
   /* Haltungen des Pika bei der Arbeit */
   .pika.hb-hold .paws, .pika.hb-stir .paws, .pika.hb-polish .paws, .pika.hb-pat .paws { display: inline; }
+  /* Bei Regen hält eine Pfote das Blatt (.brolly): dann arbeitet nur die andere, nie drei Pfoten */
+  .pika.wet.hb-hold .paws ellipse + ellipse, .pika.wet.hb-stir .paws ellipse + ellipse,
+  .pika.wet.hb-polish .paws ellipse + ellipse, .pika.wet.hb-pat .paws ellipse + ellipse { display: none; }
   .pika.hb-stir .paws { transform-box: fill-box; animation: hb-stirp .8s linear infinite; }
   @keyframes hb-stirp { 0%, 100% { transform: translate(-1.6px, 0); } 25% { transform: translate(0, 1.2px); } 50% { transform: translate(1.6px, 0); } 75% { transform: translate(0, -1.2px); } }
   .pika.hb-stir .hop { animation: hb-stir .8s ease-in-out infinite; }
@@ -1653,12 +1692,15 @@
   .hb-tag {
     position: absolute; left: 0; top: 0; padding: .12em .7em .18em; border-radius: .9em;
     font-size: clamp(10px, calc(var(--H) * .05), 14px); line-height: 1.35; white-space: nowrap;
+    max-width: calc(100% - 8px); box-sizing: border-box;
     color: #4a3a2c; background: rgba(255, 255, 255, .86); box-shadow: 0 1px 3px rgba(0, 0, 0, .15);
     opacity: 0; transform: translateY(4px); pointer-events: none; cursor: pointer;
     transition: opacity .25s, transform .25s, background 2.5s, color 2.5s;
   }
   .hb-tag.open { opacity: 1; transform: none; pointer-events: auto; }
   .hb-tag b { font-weight: 700; letter-spacing: .02em; }
+  /* zu lang für eine schmale Karte: Zeilen mit … kürzen statt links abschneiden */
+  .hb-tag b, .hb-tag .more { display: block; overflow: hidden; text-overflow: ellipsis; }
   .hb-tag .more { font-size: .9em; opacity: .85; }
   .night .hb-tag { color: #e4e9f6; background: rgba(22, 32, 62, .78); }
   `;
@@ -7091,8 +7133,9 @@
     // ==================== Haus-Bote: Methoden ====================
     // Waschmaschine, Trockner, Spülmaschine aus `appliances`. Jedes Gerät hat ein Requisit am Bau (.hb in .props),
     // das seine Phase zeigt: run (läuft), done (fertig, noch zu), empty (ausgeräumt, 20 Minuten).
-    // "Ausgeräumt" wird zweigleisig erkannt: live (fertig → ready/inactive oder Tür auf, der Pika räumt sichtbar
-    // auf) und für alle Geräte gleich aus last_changed (ready/inactive seit weniger als 20 Minuten).
+    // "Ausgeräumt" nur nach einem echten Programmende: live (fertig → ready/inactive, oder Tür bei "fertig" auf;
+    // der Pika räumt sichtbar auf), läuft → aus kurz vor Schluss, und nach dem Neuladen nur, wenn last_changed und
+    // Fortschritt/Endzeit plausibel ein Programmende zeigen. Einschalten, Abbruch und Ausfälle zählen nicht.
 
     _hassBote(hass) {
       const B = this._boteSync();
@@ -7175,12 +7218,19 @@
           if (!type || !c.state) return;
           list.push({ idx: i, type, cfg: c, name: String(c.name || BOTE_NAME[type]), phase: null, view: null, nudgeAt: 0, objs: [] });
         });
+        // Zwei Geräte gleichen Typs ohne eigenen Namen: durchnummerieren, damit die Fähnchen eindeutig sind
+        for (const t of Object.keys(BOTE_NAME)) {
+          const same = list.filter((a) => a.type === t && !a.cfg.name);
+          if (same.length > 1) same.forEach((a, n) => (a.name = `${BOTE_NAME[t]} ${n + 1}`));
+        }
       }
       this._bote = { ref: cfg, key, list, queue: [], runAt: 0, f: null, t: null };
       return this._bote;
     }
 
     _boteDrop(B) {
+      // Eine laufende Bote-Aktion hängt an den alten Geräten und Ebenen: abbrechen
+      if (this._action?.startsWith('bote')) this._interrupt();
       cancelAnimationFrame(this._boteRaf);
       for (const a of B.list) {
         clearTimeout(a.tagT);
@@ -7188,42 +7238,88 @@
         a.bar?.remove();
         a.tag?.remove();
       }
+      B.bars?.remove();
       B.f?.remove();
       B.t?.remove();
     }
 
     // Neue Zustände eines Geräts lesen. Home Connect bleibt nach Programmende auf "finished", bis die Tür
-    // aufgeht, dann "ready", später "inactive".
+    // aufgeht, dann "ready", später "inactive"; andere Hersteller über BOTE_ALIAS. "Ausgeräumt" gilt nur nach
+    // einem echten Programmende (fertig → aus, Tür bei "fertig" geöffnet, oder läuft → aus kurz vor Schluss),
+    // nicht beim Einschalten, Abbrechen oder Löschen der Startvorwahl. Ohne echten Zustand (unavailable,
+    // unknown) bleibt das Gerät, wie es war.
     _boteRead(a, [st, pr, en, dr], now) {
       const norm = (v) => String(v ?? '').split('.').pop().toLowerCase().replace(/[\s_-]/g, '');
+      const lc = (o) => Math.min(now, Date.parse(o?.last_changed) || Date.parse(o?.last_updated) || now);
       const first = !a.seen;
       a.seen = true;
-      const s = norm(st?.state);
-      const door = !!dr && ['open', 'on', 'opened', 'offen', 'auf', 'ajar'].includes(norm(dr.state));
-      const changed = Math.min(now, Date.parse(st?.last_changed) || Date.parse(st?.last_updated) || now);
-      const doorChanged = Math.min(now, Date.parse(dr?.last_changed) || changed);
-      const pct = Number.parseFloat(pr?.state);
-      const end = en && !/^(unavailable|unknown|none)?$/i.test(String(en.state)) ? Date.parse(en.state) : NaN;
+      const raw = norm(st?.state);
+      const s = BOTE_ALIAS[raw] || raw;
+      const dead = BOTE_DEAD.has(s);
+      this._boteWarn(a, st, s, dead, [pr, en, dr]);
+      const pct = this._botePct(pr);
+      const end = this._boteEnd(en, now);
+      const doorDead = !dr || BOTE_DEAD.has(norm(dr.state));
+      const door = doorDead ? !!a.door : ['open', 'on', 'opened', 'offen', 'auf', 'ajar'].includes(norm(dr.state));
+      const doorAt = doorDead ? now : lc(dr);
       const prevSt = a.st;
-      const prevDoor = a.door;
+      const prevPct = a.pct;
+      const prevEnd = a.end;
+      const prevDoor = !!a.door;
+      const prevOpened = !!a.opened;
+      // Ausfall: alter Zustand gilt weiter (keine neue Phase, kein neues Stupsen), gültige Werte kommen trotzdem an
+      const cur = dead && !first ? prevSt : s;
+      const stChanged = first || cur !== prevSt;
       Object.assign(a, {
-        st: s, door, changed,
-        pct: Number.isFinite(pct) ? clamp(pct, 0, 100) : null,
-        end: Number.isFinite(end) ? end : null,
+        st: cur, door,
+        changed: stChanged && !dead ? lc(st) : a.changed ?? now,
+        pct: pct ?? (dead ? prevPct : null),
+        end: end ?? (dead ? prevEnd : null),
       });
-      // Frist für "ausgeräumt" (emptyUntil): 0 = keine
-      const idle = BOTE_IDLE.has(s) || (s === 'finished' && door);
+      if (cur !== 'finished') a.opened = false;
+      else if (stChanged) {
+        a.finAt = a.changed;
+        a.opened = false;
+      }
+      // Frist für "ausgeräumt" (emptyUntil): 0 = keine, null = läuft/fertig
+      const idle = BOTE_IDLE.has(cur);
       let live = false;
-      if (BOTE_RUN.has(s) || (s === 'finished' && !door)) a.emptyUntil = null;
-      else if (first) a.emptyUntil = idle ? (s === 'finished' ? doorChanged : changed) + BOTE_EMPTY_MS : 0;
-      else if (s !== prevSt || door !== prevDoor) {
-        if (prevSt === 'finished' && !prevDoor && idle) {
+      if (first) {
+        if (BOTE_RUN.has(cur)) a.emptyUntil = null;
+        else if (cur === 'finished') {
+          // Tür später als 2 Minuten nach Programmende geöffnet: ausgeräumt
+          a.opened = door && !doorDead && doorAt - a.finAt > BOTE_AUTOOPEN_MS;
+          a.emptyUntil = a.opened ? doorAt + BOTE_EMPTY_MS : null;
+        } else if (idle) {
+          // Nach dem Neuladen nur, wenn es plausibel ein Programmende war: Fortschritt steht noch auf (fast) 100,
+          // oder (ohne Fortschritt) eine gültige Endzeit hat sich um dieselbe Zeit geändert. Im Zweifel nicht (auch
+          // nicht nach einem HA-Neustart, der alle last_changed gleichsetzt).
+          const near = [pr, en].some((o) => o && !BOTE_DEAD.has(norm(o.state)) && Math.abs(lc(o) - a.changed) <= 5 * 60000);
+          a.emptyUntil = (pct != null ? pct >= 95 : near) ? a.changed + BOTE_EMPTY_MS : 0;
+        } else a.emptyUntil = 0;
+      } else if (BOTE_RUN.has(cur)) a.emptyUntil = null;
+      else if (cur === 'finished') {
+        if (stChanged) a.emptyUntil = null;
+        // Tür bei "fertig" geöffnet (nicht der AutoOpen-Spalt direkt am Programmende): gilt als ausgeräumt, bis der
+        // Zustand "fertig" verlässt; Tür wieder zu ändert daran nichts
+        else if (door && !prevDoor && !a.opened && now - a.finAt > BOTE_AUTOOPEN_MS) {
+          a.opened = true;
           a.emptyUntil = now + BOTE_EMPTY_MS;
           live = true;
-        } else if (idle && (BOTE_RUN.has(prevSt) || (prevSt === 'inactive' && s === 'ready'))) {
-          a.emptyUntil = changed + BOTE_EMPTY_MS;
+        }
+      } else if (stChanged) {
+        const ended = (prevPct == null && prevEnd == null) || (prevPct != null && prevPct >= 95)
+          || (prevEnd != null && Math.abs(prevEnd - a.changed) < 10 * 60000);
+        if (idle && prevSt === 'finished') {
+          // schon beim Türöffnen gewertet: die Frist läuft weiter
+          if (!prevOpened) {
+            a.emptyUntil = now + BOTE_EMPTY_MS;
+            live = true;
+          }
+        } else if (idle && prevSt === 'run' && ended) {
+          a.emptyUntil = a.changed + BOTE_EMPTY_MS;
         } else if (a.emptyUntil == null) {
-          // z. B. ready → inactive (Gerät schaltet ab): keine neue Frist, eine laufende behält ihr Ende
+          // Abbruch, Einschalten, ready → inactive …: keine neue Frist, eine laufende behält ihr Ende
           a.emptyUntil = 0;
         }
       }
@@ -7242,8 +7338,47 @@
 
     _botePhase(a, now) {
       if (BOTE_RUN.has(a.st)) return 'run';
-      if (a.st === 'finished' && !a.door) return 'done';
+      if (a.st === 'finished' && !a.opened) return 'done';
       return a.emptyUntil && now < a.emptyUntil ? 'empty' : null;
+    }
+
+    // Einmal je Seite und Grund melden (auch bei mehreren Karten): Entity fehlt oder Zustand unbekannt
+    _boteWarn(a, st, s, dead, more) {
+      const c = a.cfg;
+      const msgs = [];
+      if (!st) msgs.push(`Entity ${c.state} nicht gefunden`);
+      else if (!dead && !BOTE_RUN.has(s) && !BOTE_IDLE.has(s) && s !== 'finished') msgs.push(`unbekannter Zustand "${st.state}" von ${c.state}`);
+      ['progress', 'end', 'door'].forEach((k, i) => c[k] && !more[i] && msgs.push(`Entity ${c[k]} nicht gefunden`));
+      for (const m of msgs) {
+        if (BOTE_WARNED.has(m)) continue;
+        BOTE_WARNED.add(m);
+        console.warn(`pika-pet-card Haus-Bote: ${m}`);
+      }
+    }
+
+    // Fortschritt in %; ohne Einheit "%" gilt ein Wert über 0 bis 1 als Anteil (0.45 → 45 %)
+    _botePct(pr) {
+      let v = Number.parseFloat(pr?.state);
+      if (!Number.isFinite(v)) return null;
+      if (pr.attributes?.unit_of_measurement !== '%' && v > 0 && v <= 1) v *= 100;
+      return clamp(v, 0, 100);
+    }
+
+    // Endzeit: Zeitstempel, oder Restzeit als Zahl (Einheit s/min/h aus unit_of_measurement, sonst Minuten) bzw.
+    // als h:mm(:ss). Nur Werte von jetzt −1 h bis +24 h zählen, alles andere (z. B. "83" als Jahr) wird ignoriert.
+    _boteEnd(en, now) {
+      const v = String(en?.state ?? '').trim();
+      if (BOTE_DEAD.has(v.toLowerCase())) return null;
+      const base = Math.min(now, Date.parse(en.last_changed) || Date.parse(en.last_updated) || now);
+      let t;
+      if (/^-?\d+(\.\d+)?$/.test(v)) {
+        const u = String(en.attributes?.unit_of_measurement || 'min').toLowerCase();
+        t = base + Number(v) * ({ ms: 1, s: 1e3, sec: 1e3, m: 6e4, min: 6e4, h: 36e5, d: 864e5 }[u] ?? 6e4);
+      } else if (/^\d+:\d\d(:\d\d)?$/.test(v)) {
+        const [h, m, sec = 0] = v.split(':').map(Number);
+        t = base + ((h * 60 + m) * 60 + sec) * 1000;
+      } else t = Date.parse(v);
+      return Number.isFinite(t) && t >= now - 36e5 && t <= now + 864e5 ? t : null;
     }
 
     // Zeitabhängiges neu bewerten (Frist abgelaufen, "fertig seit …"), Wind für die Wäscheleine
@@ -7275,7 +7410,17 @@
     }
 
     _boteText(a) {
-      const hm = (t) => new Date(t).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
+      // Uhrzeit in der Zeitzone, die HA im Profil eingestellt hat (Server- oder Browserzeit)
+      const hs = this._hass;
+      const tz = hs?.locale?.time_zone === 'server' ? hs.config?.time_zone : undefined;
+      const hm = (t) => {
+        const o = { hour: '2-digit', minute: '2-digit' };
+        try {
+          return new Date(t).toLocaleTimeString('de-DE', tz ? { ...o, timeZone: tz } : o);
+        } catch (e) {
+          return new Date(t).toLocaleTimeString('de-DE', o); // unbekannte Zeitzone
+        }
+      };
       if (a.phase === 'run') {
         const p = [];
         const s = a.st;
@@ -7296,14 +7441,18 @@
 
     // ---------- Haus-Bote: Requisiten ----------
 
+    // Ebenen in .props: Requisiten, davor die Fortschrittsbalken (.hb-bars ohne eigenen Stapelkontext, damit vordere
+    // Balken mit ihrem Requisit vor den Pika kommen), Werkzeug/Getragenes (.hb-f) und Fähnchen (.hb-t)
     _boteLayers() {
       const B = this._bote;
       if (B.f) return;
+      B.bars = document.createElement('div');
+      B.bars.className = 'hb-bars';
       B.f = document.createElement('div');
       B.f.className = 'hb-f';
       B.t = document.createElement('div');
       B.t.className = 'hb-t';
-      this._el.props.append(B.f, B.t);
+      this._el.props.append(B.bars, B.f, B.t);
     }
 
     // Requisit an die Phase angleichen. Beim Live-Aufräumen bleibt das Bild davor stehen (Wäsche im Korb,
@@ -7334,18 +7483,19 @@
           e.stopPropagation();
           this._boteTag(a, !a.tag?.classList.contains('open'));
         });
-        this._el.props.insertBefore(el, this._bote.f);
+        this._el.props.insertBefore(el, this._bote.bars);
         const bar = document.createElement('div');
         bar.className = 'hb-bar';
         bar.innerHTML = '<b></b>';
         bar.style.setProperty('--bc', BOTE_COLOR[a.type]);
-        this._bote.f.appendChild(bar);
+        this._bote.bars.appendChild(bar);
         a.el = el;
         a.bar = bar;
       }
       const el = a.el;
       if (view !== a.view) {
         a.view = view;
+        a.zoneLv = 0; // neues Bild: Platz wieder streng suchen (bevorzugt den bisherigen)
         a.spec = BOTE_SVG[a.type](view, a.idx);
         el.firstElementChild.innerHTML = `<svg viewBox="${a.spec.vb.join(' ')}" aria-hidden="true">${a.spec.svg}</svg>`;
         el.classList.remove('hb-in', 'hb-emptied', 'hb-boop');
@@ -7363,6 +7513,9 @@
       const halt = view === 'run' && BOTE_HALT.has(a.st);
       cl.toggle('hb-pause', halt);
       cl.toggle('hb-alert', view === 'run' && (a.st === 'error' || a.st === 'actionrequired'));
+      // Ruhe, solange der Pika schläft, und nachts außer bei laufenden Geräten (schwaches Tablet)
+      const still = !!this._asleep || (view !== 'run' && this._el.scene.classList.contains('night'));
+      cl.toggle('hb-still', still);
       // Wind: Richtung aus dem Wetter, Stärke macht das Wehen weiter und schneller
       const wind = this._wind || 0;
       el.style.setProperty('--hbw', `${(-(this._windDir || -1) * clamp(3 + wind / 3.5, 3, 18)).toFixed(1)}deg`);
@@ -7371,6 +7524,7 @@
       bar.classList.toggle('on', view === 'run');
       bar.classList.toggle('ind', a.pct == null);
       bar.classList.toggle('pause', halt);
+      bar.classList.toggle('hb-still', still);
       if (a.pct != null) bar.style.setProperty('--p', `${a.pct.toFixed(1)}%`);
       const text = this._boteText(a);
       el.setAttribute('aria-label', `${a.name}: ${text}`);
@@ -7378,84 +7532,174 @@
       if (relayout && !noLayout) this._boteLayout();
     }
 
-    // Plätze: (A) zwischen Eingang und Heuhaufen, (B) zwischen Heuhaufen und Aussichtsstein (vor dem Geröll),
-    // (C) links neben dem Eingang. Reicht der Platz nicht, werden alle etwas kleiner.
+    // Plätze: vorn auf dem Wiesenstreifen (F rechts vom Eingang, FL links davon; näher am Betrachter, also etwas
+    // größer, tiefer und vor dem Pika), hinten (A) zwischen Eingang und Heuhaufen, (B) zwischen Heuhaufen und
+    // Aussichtsstein, (C) links neben dem Eingang. Sperrbereiche teilen die Plätze auf: Deko am Bau (BOTE_KEEP),
+    // Festdeko am Boden, Heuhaufen, Futter- und Blumenwiese, Klo-Ecke am Stein; Futterknopf und Stein bleiben frei.
+    // Stufen: erst alles frei lassen, dann Laden/Laterne, dann die Futterwiese hergeben. Jedes Requisit bleibt
+    // möglichst auf seinem Platz und wird dort allein kleiner, danach weicht es aus und wird bis 0,55 verkleinert.
+    // Passt es dann noch nicht, rücken die Requisiten eines Platzes überlappend zusammen (weiter vorn = davor).
+    // Setzt nur Positionen und tut nichts, wenn sich nichts ändert (auch von der Festdeko aus aufgerufen).
     _boteLayout() {
       const B = this._bote;
-      if (!this._g || !B?.list.length) return;
-      const { hole, hay, rock } = this._g;
+      if (!this._g || !this._el || !B?.list.length) return;
+      // wer schon steht, kommt zuerst dran und behält seinen Platz
+      const vis = B.list.filter((a) => a.el && a.spec).sort((x, y) => (x.zone == null) - (y.zone == null) || x.idx - y.idx);
+      if (!vis.length) return;
+      const { hole, hay, rock, bur, fMin, fMax } = this._g;
       const H = this._H;
+      const W = this._W;
       const hh = 0.13 * H * (0.4 + (this._hay || 3) * 0.055); // halbe sichtbare Breite des Heuhaufens
+      const right = W - 60; // Futterknopf rechts unten
       const zones = [
+        { a: hole.r + 0.01 * H, b: right, al: 0.5, fr: true },
+        { a: 4, b: hole.l - 0.01 * H, al: 1, fr: true },
         { a: hole.r + 0.015 * H, b: hay - hh + 0.06 * H, al: 0.5 },
-        { a: hay + hh - 0.04 * H, b: Math.min(rock.l + 0.03 * H, this._W - 72), al: 0 },
+        { a: hay + hh - 0.04 * H, b: Math.min(rock.l + 0.03 * H, right), al: 0 },
         { a: 4, b: hole.l - 0.02 * H, al: 1 },
       ];
-      const vis = B.list.filter((a) => a.el && a.spec);
-      if (!vis.length) return;
-      const gap = 0.025 * H;
-      const fit = (s) => {
-        const rows = zones.map(() => []);
-        const room = (i, w) => zones[i].b - zones[i].a >= rows[i].reduce((t, r) => t + r.w + gap, 0) + w;
-        // Wer schon steht, bleibt möglichst auf seinem Platz; die anderen nehmen den ersten freien
-        const rest = [];
-        for (const a of vis) {
-          const w = a.spec.vb[2] * BOTE_K * H * s;
-          if (a.zone != null && room(a.zone, w)) rows[a.zone].push({ a, w });
-          else rest.push({ a, w });
+      // Sperrbereiche [l, r, Stufe, nur vorn]; Stufe k > 0: ab Stufe k freigegeben, 0: nie
+      const keep = (BOTE_KEEP[this._arealKey] || []).map(([x1, x2, k]) => [bur.l + x1 * bur.u, bur.l + x2 * bur.u, k]);
+      keep.push([hay - hh, hay + hh, 0, true]);
+      keep.push([fMin * W - 0.065 * H, fMax * W + 0.065 * H, 2]);
+      keep.push([rock.l - rock.w * 0.08 - 0.04 * H, rock.l + rock.w * 0.16 + 0.04 * H, 0]);
+      // Festdeko am Boden ({x: Mitte, l: linke Kante, w}); Eier und Raketenstäbe dürfen notfalls verdeckt werden
+      for (const [n, p] of Object.entries(this._festPos || {})) {
+        if (!(p?.w > 0)) continue;
+        const l = p.l ?? p.x - p.w / 2;
+        keep.push([l, l + p.w, /^(egg|stick)/.test(n) ? 2 : 0]);
+      }
+      // freie Stücke eines Platzes bei Stufe lv (9 = ohne Sperrbereiche), in Füllreihenfolge
+      const segs = (z, lv) => {
+        const zo = zones[z];
+        let s = [[zo.a, zo.b]];
+        for (const [l, r, k, fo] of keep) {
+          if (lv >= 9 || (k && lv >= k) || (fo && !zo.fr)) continue;
+          s = s.flatMap(([a, b]) => [[a, Math.min(b, l)], [Math.max(a, r), b]]);
         }
-        for (const r of rest) {
-          const zi = zones.findIndex((z, i) => room(i, r.w));
-          if (zi < 0) return null;
-          rows[zi].push(r);
-        }
-        rows.forEach((row) => row.sort((x, y) => x.a.idx - y.a.idx));
-        return rows;
+        s = s.filter(([a, b]) => b - a > 2);
+        return zo.al === 1 ? s.reverse() : s;
       };
-      let rows = null;
-      for (const s of [1, 0.9, 0.8, 0.7]) if ((rows = fit(s))) break;
-      // notfalls alle hintereinander auf die Wiese
-      if (!rows) rows = [[], vis.map((a) => ({ a, w: a.spec.vb[2] * BOTE_K * H * 0.7 })), []];
-      rows.forEach((row, i) => {
-        if (!row.length) return;
-        const z = zones[i];
-        const total = row.reduce((t, r) => t + r.w, 0) + gap * (row.length - 1);
-        let x = z.a + Math.max(0, z.b - z.a - total) * z.al;
-        for (const r of row) {
-          r.a.zone = i;
-          this._botePlace(r.a, x, r.w);
-          x += r.w + gap;
+      const gap = 0.025 * H;
+      // Requisiten (nach idx) in die Stücke verteilen; force: notfalls in das Stück mit dem meisten Platz, überlappend
+      const pack = (z, items, lv, force) => {
+        const ss = segs(z, lv).map(([a, b]) => ({ a, b, items: [], used: -gap }));
+        if (!ss.length) return null;
+        for (const it of items) {
+          let q = ss.find((o) => o.used + gap + it.w <= o.b - o.a);
+          if (!q) {
+            if (!force) return null;
+            q = ss.reduce((p, o) => (o.b - o.a - o.used > p.b - p.a - p.used ? o : p));
+          }
+          q.items.push(it);
+          q.used += gap + it.w;
+        }
+        return ss;
+      };
+      const st = zones.map(() => ({ items: [], lv: 0 }));
+      const tryAt = (a, z, s, lv, force) => {
+        const zo = zones[z];
+        if (zo.fr && a.spec.back) return false;
+        // die hohe Wäscheleine darf statt der Laterne gleich auch die Futterwiese nehmen (sonst winzig)
+        const L = Math.max(a.spec.back && lv === 1 ? 2 : lv, st[z].lv);
+        const items = [...st[z].items, { a, w: a.spec.vb[2] * BOTE_K * H * s * (zo.fr ? BOTE_FRONT : 1) }];
+        items.sort((x, y) => x.a.idx - y.a.idx);
+        if (!pack(z, items, L, force)) return false;
+        st[z].items = items;
+        st[z].lv = L;
+        return true;
+      };
+      const all = zones.map((_, i) => i);
+      // Stufen [Sperrstufe, Größen]: erst kleiner werden, bevor die Futterwiese hergegeben wird
+      const big = [1, 0.9, 0.8, 0.7];
+      const small = [0.6, 0.55];
+      const steps = [[0, big], [1, big], [0, small], [1, small], [2, big], [2, small]];
+      for (const a of vis) {
+        const pz = a.zone;
+        // zuerst der bisherige Platz auf der Stufe, auf der es dort stand (sonst springt es bei jedem Neuordnen)
+        const ok = (pz != null && big.some((s) => tryAt(a, pz, s, a.zoneLv || 0)))
+          || steps.some(([lv, sc]) => (pz != null && sc.some((s) => tryAt(a, pz, s, lv)))
+          || sc.some((s) => all.some((z) => tryAt(a, z, s, lv))));
+        if (ok) continue;
+        // letzte Stufe: in den Platz mit dem meisten freien Raum, dort überlappend; gibt es keinen, ohne Sperrbereiche
+        const room = (z) => {
+          if (zones[z].fr && a.spec.back) return -Infinity;
+          const ss = segs(z, Math.max(2, st[z].lv));
+          return ss.length ? ss.reduce((t, [l, r]) => t + r - l, 0) - st[z].items.reduce((t, it) => t + it.w + gap, 0) : -Infinity;
+        };
+        const z = all.reduce((p, i) => (room(i) > room(p) ? i : p), pz ?? 0);
+        if (!(room(z) > -Infinity && tryAt(a, z, 0.55, 2, true))) tryAt(a, 3, 0.55, 9, true);
+      }
+      // Reihen setzen: passt alles, mit Abstand nach der Ausrichtung des Platzes; sonst gleichmäßig überlappend,
+      // jedes zweite Requisit etwas tiefer (näher am Betrachter) und davor
+      const out = [];
+      st.forEach((zs, z) => {
+        if (!zs.items.length) return;
+        const zo = zones[z];
+        const lim = zo.fr ? right : W - 2;
+        for (const q of pack(z, zs.items, zs.lv, true) || []) {
+          const n = q.items.length;
+          if (!n) continue;
+          const len = q.b - q.a;
+          const over = q.used > len + 0.5;
+          const sum = q.items.reduce((t, it) => t + it.w, 0);
+          const g = over && n > 1 ? (len - sum) / (n - 1) : gap;
+          let x = q.a + (over ? (n > 1 ? 0 : (len - sum) * zo.al) : (len - q.used) * zo.al);
+          q.items.forEach((it, i) => {
+            out.push({ a: it.a, z, fr: !!zo.fr, w: it.w, l: clamp(x, 2, Math.max(2, lim - it.w)), dy: over && i % 2 ? 0.02 * H : 0 });
+            x += it.w + g;
+          });
         }
       });
+      const sig = `${W}x${H}|${out.map((p) => `${p.a.idx}${p.a.view}:${p.z}:${p.l.toFixed(1)}:${p.w.toFixed(1)}:${p.dy.toFixed(1)}`).join('|')}`;
+      if (sig === B.sig) return;
+      B.sig = sig;
+      for (const p of out) {
+        p.a.zone = p.z;
+        p.a.zoneLv = Math.min(2, st[p.z].lv);
+        this._botePlace(p.a, p.l, p.w, p.fr, p.dy);
+      }
+      // Tiefe: tiefer stehende Requisiten liegen im DOM später, also davor; ohne Überlappung bleibt alles, wie es ist
+      const kids = [...this._el.props.children];
+      const els = out.slice().sort((x, y) => x.dy - y.dy || kids.indexOf(x.a.el) - kids.indexOf(y.a.el)).map((p) => p.a.el);
+      const cur = kids.filter((e) => els.includes(e));
+      if (els.some((e, i) => e !== cur[i])) for (const e of els) this._el.props.insertBefore(e, B.bars);
     }
 
-    _botePlace(a, l, w) {
+    // Requisit setzen: vorn (fr) größer auf dem Wiesenstreifen, hinten knapp unter der Bodenlinie; dy = tiefer
+    _botePlace(a, l, w, fr, dy = 0) {
       const sp = a.spec;
+      const H = this._H;
       const k = w / sp.vb[2];
       const { gy } = this._g;
-      Object.assign(a, { l, k, w, x: l + w / 2, top: gy + 0.006 * this._H - (sp.ground - sp.vb[1]) * k });
+      const ground = gy + (fr ? BOTE_FRONT_DY : 0.006) * H + dy;
+      Object.assign(a, { l, k, w, fr, x: l + w / 2, top: ground - (sp.ground - sp.vb[1]) * k });
       a.vTop = this._boteY(a, sp.vt);
       const s = a.el.style;
       s.left = `${l.toFixed(1)}px`;
       s.top = `${a.top.toFixed(1)}px`;
       s.width = `${w.toFixed(1)}px`;
+      a.el.classList.toggle('hb-fr', fr);
       if (!a.el.classList.contains('hb-placed')) requestAnimationFrame(() => a.el?.classList.add('hb-placed'));
-      // Fortschrittsbalken vorn im Gras unter dem Requisit
+      // Fortschrittsbalken: vorn knapp unter dem Requisit, hinten am Fuß des Requisits über dem Gras (unter dem Pika)
       const [u0, u1] = sp.part;
-      const bw = Math.min((u1 - u0) * k * 0.72, this._H * 0.16);
+      const bw = Math.min((u1 - u0) * k * 0.72, H * 0.16);
+      const bh = clamp(H * 0.018, 3, 6);
       const bs = a.bar.style;
+      a.bar.classList.toggle('hb-fr', fr);
       bs.left = `${(this._boteX(a, (u0 + u1) / 2) - bw / 2).toFixed(1)}px`;
-      bs.top = `${(gy - this._H * 0.014).toFixed(1)}px`;
+      bs.top = `${(fr ? Math.min(ground + 0.004 * H, H - bh - 2) : gy - 0.045 * H - bh - 2).toFixed(1)}px`;
       bs.width = `${bw.toFixed(1)}px`;
       if (a.tag?.classList.contains('open')) this._boteTagPos(a);
     }
 
+    // Requisit-Einheiten → px; ist das Requisit schon weg (Phase vorbei), die Pika-Position bzw. die Bodenlinie
     _boteX(a, u) {
-      return a.l + u * a.k;
+      return a.spec && a.k ? a.l + u * a.k : this._x;
     }
 
     _boteY(a, v) {
-      return a.top + (v - a.spec.vb[1]) * a.k;
+      return a.spec && a.k ? a.top + (v - a.spec.vb[1]) * a.k : this._g.gy;
     }
 
     // Fähnchen: Gerätename und Stand, schließt nach 9 s; liegt über Statusleiste und Futterknopf
@@ -7488,21 +7732,27 @@
       this._boteTagPos(a);
     }
 
+    // Breite erst an der linken Kante messen (sonst begrenzt die alte Lage die Breite), dann über dem Requisit
+    // mittig, aber ganz in der Karte; breiter als die Karte geht es dank max-width und … nicht
     _boteTagPos(a) {
       if (!a.tag || !a.el || !this._g) return;
-      const w = a.tag.offsetWidth;
+      const ts = a.tag.style;
+      ts.left = '0px';
+      const w = Math.min(a.tag.offsetWidth, this._W - 8);
       const h = a.tag.offsetHeight;
-      a.tag.style.left = `${clamp(a.x - w / 2, 4, this._W - w - 4).toFixed(1)}px`;
-      a.tag.style.top = `${clamp(a.vTop - h - 6, 2, this._H - h - 4).toFixed(1)}px`;
+      ts.left = `${clamp(a.x - w / 2, 4, Math.max(4, this._W - w - 4)).toFixed(1)}px`;
+      ts.top = `${clamp(a.vTop - h - 6, 2, Math.max(2, this._H - h - 4)).toFixed(1)}px`;
     }
 
     // ---------- Haus-Bote: Aktionen ----------
 
-    // Ziel-Gerät: Wunsch aus der Vorschau (_boteFocus = Typ oder Index), sonst das erste passende
+    // Ziel-Gerät: Wunsch aus der Vorschau (_boteFocus = Typ oder Index), sonst das erste passende; beim Beschäftigen
+    // mit laufenden Geräten keins, das gerade pausiert, auf den Start wartet oder eine Störung hat
     _boteFind(type, phase) {
       const f = this._boteFocus;
       this._boteFocus = null;
-      const ok = (a) => a.el && a.spec && a.phase === phase && !a.live && (!type || a.type === type);
+      const ok = (a) => a.el && a.spec && a.phase === phase && !a.live && (!type || a.type === type)
+        && !(phase === 'run' && BOTE_HALT.has(a.st));
       const list = this._bote?.list || [];
       return list.find((a) => ok(a) && f != null && (a.type === f || a.idx === f)) || list.find(ok) || null;
     }
@@ -7553,6 +7803,14 @@
       this._bote?.f?.querySelectorAll('.hb-fx').forEach((e) => e.remove());
     }
 
+    // Effekt in die vordere Ebene; false, wenn es sie nicht (mehr) gibt (Konfiguration gewechselt)
+    _boteFx(...els) {
+      const f = this._bote?.f;
+      if (!f) return false;
+      f.append(...els);
+      return true;
+    }
+
     _boteBubbles(x, y, n) {
       for (let i = 0; i < n; i++) {
         const b = document.createElement('span');
@@ -7561,7 +7819,7 @@
         b.style.top = `${y.toFixed(1)}px`;
         b.style.setProperty('--dx', `${rnd(-8, 8).toFixed(1)}px`);
         b.style.animationDelay = `${i * 140}ms`;
-        this._bote.f.appendChild(b);
+        if (!this._boteFx(b)) return;
         setTimeout(() => b.remove(), 1300 + i * 140);
       }
     }
@@ -7573,7 +7831,7 @@
       el.className = 'hb-carry hb-fx';
       el.style.setProperty('--cw', `${(this._H * size).toFixed(1)}px`);
       el.innerHTML = `<i>${svg}</i>`;
-      this._bote.f.appendChild(el);
+      this._boteFx(el);
       const hop = this.shadowRoot.querySelector('.hop');
       const ty = (e) => {
         const t = e && getComputedStyle(e).transform;
@@ -7606,7 +7864,7 @@
       r.className = 'hb-ring hb-fx';
       r.style.left = `${tx.toFixed(1)}px`;
       r.style.top = `${ty.toFixed(1)}px`;
-      this._bote.f.append(s, r);
+      this._boteFx(s, r);
     }
 
     // Waschmaschine läuft: hinter dem Zuber stehen und umrühren, dann landet eine Seifenblase auf der Nase
@@ -7623,7 +7881,8 @@
       const p = this._el.pika;
       try {
         await this._wait(250);
-        a.el?.classList.add('hb-front', 'hb-busy');
+        if (!a.el) return;
+        a.el.classList.add('hb-busy');
         this._boteCls('hb-stir');
         const px = this._x + s.face * 0.258 * pW;
         this._boteStick(px, gy - 0.335 * pH - this._lift, tc + s.face * 0.012 * H, this._boteY(a, 16.8));
@@ -7645,7 +7904,7 @@
         const b = document.createElement('div');
         b.className = 'hb-soap hb-fx';
         b.innerHTML = '<i></i>';
-        this._bote.f.appendChild(b);
+        this._boteFx(b);
         b.animate([
           { transform: `translate(${fx}px, ${fy}px) scale(.3)`, opacity: 0 },
           { transform: `translate(${(fx + nx) / 2 + rnd(-6, 6)}px, ${Math.min(fy, ny) - H * 0.12}px) scale(.9)`, opacity: 1, offset: 0.55 },
@@ -7666,7 +7925,7 @@
         this._say(pick(['hihi!', 'hatschi!', 'hihi']), 1200);
         await this._wait(1500);
       } finally {
-        a.el?.classList.remove('hb-front', 'hb-busy');
+        a.el?.classList.remove('hb-busy');
         p.classList.remove('look-up');
         this._boteFxClear();
         this._boteUncls();
@@ -7723,7 +7982,8 @@
       this._face(s.face);
       try {
         await this._wait(250);
-        a.el?.classList.add('hb-front', 'hb-busy');
+        if (!a.el) return;
+        a.el.classList.add('hb-busy');
         this._boteCls('hb-hold');
         const px = this._x + s.face * 0.258 * pW;
         const py = gy - 0.335 * pH - this._lift;
@@ -7734,7 +7994,7 @@
         w.className = 'hb-dipw hb-fx';
         Object.assign(w.style, { left: `${px - 1.5 * r}px`, top: `${top}px`, width: `${3 * r}px`, height: `${Math.max(r, wy - top)}px` });
         w.innerHTML = `<i style="left:${0.5 * r}px;top:${1.4 * r}px;width:${2 * r}px">${BOTE_PLATE_SVG}</i>`;
-        this._bote.f.appendChild(w);
+        this._boteFx(w);
         const plate = w.firstElementChild;
         const deep = `translateY(${(wy - py + 1.25 * r).toFixed(1)}px)`;
         const n = 2 + Math.floor(rnd(0, 2));
@@ -7754,7 +8014,7 @@
         this._boteBubbles(px, wy, 2);
         await this._wait(700);
       } finally {
-        a.el?.classList.remove('hb-front', 'hb-busy');
+        a.el?.classList.remove('hb-busy');
         this._boteFxClear();
         this._boteUncls();
       }
@@ -7923,7 +8183,7 @@
     // Zum Eingang tragen, Getragenes verschwindet an der Tür, kurz drinnen, wieder heraus
     async _boteToBurrow() {
       await this._walkTo(this._g.home, 0.9);
-      this._bote.f.querySelectorAll('.hb-carry').forEach((e) => e.classList.add('hb-gone'));
+      this._bote?.f?.querySelectorAll('.hb-carry').forEach((e) => e.classList.add('hb-gone'));
       await this._enterBurrow();
       this._boteFxClear();
       this._boteUncls();
