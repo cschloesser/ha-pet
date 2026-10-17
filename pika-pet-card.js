@@ -43,7 +43,7 @@
  * werden aus Datum und Standort (hass.config) berechnet.
  */
 (() => {
-  const VERSION = '0.12.0';
+  const VERSION = '0.12.1';
 
   const DEFAULTS = {
     name: 'Pika',
@@ -7956,7 +7956,9 @@
 
     // Feste Plätze vorn auf dem Wiesenstreifen (näher am Betrachter, also etwas größer, tiefer und vor dem Pika):
     // Waschmaschine und Trockner vor dem Aussichtsstein (rechts der Klo-Ecke bis zum Futterknopf), die
-    // Spülmaschine links neben dem Eingang. Erst wenn ein Requisit dort auch auf 0,55 verkleinert nicht passt,
+    // Spülmaschine links neben dem Eingang. Auf schmalen Karten (Handy) ist dort kein Platz: dann rücken sie als
+    // letzte Stufe nach links über Futterwiese und Klo-Ecke bis an die Nische, beide gleich klein, statt vor dem
+    // Eingang zu landen. Erst wenn ein Requisit auch so auf 0,55 verkleinert nicht passt,
     // weicht es auf die Wiese rechts vom Eingang aus. Sperrbereiche teilen die Plätze auf: Deko am Bau
     // (BOTE_KEEP), Festdeko am Boden, Heuhaufen bzw. Nische, Futter- und Blumenwiese, Klo-Ecke am Stein.
     // Stufen: erst alles frei lassen, dann Laden/Laterne, dann die Futterwiese hergeben. Jedes Requisit bleibt
@@ -7978,8 +7980,17 @@
       // Alle Requisiten sind Statusanzeigen und stehen in der ersten Reihe auf dem Wiesenstreifen (vor dem Pika,
       // der sie hinten fast immer verdecken würde). types: Heimatplatz dieser Geräte; ohne types: Ausweichplatz.
       const latrineR = rock.l + rock.w * 0.16 + 0.04 * H;
+      const gap = 0.025 * H;
       const zones = [
-        { a: Math.min(latrineR + 0.01 * H, right - 0.1 * H), b: right, al: 0.5, fr: true, types: ['washer', 'dryer'] },
+        // a3: ab Stufe 3 (gibt die Klo-Ecke frei) reicht der Platz nach links bis an Heuhaufen bzw. Nische
+        {
+          a: Math.min(latrineR + 0.01 * H, right - 0.1 * H),
+          a3: Math.min(Math.max(hay + hh + gap, hole.r + 0.01 * H), latrineR + 0.01 * H, right - 0.1 * H),
+          b: right,
+          al: 0.5,
+          fr: true,
+          types: ['washer', 'dryer'],
+        },
         { a: 4, b: hole.l - 0.01 * H, al: 1, fr: true, types: ['dishwasher'] },
         { a: hole.r + 0.01 * H, b: right, al: 0.5, fr: true },
       ];
@@ -7987,14 +7998,14 @@
       const keep = (BOTE_KEEP[this._arealKey] || []).map(([x1, x2, k]) => [bur.l + x1 * bur.u, bur.l + x2 * bur.u, k]);
       keep.push([hay - hh, hay + hh, 1, true]);
       keep.push([fMin * W - 0.065 * H, fMax * W + 0.065 * H, 2]);
-      keep.push([rock.l - rock.w * 0.08 - 0.04 * H, rock.l + rock.w * 0.16 + 0.04 * H, 0]);
+      // Klo-Ecke: erst auf Stufe 3, die nur Waschmaschine und Trockner auf ihrem Heimatplatz bekommen
+      keep.push([rock.l - rock.w * 0.08 - 0.04 * H, latrineR, 3]);
       // Festdeko am Boden ({x: Mitte, l: linke Kante, w}); Eier und Raketenstäbe dürfen notfalls verdeckt werden
       for (const [n, p] of Object.entries(this._festPos || {})) {
         if (!(p?.w > 0)) continue;
         const l = p.l ?? p.x - p.w / 2;
         keep.push([l, l + p.w, /^(egg|stick)/.test(n) ? 2 : 0]);
       }
-      const gap = 0.025 * H;
       // je Platz: Requisiten, Sperrstufe und ihre Lage ({a, w, l, dy})
       const st = zones.map(() => ({ items: [], lv: 0, pos: [] }));
       const ov = (l1, r1, l2, r2) => Math.max(0, Math.min(r1, r2) - Math.max(l1, l2));
@@ -8006,7 +8017,7 @@
         const zo = zones[z];
         const cuts = keep.filter(([, , k, fo]) => lv < 9 && !(k && lv >= k) && !(fo && !zo.fr));
         if (cross) cuts.push(...other(z).map(([l, r]) => [l - 0.01 * H, r + 0.01 * H]));
-        let s = [[zo.a, zo.b]];
+        let s = [[lv >= 3 && zo.a3 != null ? zo.a3 : zo.a, zo.b]];
         for (const [l, r] of cuts) s = s.flatMap(([a, b]) => [[a, Math.min(b, l)], [Math.max(a, r), b]]);
         s = s.filter(([a, b]) => b - a > 2);
         return zo.al === 1 ? s.reverse() : s;
@@ -8046,10 +8057,23 @@
       };
       // die hohe Wäscheleine steht vorn deutlich kleiner, sonst überragt sie den Pika
       const entry = (a, z, s) => ({ a, w: a.spec.vb[2] * BOTE_K * H * s * BOTE_FRONT * (a.spec.back ? BOTE_TALL : 1) });
-      const tryAt = (a, z, s, lv) => {
+      // Passt es nicht dazu, werden die schon dort stehenden auf dieselbe Größe mitverkleinert (sonst bliebe der
+      // Erste groß stehen und der Zweite müsste auf den Ausweichplatz). sq: dürfen sich um bis zu ein Viertel
+      // überlappen (versetzt, das hintere etwas tiefer und davor), wie Wäschekorb vor der Trommel.
+      const tryAt = (a, z, s, lv, sq) => {
         const L = Math.max(lv, st[z].lv);
-        const items = [...st[z].items, entry(a, z, s)].sort((x, y) => x.a.idx - y.a.idx);
-        const pos = pack(z, items, L, true, false);
+        const add = (its) => [...its, entry(a, z, s)].sort((x, y) => x.a.idx - y.a.idx);
+        let items = add(st[z].items);
+        let pos = pack(z, items, L, true, false);
+        if (!pos && st[z].items.length) {
+          items = add(st[z].items.map((it) => (it.w > entry(it.a, z, s).w ? entry(it.a, z, s) : it)));
+          pos = pack(z, items, L, true, false);
+        }
+        if (!pos && sq) {
+          pos = pack(z, items, L, true, true);
+          const o = pos?.slice().sort((p, q) => p.l - q.l);
+          if (o?.some((p, i) => i && o[i - 1].l + o[i - 1].w - p.l > 0.25 * Math.min(p.w, o[i - 1].w))) pos = null;
+        }
         if (!pos) return false;
         Object.assign(st[z], { items, lv: L, pos });
         return true;
@@ -8059,20 +8083,21 @@
       const big = [1, 0.9, 0.8, 0.7];
       const small = [0.6, 0.55];
       const steps = [[0, big], [1, big], [0, small], [1, small], [2, big], [2, small]];
+      const homeSteps = [...steps, [3, big], [3, small], [3, small, true]];
       for (const a of vis) {
         // erst alle Stufen auf dem Heimatplatz, dann der Ausweichplatz
         const homes = all.filter((z) => zones[z].types?.includes(a.type));
         const spare = all.filter((z) => !zones[z].types);
         const mine = [...homes, ...spare];
         const pz0 = a.zone < zones.length ? a.zone : null;
-        const fit = (zs) => {
+        const fit = (zs, stp) => {
           const pz = zs.includes(pz0) ? pz0 : null;
           // zuerst der bisherige Platz auf der Stufe, auf der es dort stand (sonst springt es bei jedem Neuordnen)
-          return (pz != null && big.some((s) => tryAt(a, pz, s, a.zoneLv || 0)))
-            || steps.some(([lv, sc]) => (pz != null && sc.some((s) => tryAt(a, pz, s, lv)))
-            || sc.some((s) => zs.some((z) => tryAt(a, z, s, lv))));
+          return (pz != null && [...big, ...small].some((s) => tryAt(a, pz, s, a.zoneLv || 0)))
+            || stp.some(([lv, sc, sq]) => (pz != null && sc.some((s) => tryAt(a, pz, s, lv, sq)))
+            || sc.some((s) => zs.some((z) => tryAt(a, z, s, lv, sq))));
         };
-        if (fit(homes) || fit(spare)) continue;
+        if (fit(homes, homeSteps) || fit(spare, steps)) continue;
         // letzte Stufe: dorthin, wo es am wenigsten überdeckt; gibt es nirgends ein freies Stück, ohne Sperrbereiche
         const pz = mine.includes(pz0) ? pz0 : null;
         let best = null;
@@ -8104,7 +8129,7 @@
       B.sig = sig;
       for (const p of out) {
         p.a.zone = p.z;
-        p.a.zoneLv = Math.min(2, st[p.z].lv);
+        p.a.zoneLv = Math.min(2, st[p.z].lv); // Stufe 3 (Klo-Ecke) wird jedes Mal neu verdient
         this._botePlace(p.a, p.l, p.w, p.fr, p.dy);
       }
       // Tiefe: tiefer stehende Requisiten liegen im DOM später, also davor; ohne Überlappung bleibt alles, wie es ist
