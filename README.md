@@ -28,6 +28,10 @@ Ein kleiner Pika (Pfeifhase) wohnt in deinem Home-Assistant-Dashboard.
 - **Antippen** verscheucht Vögelchen und Maus.
 - Die Besuche sind Zufall und laufen auf jedem Gerät für sich.
 
+## Freund-Pika
+
+_(wird ergänzt)_
+
 ## Beschäftigungen
 
 Höchstens alle 12–20 Minuten (die erste nach 2–6 Minuten) sucht er sich eine Beschäftigung:
@@ -37,6 +41,10 @@ Höchstens alle 12–20 Minuten (die erste nach 2–6 Minuten) sucht er sich ein
 - **Tablet**: Er liegt auf dem Bauch in der Wiese, das Display scheint ihm ins Gesicht, er wischt. Fliegt gerade ein echtes Flugzeug vorbei, zeigt das Tablet die Flugkarte, und er schaut zum Himmel.
 - **Drachen** bei Wind ab 20 km/h, trocken und hell: Der Drache steigt in Windrichtung auf, schwankt mit Schwänzchen und zerrt an der Schnur.
 - **Fernsehen** im Bau, bei Regen und Gewitter oder in der Dämmerung: Er sitzt mit dem Rücken zu uns im dunklen Eingang. Der Bildschirm leuchtet über seinem Kopf, sein Fell hat einen bunten Lichtsaum, beim Erdhügel flackert auch das Fenster. Ab und zu dreht er sich um und schaut heraus. Streicheln holt ihn kurz an die Tür.
+
+## Haus-Bote
+
+_(wird ergänzt)_
 
 ## Flugzeuge
 
@@ -75,6 +83,10 @@ Mit `areal` wählst du den Bau:
 - `fels`: Steinhaufen mit Steinbogen als Eingang
 - `stumpf`: Baumstumpf mit Höhle zwischen den Wurzeln, Fliegenpilze leuchten nachts
 - `alpin`: Geröllhalde mit Bergen im Hintergrund, Enzian und Edelweiß
+
+## Festtage
+
+_(wird ergänzt)_
 
 ## Installation (HACS)
 

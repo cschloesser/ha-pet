@@ -69,6 +69,26 @@
   <button data-fl="cessna">Kleinflugzeug</button>
   <button data-fl="none">keine</button>
 </div>
+<!-- ==================== Vorschau-Knöpfe Himmel-Extras (Sternschnuppen, Glühwürmchen) ==================== -->
+<div class="bar" id="bar-sky"><b>Himmel-Extras</b>
+</div>
+<!-- ==================== Ende Himmel-Extras ==================== -->
+
+<!-- ==================== Vorschau-Knöpfe Festtage (Deko im Jahreslauf, Geburtstage) ==================== -->
+<div class="bar" id="bar-fest"><b>Festtage</b>
+</div>
+<!-- ==================== Ende Festtage ==================== -->
+
+<!-- ==================== Vorschau-Knöpfe Freund-Pika (Pino kommt zu Besuch) ==================== -->
+<div class="bar" id="bar-friend"><b>Freund-Pika</b>
+</div>
+<!-- ==================== Ende Freund-Pika ==================== -->
+
+<!-- ==================== Vorschau-Knöpfe Haus-Bote (Waschmaschine, Trockner, Spüler) ==================== -->
+<div class="bar" id="bar-bote"><b>Haus-Bote</b>
+</div>
+<!-- ==================== Ende Haus-Bote ==================== -->
+
 <div class="wrap">
   <div class="slot" style="width:600px;height:248px"><pika-pet-card id="a"></pika-pet-card></div>
   <div class="slot" style="width:380px;height:184px"><pika-pet-card id="b"></pika-pet-card></div>
@@ -222,6 +242,18 @@
     const now = Math.round(Date.now() / 1000);
     hass.callService('input_text', 'set_value', { entity_id: 'input_text.pika_status', value: `20.0,${now},20.0,${now}` });
   });
+
+  // ==================== Vorschau Himmel-Extras ====================
+  // ==================== Ende Vorschau Himmel-Extras ====================
+
+  // ==================== Vorschau Festtage ====================
+  // ==================== Ende Vorschau Festtage ====================
+
+  // ==================== Vorschau Freund-Pika ====================
+  // ==================== Ende Vorschau Freund-Pika ====================
+
+  // ==================== Vorschau Haus-Bote ====================
+  // ==================== Ende Vorschau Haus-Bote ====================
 </script>
 </body>
 </html>

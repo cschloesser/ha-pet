@@ -1,3 +1,4 @@
+
 /*
  * Pika Pet Card – ein kleiner Pika (Pfeifhase) wohnt im Home-Assistant-Dashboard.
  *
@@ -46,6 +47,17 @@
     max_flights: 2,
     show_stats: true,
     height: 180,
+    // Haus-Bote: Geräte, deren Fortschritt und Fertig-Zustand der Pika zeigt (siehe Abschnitt "Haus-Bote")
+    appliances: null,
+    // Festtage: Deko im Jahreslauf und Geburtstage [{ name, date: 'MM-DD' }]
+    festive: true,
+    birthdays: [],
+    // Freund-Pika, der zu Besuch kommt
+    friend: true,
+    friend_name: 'Pino',
+    // Himmel: Sternschnuppen nachts, Glühwürmchen in Sommernächten
+    shooting_stars: true,
+    fireflies: true,
   };
 
   const RATE = { s: 5, g: 4 }; // Abnahme pro Stunde (satt, glücklich)
@@ -202,6 +214,10 @@
   };
   const TAIL_DEFAULT = { jet: '#3d8fd6', prop: '#d9473b', heli: '#e0b52c' };
   // Städte, wie sie Flightradar24 liefert (englisch), auf Deutsch
+  // ==================== Himmel-Extras (Sternschnuppen, Glühwürmchen): Konstanten und Stil ====================
+  const STYLE_SKY = ``;
+  // ==================== Ende Himmel-Extras ====================
+
   const CITY_DE = {
     Bucharest: 'Bukarest', Warsaw: 'Warschau', Krakow: 'Krakau', Cracow: 'Krakau', Lisbon: 'Lissabon', Rome: 'Rom',
     Milan: 'Mailand', Venice: 'Venedig', Naples: 'Neapel', Florence: 'Florenz', Genoa: 'Genua', Athens: 'Athen',
@@ -636,6 +652,10 @@
     <path class="rtuft" d="M18 49 Q19 44 20 42 Q21 45 22 49Z M24 49 Q25 45 27 43.5 Q26.5 46 27 49Z M74 49 Q75 44.5 76.5 42.5 Q77 46 78 49Z M79 49 Q80.5 45.5 82 44.5 Q81.5 47 82 49Z M40 49 Q41 46 42.5 45 Q42 47 43 49Z"/>
   </svg>`;
 
+  // ==================== Festtage: Konstanten, Grafiken und Stil ====================
+  const STYLE_FEST = ``;
+  // ==================== Ende Festtage ====================
+
   const FLOWER_SVG =(c) => `
   <svg viewBox="0 0 20 30" aria-hidden="true">
     <path d="M10 30 Q9 20 10 11" stroke="#4f8a3a" stroke-width="1.6" fill="none"/>
@@ -675,6 +695,10 @@
       </svg>`,
     },
   };
+
+  // ==================== Freund-Pika: Konstanten, Grafiken und Stil ====================
+  const STYLE_FRIEND = ``;
+  // ==================== Ende Freund-Pika ====================
 
   const ICON_LEAF = `<svg viewBox="0 0 24 24"><path fill="#6bb152" d="M17 8C8 10 5.9 16.2 3.8 21.3l1.9.7 1-2.3c.5.2 1 .3 1.3.3C19 20 22 3 22 3c-1 2-8 2.3-13 3.3S2 11.5 2 13.5s1.8 3.8 1.8 3.8C7 8 17 8 17 8z"/></svg>`;
   const ICON_HEART = `<svg viewBox="0 0 24 24"><path fill="#f07a95" d="M12 21.4l-1.5-1.3C5.4 15.4 2 12.3 2 8.5 2 5.4 4.4 3 7.5 3c1.7 0 3.4.8 4.5 2.1C13.1 3.8 14.8 3 16.5 3 19.6 3 22 5.4 22 8.5c0 3.8-3.4 6.9-8.5 11.5z"/></svg>`;
@@ -753,6 +777,10 @@
   </svg>`;
 
   // ---------- Stil ----------
+
+  // ==================== Haus-Bote: Konstanten, Grafiken und Stil ====================
+  const STYLE_BOTE = ``;
+  // ==================== Ende Haus-Bote ====================
 
   const STYLE = `
   :host { display: block; height: 100%; }
@@ -1550,6 +1578,10 @@
         this._lastFlights = fl;
         this._readFlights(fl);
       }
+      this._hassSky(hass);
+      this._hassFest(hass);
+      this._hassFriend(hass);
+      this._hassBote(hass);
       this._updateSky();
     }
 
@@ -1574,7 +1606,7 @@
       this._attached = true;
       this._ro = new ResizeObserver(() => this._layout());
       this._ro.observe(this._el.scene);
-      this._onVis = () => (document.hidden ? (this._stop(), this._stopCritters()) : (this._start(), this._startCritters()));
+      this._onVis = () => (document.hidden ? (this._stop(), this._stopCritters(), this._hiddenFeatures(true)) : (this._start(), this._startCritters(), this._hiddenFeatures(false)));
       document.addEventListener('visibilitychange', this._onVis);
       this._loop(() => this._blink(), 2200, 6000);
       this._loop(() => this._twitch(), 5000, 13000);
@@ -1585,6 +1617,10 @@
       this._start();
       this._startCritters();
       this._planeLoop();
+      this._attachSky();
+      this._attachFest();
+      this._attachFriend();
+      this._attachBote();
     }
 
     _detach() {
@@ -1600,6 +1636,10 @@
       this._planeT = null;
       this._loops.forEach((h) => clearTimeout(h.t));
       this._loops = [];
+      this._detachSky();
+      this._detachFest();
+      this._detachFriend();
+      this._detachBote();
     }
 
     // ---------- Aufbau ----------
@@ -1618,12 +1658,13 @@
       ].map(([top, s, d, dl]) => `<div class="cloud" style="top:${top}%;--s:${s};--d:${d}s;--dl:${dl}s"></div>`).join('');
 
       this.shadowRoot.innerHTML = `
-        <style>${STYLE}</style>
+        <style>${STYLE}${STYLE_SKY}${STYLE_FEST}${STYLE_FRIEND}${STYLE_BOTE}</style>
         <ha-card>
           <div class="scene day">
             <div class="sky sky-day"></div><div class="sky sky-dusk"></div><div class="sky sky-night"></div>
             <div class="sky sky-grey"></div>
             <div class="stars">${stars}</div>
+            <div class="meteors"></div>
             <div class="sun"></div>
             <div class="moon"><svg viewBox="0 0 100 100"><circle class="moon-dark" cx="50" cy="50" r="50"/><path class="moon-lit"/></svg></div>
             <div class="clouds">${clouds}</div>
@@ -1640,6 +1681,7 @@
               <path class="h2" d="M0 83 Q25 79 50 83 T100 82 V100 H0Z"/>
             </svg>
             <div class="mice"></div>
+            <div class="fest-b"></div>
             <div class="land">
               <div class="burrow"></div>
               <div class="lookout">${LOOKOUT_SVG}</div>
@@ -1651,6 +1693,8 @@
             <div class="flowers"></div>
             <div class="foods"></div>
             <div class="mice-f"></div>
+            <div class="props"></div>
+            <div class="friends"></div>
             <div class="ff">${flies}</div>
             <div class="pika" role="button" aria-label="Streicheln">
               <div class="clipw">
@@ -1664,6 +1708,7 @@
               </div>
             </div>
             <div class="fore"><div class="hay">${HAY_SVG}</div></div>
+            <div class="fest-f"></div>
             <div class="grass">${TUFTS_SVG()}</div>
             <div class="poops"></div>
             <div class="precip"></div>
@@ -1692,6 +1737,7 @@
         sun: $('.sun'), moon: $('.moon'), moonLit: $('.moon-lit'), clouds: [...this.shadowRoot.querySelectorAll('.cloud')],
         precip: $('.precip'), flash: $('.flash'),
         burrow: $('.burrow'), lights: $('.lights'), clipw: $('.clipw'), depth: $('.depth'), rock: $('.lookout'),
+        meteors: $('.meteors'), ff: $('.ff'), festB: $('.fest-b'), festF: $('.fest-f'), props: $('.props'), friends: $('.friends'),
       };
       this._el.pika.addEventListener('click', (e) => (e.stopPropagation(), this._onPet()));
       this._el.feed.addEventListener('click', (e) => (e.stopPropagation(), this._onFeed()));
@@ -1803,6 +1849,10 @@
       } else {
         this._setX(this._x * ratio, true);
       }
+      this._layoutSky(first);
+      this._layoutFest(first);
+      this._layoutFriend(first);
+      this._layoutBote(first);
       if (!first) {
         this._placePiles();
         // Besucher sitzen an festen Pixeln: bei Größenänderung lieber neu kommen lassen
@@ -1920,6 +1970,8 @@
       const hob = this._hobbyOk(wx.wet);
       const elev = this._dbgElev ?? this._elev;
       const dry = hob && !wx.wet;
+      // Zusatz-Aktionen der Erweiterungen (Himmel, Festtage, Freund, Haus-Bote) bekommen dieselbe Lage
+      const ctx = { s, g, wx, hob, dry, elev, piles, clean, hasFlowers };
       const act = weighted([
         [dry ? 1.2 : 0, 'read'],
         [dry ? 1 : 0, 'game'],
@@ -1942,6 +1994,10 @@
         [this._bird?.sitting ? 2.5 : 0, 'watchBird'],
         [this._mouse?.out ? 2.5 : 0, 'watchMouse'],
         [this._planeToWatch() ? 2.5 : 0, 'watchPlane'],
+        ...this._skyActs(ctx),
+        ...this._festActs(ctx),
+        ...this._friendActs(ctx),
+        ...this._boteActs(ctx),
       ]);
       return this._run(act);
     }
@@ -2851,12 +2907,24 @@
         this._interrupt();
       }
       this._updateSky();
+      this._tickSky();
+      this._tickFest();
+      this._tickFriend();
+      this._tickBote();
+    }
+
+    _hiddenFeatures(hidden) {
+      this._hiddenSky(hidden);
+      this._hiddenFest(hidden);
+      this._hiddenFriend(hidden);
+      this._hiddenBote(hidden);
     }
 
     // ---------- Interaktion ----------
 
     _onPet() {
       this._add('g', GAIN.pet);
+      this._petFriend();
       const p = this._el.pika;
       if (this._asleep) {
         p.classList.add('peek');
@@ -3008,6 +3076,17 @@
 
     // ---------- Besucher: Vögelchen und Maus ----------
     // Laufen neben der Pika-Schleife her und sind reine Zierde, darum zeigt jedes Gerät eigene Besuche.
+
+
+    // ==================== Festtage: Methoden ====================
+    _hassFest(hass) {}
+    _attachFest() {}
+    _detachFest() {}
+    _hiddenFest(hidden) {}
+    _layoutFest(first) {}
+    _tickFest() {}
+    _festActs(ctx) { return []; }
+    // ==================== Ende Festtage ====================
 
     _startCritters() {
       if (!this._attached || document.hidden || this._critOn) return;
@@ -3338,6 +3417,18 @@
         el.remove();
       }
     }
+
+
+    // ==================== Freund-Pika: Methoden ====================
+    _hassFriend(hass) {}
+    _attachFriend() {}
+    _detachFriend() {}
+    _hiddenFriend(hidden) {}
+    _layoutFriend(first) {}
+    _tickFriend() {}
+    _friendActs(ctx) { return []; }
+    // ==================== Ende Freund-Pika ====================
+    _petFriend() {}
 
     _squeak(x, y, text) {
       const s = document.createElement('span');
@@ -3752,6 +3843,17 @@
     // sie mit Kurs und Geschwindigkeit weiter. Im Bild: Osten links, Westen rechts, der Bildrand liegt bei
     // flight_radius. Die Flughöhe bestimmt, wie hoch sie am Himmel stehen, die Entfernung ihre Größe.
 
+
+    // ==================== Himmel-Extras: Methoden ====================
+    _hassSky(hass) {}
+    _attachSky() {}
+    _detachSky() {}
+    _hiddenSky(hidden) {}
+    _layoutSky(first) {}
+    _tickSky() {}
+    _skyActs(ctx) { return []; }
+    // ==================== Ende Himmel-Extras ====================
+
     _readFlights(st) {
       const cfg = this._hass?.config;
       if (!this._el || !cfg || !Number.isFinite(cfg.latitude)) return;
@@ -4084,6 +4186,17 @@
         }, 250);
       }
     }
+
+    // ==================== Haus-Bote: Methoden ====================
+    _hassBote(hass) {}
+    _attachBote() {}
+    _detachBote() {}
+    _hiddenBote(hidden) {}
+    _layoutBote(first) {}
+    _tickBote() {}
+    _boteActs(ctx) { return []; }
+    // ==================== Ende Haus-Bote ====================
+
   }
 
   if (!customElements.get('pika-pet-card')) {
