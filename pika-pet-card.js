@@ -43,7 +43,7 @@
  * werden aus Datum und Standort (hass.config) berechnet.
  */
 (() => {
-  const VERSION = '0.10.2';
+  const VERSION = '0.10.3';
 
   const DEFAULTS = {
     name: 'Pika',
@@ -2463,7 +2463,7 @@
   /* Offenes Fähnchen ist die wichtigste Info: dann liegt die Ebene vor Statusleiste und Futterknopf */
   .ptags.top { z-index: 6; }
   .plane { position: absolute; left: 0; top: 0; opacity: 0; transition: transform 1s linear, opacity 2s; will-change: transform; }
-  .plane.on { opacity: 1; }
+  .plane.on { opacity: var(--pa, 1); }
   /* Unsichtbare Tippfläche über dem Flugzeug (die Flugzeuge selbst liegen hinter den Hügeln) */
   .phit { position: absolute; left: 0; top: 0; display: none; pointer-events: auto; cursor: pointer; transition: transform 1s linear; }
   .phit.on { display: block; }
@@ -7122,19 +7122,40 @@
         list.push({ f, e, n, alt, gs, slant: Math.hypot(e, n, alt * 0.0003048) });
       }
       list.sort((a, b) => a.slant - b.slant);
+      const max = Math.max(0, Math.round(Number(this._cfg.max_flights) || 0));
+      const idOf = (f) => String(f.id || f.callsign || f.flight_number);
+      // Wer schon am Himmel steht, behält seinen Platz, solange er gemeldet wird. Sonst tauschen zwei fast gleich
+      // weite Flieger bei jeder Meldung die Plätze, und einer verschwindet mitten am Himmel. Neue füllen freie
+      // Plätze; ein deutlich näherer darf als einer mehr dazukommen, die anderen fliegen dann normal aus dem Bild.
+      const pick = list.filter((s) => {
+        const p = this._planes.get(idOf(s.f));
+        return p && !p.dead && !p.gone;
+      }).slice(0, max && max + 1);
+      for (const s of list) {
+        if (pick.includes(s)) continue;
+        const worst = Math.max(0, ...pick.map((o) => o.slant));
+        if (pick.length < max || (max && pick.length === max && s.slant < 0.6 * worst)) pick.push(s);
+      }
       const keep = new Set();
-      for (const s of list.slice(0, Math.max(0, Math.round(Number(this._cfg.max_flights) || 0)))) {
-        const id = String(s.f.id || s.f.callsign || s.f.flight_number);
+      for (const s of pick) {
+        const id = idOf(s.f);
         keep.add(id);
         const p = this._planes.get(id) || this._newPlane(id, s.f);
-        const v = (s.gs * 1.852) / 3600; // km/s
-        const h = Number(s.f.heading) * RAD;
-        Object.assign(p, {
-          f: s.f, e: s.e, n: s.n, alt: s.alt, t0, gone: 0, dead: 0,
-          ve: Number.isFinite(h) ? v * Math.sin(h) : 0,
-          vn: Number.isFinite(h) ? v * Math.cos(h) : 0,
-          vz: clamp(Number(s.f.vertical_speed) || 0, -6000, 6000) / 60, // ft/s
-        });
+        // Die Integration meldet oft dieselbe Position noch einmal (Flightradar24 hat noch nichts Neues). Dann
+        // weiter von der alten Meldung aus rechnen, sonst springt der Flieger um eine Meldung zurück.
+        const same = p.t0 != null && Number(p.f.latitude) === Number(s.f.latitude)
+          && Number(p.f.longitude) === Number(s.f.longitude);
+        Object.assign(p, { f: s.f, gone: 0, dead: 0 });
+        if (!same) {
+          const v = (s.gs * 1.852) / 3600; // km/s
+          const h = Number(s.f.heading) * RAD;
+          Object.assign(p, {
+            e: s.e, n: s.n, alt: s.alt, t0,
+            ve: Number.isFinite(h) ? v * Math.sin(h) : 0,
+            vn: Number.isFinite(h) ? v * Math.cos(h) : 0,
+            vz: clamp(Number(s.f.vertical_speed) || 0, -6000, 6000) / 60, // ft/s
+          });
+        }
         this._planeText(p);
       }
       // Aus dem Umkreis (oder nicht mehr unter den nächsten): fliegt noch weiter, bis es aus dem Bild ist
@@ -7260,11 +7281,19 @@
           this._tagsTop();
           continue;
         }
-        if (Math.abs(p.ve) > 0.005) p.left = p.ve > 0; // nach Osten = im Bild nach links
+        // nach Osten = im Bild nach links; erst ab etwa 40 km/h quer, sonst dreht ein kurvender Hubschrauber hin und her
+        if (Math.abs(p.ve) > 0.012) p.left = p.ve > 0;
+        // Schwellen mit etwas Spiel, damit ein Flieger knapp an der Grenze nicht bei jeder Meldung umschaltet
+        p.hi = alt > (p.hi ? 7500 : 8500);
+        p.ct = alt > (p.ct ? 25500 : 26500);
         const cl = p.el.classList;
         cl.toggle('left', !!p.left);
-        cl.toggle('contrail', alt > 26000 && !this._wx.wet);
-        cl.toggle('hi', alt > 8000);
+        cl.toggle('contrail', p.ct && !this._wx.wet);
+        cl.toggle('hi', p.hi);
+        // Die Integration meldet ein Quadrat um das Haus (bis in die Ecken fast 1,5 × Radius). Zum Rand hin sanft
+        // ein- und ausblenden, sonst taucht ein Flieger, der nördlich oder südlich vorbeizieht, mitten im Bild auf
+        const pa = clamp((R - Math.max(Math.abs(e), Math.abs(n))) / (0.2 * R), 0, 1);
+        p.el.style.setProperty('--pa', pa.toFixed(2));
         if (p.fresh) {
           p.el.style.transition = p.s.style.transition = p.tag.style.transition = p.hit.style.transition = 'none';
           fresh.push(p);
@@ -7277,7 +7306,7 @@
         p.hit.style.width = `${hw.toFixed(0)}px`;
         p.hit.style.height = `${hh.toFixed(0)}px`;
         p.hit.style.transform = `translate(${(x - hw / 2).toFixed(1)}px, ${(y - hh / 2).toFixed(1)}px)`;
-        p.show = !p.dead && !out;
+        p.show = !p.dead && !out && pa > 0.02;
         if (p.show) shown.push({ p, x, y, half: H * 0.06 * sc });
       }
 

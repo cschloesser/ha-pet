@@ -103,7 +103,8 @@ Echte Flüge aus der Umgebung ziehen über den Himmel. Die Daten kommen aus der 
 - **Bewegung**: Zwischen den Meldungen der Integration (alle 10–30 s) fliegen sie mit Kurs, Geschwindigkeit und Steig- oder Sinkrate weiter.
 - **Antippen** blendet ein Fähnchen ein (nach 9 s geht es wieder zu): Flugnummer und Ziel, z. B. „EW 9542 → Palma de Mallorca“. Landet der Flug in der Nähe (unter 30 km), steht stattdessen die Herkunft da, z. B. „aus Katowice“. Darunter stehen Airline, Flugzeugtyp, Strecke, Höhe und Tempo. Ohne Antippen sieht man nur die Flugzeuge.
 - **Aussehen**: Leitwerk in Airline-Farbe. Kleinflugzeuge und Hubschrauber haben eigene Grafiken. Nachts leuchten Kabinenfenster, Blitzer und Rundumleuchte. Bei bedecktem Himmel sind hohe Flieger nur blass zu sehen, bei Nebel alle.
-- **Anzahl**: höchstens `max_flights` gleichzeitig (Standard 2), die nächsten zuerst. Flugzeuge am Boden zählen nicht.
+- **Anzahl**: höchstens `max_flights` gleichzeitig (Standard 2), die nächsten zuerst. Ein Flugzeug, das schon zu sehen ist, behält seinen Platz, solange es gemeldet wird; ein deutlich näheres (z. B. ein tiefer Anflug) kommt als zusätzliches dazu. Flugzeuge am Boden zählen nicht.
+- **Ruhig**: Zum Rand des Meldebereichs hin blenden Flugzeuge sanft ein und aus, statt mitten im Bild aufzutauchen. Meldet die Integration eine Position unverändert noch einmal, fliegen sie einfach weiter.
 - **Pika**: Er schaut tief fliegenden Flugzeugen nach und sagt manchmal „brumm!“. Ist eins ganz nah, erschrickt er kurz.
 
 ## Himmel und Wetter
