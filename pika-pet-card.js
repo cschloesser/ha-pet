@@ -12,6 +12,13 @@
  *   Beschäftigungen     → liest, spielt Gameboy, liegt mit dem Tablet in der Wiese, lässt bei Wind einen
  *                         Drachen steigen, guckt bei Regen im Bau Fernsehen (höchstens alle 12–20 Minuten)
  *   Sonst              → schaut sich um, hoppelt, knabbert Blumen, sammelt Heu, putzt sich
+ *   Haus-Bote           → zeigt Waschmaschine, Trockner und Spülmaschine (läuft mit Fortschritt, fertig,
+ *                         ausgeräumt) als Requisiten am Bau und erinnert, solange nichts ausgeräumt ist
+ *   Festtage            → Kürbis, Laterne, Adventskranz, Stiefel, Tannenbaum, Feuerwerk, Konfetti, Ostereier,
+ *                         Maibaum, Wimpel, Geburtstagskuchen; dazu passende Hüte
+ *   Freund-Pika Pino    → kommt zu Besuch, spielt Fangen, sitzt mit ihm, piepst im Duett
+ *   Himmel              → Sternschnuppen in klaren Nächten, Glühwürmchen in Sommernächten
+ *   Besuche (Vögelchen, Maus, Pino) werden aus der Uhrzeit berechnet und sind auf allen Geräten gleich.
  *
  * Konfiguration:
  *   type: custom:pika-pet-card
@@ -27,12 +34,16 @@
  *   max_flights: 2                   # höchstens so viele Flugzeuge gleichzeitig (die nächsten)
  *   show_stats: true                 # Satt-/Glück-/Sauber-Balken anzeigen
  *   height: 180                      # Mindesthöhe in px
+ *   appliances: [...]                # Haus-Bote: Geräte (siehe README)
+ *   festive: true / birthdays: []    # Festtage und Geburtstage
+ *   friend: true / friend_name: Pino # Freund-Pika
+ *   shooting_stars: true / fireflies: true   # Himmel-Extras
  *
  * Der Blick geht nach Süden: Osten (Sonnenaufgang) links, Westen rechts. Mondphase und Mondstand
  * werden aus Datum und Standort (hass.config) berechnet.
  */
 (() => {
-  const VERSION = '0.8.1';
+  const VERSION = '0.9.0';
 
   const DEFAULTS = {
     name: 'Pika',
