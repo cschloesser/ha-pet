@@ -74,8 +74,8 @@
   const RATE = { s: 5, g: 4 }; // Abnahme pro Stunde (satt, glücklich)
   const GAIN = { feed: 25, pet: 8, clean: 10 };
   // Häufchen: alle 80–140 Minuten Wachzeit eins, das erste 10–30 Minuten nach dem Aufwachen. Höchstens 8
-  // liegen gleichzeitig, die ersten 3 in der Klo-Ecke am Stein. Bis zum nächsten Großputz zählt die Karte
-  // höchstens 24 (Bits der Maske für einzeln weggemachte Häufchen).
+  // seit dem letzten Großputz (einzeln weggemachte zählen mit), die ersten 3 in der Klo-Ecke am Stein. idx:
+  // so viele Fälligkeiten rechnet die Karte höchstens (Bits der Maske für einzeln weggemachte Häufchen).
   // Besucher: Die Uhr ist in feste Fenster geteilt (win, ms). In jedem Fenster kommt mit Wahrscheinlichkeit p
   // höchstens ein Besuch, sein Start liegt in den ersten win − room ms (room: Platz für den Besuch selbst, damit
   // er vor dem nächsten Fenster vorbei ist). Mittlerer Abstand win / p wie früher: Vögelchen 3–7 Min Pause +
@@ -96,9 +96,38 @@
     for (const [w, v] of list) if ((r -= w) < 0) return v;
     return list[list.length - 1][1];
   };
+  // "21:00" (auch "21:00:00") → Minuten nach Mitternacht. Eine reine Zahl gilt schon als Minuten: YAML ohne
+  // Anführungszeichen macht aus 21:00 die Zahl 1260 (sexagesimal). Alles andere → null (dann gilt der Standard).
   const minutes = (hhmm) => {
-    const [h, m] = String(hhmm).split(':').map(Number);
-    return (h || 0) * 60 + (m || 0);
+    const s = String(hhmm ?? '').trim();
+    if (/^\d+$/.test(s)) return Number(s) < 1440 ? Number(s) : null;
+    const m = s.match(/^(\d{1,2}):(\d{2})(?::\d{2})?$/);
+    if (!m || Number(m[1]) > 23 || Number(m[2]) > 59) return null;
+    return Number(m[1]) * 60 + Number(m[2]);
+  };
+  // Windrichtung in Grad: Zahl oder Kürzel wie "SW", "NNO" (deutsch O = Ost) → 0..360, sonst NaN
+  const COMPASS = ['N', 'NNE', 'NE', 'ENE', 'E', 'ESE', 'SE', 'SSE', 'S', 'SSW', 'SW', 'WSW', 'W', 'WNW', 'NW', 'NNW'];
+  const windDeg = (v) => {
+    if (typeof v === 'number' || /^\s*-?\d+(\.\d+)?\s*$/.test(String(v ?? ''))) return Number(v);
+    const i = COMPASS.indexOf(String(v ?? '').trim().toUpperCase().replace(/O/g, 'E'));
+    return i < 0 ? NaN : i * 22.5;
+  };
+  // Sonnenauf- und -untergang (ms) am Kalendertag day (Ortszeit) nach der Sonnenaufgangsgleichung, auf ~1 Min
+  // genau; elev: Höhe des Orts in m. Polartag/-nacht → null. Für die Häufchen der Vortage, sun.sun kennt nur das Nächste.
+  const sunTimes = (day, lat, lng, elev = 0) => {
+    const noon = new Date(day.getFullYear(), day.getMonth(), day.getDate(), 12).getTime();
+    const j = Math.round(noon / 864e5 + 2440587.5 - 2451545 + lng / 360) - lng / 360;
+    const M = (357.5291 + 0.98560028 * j) % 360;
+    const C = 1.9148 * Math.sin(M * RAD) + 0.02 * Math.sin(2 * M * RAD) + 0.0003 * Math.sin(3 * M * RAD);
+    const L = (M + C + 282.9372) % 360;
+    const transit = 2451545 + j + 0.0053 * Math.sin(M * RAD) - 0.0069 * Math.sin(2 * L * RAD);
+    const dec = Math.asin(Math.sin(L * RAD) * Math.sin(23.4397 * RAD));
+    const h0 = (-0.833 - (2.076 * Math.sqrt(Math.max(0, elev))) / 60) * RAD;
+    const cw = (Math.sin(h0) - Math.sin(lat * RAD) * Math.sin(dec)) / (Math.cos(lat * RAD) * Math.cos(dec));
+    if (!(Math.abs(cw) <= 1)) return null;
+    const w = Math.acos(cw) / RAD / 360;
+    const ms = (jd) => (jd - 2440587.5) * 864e5;
+    return { rise: ms(transit - w), set: ms(transit + w) };
   };
 
   // ---------- Himmel ----------
@@ -337,7 +366,7 @@
 
   // Zustand im Text-Helfer: satt,zeit,glück,zeit,großputz,maske,teilputz (Zeiten in Sekunden).
   // großputz = seitdem werden Häufchen gezählt, maske = einzeln weggemachte (Bit k = Häufchen k),
-  // teilputz = wann seit dem Großputz zum ersten Mal einzeln geputzt wurde. Alte Werte mit 4 Feldern gelten ab dem letzten Kontakt als sauber.
+  // teilputz = wann seit dem Großputz zum ersten Mal einzeln geputzt wurde (wird nur noch mitgeführt). Alte Werte mit 4 Feldern gelten ab dem letzten Kontakt als sauber.
   const sec = (ms) => Math.floor(ms / 1000) * 1000;
   const freshStats = () => {
     const now = sec(Date.now());
@@ -353,6 +382,23 @@
     if (p.length === 7) return { ...st, c: p[4] * 1000, m: p[5] >>> 0, l: p[6] * 1000 };
     const c = sec(Math.max(st.st, st.gt));
     return { ...st, c, m: 0, l: c };
+  };
+  // Fremden Stand (anderes Gerät) mit dem eigenen, noch nicht gesendeten zusammenführen. Grundlage ist der fremde,
+  // er ist der frischere. Satt/glücklich: die eigenen ungesendeten Gewinne (gain.s/g) kommen obendrauf – so geht
+  // weder fremdes noch eigenes Füttern/Streicheln verloren. Hat dieses Gerät geputzt (gain.c): der neuere Großputz
+  // gilt, beim selben zählen die Einzelputze beider Geräte (Maske ODER, Teilputz der spätere).
+  const mergeStats = (own, other, gain, now) => {
+    const out = { ...other };
+    for (const k of ['s', 'g']) {
+      if (!gain[k]) continue;
+      const v = clamp(other[k] - ((now - other[k + 't']) / 3.6e6) * RATE[k], 0, 100);
+      out[k] = clamp(v + gain[k], 0, 100);
+      out[k + 't'] = now;
+    }
+    if (!gain.c) return out;
+    if (own.c > other.c) Object.assign(out, { c: own.c, m: own.m, l: own.l });
+    else if (own.c === other.c) Object.assign(out, { m: (own.m | other.m) >>> 0, l: Math.max(own.l, other.l) });
+    return out;
   };
   // Fester Zufall: gleiche Zahlen auf allen Geräten, damit überall dieselben Häufchen an denselben Stellen liegen
   const seeded = (...n) => {
@@ -2414,7 +2460,19 @@
       this._el.name.textContent = this._cfg.name;
       this._el.stats.hidden = !this._cfg.show_stats;
       this._el.scene.style.minHeight = `${Number(this._cfg.height) || DEFAULTS.height}px`;
-      if (!this._cfg.entity) this._loadLocal();
+      // Zustand nur beim ersten Mal und bei anderem Helfer neu laden: Der Editor ruft setConfig bei jeder
+      // Änderung, ein noch nicht gespeicherter Stand (1,2 s Wartezeit beim Speichern) ginge sonst verloren
+      const ent = this._cfg.entity || '';
+      if (ent !== this._entKey) {
+        this._entKey = ent;
+        clearTimeout(this._saveT);
+        clearTimeout(this._freshT);
+        this._pendingWrite = this._synced = this._noEntity = false;
+        this._gain = { s: 0, g: 0, c: false };
+        this._lastEntityState = null; // beim nächsten hass neu lesen, auch wenn der Helfer fehlt
+        this._stats = null;
+        if (!ent) this._loadLocal();
+      }
       this._renderStats();
       if (this.isConnected) this._attach();
     }
@@ -2427,12 +2485,34 @@
         if (st !== this._lastEntityState) {
           this._lastEntityState = st;
           const parsed = parseStats(st);
+          clearTimeout(this._freshT);
+          // Helfer gibt es nicht: auf diesem Gerät weiterspielen (localStorage) statt ins Leere zu schreiben
+          if (st === undefined && !this._noEntity) {
+            console.warn(`pika-pet-card: ${c.entity} gibt es nicht, der Zustand bleibt auf diesem Gerät`);
+            if (!this._stats) this._loadLocal();
+          }
+          this._noEntity = st === undefined;
           if (parsed) {
-            if (!this._pendingWrite) this._stats = parsed;
-          } else if (st !== undefined && !this._stats) {
-            // Helfer neu angelegt oder leer: mit Startwerten füllen
-            this._stats = freshStats();
-            this._save();
+            this._synced = true;
+            if (this._pendingWrite && this._stats) {
+              // Eigene Änderung wartet noch aufs Senden: zusammenführen statt den fremden Stand zu verwerfen
+              this._stats = mergeStats(this._stats, parsed, this._gain, Date.now());
+              this._save();
+            } else {
+              this._stats = parsed;
+            }
+          } else if (!this._synced && st !== undefined && st !== 'unavailable') {
+            // Helfer neu angelegt, leer oder mit fremdem Inhalt: mit Startwerten füllen. "unknown" gibt es auch kurz
+            // beim Start von HA, darum erst, wenn es so bleibt – sonst wäre der gespeicherte Stand weg. unavailable: abwarten.
+            if (st !== '' && st !== 'unknown') console.warn(`pika-pet-card: ${c.entity} enthält "${st}", fange neu an`);
+            const fill = () => {
+              this._synced = true;
+              this._stats ??= freshStats();
+              this._save();
+              this._renderStats();
+            };
+            if (st !== 'unknown') fill();
+            else this._freshT = setTimeout(() => this._lastEntityState === 'unknown' && !this._synced && fill(), 20000);
           }
           this._renderStats();
         }
@@ -2440,7 +2520,9 @@
       const sun = hass.states[c.sun_entity];
       const elev = Number(sun?.attributes?.elevation);
       const az = Number(sun?.attributes?.azimuth);
-      this._elev = sun ? (Number.isFinite(elev) ? elev : sun.state === 'above_horizon' ? 10 : -10) : null;
+      // unavailable/unknown: Sonnenstand unbekannt (null) statt Nacht – der Himmel richtet sich dann nach der Schlafenszeit
+      const sunOk = sun && sun.state !== 'unavailable' && sun.state !== 'unknown';
+      this._elev = sunOk ? (Number.isFinite(elev) ? elev : sun.state === 'above_horizon' ? 10 : -10) : null;
       this._az = Number.isFinite(az) ? az : null;
       // Erste Sonnenzeiten: Lag die Karte schon ohne hass, sofort richtig schlafen/wach sein statt hinzulaufen
       if (!this._hadHass && this._g) {
@@ -2499,6 +2581,7 @@
       this._layout();
       this._start();
       this._startCritters();
+      this._readFlights(this._lastFlights); // Flieger, die während der Trennung gemeldet wurden
       this._planeLoop();
       this._attachSky();
       this._attachFest();
@@ -2721,6 +2804,7 @@
         if (this._sleepTime()) this._sleepNow(true);
         else this._setX(rnd(this._g.home + pW, W * 0.7), true);
         this._updateSky();
+        this._placePiles(); // neues Areal: schon liegende Häufchen an die neuen Stellen
         this._renderStats();
         this._start();
       } else if (this._inside) {
@@ -2821,7 +2905,12 @@
       // Unterbrochen, während er auf dem Stein stand: erst herunter
       if (this._lift > 0) return this._run('hopDown');
       const sleepy = this._sleepTime();
-      if (sleepy && !this._asleep) return this._run('goSleep');
+      if (sleepy && !this._asleep) {
+        // Wollte er gerade ein Häufchen machen: liegt es eben gleich da, sonst bliebe es bis morgen unsichtbar
+        if (this._next === 'poop') this._next = null;
+        this._revealPending();
+        return this._run('goSleep');
+      }
       if (!sleepy && this._asleep) return this._run('wakeUp');
       if (this._asleep) return this._wait(60000);
 
@@ -3797,6 +3886,7 @@
     }
 
     _hiddenFeatures(hidden) {
+      if (!hidden) this._readFlights(this._lastFlights); // unsichtbar wurden keine Flieger angelegt
       this._hiddenSky(hidden);
       this._hiddenFest(hidden);
       this._hiddenFriend(hidden);
@@ -3958,7 +4048,8 @@
     }
 
     // ---------- Besucher: Vögelchen und Maus ----------
-    // Laufen neben der Pika-Schleife her und sind reine Zierde, darum zeigt jedes Gerät eigene Besuche.
+    // Laufen neben der Pika-Schleife her und sind reine Zierde. Wann sie kommen, folgt aus der Uhrzeit (seedRnd),
+    // darum sehen alle Geräte dieselben Besuche.
 
 
     // ==================== Festtage: Methoden ====================
@@ -6077,6 +6168,7 @@
       if (!this._stats) this._stats = freshStats();
       this._stats[k] = clamp(this._raw(k) + d, 0, 100);
       this._stats[k + 't'] = Date.now();
+      this._gain[k] += d; // noch nicht gesendet (für das Zusammenführen mit fremden Ständen)
       this._renderStats();
       this._save();
     }
@@ -6086,7 +6178,9 @@
       clearTimeout(this._saveT);
       this._saveT = setTimeout(() => {
         const v = serialize(this._stats);
-        if (this._cfg.entity && this._hass) {
+        if (this._cfg.entity && !this._noEntity) {
+          // Stand aus HA noch nicht da (Start, unavailable): warten, beim Eintreffen wird zusammengeführt
+          if (!this._synced || !this._hass) return;
           this._lastEntityState = v;
           this._hass
             .callService('input_text', 'set_value', { entity_id: this._cfg.entity, value: v })
@@ -6096,6 +6190,7 @@
             localStorage.setItem(this._lsKey(), v);
           } catch (e) { /* egal */ }
         }
+        this._gain = { s: 0, g: 0, c: false };
         this._pendingWrite = false;
       }, 1200);
     }
@@ -6136,12 +6231,9 @@
     }
 
     // Fälligkeiten (ms) der Häufchen 0, 1, 2 … seit dem letzten Großputz. Sie zählen nur Wachzeit:
-    // das erste nach dem Aufwachen kommt 10–30 Minuten später, dann alle 80–140 Minuten. Die Schlafzeit
-    // von heute gilt auch für die Vortage, das reicht hier.
+    // das erste nach dem Aufwachen kommt 10–30 Minuten später, dann alle 80–140 Minuten. Das Wachfenster
+    // gilt je Tag (Sonnenzeiten des Tages, Ortszeit – am Tag der Zeitumstellung stimmt es also auch).
     _poopTimes(c, until) {
-      const a = this._sleepMinutes(this._cfg.sleep_start, 21 * 60);
-      const b = this._sleepMinutes(this._cfg.sleep_end, 7 * 60);
-      const awake = (((a - b) % 1440) + 1440) % 1440 || 1440;
       const cs = c / 1000;
       const out = [];
       const day = new Date(c);
@@ -6150,9 +6242,12 @@
       let t = c;
       let need = null; // restliche Wachzeit bis zum nächsten Häufchen
       for (let i = 0; i < 90 && out.length < POOP.idx; i++) {
-        const ws = new Date(day.getFullYear(), day.getMonth(), day.getDate(), 0, b).getTime();
-        const we = ws + awake * 6e4;
-        day.setDate(day.getDate() + 1);
+        const a = this._sleepMinutes(this._cfg.sleep_start, 21 * 60, day);
+        const b = this._sleepMinutes(this._cfg.sleep_end, 7 * 60, day);
+        const [y, mo, d] = [day.getFullYear(), day.getMonth(), day.getDate()];
+        const ws = new Date(y, mo, d, 0, b).getTime();
+        const we = new Date(y, mo, d + (a > b ? 0 : 1), 0, a).getTime(); // Schlafen nach Mitternacht: am Folgetag
+        day.setDate(d + 1);
         if (we <= t) continue;
         if (ws > until) break;
         let s = Math.max(t, ws);
@@ -6181,33 +6276,30 @@
     }
 
     // Was gerade liegt: { piles: [{ k, due, slot | u, r }], clean: 0..100 }. Alles folgt aus dem Zustand
-    // (Großputz, Maske, Teilputz), damit jedes Gerät dasselbe zeigt. Liegen schon 8, fällt das nächste aus;
-    // einzeln Weggemachtes zählt ab dem ersten Teilputz nicht mehr mit. Die ersten 3 kommen in die Klo-Ecke.
+    // (Großputz, Maske), damit jedes Gerät dasselbe zeigt. Die ersten 3 seit dem Großputz kommen in die Klo-Ecke,
+    // nach 8 kommt keins mehr dazu. Platz und Höchstzahl zählen einzeln Weggemachtes mit: Wann es weggemacht
+    // wurde, steht nicht im Zustand, mit der Maske würde ein späterer Putz rückwirkend verschieben, wo ein schon
+    // liegendes Häufchen hinkam. Frei wird alles erst beim Großputz (das letzte Häufchen weg).
     _poops() {
       const st = this._stats;
       const now = this._now();
       const key = st && `${st.c},${st.m},${st.l},${Math.floor(now / 1e4)},${this._cfg.sleep_start},${this._cfg.sleep_end}`;
       if (this._poopCache?.key === key) return this._poopCache;
-      const res = { key, piles: [], clean: 100, next: null };
+      const res = { key, piles: [], clean: 100 };
       this._poopCache = res;
       if (!st) return res;
       const cs = st.c / 1000;
       const lying = [];
-      for (const [k, due] of this._poopTimes(st.c, now + 864e5).entries()) {
-        if (due > now) {
-          res.next = due;
-          break;
-        }
-        const present = lying.filter((p) => !(st.m & (1 << p.k) && due >= st.l));
-        if (present.length >= POOP.max) continue;
+      for (const [k, due] of this._poopTimes(st.c, now).entries()) {
+        if (due > now || lying.length >= POOP.max) break;
         const r = seeded(cs, k, 11);
-        const taken = present.filter((p) => p.slot != null).map((p) => p.slot);
+        const taken = lying.filter((p) => p.slot != null).map((p) => p.slot);
         let pile;
         if (taken.length < POOP.latrine) {
           pile = { k, due, r, slot: [0, 1, 2].find((n) => !taken.includes(n)) };
         } else {
           // Wiese: Stelle mit Abstand zu den anderen Häufchen
-          const others = present.filter((p) => p.u != null).map((p) => p.u);
+          const others = lying.filter((p) => p.u != null).map((p) => p.u);
           let u = 0;
           for (let i = 0; i < 6; i++) {
             u = seeded(cs, k, 20 + i);
@@ -6266,6 +6358,11 @@
         const el = this._pileEls.get(key);
         if (el) {
           el.classList.toggle('old', now - p.due > POOP.fly * 36e5);
+          // Platz anders berechnet (z. B. anderer Stand nach dem Zusammenführen): mitwandern
+          if (el._pile.slot !== p.slot || el._pile.u !== p.u) {
+            el._pile = p;
+            el.style.setProperty('--px', `${this._pileX(p).toFixed(1)}px`);
+          }
           continue;
         }
         if (this._poopPending?.key === key) continue;
@@ -6347,6 +6444,7 @@
         st.c = st.l = now;
         st.m = 0;
       }
+      this._gain.c = true; // noch nicht gesendet (für das Zusammenführen mit fremden Ständen)
       this._poopCache = null;
       const awake = !this._asleep && !this._inside && this._g;
       if (rest.length) {
@@ -6395,19 +6493,46 @@
       return a > b ? m >= a || m < b : m >= a && m < b;
     }
 
-    // "21:00", "sunset", "sunset+01:00", "sunrise-30" (Minuten) → Minuten nach Mitternacht.
-    // Sonnenauf- und -untergang kommen aus sun.sun (next_rising/next_setting); deren Uhrzeit
-    // verschiebt sich von Tag zu Tag nur um wenige Minuten, das reicht für die Schlafenszeit.
-    _sleepMinutes(spec, fallback) {
+    // "21:00", "sunset", "sunset+01:00", "sunrise-30" (Minuten) → Minuten nach Mitternacht, Unverständliches → fallback.
+    // Sonnenauf- und -untergang kommen aus sun.sun (next_rising/next_setting). Die springen genau beim Ereignis auf
+    // morgen: Ist das morgige ein, zwei Minuten später (Aufgang im Herbst, Untergang im Frühjahr), wäre direkt nach
+    // dem Aufwachen wieder Schlafenszeit. Darum gilt je Kalendertag der erste Wert, der kam (war das Ereignis heute
+    // schon, ist es der von morgen – auf wenige Minuten dasselbe). Mit day (Häufchen-Plan) aus Ort und Datum gerechnet:
+    // so hat jeder Vortag seine eigenen Zeiten, und alle Geräte rechnen gleich.
+    _sleepMinutes(spec, fallback, day) {
       const m = String(spec ?? '').trim().toLowerCase()
         .match(/^(sunrise|sunset)\s*(?:([+-])\s*(?:(\d{1,2}):(\d{2})|(\d+)))?$/);
-      if (!m) return minutes(spec);
-      const attr = m[1] === 'sunrise' ? 'next_rising' : 'next_setting';
-      const t = new Date(this._hass?.states[this._cfg.sun_entity]?.attributes?.[attr] ?? NaN);
-      if (Number.isNaN(t.getTime())) return fallback;
+      if (!m) {
+        const v = minutes(spec);
+        if (v == null && !this._badSpec?.has(spec)) {
+          (this._badSpec ??= new Set()).add(spec);
+          console.warn(`pika-pet-card: Uhrzeit "${spec}" nicht verstanden (erlaubt: "21:00", "sunset", "sunset+01:00", "sunrise-30")`);
+        }
+        return v ?? fallback;
+      }
+      const rise = m[1] === 'sunrise';
+      const cfg = this._hass?.config;
+      const at = day && cfg && Number.isFinite(cfg.latitude) && Number.isFinite(cfg.longitude)
+        && sunTimes(day, cfg.latitude, cfg.longitude, Number(cfg.elevation) || 0);
+      let v;
+      if (at) {
+        const t = new Date(rise ? at.rise : at.set);
+        v = t.getHours() * 60 + t.getMinutes();
+      } else {
+        const attr = rise ? 'next_rising' : 'next_setting';
+        const today = new Date().toDateString();
+        const c = this._sunMin?.[attr];
+        if (c?.day === today) v = c.v;
+        else {
+          const t = new Date(this._hass?.states[this._cfg.sun_entity]?.attributes?.[attr] ?? NaN);
+          if (Number.isNaN(t.getTime())) return fallback; // sun.sun (noch) nicht da: nicht merken
+          v = t.getHours() * 60 + t.getMinutes();
+          (this._sunMin ??= {})[attr] = { day: today, v };
+        }
+      }
       const sign = m[2] === '-' ? -1 : 1;
       const off = m[3] != null ? Number(m[3]) * 60 + Number(m[4]) : Number(m[5] || 0);
-      return (((t.getHours() * 60 + t.getMinutes() + sign * off) % 1440) + 1440) % 1440;
+      return (((v + sign * off) % 1440) + 1440) % 1440;
     }
 
     _updateSky() {
@@ -6759,7 +6884,18 @@
       const cfg = this._hass?.config;
       if (!this._el || !cfg || !Number.isFinite(cfg.latitude)) return;
       const now = Date.now();
-      const t0 = Math.min(now, Date.parse(st?.last_updated) || now);
+      // Uhr von HA und Gerät können auseinandergehen: Versatz aus den Meldungen schätzen (die frischeste kommt
+      // praktisch sofort an, der größte Wert passt also am besten). Sonst verschwänden alle Flieger, wenn die
+      // Geräteuhr mehr als 75 s vorgeht. Die erste Meldung gilt als frisch.
+      const lu = Date.parse(st?.last_updated);
+      if (Number.isFinite(lu) && st !== this._flSeen) {
+        this._flSeen = st;
+        this._clockOff = Math.max(this._clockOff ?? -Infinity, lu - now);
+      }
+      const t0 = Number.isFinite(lu) ? Math.min(now, lu - this._clockOff) : now;
+      // Getrennt oder unsichtbar: keine Elemente anlegen, die Meldung liegt in _lastFlights und wird beim
+      // Wiederkommen gelesen
+      if (!this._attached || document.hidden) return;
       const kx = 111.32 * Math.cos(cfg.latitude * RAD);
       const list = [];
       for (const f of Array.isArray(st?.attributes?.flights) ? st.attributes.flights : []) {
@@ -6991,7 +7127,7 @@
           cond: w.state,
           cover: Number(a.cloud_coverage),
           wind: Number.isFinite(wind) ? wind : 0,
-          bearing: Number(a.wind_bearing),
+          bearing: windDeg(a.wind_bearing),
           temp: Number.isFinite(temp) ? temp : null,
         };
       } else {

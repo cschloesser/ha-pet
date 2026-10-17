@@ -166,7 +166,8 @@
       state: 'partlycloudy',
       attributes: { temperature: 14, temperature_unit: '°C', cloud_coverage: 40, wind_speed: 12, wind_speed_unit: 'km/h', wind_bearing: 240 },
     },
-    'input_text.pika_status': { state: 'unknown', attributes: {} },
+    // leer wie ein frisch angelegter Helfer (bei "unknown" wartet die Karte 20 s, ob es nur der Start von HA ist)
+    'input_text.pika_status': { state: '', attributes: {} },
   };
   const cards = [document.getElementById('a'), document.getElementById('b')];
   const hass = {
@@ -229,7 +230,8 @@
     c._renderStats();
   });
   document.getElementById('poo1').addEventListener('click', () => {
-    const n = cards[0]._poops().next;
+    const c = cards[0];
+    const n = c._stats && c._poopTimes(c._stats.c, c._now() + 864e5).find((t) => t > c._now());
     if (n) shift(n - cards[0]._now() + 1000);
   });
   document.getElementById('poo4').addEventListener('click', () => shift(4 * 36e5));
