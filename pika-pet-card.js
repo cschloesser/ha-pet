@@ -43,7 +43,7 @@
  * werden aus Datum und Standort (hass.config) berechnet.
  */
 (() => {
-  const VERSION = '0.9.0';
+  const VERSION = '0.10.0';
 
   const DEFAULTS = {
     name: 'Pika',
