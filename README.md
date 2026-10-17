@@ -13,12 +13,12 @@ Ein kleiner Pika (Pfeifhase) wohnt in deinem Home-Assistant-Dashboard.
 ## Häufchen und Sauberkeit
 
 - Über den Tag macht er kleine Häufchen: etwa alle 80–140 Minuten, solange er wach ist (5–6 am Tag). Das erste kommt 10–30 Minuten nach dem Aufwachen, nachts keins.
-- Wie echte Pikas geht er dafür in seine **Klo-Ecke** am Aussichtsstein. Liegen dort schon drei, sucht er sich einen Platz auf der Wiese. Höchstens 8 liegen gleichzeitig.
+- Wie echte Pikas geht er dafür in seine **Klo-Ecke** am Aussichtsstein. Liegen dort schon drei, sucht er sich einen Platz auf der Wiese. Seit dem letzten Großputz kommen höchstens 8 (einzeln weggemachte zählen mit), ihre Plätze werden erst wieder frei, wenn alles sauber ist. Ist alles weggemacht, gilt das als Großputz.
 - Schaut man gerade zu, sieht man es live: hinhoppeln, umschauen, Hocke, Po-Wackeln, *plopp*.
 - **Häufchen antippen** → Schaufel, weg, Funkeln. Ist alles sauber, funkelt die Wiese, er macht einen Freudensprung und Glück steigt um 10.
 - Der **Sauber-Balken** (hellblau) verliert 10 % pro Häufchen und 2 % pro Stunde, die es liegt. Nach 4 Stunden kreist tagsüber eine kleine Fliege darüber.
 - Schmutz **deckelt das Glück**: Höchstens 60 % + 0,4 × Sauberkeit sind zu sehen. Streicheln zählt trotzdem; nach dem Putzen zeigt der Balken wieder den vollen Wert. Unter 60 % schnuppert er an Häufchen und wendet sich mit „iih!“ ab, unter 30 % lässt er die Ohren hängen.
-- Wann und wo Häufchen liegen, wird aus dem gespeicherten Zustand berechnet. Darum sehen alle Geräte dieselben Häufchen an denselben Stellen.
+- Wann und wo Häufchen liegen, wird aus dem gespeicherten Zustand berechnet. Darum sehen alle Geräte dieselben Häufchen an denselben Stellen. Füttern, Streicheln und Putzen auf zwei Geräten gleichzeitig werden zusammengeführt.
 
 ## Besuch
 
@@ -30,9 +30,9 @@ Ein kleiner Pika (Pfeifhase) wohnt in deinem Home-Assistant-Dashboard.
 
 ## Freund-Pika
 
-Ein paarmal am Tag kommt **Pino** zu Besuch, ein Freund-Pika: etwas kleiner, rötlicher und mit hellem Fleck auf der Stirn.
+Ein paarmal am Tag kommt **Pino** zu Besuch, ein Freund-Pika: etwas kleiner, ingwerfarben, mit türkisem Halstuch und hellem Fleck auf der Stirn.
 
-- **Wann**: Etwa alle 45 Minuten kommt Pino (21–65 Minuten zwischen zwei Besuchen) und bleibt 1,5–4 Minuten. Er kommt nur, wenn der Pika wach ist, es Tag ist und es nicht regnet oder gewittert.
+- **Wann**: Etwa alle 45 Minuten kommt Pino (21–65 Minuten zwischen zwei Besuchen) und bleibt 1,5–4 Minuten. Er kommt nur, wenn der Pika wach ist, es Tag ist und es nicht regnet oder gewittert. Passt es zu Beginn nicht (z. B. kurzer Niesel), kommt er später im selben Zeitfenster.
 - **Ankunft**: Pino hoppelt vom linken oder rechten Rand herein und piepst. Der Pika bemerkt ihn, ruft „Pino!“, hoppelt zu ihm, und die beiden stupsen sich mit den Nasen an (Herzchen).
 - **Zusammen spielen**: Meistens spielen sie miteinander, ab und zu macht der Pika auch etwas allein.
   - **Fangen**: Abwechselnd hoppelt einer davon und der andere hinterher, mit kleinen Staubwölkchen.
@@ -57,7 +57,7 @@ Höchstens alle 12–20 Minuten (die erste nach 2–6 Minuten) sucht er sich ein
 
 ## Haus-Bote
 
-Der Pika zeigt, was Waschmaschine, Trockner und Spülmaschine (Home Connect) gerade machen. Jedes Gerät bekommt ein kleines Requisit am Bau:
+Der Pika zeigt, was Waschmaschine, Trockner und Spülmaschine gerade machen (Home Connect; die Zustandsnamen von Miele, LG ThinQ und SmartThings werden auch erkannt). Jedes Gerät bekommt ein kleines Requisit am Bau:
 
 | Gerät | Läuft | Fertig, noch zu | Ausgeräumt |
 |---|---|---|---|
@@ -67,17 +67,20 @@ Der Pika zeigt, was Waschmaschine, Trockner und Spülmaschine (Home Connect) ger
 
 - **Läuft**: Unter dem Requisit zeigt ein schmaler Balken den Fortschritt (ohne Prozentwert läuft er hin und her). Ab und zu beschäftigt sich der Pika damit: Er rührt im Zuber und bekommt eine Seifenblase auf die Nase, legt sich vor die Trommel und schaut ihr zu (die Augen drehen mit), oder er tunkt einen Teller in die Schüssel. Bei Pause und Startvorwahl steht alles still, bei Störung oder „Hilfe nötig“ blinkt ein rotes Ausrufezeichen.
 - **Fertig**: Das Requisit hüpft alle paar Sekunden kurz. Der Pika hoppelt alle 3–6 Minuten hin, tätschelt oder stupst es, dreht den Kopf zu dir und sagt Bescheid („Wäsche!“, „flauschig!“, „Geschirr!“, „fertig!“).
-- **Ausgeräumt**: Sobald das Gerät nicht mehr auf „fertig“ steht oder die Tür aufgeht, ist es ausgeräumt. Siehst du gerade zu, räumt der Pika sichtbar mit auf: Er hängt die Wäsche Stück für Stück an die Leine, trägt ein Handtuch in seinen Bau oder poliert einen Teller und bringt ihn hinein. Danach freut er sich. Alle anderen Geräte zeigen das Ausgeräumt-Requisit, solange das Gerät seit weniger als 20 Minuten auf `ready` oder `inactive` steht (aus `last_changed`). Danach verschwindet alles bis zum nächsten Lauf.
+- **Ausgeräumt**: Nur nach einem echten Programmende: Das Gerät wechselt von „fertig“ auf „aus“, die Tür geht bei „fertig“ auf, oder es geht kurz vor Programmende direkt auf „aus“. Einschalten, Abbrechen oder eine gelöschte Startvorwahl zählen nicht. Siehst du gerade zu, räumt der Pika sichtbar mit auf: Er hängt die Wäsche Stück für Stück an die Leine, trägt ein Handtuch in seinen Bau oder poliert einen Teller und bringt ihn hinein. Danach freut er sich. Das Ausgeräumt-Requisit bleibt 20 Minuten stehen, danach verschwindet alles bis zum nächsten Lauf. Nach dem Neuladen der Seite erscheint „ausgeräumt“ nur, wenn der Fortschritt noch bei etwa 100 % steht.
+- **Tür** (`door`): Die Spülmaschine gilt als ausgeräumt, sobald die Tür bei „fertig“ aufgeht. Den AutoOpen-Spalt in den ersten 2 Minuten nach Programmende ignoriert der Pika, und Tür wieder zu macht sie nicht wieder „fertig“.
 - **Antippen** eines Requisits blendet ein Fähnchen ein (nach 9 s geht es wieder zu): Gerätename und Stand, z. B. „62 % · fertig um 14:35“, „fertig seit 35 Min“ oder „ausgeräumt“.
-- Mehrere Geräte stehen nebeneinander zwischen Eingang und Heuhaufen, auf der Wiese vor dem Stein und links neben dem Eingang. Wird es eng, werden alle etwas kleiner.
+- **Platz**: Requisiten stehen bevorzugt vorn auf dem Wiesenstreifen (vor dem Pika), sonst zwischen Eingang und Heuhaufen, zwischen Heuhaufen und Stein oder links neben dem Eingang. Blumenkasten, Festdeko, Futterwiese, Klo-Ecke und Futterknopf bleiben möglichst frei. Wird es eng, wird jedes Requisit einzeln kleiner, notfalls stehen sie leicht überlappend. Die Wäscheleine bleibt immer hinten.
+- Zwei Geräte gleichen Typs ohne `name` heißen „Waschmaschine 1“ / „Waschmaschine 2“. Schläft der Pika (und nachts bei Geräten, die nicht laufen), halten die Requisiten still, das schont schwache Tablets.
+- Ist ein Gerät kurz `unavailable` oder `unknown` (WLAN weg), bleibt alles, wie es war. Nach einem Neustart von Home Assistant setzt HA `last_changed` neu, „fertig seit …“ zählt dann ab dem Neustart.
 
 ```yaml
 appliances:
   - type: washer                 # washer | dryer | dishwasher
     name: Waschmaschine          # optional, Standard je Typ: Waschmaschine / Trockner / Spülmaschine
     state: sensor.waschmaschine_betriebszustand
-    progress: sensor.waschmaschine_programm_fortschritt   # optional, Fortschritt in %
-    end: sensor.waschmaschine_programm_endzeit             # optional, Endzeit (Zeitstempel)
+    progress: sensor.waschmaschine_programm_fortschritt   # optional, Fortschritt in % (oder Anteil 0–1)
+    end: sensor.waschmaschine_programm_endzeit             # optional, Endzeit (Zeitstempel) oder Restzeit (Zahl mit Einheit s/min/h, Standard min, oder h:mm)
   - type: dryer
     state: sensor.trockner_betriebszustand
     progress: sensor.trockner_programm_fortschritt
@@ -89,7 +92,7 @@ appliances:
     door: sensor.geschirrspuler_tur                        # optional, open/closed/locked oder on/off
 ```
 
-Betriebszustände: `run`, `pause`, `delayedstart`, `actionrequired`, `error`, `aborting` zählen als „läuft“, `finished` als „fertig“, `ready` und `inactive` als „aus“. Schaltet sich ein Gerät nach dem Ausräumen ab (`ready` → `inactive`), verlängert das die 20 Minuten nicht. Ohne `appliances` passiert nichts.
+Betriebszustände: `run`, `pause`, `delayedstart`, `actionrequired`, `error`, `aborting` zählen als „läuft“, `finished` als „fertig“, `ready` und `inactive` als „aus“. Schaltet sich ein Gerät nach dem Ausräumen ab (`ready` → `inactive`), verlängert das die 20 Minuten nicht. Unbekannte Zustände und fehlende Entities meldet die Karte einmal in der Browser-Konsole. Ohne `appliances` passiert nichts.
 
 ## Flugzeuge
 
@@ -118,7 +121,7 @@ Der Blick geht nach Süden: Osten (Sonnenaufgang) ist links, Westen rechts.
   - Bei Starkregen und Gewitter verkriecht er sich im Bau, schaut ab und zu heraus und erschrickt bei Blitzen.
   - Unter 3 °C trägt er einen Schal.
   - Bei Schnee knabbert er an seinem Heuvorrat.
-- **Glühwürmchen** in Sommernächten (Mai bis September): 10 bis 14 Stück schwirren tief über der Wiese und um den Heuhaufen und blinken unregelmäßig gelbgrün, in der späten Dämmerung schon ein paar schwächer. Bei Regen und Gewitter verschwinden sie. Ist der Pika wach, setzt er sich hin, schaut ihnen nach und hüpft nach einem.
+- **Glühwürmchen** in Sommernächten (Mai bis September, auf der Südhalbkugel November bis März): 10 bis 14 Stück schwirren tief über der Wiese und um den Heuhaufen und blinken unregelmäßig gelbgrün, in der späten Dämmerung schon ein paar schwächer. Bei Regen und Gewitter verschwinden sie. Ist der Pika wach, setzt er sich hin, schaut ihnen nach und hüpft nach einem.
 - **Sternschnuppen** nachts bei klarem Himmel (nicht bei dichter Bewölkung, Nebel, Regen oder Schnee): alle paar Minuten eine, ab und zu ein heller Bolide, der kurz aufleuchtet, selten zwei kurz nacheinander. Ein wacher Pika schaut manchmal hoch: „oh!“
 
 ## Areale
@@ -148,7 +151,7 @@ Mit `areal` wählst du den Bau:
 | **Sommerfest** 21. 6. | Wimpelkette zwischen Bau und Stein | macht öfter Freudensprünge |
 | **Geburtstag** (`birthdays`) | Kuchen mit Kerze vor dem Bau, Girlande „ALLES ♥ GUTE“ | Partyhütchen, pustet die Kerze aus (nach 20 s brennt sie wieder): „Alles Gute, Mia!“ |
 
-Geburtstage stehen in der Konfiguration, mehrere am selben Tag werden zusammen gefeiert („Alles Gute, Mia und Tom!“). Das Datum geht als `MM-TT`, `JJJJ-MM-TT` oder `TT.MM.`; wer am 29. 2. Geburtstag hat, feiert sonst am 28. 2.
+Geburtstage stehen in der Konfiguration, mehrere am selben Tag werden zusammen gefeiert („Alles Gute, Mia und Tom!“). Das Datum geht als `MM-TT`, `JJJJ-MM-TT` oder `TT.MM.`, auch ohne Anführungszeichen (`14.10` ist der 14. Oktober, `12.06` der 12. Juni); wer am 29. 2. Geburtstag hat, feiert sonst am 28. 2.
 
 ```yaml
 birthdays:
@@ -165,7 +168,7 @@ In `preview.html` stellen die Festtage-Knöpfe die Uhr der Karte auf den jeweili
 1. HACS → ⋮ → *Benutzerdefinierte Repositories* → `https://github.com/cschloesser/ha-pet`, Typ **Dashboard**
 2. *Pika Pet Card* herunterladen; die Ressource wird automatisch eingetragen
 3. Optional einen Text-Helfer anlegen, damit der Pika auf allen Geräten denselben Zustand hat:
-   *Einstellungen → Geräte & Dienste → Helfer → Text*, z. B. `input_text.pika_status` (max. Länge 100)
+   *Einstellungen → Geräte & Dienste → Helfer → Text*, z. B. `input_text.pika_status` (max. Länge 100). Ein neuer Helfer bekommt nach etwa 20 s Startwerte, ein leerer sofort; ist er `unavailable`, wird nichts überschrieben. Fehlt die Entity, spielt die Karte lokal weiter (Hinweis in der Browser-Konsole).
 
 ## Konfiguration
 
@@ -193,10 +196,12 @@ height: 180                      # Mindesthöhe in px (im Abschnitts-Layout zäh
 appliances:                      # Waschmaschine, Trockner, Spülmaschine, siehe Haus-Bote
 ```
 
-Für `sleep_start` und `sleep_end` gehen feste Uhrzeiten (`"21:00"`) oder `sunset`/`sunrise` aus `sun.sun`, auch mit Versatz: `"sunset+01:00"` (eine Stunde nach Sonnenuntergang), `"sunrise-30"` (30 Minuten vor Sonnenaufgang). Ohne `sun.sun` gilt 21:00 bis 07:00.
+Für `sleep_start` und `sleep_end` gehen feste Uhrzeiten (`"21:00"`) oder `sunset`/`sunrise` aus `sun.sun`, auch mit Versatz: `"sunset+01:00"` (eine Stunde nach Sonnenuntergang), `"sunrise-30"` (30 Minuten vor Sonnenaufgang). Ohne `sun.sun` gilt 21:00 bis 07:00, der Himmel richtet sich dann nach der Schlafenszeit. Uhrzeiten am besten in Anführungszeichen; `21:00` ohne geht aber auch (YAML macht 1260 daraus, reine Zahlen gelten als Minuten nach Mitternacht). Unverständliche Angaben wie `sunset+1h` fallen auf 21:00/07:00 zurück, mit Hinweis in der Konsole.
+
+`wind_bearing` des Wetters darf eine Gradzahl oder ein Kürzel sein („SW“, „NNO“). Flugzeuge erscheinen auch, wenn die Uhr des Geräts von der HA-Uhr abweicht. Auf schmalen Karten (z. B. Handy) werden Aussichtsstein und Heuhaufen automatisch kleiner, damit alles ins Bild passt. Der Heuhaufen wird pro Gerät im Browser gespeichert und nicht geteilt.
 
 Im Text-Helfer steht der Zustand als `satt,zeit,glück,zeit,großputz,maske,teilputz` (Zeiten in Sekunden). Hunger, Glück und Häufchen werden daraus beim Anzeigen berechnet, deshalb braucht es keine Automation. Ältere Werte mit vier Feldern werden weiter gelesen.
 
 ## Entwicklung
 
-`preview.html` lädt die Karte mit einem simulierten `hass`-Objekt. Die Häufchen-Knöpfe stellen die Uhr der Häufchen vor (nächstes Häufchen, +4 Std., +1 Tag), die Besuch-Knöpfe holen Vögelchen und Maus sofort oder stellen die Besuchsuhr kurz vor den nächsten berechneten Besuch, die Hobby-Knöpfe starten eine Beschäftigung sofort (auch ohne passendes Wetter), die Flieger-Knöpfe schicken Testflüge los (Anflug, Abflug, Reiseflug, Hubschrauber, Kleinflugzeug). Dafür den Ordner über einen beliebigen lokalen Webserver öffnen. `areale.html` zeigt alle vier Areale nebeneinander. Die Knopfzeilen Himmel-Extras, Festtage, Freund-Pika und Haus-Bote lösen die jeweiligen Erweiterungen sofort aus (Festtage stellen dafür das Datum der Karte um, Haus-Bote setzt Mock-Zustände der drei Geräte).
+`preview.html` lädt die Karte mit einem simulierten `hass`-Objekt. Die Häufchen-Knöpfe stellen die Uhr der Häufchen vor (nächstes Häufchen, +4 Std., +1 Tag), die Besuch-Knöpfe holen Vögelchen und Maus sofort oder stellen die Besuchsuhr kurz vor den nächsten berechneten Besuch, die Hobby-Knöpfe starten eine Beschäftigung sofort (auch ohne passendes Wetter), die Flieger-Knöpfe schicken Testflüge los (Anflug, Abflug, Reiseflug, Hubschrauber, Kleinflugzeug). Dafür den Ordner über einen lokalen Webserver öffnen, z. B. `node dev/serve.mjs . 8765` (lauscht nur auf localhost). `areale.html` zeigt alle vier Areale nebeneinander. Die Knopfzeilen Himmel-Extras, Festtage, Freund-Pika und Haus-Bote lösen die jeweiligen Erweiterungen sofort aus (Festtage stellen dafür das Datum der Karte um, Haus-Bote setzt Mock-Zustände der drei Geräte).
