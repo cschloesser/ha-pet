@@ -29,7 +29,7 @@
  * werden aus Datum und Standort (hass.config) berechnet.
  */
 (() => {
-  const VERSION = '0.7.0';
+  const VERSION = '0.7.1';
 
   const DEFAULTS = {
     name: 'Pika',
@@ -1244,7 +1244,10 @@
   .planes, .ptags { position: absolute; inset: 0; pointer-events: none; }
   .ptags { z-index: 4; }
   .plane { position: absolute; left: 0; top: 0; opacity: 0; transition: transform 1s linear, opacity 2s; will-change: transform; }
-  .plane.on, .ptag.on { opacity: 1; }
+  .plane.on { opacity: 1; }
+  /* Unsichtbare Tippfläche über dem Flugzeug (die Flugzeuge selbst liegen hinter den Hügeln) */
+  .phit { position: absolute; left: 0; top: 0; display: none; pointer-events: auto; cursor: pointer; transition: transform 1s linear; }
+  .phit.on { display: block; }
   .plane .pl-s {
     position: absolute; width: calc(var(--H) * .3); left: calc(var(--H) * -.15); top: calc(var(--H) * -.06);
     transition: transform 1s linear, opacity 3s;
@@ -1280,11 +1283,11 @@
     position: absolute; left: 0; top: 0; padding: .1em .65em .15em; border-radius: .9em;
     font-size: clamp(10px, calc(var(--H) * .05), 14px); line-height: 1.35; white-space: nowrap;
     color: #2f4256; background: rgba(255, 255, 255, .8); box-shadow: 0 1px 3px rgba(0, 0, 0, .15);
-    pointer-events: auto; cursor: pointer; opacity: 0; transition: transform 1s linear, opacity 2s, background 2.5s, color 2.5s;
+    pointer-events: none; cursor: pointer; opacity: 0; transition: transform 1s linear, opacity .3s, background 2.5s, color 2.5s;
   }
+  .ptag.on.open { opacity: 1; pointer-events: auto; }
   .ptag b { font-weight: 700; letter-spacing: .02em; }
-  .ptag .more { display: none; font-size: .9em; opacity: .85; }
-  .ptag.open .more { display: block; }
+  .ptag .more { font-size: .9em; opacity: .85; }
   .dusk .ptag { background: rgba(255, 255, 255, .72); }
   .night .ptag { color: #e4e9f6; background: rgba(22, 32, 62, .72); }
   `;
@@ -3333,20 +3336,25 @@
       el.style.setProperty('--tail', TAIL[f.airline_icao] || TAIL_DEFAULT[kind]);
       const tag = document.createElement('div');
       tag.className = 'ptag';
-      tag.setAttribute('role', 'button');
-      const p = { id, kind, f, el, tag, s: el.firstElementChild, size: PLANE_SIZE[kind], fresh: true };
-      // Antippen: Airline, Typ, Strecke, Höhe und Tempo
-      tag.addEventListener('click', (e) => {
+      const hit = document.createElement('div');
+      hit.className = 'phit';
+      hit.setAttribute('role', 'button');
+      const p = { id, kind, f, el, tag, hit, s: el.firstElementChild, size: PLANE_SIZE[kind], fresh: true };
+      // Flugzeug antippen: Flugnummer, Ziel, Airline, Typ, Strecke, Höhe und Tempo; nochmal tippen schließt
+      const toggle = (e) => {
         e.stopPropagation();
         clearTimeout(p.openT);
         const open = !tag.classList.contains('open');
-        if (open) this._planeText(p);
+        if (open) {
+          this._planeText(p);
+          p.openT = setTimeout(() => tag.classList.remove('open'), 9000);
+        }
         tag.classList.toggle('open', open);
-        if (open) p.openT = setTimeout(() => ((p.tw = 0), tag.classList.remove('open')), 9000);
-        p.tw = 0;
-      });
+      };
+      hit.addEventListener('click', toggle);
+      tag.addEventListener('click', toggle);
       this._el.planes.appendChild(el);
-      this._el.ptags.appendChild(tag);
+      this._el.ptags.append(hit, tag);
       this._planes.set(id, p);
       return p;
     }
@@ -3374,7 +3382,7 @@
       if (html === p.html) return;
       p.html = html;
       p.tag.innerHTML = html;
-      p.tag.setAttribute('aria-label', `Flug ${flightNo(f)} ${route}`.trim());
+      p.hit.setAttribute('aria-label', `Flug ${flightNo(f)} ${route}`.trim());
       p.tw = 0;
     }
 
@@ -3417,6 +3425,7 @@
           clearTimeout(p.openT);
           p.el.remove();
           p.tag.remove();
+          p.hit.remove();
           this._planes.delete(id);
           continue;
         }
@@ -3426,11 +3435,17 @@
         cl.toggle('contrail', alt > 26000 && !this._wx.wet);
         cl.toggle('hi', alt > 8000);
         if (p.fresh) {
-          p.el.style.transition = p.s.style.transition = p.tag.style.transition = 'none';
+          p.el.style.transition = p.s.style.transition = p.tag.style.transition = p.hit.style.transition = 'none';
           fresh.push(p);
         }
         p.el.style.transform = `translate(${x.toFixed(1)}px, ${y.toFixed(1)}px)`;
         p.s.style.transform = `scale(${sc.toFixed(3)})`;
+        // Tippfläche so groß wie das Flugzeug, aber mindestens fingergroß
+        const hw = Math.max(44, H * 0.3 * sc);
+        const hh = Math.max(36, H * 0.12 * sc);
+        p.hit.style.width = `${hw.toFixed(0)}px`;
+        p.hit.style.height = `${hh.toFixed(0)}px`;
+        p.hit.style.transform = `translate(${(x - hw / 2).toFixed(1)}px, ${(y - hh / 2).toFixed(1)}px)`;
         p.show = !p.dead && !out;
         if (p.show) shown.push({ p, x, y, half: H * 0.06 * sc });
       }
@@ -3460,7 +3475,7 @@
       if (fresh.length) {
         void this._el.planes.offsetWidth;
         for (const p of fresh) {
-          p.el.style.transition = p.s.style.transition = p.tag.style.transition = '';
+          p.el.style.transition = p.s.style.transition = p.tag.style.transition = p.hit.style.transition = '';
           p.fresh = false;
           if (p.show && p.altNow < 5000 && p.slant < 8) this._noticeCritter(p.x, true);
         }
@@ -3468,6 +3483,7 @@
       for (const p of this._planes.values()) {
         p.el.classList.toggle('on', !!p.show);
         p.tag.classList.toggle('on', !!p.show);
+        p.hit.classList.toggle('on', !!p.show);
       }
     }
 

@@ -35,7 +35,7 @@ Echte Flüge aus der Umgebung ziehen über den Himmel. Die Daten kommen aus der 
 - **Position**: Osten links, Westen rechts. Der Bildrand liegt bei `flight_radius` (Standard 15 km, so groß wie der Radius der Integration).
 - **Höhe und Größe**: Ein Anflug steht knapp über den Hügeln und ist groß, ein Flieger in Reiseflughöhe steht weit oben und ist klein, ab etwa 8000 m mit Kondensstreifen.
 - **Bewegung**: Zwischen den Meldungen der Integration (alle 10–30 s) fliegen sie mit Kurs, Geschwindigkeit und Steig- oder Sinkrate weiter.
-- **Fähnchen**: Flugnummer und Ziel, z. B. „EW 9542 → Palma de Mallorca“. Landet der Flug in der Nähe (unter 30 km), steht stattdessen die Herkunft da, z. B. „aus Katowice“. **Antippen** zeigt Airline, Flugzeugtyp, Strecke, Höhe und Tempo.
+- **Antippen** blendet ein Fähnchen ein (nach 9 s geht es wieder zu): Flugnummer und Ziel, z. B. „EW 9542 → Palma de Mallorca“. Landet der Flug in der Nähe (unter 30 km), steht stattdessen die Herkunft da, z. B. „aus Katowice“. Darunter stehen Airline, Flugzeugtyp, Strecke, Höhe und Tempo. Ohne Antippen sieht man nur die Flugzeuge.
 - **Aussehen**: Leitwerk in Airline-Farbe. Kleinflugzeuge und Hubschrauber haben eigene Grafiken. Nachts leuchten Kabinenfenster, Blitzer und Rundumleuchte. Bei bedecktem Himmel sind hohe Flieger nur blass zu sehen, bei Nebel alle.
 - **Anzahl**: höchstens `max_flights` gleichzeitig (Standard 2), die nächsten zuerst. Flugzeuge am Boden zählen nicht.
 - **Pika**: Er schaut tief fliegenden Flugzeugen nach und sagt manchmal „brumm!“. Ist eins ganz nah, erschrickt er kurz.
