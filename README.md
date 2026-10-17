@@ -28,6 +28,18 @@ Ein kleiner Pika (Pfeifhase) wohnt in deinem Home-Assistant-Dashboard.
 - **Antippen** verscheucht Vögelchen und Maus.
 - Die Besuche sind Zufall und laufen auf jedem Gerät für sich.
 
+## Flugzeuge
+
+Echte Flüge aus der Umgebung ziehen über den Himmel. Die Daten kommen aus der [Flightradar24-Integration](https://github.com/AlexandrErohin/home-assistant-flightradar24) (HACS), Sensor `sensor.flightradar24_current_in_area`.
+
+- **Position**: Osten links, Westen rechts. Der Bildrand liegt bei `flight_radius` (Standard 15 km, so groß wie der Radius der Integration).
+- **Höhe und Größe**: Ein Anflug steht knapp über den Hügeln und ist groß, ein Flieger in Reiseflughöhe steht weit oben und ist klein, ab etwa 8000 m mit Kondensstreifen.
+- **Bewegung**: Zwischen den Meldungen der Integration (alle 10–30 s) fliegen sie mit Kurs, Geschwindigkeit und Steig- oder Sinkrate weiter.
+- **Fähnchen**: Flugnummer und Ziel, z. B. „EW 9542 → Palma de Mallorca“. Landet der Flug in der Nähe (unter 30 km), steht stattdessen die Herkunft da, z. B. „aus Katowice“. **Antippen** zeigt Airline, Flugzeugtyp, Strecke, Höhe und Tempo.
+- **Aussehen**: Leitwerk in Airline-Farbe. Kleinflugzeuge und Hubschrauber haben eigene Grafiken. Nachts leuchten Kabinenfenster, Blitzer und Rundumleuchte. Bei bedecktem Himmel sind hohe Flieger nur blass zu sehen, bei Nebel alle.
+- **Anzahl**: höchstens `max_flights` gleichzeitig (Standard 2), die nächsten zuerst. Flugzeuge am Boden zählen nicht.
+- **Pika**: Er schaut tief fliegenden Flugzeugen nach und sagt manchmal „brumm!“. Ist eins ganz nah, erschrickt er kurz.
+
 ## Himmel und Wetter
 
 Der Blick geht nach Süden: Osten (Sonnenaufgang) ist links, Westen rechts.
@@ -72,6 +84,9 @@ sleep_end: sunrise               # Aufwachzeit (Standard: Sonnenaufgang)
 sun_entity: sun.sun              # Sonnenstand
 weather_entity: weather.forecast_home   # Wetter (Standard: met.no-Integration)
 areal: huegel                    # Bau: huegel, fels, stumpf, alpin
+flight_entity: sensor.flightradar24_current_in_area   # Flugzeuge (leer = keine)
+flight_radius: 15                # Radius der Flightradar24-Integration in km
+max_flights: 2                   # höchstens so viele Flugzeuge gleichzeitig
 show_stats: true                 # Satt-/Glück-/Sauber-Balken
 height: 180                      # Mindesthöhe in px (im Abschnitts-Layout zählt die Zeilenhöhe)
 ```
@@ -82,4 +97,4 @@ Im Text-Helfer steht der Zustand als `satt,zeit,glück,zeit,großputz,maske,teil
 
 ## Entwicklung
 
-`preview.html` lädt die Karte mit einem simulierten `hass`-Objekt. Die Häufchen-Knöpfe stellen die Uhr der Häufchen vor (nächstes Häufchen, +4 Std., +1 Tag), die Besuch-Knöpfe holen Vögelchen und Maus sofort. Dafür den Ordner über einen beliebigen lokalen Webserver öffnen. `areale.html` zeigt alle vier Areale nebeneinander.
+`preview.html` lädt die Karte mit einem simulierten `hass`-Objekt. Die Häufchen-Knöpfe stellen die Uhr der Häufchen vor (nächstes Häufchen, +4 Std., +1 Tag), die Besuch-Knöpfe holen Vögelchen und Maus sofort, die Flieger-Knöpfe schicken Testflüge los (Anflug, Abflug, Reiseflug, Hubschrauber, Kleinflugzeug). Dafür den Ordner über einen beliebigen lokalen Webserver öffnen. `areale.html` zeigt alle vier Areale nebeneinander.

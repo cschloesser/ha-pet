@@ -7,6 +7,7 @@
  *   Ab und zu, Gewitter → verschwindet er in seinem Bau und schaut heraus
  *   Über den Tag        → macht er kleine Häufchen (erst in die Klo-Ecke am Stein); antippen = wegmachen
  *   Ab und zu Besuch    → Vögelchen landet auf Bau, Laterne oder Stein; Maus schaut hinter dem Stein hervor
+ *   Echte Flugzeuge     → ziehen über den Himmel, mit Flugnummer und Ziel (Flightradar24-Integration)
  *   Sonst              → schaut sich um, hoppelt, knabbert Blumen, sammelt Heu, putzt sich
  *
  * Konfiguration:
@@ -18,6 +19,9 @@
  *   sun_entity: sun.sun              # Sonnenstand (Höhe + Azimut) für Himmel und Sonne
  *   weather_entity: weather.forecast_home   # Wolken, Regen, Schnee, Nebel, Gewitter, Wind
  *   areal: huegel                    # Bau: huegel (Erdhügel), fels, stumpf, alpin
+ *   flight_entity: sensor.flightradar24_current_in_area   # Flüge im Umkreis (leer = keine Flugzeuge)
+ *   flight_radius: 15                # Radius der Integration in km: so weit weg liegt der Bildrand
+ *   max_flights: 2                   # höchstens so viele Flugzeuge gleichzeitig (die nächsten)
  *   show_stats: true                 # Satt-/Glück-/Sauber-Balken anzeigen
  *   height: 180                      # Mindesthöhe in px
  *
@@ -25,7 +29,7 @@
  * werden aus Datum und Standort (hass.config) berechnet.
  */
 (() => {
-  const VERSION = '0.6.0';
+  const VERSION = '0.7.0';
 
   const DEFAULTS = {
     name: 'Pika',
@@ -35,6 +39,9 @@
     sun_entity: 'sun.sun',
     weather_entity: 'weather.forecast_home',
     areal: 'huegel',
+    flight_entity: 'sensor.flightradar24_current_in_area',
+    flight_radius: 15,
+    max_flights: 2,
     show_stats: true,
     height: 180,
   };
@@ -114,6 +121,81 @@
     lightning: { cover: 90, flash: true, storm: true },
     'lightning-rainy': { cover: 95, rain: 70, flash: true, storm: true },
     snowy: { cover: 90, snow: 55 }, 'snowy-rainy': { cover: 90, rain: 25, snow: 25 },
+  };
+
+  // ---------- Flugzeuge ----------
+
+  // Seitenansicht mit der Nase nach rechts, viewBox 0 0 100 40. --tail ist die Airline-Farbe.
+  // .pl-body wird nachts abgedunkelt, Fenster (.win) leuchten dann, .bcn blinkt rot, .strobe blitzt weiß.
+  const PLANE_SVG = {
+    jet: `<svg viewBox="0 0 100 40" aria-hidden="true"><g class="pl-body">
+      <path fill="var(--tail)" d="M9 17 L3 2.8 Q2.7 1.5 4.3 1.5 L11 1.5 Q12.4 1.5 13.4 2.8 L25 16.5Z"/>
+      <path fill="#f8fafc" stroke="#b7c3cf" stroke-width=".6" d="M6 20 Q6 16 12 16 L78 16 Q93 16 98 21 Q94 26.5 80 26.5 L16 26.5 Q9 25 6 20Z"/>
+      <path fill="var(--tail)" d="M15 24.6 L82 24.6 Q90 24.6 95.2 23.3 Q91 26.5 80 26.5 L16 26.5 Q15 25.6 15 24.6Z"/>
+      <path fill="#4c6a8e" d="M86.5 18.2 Q91.5 18.4 94.2 20.4 L87.5 20.6 Q86 19.6 86.5 18.2Z"/>
+      <path fill="var(--tail)" d="M4 20 L16 20.3 L22 21.6 L6 22Z"/>
+      <path fill="#e6ecf2" stroke="#b7c3cf" stroke-width=".6" d="M40 23.5 L58 23.5 L47 36 Q46 37 44.5 37 L41 37Z"/>
+      <rect x="46" y="27.5" width="13" height="5.4" rx="2.7" fill="#d5dde6" stroke="#aab7c4" stroke-width=".5"/>
+      <ellipse cx="58.6" cy="30.2" rx="1" ry="2.2" fill="#7d8c9c"/>
+    </g><g class="win">${Array.from({ length: 15 }, (_, i) => `<circle cx="${22 + i * 4}" cy="19.6" r="1.05"/>`).join('')}</g>
+    <circle class="bcn" cx="52" cy="15.6" r="1.4"/><circle class="strobe" cx="44" cy="36.4" r="1.4"/><circle class="strobe" cx="3.6" cy="2.4" r="1.1"/></svg>`,
+    prop: `<svg viewBox="0 0 100 40" aria-hidden="true"><g class="pl-body">
+      <path fill="var(--tail)" d="M8 20 L5 7 Q5 6 6.5 6 L11 6 Q12 6 13 7.5 L24 18Z"/>
+      <path fill="#f8fafc" stroke="#b7c3cf" stroke-width=".6" d="M6 21 Q8 18 24 17 L62 15.5 Q80 15 86 19 L87 24.5 Q78 27.5 64 27.5 L26 26 Q10 24.5 6 21Z"/>
+      <path fill="var(--tail)" opacity=".85" d="M10 22.4 L86 22.6 L86.6 24 L10 23.6Z"/>
+      <path fill="var(--tail)" d="M4 21 L16 21 L20 22.4 L6 22.8Z"/>
+      <path d="M50 15.8 L58 25 M60 27 L58 32 M80 26 L80 31" stroke="#8b98a6" stroke-width="1.1" fill="none"/>
+      <rect x="44" y="11.6" width="30" height="4.2" rx="2.1" fill="#e6ecf2" stroke="#b7c3cf" stroke-width=".6"/>
+      <circle cx="58" cy="32.5" r="2" fill="#4a5562"/><circle cx="80" cy="31.5" r="1.8" fill="#4a5562"/>
+      <path fill="#c9d2dc" d="M86 18.5 Q90.5 21.5 86.5 25Z"/>
+    </g><g class="win"><path d="M62 17.2 L75 16.8 Q80 17.4 82 20.4 L63 20.6Z"/></g>
+    <ellipse class="prop" cx="90" cy="21.8" rx="1.1" ry="9" fill="rgba(70, 78, 90, .45)"/>
+    <circle class="bcn" cx="40" cy="16.8" r="1.2"/><circle class="strobe" cx="73" cy="13.6" r="1.1"/></svg>`,
+    heli: `<svg viewBox="0 0 100 40" aria-hidden="true"><g class="pl-body">
+      <path fill="var(--tail)" d="M42 20 L10 18.5 Q8 18.5 8 20 L8 21.5 Q8 23 10 23 L42 25.5Z"/>
+      <path fill="var(--tail)" d="M10 19 L6 11 L10 11 L14 19Z"/>
+      <path fill="var(--tail)" stroke="rgba(0, 0, 0, .15)" stroke-width=".6" d="M46 13.5 Q70 11 82 19.5 Q85 29 68 30.5 L50 30.5 Q38 30 38 22 Q38 14.5 46 13.5Z"/>
+      <path fill="#9cc0de" d="M66 14.4 Q77 15.6 81.2 21 L68 21 Q66 18 66 14.4Z"/>
+      <rect x="58" y="8.5" width="3.4" height="5.5" rx="1" fill="#59626d"/>
+      <path d="M48 30.5 L46 34.5 M74 30.5 L76 34.5 M40 34.5 L84 34.5 Q86 34.5 86.5 33" stroke="#59626d" stroke-width="1.5" fill="none" stroke-linecap="round"/>
+    </g><rect class="rotor" x="22" y="7" width="76" height="1.8" rx=".9" fill="rgba(60, 66, 74, .75)"/>
+    <circle class="trotor" cx="8" cy="20" r="5" fill="rgba(60, 66, 74, .2)" stroke="rgba(60, 66, 74, .5)" stroke-width=".6"/>
+    <circle class="bcn" cx="60" cy="13.6" r="1.2"/><circle class="strobe" cx="6.5" cy="11.2" r="1"/></svg>`,
+  };
+  const PLANE_SIZE = { jet: 1, prop: 0.55, heli: 0.5 };
+  // Leitwerk in Airline-Farbe (ICAO-Kürzel), sonst Himmelblau
+  const TAIL = {
+    WZZ: '#c6007e', WMT: '#c6007e', WUK: '#c6007e', EWG: '#a1195b', EWL: '#a1195b', RYR: '#073590', RUK: '#073590',
+    DLH: '#0a1d3d', CLH: '#0a1d3d', KLM: '#00a1de', AFR: '#002157', BAW: '#075aaa', THY: '#c70a0c', PGT: '#f4b400',
+    SXS: '#ff9e1b', CFG: '#f5b100', TUI: '#70cbf4', TFL: '#70cbf4', EZY: '#ff6600', UAE: '#d71921', SWR: '#e2001a',
+    AUA: '#e2001a', SAS: '#00205b', LOT: '#11397e', CAI: '#e30613', DHK: '#ffcc00', BCS: '#ffcc00', UPS: '#5b3a1e',
+    FDX: '#4d148c', QTR: '#5c0632', ETD: '#b38b4d', AEE: '#0a3d7a', TAP: '#00a14b', IBE: '#d7192d', VLG: '#ffcc00',
+  };
+  const TAIL_DEFAULT = { jet: '#3d8fd6', prop: '#d9473b', heli: '#e0b52c' };
+  // Städte, wie sie Flightradar24 liefert (englisch), auf Deutsch
+  const CITY_DE = {
+    Bucharest: 'Bukarest', Warsaw: 'Warschau', Krakow: 'Krakau', Cracow: 'Krakau', Lisbon: 'Lissabon', Rome: 'Rom',
+    Milan: 'Mailand', Venice: 'Venedig', Naples: 'Neapel', Florence: 'Florenz', Genoa: 'Genua', Athens: 'Athen',
+    Prague: 'Prag', Vienna: 'Wien', Munich: 'München', Cologne: 'Köln', Nuremberg: 'Nürnberg', Copenhagen: 'Kopenhagen',
+    Brussels: 'Brüssel', Moscow: 'Moskau', Belgrade: 'Belgrad', Kiev: 'Kiew', Kyiv: 'Kiew', Seville: 'Sevilla',
+    Gdansk: 'Danzig', Cairo: 'Kairo', Tenerife: 'Teneriffa', Rhodes: 'Rhodos', Corfu: 'Korfu', Heraklion: 'Heraklion',
+    Marrakech: 'Marrakesch', Larnaca: 'Larnaka', Tbilisi: 'Tiflis', Yerevan: 'Eriwan', Nice: 'Nizza', Geneva: 'Genf',
+    Zurich: 'Zürich', Majorca: 'Mallorca', Lyon: 'Lyon', Hanover: 'Hannover', Frankfurt: 'Frankfurt',
+  };
+  const cityDe = (c) => CITY_DE[c] || c || '';
+  const esc = (t) => String(t).replace(/[&<>"]/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[ch]);
+  // "W43092" → "W4 3092"; ohne Flugnummer das Rufzeichen
+  const flightNo = (f) => {
+    const n = String(f.flight_number || '').toUpperCase();
+    const m = n.match(/^([A-Z0-9]{2})(\d{1,4}[A-Z]?)$/);
+    return m ? `${m[1]} ${m[2]}` : n || f.callsign || f.aircraft_registration || '✈';
+  };
+  const planeKind = (f) => {
+    const t = `${f.aircraft_category || ''} ${f.aircraft_model || ''}`;
+    if (/heli|rotor|Eurocopter|Airbus Helicopters|Robinson|Agusta|Sikorsky|\bBell [24]\d\d|\bEC ?1\d\d|\bH1[2-6]\d|BK.?117|AW1\d\d/i.test(t)) return 'heli';
+    if (/Cessna|Piper|Cirrus|Diamond|Robin|Beech|Mooney|Socata|Aquila|Extra|Ultralight|Glider|Grob|Tecnam|Zlin|Aeroprakt|Ikarus|Pilatus PC-6|light/i.test(t)
+      && !/Citation|Jet|King Air|Pilatus PC-12|Phenom/i.test(t)) return 'prop';
+    return 'jet';
   };
 
   // Zustand im Text-Helfer: satt,zeit,glück,zeit,großputz,maske,teilputz (Zeiten in Sekunden).
@@ -1156,6 +1238,55 @@
     30% { transform: translate(0, calc(var(--H) * -.03)) scale(1.1) rotate(25deg); opacity: 1; }
     100% { transform: translate(var(--dx, 0px), calc(var(--H) * -.1)) scale(.3) rotate(70deg); opacity: 0; }
   }
+
+  /* Flugzeuge: Position und Größe setzt das Skript jede Sekunde (gleitet 1 s linear). Sie fliegen hinter den
+     Hügeln, die Fähnchen liegen in einer eigenen Ebene darüber und sind antippbar. */
+  .planes, .ptags { position: absolute; inset: 0; pointer-events: none; }
+  .ptags { z-index: 4; }
+  .plane { position: absolute; left: 0; top: 0; opacity: 0; transition: transform 1s linear, opacity 2s; will-change: transform; }
+  .plane.on, .ptag.on { opacity: 1; }
+  .plane .pl-s {
+    position: absolute; width: calc(var(--H) * .3); left: calc(var(--H) * -.15); top: calc(var(--H) * -.06);
+    transition: transform 1s linear, opacity 3s;
+  }
+  .plane .pl-f { position: relative; transition: transform 1.2s ease-in-out; }
+  .plane.left .pl-f { transform: scaleX(-1); }
+  .plane svg { position: relative; display: block; width: 100%; height: auto; overflow: visible; }
+  .plane .pl-body { transition: filter 2.5s; }
+  .dusk .plane .pl-body { filter: brightness(.8) saturate(.9); }
+  .night .plane .pl-body { filter: brightness(.28) saturate(.5); }
+  .plane .win { fill: #6c8db3; transition: fill 2.5s; }
+  .dusk .plane .win, .night .plane .win { fill: #ffe7a0; }
+  .plane .bcn { fill: #ff3b30; animation: bcn 1.3s linear infinite; }
+  .plane .strobe { fill: #fff; opacity: 0; }
+  .dusk .plane .strobe, .night .plane .strobe { animation: strobe 1.7s linear infinite; filter: drop-shadow(0 0 2px #fff); }
+  @keyframes bcn { 0%, 12% { opacity: 1; } 18%, 100% { opacity: .15; } }
+  @keyframes strobe { 0%, 5% { opacity: 1; } 8%, 100% { opacity: 0; } }
+  .plane .rotor { transform-box: fill-box; transform-origin: center; animation: rotor .14s linear infinite alternate; }
+  .plane .prop, .plane .trotor { transform-box: fill-box; transform-origin: center; animation: prop .09s linear infinite alternate; }
+  @keyframes rotor { to { transform: scaleX(.15); } }
+  @keyframes prop { to { transform: scaleY(.2); } }
+  /* Kondensstreifen in Reiseflughöhe, zieht hinter dem Heck her */
+  .plane .trail {
+    position: absolute; right: 93%; top: 46%; width: 520%; height: 6%; border-radius: 999px;
+    background: linear-gradient(to left, rgba(255, 255, 255, .9), rgba(255, 255, 255, 0)); opacity: 0; transition: opacity 4s;
+  }
+  .plane.contrail .trail { opacity: 1; }
+  .dusk .plane .trail { background: linear-gradient(to left, rgba(255, 226, 214, .8), rgba(255, 226, 214, 0)); }
+  .night .plane .trail { background: linear-gradient(to left, rgba(180, 192, 228, .3), rgba(180, 192, 228, 0)); }
+  .overcast .plane.hi .pl-s { opacity: .3; }
+  .foggy .plane .pl-s { opacity: .25; }
+  .ptag {
+    position: absolute; left: 0; top: 0; padding: .1em .65em .15em; border-radius: .9em;
+    font-size: clamp(10px, calc(var(--H) * .05), 14px); line-height: 1.35; white-space: nowrap;
+    color: #2f4256; background: rgba(255, 255, 255, .8); box-shadow: 0 1px 3px rgba(0, 0, 0, .15);
+    pointer-events: auto; cursor: pointer; opacity: 0; transition: transform 1s linear, opacity 2s, background 2.5s, color 2.5s;
+  }
+  .ptag b { font-weight: 700; letter-spacing: .02em; }
+  .ptag .more { display: none; font-size: .9em; opacity: .85; }
+  .ptag.open .more { display: block; }
+  .dusk .ptag { background: rgba(255, 255, 255, .72); }
+  .night .ptag { color: #e4e9f6; background: rgba(22, 32, 62, .72); }
   `;
 
   // ---------- Karte ----------
@@ -1192,6 +1323,8 @@
       this._critId = 0; // Besucher (Vögelchen, Maus): Lauf-Nummer zum Abbrechen
       this._critT = [];
       this._bird = this._mouse = null;
+      this._planes = new Map(); // Flug-ID → Flugzeug am Himmel
+      this._planeT = null;
     }
 
     setConfig(config) {
@@ -1243,6 +1376,11 @@
         this._lastWeather = w;
         this._readWeather(w);
       }
+      const fl = c.flight_entity ? hass.states[c.flight_entity] : undefined;
+      if (fl !== this._lastFlights) {
+        this._lastFlights = fl;
+        this._readFlights(fl);
+      }
       this._updateSky();
     }
 
@@ -1277,6 +1415,7 @@
       this._layout();
       this._start();
       this._startCritters();
+      this._planeLoop();
     }
 
     _detach() {
@@ -1288,6 +1427,8 @@
       document.removeEventListener('visibilitychange', this._onVis);
       this._timers.forEach((t) => clearInterval(t));
       this._timers = [];
+      clearInterval(this._planeT);
+      this._planeT = null;
       this._loops.forEach((h) => clearTimeout(h.t));
       this._loops = [];
     }
@@ -1317,6 +1458,7 @@
             <div class="sun"></div>
             <div class="moon"><svg viewBox="0 0 100 100"><circle class="moon-dark" cx="50" cy="50" r="50"/><path class="moon-lit"/></svg></div>
             <div class="clouds">${clouds}</div>
+            <div class="planes"></div>
             <svg class="hills" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
               <g class="mtn">
                 <path class="m1" d="M0 58 L10 40 L17 46 L30 22 L40 36 L47 30 L60 50 L70 34 L78 40 L88 18 L100 36 V100 H0Z"/>
@@ -1356,6 +1498,7 @@
             <div class="precip"></div>
             <div class="fog"><i></i><i></i></div>
             <div class="flash"></div>
+            <div class="ptags"></div>
             <div class="fx"></div>
             <div class="stats">
               <span class="nm"></span>
@@ -1372,7 +1515,7 @@
         scene: $('.scene'), pika: $('.pika'), jump: $('.jump'), mfood: $('.mfood'),
         flowers: $('.flowers'), foods: $('.foods'), fx: $('.fx'), hay: $('.hay'),
         stats: $('.stats'), name: $('.nm'), barS: $('.bar-s'), barG: $('.bar-g'),
-        birds: $('.birds'), mice: $('.mice'), miceF: $('.mice-f'),
+        birds: $('.birds'), mice: $('.mice'), miceF: $('.mice-f'), planes: $('.planes'), ptags: $('.ptags'),
         stS: $('.st-s'), stG: $('.st-g'), barC: $('.bar-c'), stC: $('.st-c'), poops: $('.poops'), feed: $('.feed'), say: $('.say'), think: $('.think'),
         sun: $('.sun'), moon: $('.moon'), moonLit: $('.moon-lit'), clouds: [...this.shadowRoot.querySelectorAll('.cloud')],
         precip: $('.precip'), flash: $('.flash'),
@@ -1601,6 +1744,7 @@
         [piles.length && clean < 60 ? 1.2 : 0, 'sniff'],
         [this._bird?.sitting ? 2.5 : 0, 'watchBird'],
         [this._mouse?.out ? 2.5 : 0, 'watchMouse'],
+        [this._planeToWatch() ? 2.5 : 0, 'watchPlane'],
       ]);
       return this._run(act);
     }
@@ -2031,6 +2175,26 @@
       }
       if (Math.random() < 0.4) this._say(pick(['mip?', 'iiep?']), 1000);
       await this._wait(rnd(1000, 2200));
+    }
+
+    // Einem tief fliegenden Flugzeug nachschauen; ganz nah und laut erschrickt er kurz
+    async _watchPlane() {
+      const pl = this._planeToWatch();
+      if (!pl) return;
+      pl.watched = (pl.watched || 0) + 1;
+      const p = this._el.pika;
+      this._face(pl.x >= this._x ? 1 : -1);
+      if (pl.slant < 3) {
+        this._jump('hop1');
+        this._say('!', 900);
+        await this._wait(700);
+      }
+      p.classList.add('look-up');
+      await this._wait(rnd(1500, 2500));
+      // dreht sich mit, wenn es schon vorbei ist
+      this._face(pl.x >= this._x ? 1 : -1);
+      if (Math.random() < 0.55) this._say(pick(['brumm!', 'wuiii!', 'oh!', 'iiep!']), 1100);
+      await this._wait(rnd(1500, 2800));
     }
 
     async _eatFood(food) {
@@ -3115,6 +3279,207 @@
         void el.offsetWidth;
         el.style.transition = '';
       }
+    }
+
+    // ---------- Flugzeuge ----------
+    // Echte Flüge aus der Flightradar24-Integration (Attribut flights, Meldung alle 10–30 s). Dazwischen fliegen
+    // sie mit Kurs und Geschwindigkeit weiter. Im Bild: Osten links, Westen rechts, der Bildrand liegt bei
+    // flight_radius. Die Flughöhe bestimmt, wie hoch sie am Himmel stehen, die Entfernung ihre Größe.
+
+    _readFlights(st) {
+      const cfg = this._hass?.config;
+      if (!this._el || !cfg || !Number.isFinite(cfg.latitude)) return;
+      const now = Date.now();
+      const t0 = Math.min(now, Date.parse(st?.last_updated) || now);
+      const kx = 111.32 * Math.cos(cfg.latitude * RAD);
+      const list = [];
+      for (const f of Array.isArray(st?.attributes?.flights) ? st.attributes.flights : []) {
+        const alt = Number(f.altitude);
+        const gs = Number(f.ground_speed);
+        const lat = Number(f.latitude);
+        const lon = Number(f.longitude);
+        // Rollt am Flughafen oder hat keine Position: nicht am Himmel
+        if (f.on_ground || !(alt > 80) || !(gs > 30) || !Number.isFinite(lat) || !Number.isFinite(lon)) continue;
+        const e = (lon - cfg.longitude) * kx;
+        const n = (lat - cfg.latitude) * 110.57;
+        list.push({ f, e, n, alt, gs, slant: Math.hypot(e, n, alt * 0.0003048) });
+      }
+      list.sort((a, b) => a.slant - b.slant);
+      const keep = new Set();
+      for (const s of list.slice(0, Math.max(0, Math.round(Number(this._cfg.max_flights) || 0)))) {
+        const id = String(s.f.id || s.f.callsign || s.f.flight_number);
+        keep.add(id);
+        const p = this._planes.get(id) || this._newPlane(id, s.f);
+        const v = (s.gs * 1.852) / 3600; // km/s
+        const h = Number(s.f.heading) * RAD;
+        Object.assign(p, {
+          f: s.f, e: s.e, n: s.n, alt: s.alt, t0, gone: 0, dead: 0,
+          ve: Number.isFinite(h) ? v * Math.sin(h) : 0,
+          vn: Number.isFinite(h) ? v * Math.cos(h) : 0,
+          vz: clamp(Number(s.f.vertical_speed) || 0, -6000, 6000) / 60, // ft/s
+        });
+        this._planeText(p);
+      }
+      // Aus dem Umkreis (oder nicht mehr unter den nächsten): fliegt noch weiter, bis es aus dem Bild ist
+      for (const [id, p] of this._planes) if (!keep.has(id) && !p.gone) p.gone = now;
+      this._planeLoop();
+    }
+
+    _newPlane(id, f) {
+      const kind = planeKind(f);
+      const el = document.createElement('div');
+      el.className = `plane ${kind}`;
+      el.innerHTML = `<div class="pl-s"><div class="pl-f"><div class="trail"></div>${PLANE_SVG[kind]}</div></div>`;
+      el.style.setProperty('--tail', TAIL[f.airline_icao] || TAIL_DEFAULT[kind]);
+      const tag = document.createElement('div');
+      tag.className = 'ptag';
+      tag.setAttribute('role', 'button');
+      const p = { id, kind, f, el, tag, s: el.firstElementChild, size: PLANE_SIZE[kind], fresh: true };
+      // Antippen: Airline, Typ, Strecke, Höhe und Tempo
+      tag.addEventListener('click', (e) => {
+        e.stopPropagation();
+        clearTimeout(p.openT);
+        const open = !tag.classList.contains('open');
+        if (open) this._planeText(p);
+        tag.classList.toggle('open', open);
+        if (open) p.openT = setTimeout(() => ((p.tw = 0), tag.classList.remove('open')), 9000);
+        p.tw = 0;
+      });
+      this._el.planes.appendChild(el);
+      this._el.ptags.appendChild(tag);
+      this._planes.set(id, p);
+      return p;
+    }
+
+    _planeText(p) {
+      const f = p.f;
+      const cfg = this._hass?.config;
+      const orig = cityDe(f.airport_origin_city);
+      const dest = cityDe(f.airport_destination_city);
+      // Landet es hier in der Nähe, ist die Herkunft spannender als das Ziel
+      const dLat = Number(f.airport_destination_latitude);
+      const dLon = Number(f.airport_destination_longitude);
+      const landsHere = cfg && Number.isFinite(dLat) && Number.isFinite(dLon)
+        && Math.hypot((dLon - cfg.longitude) * 111.32 * Math.cos(cfg.latitude * RAD), (dLat - cfg.latitude) * 110.57) < 30;
+      const route = landsHere && orig ? `aus ${orig}` : dest ? `→ ${dest}` : '';
+      const alt = Math.round(((p.altNow ?? p.alt ?? Number(f.altitude)) * 0.3048) / 10) * 10;
+      const kmh = Math.round(Number(f.ground_speed) * 1.852);
+      const more = [
+        [f.airline_short || f.airline, String(f.aircraft_model || '').replace(/-\S+$/, '')].filter(Boolean).join(' · '),
+        orig && dest ? `${orig} → ${dest}` : '',
+        `${alt.toLocaleString('de-DE')} m${kmh ? ` · ${kmh} km/h` : ''}`,
+      ].filter(Boolean);
+      const html = `<b>${esc(flightNo(f))}</b>${route ? ` ${esc(route)}` : ''}`
+        + more.map((l) => `<div class="more">${esc(l)}</div>`).join('');
+      if (html === p.html) return;
+      p.html = html;
+      p.tag.innerHTML = html;
+      p.tag.setAttribute('aria-label', `Flug ${flightNo(f)} ${route}`.trim());
+      p.tw = 0;
+    }
+
+    _planeLoop() {
+      if (!this._planes.size || !this._attached || this._planeT) return;
+      this._planeT = setInterval(() => this._planeTick(), 1000);
+      this._planeTick();
+    }
+
+    _planeTick() {
+      if (!this._planes.size) {
+        clearInterval(this._planeT);
+        this._planeT = null;
+        return;
+      }
+      if (document.hidden || !this._g) return;
+      const now = Date.now();
+      const W = this._W;
+      const H = this._H;
+      const R = Number(this._cfg.flight_radius) || 15;
+      const shown = [];
+      const fresh = [];
+      for (const [id, p] of this._planes) {
+        const dt = (now - p.t0) / 1000;
+        const e = p.e + p.ve * dt;
+        const n = p.n + p.vn * dt;
+        const alt = Math.max(80, p.alt + p.vz * Math.min(dt, 30));
+        const x = W * (0.5 - (e / R) * 0.46);
+        // Höhe logarithmisch: Anflug knapp über den Hügeln, Reiseflughöhe oben; nördlich (hinter uns) etwas höher
+        const af = clamp(Math.log1p(alt / 1000) / Math.log1p(40), 0, 1);
+        const y = (H * clamp(49 - af * 36 - clamp(n / R, -1, 1) * 4, 13, 49)) / 100;
+        const slant = Math.hypot(e, n, alt * 0.0003048);
+        const sc = (clamp(1.6 / slant, 0.1, 0.36) / 0.3) * p.size;
+        Object.assign(p, { x, y, slant, altNow: alt });
+        const out = x < -W * 0.2 || x > W * 1.2;
+        // Ohne neue Meldung nach 75 s ausblenden, ein verlassenes spätestens nach 45 s
+        const ending = p.gone ? out || now - p.gone > 45000 : dt > 75;
+        if (ending && !p.dead) p.dead = now;
+        if (p.dead && now - p.dead > 2500) {
+          clearTimeout(p.openT);
+          p.el.remove();
+          p.tag.remove();
+          this._planes.delete(id);
+          continue;
+        }
+        if (Math.abs(p.ve) > 0.005) p.left = p.ve > 0; // nach Osten = im Bild nach links
+        const cl = p.el.classList;
+        cl.toggle('left', !!p.left);
+        cl.toggle('contrail', alt > 26000 && !this._wx.wet);
+        cl.toggle('hi', alt > 8000);
+        if (p.fresh) {
+          p.el.style.transition = p.s.style.transition = p.tag.style.transition = 'none';
+          fresh.push(p);
+        }
+        p.el.style.transform = `translate(${x.toFixed(1)}px, ${y.toFixed(1)}px)`;
+        p.s.style.transform = `scale(${sc.toFixed(3)})`;
+        p.show = !p.dead && !out;
+        if (p.show) shown.push({ p, x, y, half: H * 0.06 * sc });
+      }
+
+      // Fähnchen unter dem Flugzeug, im Bild gehalten. Überdecken sich zwei, kommt das obere über sein Flugzeug.
+      for (const t of shown) {
+        if (!t.p.tw) {
+          t.p.tw = t.p.tag.offsetWidth;
+          t.p.th = t.p.tag.offsetHeight;
+        }
+        t.w = t.p.tw;
+        t.h = t.p.th;
+        t.tx = clamp(t.x - t.w / 2, 4, W - t.w - 4);
+        t.ty = t.y + t.half + 3;
+      }
+      shown.sort((a, b) => a.y - b.y);
+      for (let i = 0; i < shown.length; i++) {
+        for (let j = i + 1; j < shown.length; j++) {
+          const a = shown[i];
+          const b = shown[j];
+          if (a.tx < b.tx + b.w && b.tx < a.tx + a.w && a.ty < b.ty + b.h && b.ty < a.ty + a.h) a.ty = a.y - a.half - a.h - 3;
+        }
+      }
+      for (const t of shown) t.p.tag.style.transform = `translate(${t.tx.toFixed(1)}px, ${clamp(t.ty, 2, H - t.h - 4).toFixed(1)}px)`;
+
+      // Neue erst an ihren Platz setzen, dann einblenden
+      if (fresh.length) {
+        void this._el.planes.offsetWidth;
+        for (const p of fresh) {
+          p.el.style.transition = p.s.style.transition = p.tag.style.transition = '';
+          p.fresh = false;
+          if (p.show && p.altNow < 5000 && p.slant < 8) this._noticeCritter(p.x, true);
+        }
+      }
+      for (const p of this._planes.values()) {
+        p.el.classList.toggle('on', !!p.show);
+        p.tag.classList.toggle('on', !!p.show);
+      }
+    }
+
+    // Tief und nah genug zum Hinschauen (jedes Flugzeug höchstens zweimal)
+    _planeToWatch() {
+      if (this._asleep || this._inside || this._lift > 0) return null;
+      let best = null;
+      for (const p of this._planes.values()) {
+        if (!p.show || p.gone || p.x < 0 || p.x > this._W || (p.watched || 0) >= 2) continue;
+        if (p.altNow < 5000 && p.slant < 8 && (!best || p.slant < best.slant)) best = p;
+      }
+      return best;
     }
 
     // ---------- Wetter ----------
