@@ -5,6 +5,7 @@
  *   Löwenzahn-Knopf    → füttern (Futter fällt herunter, er hoppelt hin und frisst)
  *   Nachts             → schläft er mit Zipfelmütze im Bau (Standard: Sonnenuntergang bis -aufgang)
  *   Ab und zu, Gewitter → verschwindet er in seinem Bau und schaut heraus
+ *   Über den Tag        → macht er kleine Häufchen (erst in die Klo-Ecke am Stein); antippen = wegmachen
  *   Sonst              → schaut sich um, hoppelt, knabbert Blumen, sammelt Heu, putzt sich
  *
  * Konfiguration:
@@ -16,14 +17,14 @@
  *   sun_entity: sun.sun              # Sonnenstand (Höhe + Azimut) für Himmel und Sonne
  *   weather_entity: weather.forecast_home   # Wolken, Regen, Schnee, Nebel, Gewitter, Wind
  *   areal: huegel                    # Bau: huegel (Erdhügel), fels, stumpf, alpin
- *   show_stats: true                 # Satt-/Glück-Balken anzeigen
+ *   show_stats: true                 # Satt-/Glück-/Sauber-Balken anzeigen
  *   height: 180                      # Mindesthöhe in px
  *
  * Der Blick geht nach Süden: Osten (Sonnenaufgang) links, Westen rechts. Mondphase und Mondstand
  * werden aus Datum und Standort (hass.config) berechnet.
  */
 (() => {
-  const VERSION = '0.4.1';
+  const VERSION = '0.5.0';
 
   const DEFAULTS = {
     name: 'Pika',
@@ -38,7 +39,11 @@
   };
 
   const RATE = { s: 5, g: 4 }; // Abnahme pro Stunde (satt, glücklich)
-  const GAIN = { feed: 25, pet: 8 };
+  const GAIN = { feed: 25, pet: 8, clean: 10 };
+  // Häufchen: alle 80–140 Minuten Wachzeit eins, das erste 10–30 Minuten nach dem Aufwachen. Höchstens 8
+  // liegen gleichzeitig, die ersten 3 in der Klo-Ecke am Stein. Bis zum nächsten Großputz zählt die Karte
+  // höchstens 24 (Bits der Maske für einzeln weggemachte Häufchen).
+  const POOP = { every: 80, spread: 60, morning: [10, 20], max: 8, latrine: 3, idx: 24, fly: 4 };
   const FLOWER_COLORS = ['#f6c945', '#f28fb1', '#ffffff', '#b99cf0', '#ff9f5a'];
 
   class Cancel extends Error {}
@@ -108,13 +113,35 @@
     snowy: { cover: 90, snow: 55 }, 'snowy-rainy': { cover: 90, rain: 25, snow: 25 },
   };
 
-  const freshStats = () =>({ s: 80, st: Date.now(), g: 80, gt: Date.now() });
+  // Zustand im Text-Helfer: satt,zeit,glück,zeit,großputz,maske,teilputz (Zeiten in Sekunden).
+  // großputz = seitdem werden Häufchen gezählt, maske = einzeln weggemachte (Bit k = Häufchen k),
+  // teilputz = wann seit dem Großputz zum ersten Mal einzeln geputzt wurde. Alte Werte mit 4 Feldern gelten ab dem letzten Kontakt als sauber.
+  const sec = (ms) => Math.floor(ms / 1000) * 1000;
+  const freshStats = () => {
+    const now = sec(Date.now());
+    return { s: 80, st: now, g: 80, gt: now, c: now, m: 0, l: now };
+  };
   const serialize = (st) =>
-    [st.s.toFixed(1), Math.round(st.st / 1000), st.g.toFixed(1), Math.round(st.gt / 1000)].join(',');
+    [st.s.toFixed(1), Math.round(st.st / 1000), st.g.toFixed(1), Math.round(st.gt / 1000),
+      Math.round(st.c / 1000), st.m, Math.round(st.l / 1000)].join(',');
   const parseStats = (str) => {
     const p = String(str ?? '').split(',').map(Number);
-    if (p.length !== 4 || p.some((n) => !Number.isFinite(n))) return null;
-    return { s: p[0], st: p[1] * 1000, g: p[2], gt: p[3] * 1000 };
+    if ((p.length !== 4 && p.length !== 7) || p.some((n) => !Number.isFinite(n))) return null;
+    const st = { s: p[0], st: p[1] * 1000, g: p[2], gt: p[3] * 1000 };
+    if (p.length === 7) return { ...st, c: p[4] * 1000, m: p[5] >>> 0, l: p[6] * 1000 };
+    const c = sec(Math.max(st.st, st.gt));
+    return { ...st, c, m: 0, l: c };
+  };
+  // Fester Zufall: gleiche Zahlen auf allen Geräten, damit überall dieselben Häufchen an denselben Stellen liegen
+  const seeded = (...n) => {
+    let h = 2166136261;
+    for (const v of n) {
+      h = Math.imul(h ^ (v | 0), 16777619);
+      h ^= h >>> 13;
+      h = Math.imul(h, 0x5bd1e995);
+      h ^= h >>> 15;
+    }
+    return (h >>> 0) / 4294967296;
   };
 
   // ---------- Grafiken ----------
@@ -470,6 +497,31 @@
 
   const ICON_LEAF = `<svg viewBox="0 0 24 24"><path fill="#6bb152" d="M17 8C8 10 5.9 16.2 3.8 21.3l1.9.7 1-2.3c.5.2 1 .3 1.3.3C19 20 22 3 22 3c-1 2-8 2.3-13 3.3S2 11.5 2 13.5s1.8 3.8 1.8 3.8C7 8 17 8 17 8z"/></svg>`;
   const ICON_HEART = `<svg viewBox="0 0 24 24"><path fill="#f07a95" d="M12 21.4l-1.5-1.3C5.4 15.4 2 12.3 2 8.5 2 5.4 4.4 3 7.5 3c1.7 0 3.4.8 4.5 2.1C13.1 3.8 14.8 3 16.5 3 19.6 3 22 5.4 22 8.5c0 3.8-3.4 6.9-8.5 11.5z"/></svg>`;
+  const STAR = 'M12 1 Q13.4 10.6 23 12 Q13.4 13.4 12 23 Q10.6 13.4 1 12 Q10.6 10.6 12 1Z';
+  const ICON_SPARK = `<svg viewBox="0 0 24 24"><path fill="#5fb9de" d="${STAR}"/><path fill="#5fb9de" transform="translate(15 0) scale(.38)" d="${STAR}"/></svg>`;
+
+  // Häufchen aus 3–5 runden Köttelchen (viewBox 24 × 14, Boden bei y 14). r = fester Zufall 0..1
+  const POO_LAYOUTS = [
+    [[8.5, 10.6], [15.5, 10.8], [12, 5.6]],
+    [[5.5, 10.8], [12, 11], [18.5, 10.6], [9, 5.8], [15.4, 6]],
+    [[6, 10.8], [12.4, 11], [18.6, 10.8], [12, 5.6]],
+    [[8, 10.8], [14.6, 10.6], [11.4, 5.6], [20.6, 11.6]],
+  ];
+  const POO_SVG = (r) => {
+    const pts = POO_LAYOUTS[Math.floor(r * POO_LAYOUTS.length)];
+    return `<svg viewBox="0 0 24 14" aria-hidden="true">${pts.map(([x, y], i) => {
+      const rx = 3.3 - (i % 2) * 0.25;
+      return `<ellipse cx="${x}" cy="${y}" rx="${rx}" ry="${rx * 0.9}" fill="#6e4b30" stroke="#3f2a1b" stroke-width=".7"/>`
+        + `<ellipse cx="${x - 1}" cy="${y - 1.1}" rx="1.1" ry=".75" fill="#a47a52" opacity=".75"/>`;
+    }).join('')}</svg>`;
+  };
+  // Kehrschaufel mit Holzstiel, liegt bei y 22 auf dem Boden
+  const SCOOP_SVG = `
+  <svg viewBox="0 0 44 24" aria-hidden="true">
+    <path d="M23 12 L42 2" stroke="#a87c4f" stroke-width="3" stroke-linecap="round"/>
+    <path d="M23 12 L42 2" stroke="#6b4a2f" stroke-width="3.6" stroke-linecap="round" opacity=".25"/>
+    <path d="M1 22 L22 22 L25 9 L21.5 9 L19.6 18.6 L1.6 19.4Z" fill="#8fb4c9" stroke="#4d6878" stroke-width="1.1" stroke-linejoin="round"/>
+  </svg>`;
 
   // ---------- Stil ----------
 
@@ -794,6 +846,20 @@
   }
   /* Anlauf vor dem Sprung */
   .crouch .hop { transform: scale(1.1, .84); transition: transform .16s ease-out; }
+  /* Geschäft: in die Hocke, Augen zu, Po wackelt */
+  .squat .hop { animation: squat 1.3s ease-in-out; }
+  @keyframes squat {
+    15%, 85% { transform: scale(1.08, .88); }
+    35% { transform: translateX(-2%) scale(1.08, .88); }
+    50% { transform: translateX(2%) scale(1.08, .88); }
+    65% { transform: translateX(-2%) scale(1.08, .88); }
+  }
+  .squat .eye { display: none; }
+  .squat .seye { display: inline; }
+  .squat .ear { transform: translateY(1.5px); }
+  /* Schnuppern am Häufchen */
+  .sniff .hop { transform: scale(1.06, .9); transition: transform .25s; }
+  .sniff .face { transform: translate(3px, 2px); }
   /* Ohren wippen beim Hoppeln */
   .walking .ear-l { animation: earbob .36s ease-in-out infinite alternate; }
   .walking .ear-r { animation: earbob .36s .1s ease-in-out infinite alternate; }
@@ -893,6 +959,78 @@
   .night .feed { background: rgba(15, 22, 45, .55); }
   .feed.no { animation: no .4s; }
   @keyframes no { 25% { transform: translateX(-4px); } 75% { transform: translateX(4px); } }
+  .bar-c { background: #5fb9de; }
+
+  /* Häufchen liegen vorn auf dem Boden (vor dem Gras). Die Tippfläche ist größer als die Köttelchen. */
+  .poops { position: absolute; inset: 0; z-index: 3; pointer-events: none; transition: filter 2.5s; }
+  .day.overcast .poops { filter: brightness(.9) saturate(.8); }
+  .dusk .poops { filter: brightness(.85) saturate(.85); }
+  .night .poops { filter: brightness(.55) saturate(.6); }
+  .poo {
+    position: absolute; left: calc(var(--px) - 22px); bottom: calc(var(--H) - var(--gy) - var(--H) * .022 - 10px);
+    width: 44px; padding: 14px 0 10px; display: flex; justify-content: center;
+    pointer-events: auto; cursor: pointer;
+  }
+  .poo svg {
+    display: block; width: calc(var(--H) * .11 * var(--ps, 1)); height: auto; overflow: visible;
+    transform-origin: 50% 100%; filter: drop-shadow(0 1px 0 rgba(0, 0, 0, .18));
+  }
+  .poo.plop svg { animation: plop .5s cubic-bezier(.3, 1.6, .5, 1) both; }
+  @keyframes plop {
+    from { transform: translateY(-60%) scale(.3); opacity: 0; }
+    55% { transform: scale(1.18, .8); opacity: 1; }
+  }
+  .poo.scooped { pointer-events: none; }
+  .poo.scooped svg { animation: scooped .5s .2s ease-in forwards; }
+  @keyframes scooped {
+    30% { transform: translateX(-2px) scale(1.06, .88); }
+    to { transform: translate(calc(var(--H) * .05), calc(var(--H) * -.12)) scale(.35); opacity: 0; }
+  }
+  .poo.gone { pointer-events: none; opacity: 0; transition: opacity .8s; }
+  /* Alte Häufchen: eine kleine Fliege kreist darüber (nur bei Tag) */
+  .fly { display: none; position: absolute; left: 50%; top: 6px; width: 0; height: 0; animation: buzz 2.6s linear infinite; }
+  .poo.old .fly { display: block; }
+  .night .poo .fly { display: none; }
+  .fly::before {
+    content: ''; position: absolute; left: -1.5px; top: -1.5px; width: 3.5px; height: 3px; border-radius: 50%; background: #2b2622;
+  }
+  .fly::after {
+    content: ''; position: absolute; left: -1px; top: -4px; width: 3px; height: 2.6px; border-radius: 50%;
+    background: rgba(255, 255, 255, .85); box-shadow: 0 0 0 .5px rgba(0, 0, 0, .25); animation: wing .09s linear infinite alternate;
+  }
+  @keyframes wing { to { transform: scaleY(.3) translateY(1px); } }
+  @keyframes buzz {
+    0% { transform: translate(0, 0); }
+    20% { transform: translate(9px, -6px); }
+    40% { transform: translate(3px, -12px); }
+    55% { transform: translate(-8px, -7px); }
+    75% { transform: translate(-5px, 1px); }
+    90% { transform: translate(4px, -2px); }
+    100% { transform: translate(0, 0); }
+  }
+  .scoop {
+    position: absolute; width: calc(var(--H) * .14); margin-left: calc(var(--H) * -.045);
+    pointer-events: none; animation: scoop .85s ease-in-out forwards;
+  }
+  .scoop svg { display: block; width: 100%; height: auto; transform-origin: 30% 90%; }
+  @keyframes scoop {
+    0% { transform: translateX(60%); opacity: 0; }
+    20% { transform: translateX(20%); opacity: 1; }
+    42% { transform: translateX(-12%); }
+    70% { transform: translate(5%, -35%) rotate(-22deg); opacity: 1; }
+    100% { transform: translate(35%, -80%) rotate(-30deg); opacity: 0; }
+  }
+  .spark {
+    position: absolute; width: calc(var(--H) * .05); margin: calc(var(--H) * -.025); pointer-events: none;
+    animation: spark .9s ease-out both;
+  }
+  .spark svg { display: block; width: 100%; height: auto; }
+  .spark path { fill: #fff6b8; filter: drop-shadow(0 0 2px rgba(255, 236, 140, .9)); }
+  @keyframes spark {
+    0% { transform: translate(0, 0) scale(0) rotate(0deg); opacity: 0; }
+    30% { transform: translate(0, calc(var(--H) * -.03)) scale(1.1) rotate(25deg); opacity: 1; }
+    100% { transform: translate(var(--dx, 0px), calc(var(--H) * -.1)) scale(.3) rotate(70deg); opacity: 0; }
+  }
   `;
 
   // ---------- Karte ----------
@@ -923,6 +1061,9 @@
       this._loops = [];
       this._dbgSleep = null;
       this._dbgElev = null;
+      this._dbgShift = 0; // Vorschau: Uhr für die Häufchen vorstellen
+      this._pileEls = new Map(); // sichtbare Häufchen: Schlüssel "großputz:k" → Element
+      this._poopPending = null; // Häufchen, das er gerade live macht
     }
 
     setConfig(config) {
@@ -1078,6 +1219,7 @@
             </div>
             <div class="fore"><div class="hay">${HAY_SVG}</div></div>
             <div class="grass">${TUFTS_SVG()}</div>
+            <div class="poops"></div>
             <div class="precip"></div>
             <div class="fog"><i></i><i></i></div>
             <div class="flash"></div>
@@ -1086,6 +1228,7 @@
               <span class="nm"></span>
               <span class="st st-s" title="Satt">${ICON_LEAF}<i><b class="bar-s"></b></i></span>
               <span class="st st-g" title="Glücklich">${ICON_HEART}<i><b class="bar-g"></b></i></span>
+              <span class="st st-c" title="Sauber">${ICON_SPARK}<i><b class="bar-c"></b></i></span>
             </div>
             <button class="feed" title="Füttern" aria-label="Füttern">${FOOD.lz.svg}</button>
           </div>
@@ -1096,7 +1239,7 @@
         scene: $('.scene'), pika: $('.pika'), jump: $('.jump'), mfood: $('.mfood'),
         flowers: $('.flowers'), foods: $('.foods'), fx: $('.fx'), hay: $('.hay'),
         stats: $('.stats'), name: $('.nm'), barS: $('.bar-s'), barG: $('.bar-g'),
-        stS: $('.st-s'), stG: $('.st-g'), feed: $('.feed'), say: $('.say'), think: $('.think'),
+        stS: $('.st-s'), stG: $('.st-g'), barC: $('.bar-c'), stC: $('.st-c'), poops: $('.poops'), feed: $('.feed'), say: $('.say'), think: $('.think'),
         sun: $('.sun'), moon: $('.moon'), moonLit: $('.moon-lit'), clouds: [...this.shadowRoot.querySelectorAll('.cloud')],
         precip: $('.precip'), flash: $('.flash'),
         burrow: $('.burrow'), lights: $('.lights'), clipw: $('.clipw'), depth: $('.depth'), rock: $('.lookout'),
@@ -1188,6 +1331,7 @@
         if (this._sleepTime()) this._sleepNow(true);
         else this._setX(rnd(this._g.home + pW, W * 0.7), true);
         this._updateSky();
+        this._renderStats();
         this._start();
       } else if (this._inside) {
         this._setX(this._g.home, true);
@@ -1198,6 +1342,7 @@
       } else {
         this._setX(this._x * ratio, true);
       }
+      if (!first) this._placePiles();
     }
 
     // Ohne Übergang einschlafen (im Bau) bzw. aufwachen (vor dem Bau)
@@ -1264,7 +1409,7 @@
     _cleanup() {
       const p = this._el.pika;
       if (p.classList.contains('walking')) this._freeze();
-      p.classList.remove('walking', 'eating', 'groom', 'carry', 'look-f', 'look-b', 'look-up', 'happy', 'calling', 'crouch');
+      p.classList.remove('walking', 'eating', 'groom', 'carry', 'look-f', 'look-b', 'look-up', 'happy', 'calling', 'crouch', 'squat', 'sniff');
       this._mouth(null);
       this._bubble(this._el.think, false);
       this._action = null;
@@ -1294,7 +1439,8 @@
 
       const s = this._get('s');
       const g = this._get('g');
-      this._el.pika.classList.toggle('sad', g < 25 || s < 15);
+      const { piles, clean } = this._poops();
+      this._el.pika.classList.toggle('sad', g < 25 || s < 15 || clean < 30);
       // Unter Schnee gibt es keine Blumen, bei Regen bleibt das Heu trocken (kein Sammeln)
       const hasFlowers = this._flowers.length > 0 && !wx.snowcover;
       const act = weighted([
@@ -1310,6 +1456,7 @@
         [0.8, 'squeak'],
         [wx.wet ? 0 : g > 70 ? 1.2 : g > 40 ? 0.4 : 0, 'binky'],
         [s < 30 ? 3 : 0, 'hungry'],
+        [piles.length && clean < 60 ? 1.2 : 0, 'sniff'],
       ]);
       return this._run(act);
     }
@@ -1646,6 +1793,55 @@
       this._bubble(this._el.think, true);
       this._el.pika.classList.add('look-up');
       await this._wait(3500);
+    }
+
+    // Geschäft machen: mit dem Po über die Stelle, Hocke, Wackeln, plopp – dann ein Hüpfer nach vorn
+    async _poop() {
+      const pile = this._poopPending;
+      if (!pile) return;
+      try {
+        const x = this._pileX(pile);
+        const dir = Math.abs(x - this._x) < 2 ? this._dir : Math.sign(x - this._x);
+        await this._walkTo(x + dir * this._g.pW * 0.36);
+        this._face(dir);
+        await this._wait(rnd(300, 600));
+        // erst unauffällig umschauen
+        const p = this._el.pika;
+        p.classList.add('look-b');
+        await this._wait(700);
+        p.classList.remove('look-b');
+        p.classList.add('squat');
+        await this._wait(1000);
+        this._revealPending();
+        await this._wait(350);
+        p.classList.remove('squat');
+        await this._wait(250);
+        await this._walkTo(this._x + dir * this._g.pW * 0.5, 1.3);
+        this._face(-dir);
+        if (Math.random() < 0.5) this._say(pick(['mip!', 'iiep!']));
+        await this._wait(rnd(600, 1100));
+      } finally {
+        this._revealPending();
+      }
+    }
+
+    // Am Häufchen schnuppern und sich angewidert abwenden
+    async _sniff() {
+      const pile = this._nearestPile();
+      if (!pile) return;
+      await this._approach(this._pileX(pile));
+      const p = this._el.pika;
+      p.classList.add('sniff');
+      await this._wait(rnd(700, 1100));
+      this._twitch();
+      await this._wait(300);
+      p.classList.remove('sniff');
+      this._say(pick(['iih!', 'bäh!', 'iih!']), 1100);
+      this._face(-this._dir);
+      this._jump('hop1');
+      await this._wait(500);
+      await this._walkTo(this._x + this._dir * this._g.pW * rnd(0.8, 1.6), 1.3);
+      await this._wait(rnd(400, 900));
     }
 
     async _eatFood(food) {
@@ -1993,15 +2189,22 @@
 
     // ---------- Zustand ----------
 
-    _get(k) {
+    _raw(k) {
       if (!this._stats) return 70;
       const v = this._stats[k] - ((Date.now() - this._stats[k + 't']) / 3.6e6) * RATE[k];
       return clamp(v, 0, 100);
     }
 
+    // Glück ist durch Schmutz gedeckelt: bei 0 % sauber höchstens 60 %. Streicheln zählt trotzdem
+    // weiter, nach dem Putzen zeigt der Balken dann den vollen Wert.
+    _get(k) {
+      const v = this._raw(k);
+      return k === 'g' ? Math.min(v, 60 + 0.4 * this._poops().clean) : v;
+    }
+
     _add(k, d) {
       if (!this._stats) this._stats = freshStats();
-      this._stats[k] = clamp(this._get(k) + d, 0, 100);
+      this._stats[k] = clamp(this._raw(k) + d, 0, 100);
       this._stats[k + 't'] = Date.now();
       this._renderStats();
       this._save();
@@ -2040,14 +2243,276 @@
 
     _renderStats() {
       if (!this._el) return;
+      this._renderPiles();
       const s = this._get('s');
       const g = this._get('g');
+      const c = this._poops().clean;
       this._el.barS.style.width = `${s}%`;
       this._el.barG.style.width = `${g}%`;
+      this._el.barC.style.width = `${c}%`;
       this._el.stS.classList.toggle('low', s < 30);
       this._el.stG.classList.toggle('low', g < 30);
+      this._el.stC.classList.toggle('low', c < 30);
       this._el.stS.title = `Satt: ${Math.round(s)} %`;
       this._el.stG.title = `Glücklich: ${Math.round(g)} %`;
+      this._el.stC.title = `Sauber: ${Math.round(c)} %`;
+    }
+
+    // ---------- Häufchen ----------
+
+    _now() {
+      return Date.now() + this._dbgShift;
+    }
+
+    // Fälligkeiten (ms) der Häufchen 0, 1, 2 … seit dem letzten Großputz. Sie zählen nur Wachzeit:
+    // das erste nach dem Aufwachen kommt 10–30 Minuten später, dann alle 80–140 Minuten. Die Schlafzeit
+    // von heute gilt auch für die Vortage, das reicht hier.
+    _poopTimes(c, until) {
+      const a = this._sleepMinutes(this._cfg.sleep_start, 21 * 60);
+      const b = this._sleepMinutes(this._cfg.sleep_end, 7 * 60);
+      const awake = (((a - b) % 1440) + 1440) % 1440 || 1440;
+      const cs = c / 1000;
+      const out = [];
+      const day = new Date(c);
+      day.setHours(0, 0, 0, 0);
+      day.setDate(day.getDate() - 1);
+      let t = c;
+      let need = null; // restliche Wachzeit bis zum nächsten Häufchen
+      for (let i = 0; i < 90 && out.length < POOP.idx; i++) {
+        const ws = new Date(day.getFullYear(), day.getMonth(), day.getDate(), 0, b).getTime();
+        const we = ws + awake * 6e4;
+        day.setDate(day.getDate() + 1);
+        if (we <= t) continue;
+        if (ws > until) break;
+        let s = Math.max(t, ws);
+        if (ws > t) {
+          // dazwischen geschlafen: Morgenhäufchen
+          const m = ws + (POOP.morning[0] + POOP.morning[1] * seeded(cs, out.length, 7)) * 6e4;
+          if (m < we) {
+            out.push(m);
+            s = m;
+          }
+          need = null;
+        }
+        while (out.length < POOP.idx && s <= until) {
+          if (need == null) need = (POOP.every + POOP.spread * seeded(cs, out.length, 3)) * 6e4;
+          if (s + need > we) {
+            need -= we - s;
+            break;
+          }
+          s += need;
+          out.push(s);
+          need = null;
+        }
+        t = we;
+      }
+      return out;
+    }
+
+    // Was gerade liegt: { piles: [{ k, due, slot | u, r }], clean: 0..100 }. Alles folgt aus dem Zustand
+    // (Großputz, Maske, Teilputz), damit jedes Gerät dasselbe zeigt. Liegen schon 8, fällt das nächste aus;
+    // einzeln Weggemachtes zählt ab dem ersten Teilputz nicht mehr mit. Die ersten 3 kommen in die Klo-Ecke.
+    _poops() {
+      const st = this._stats;
+      const now = this._now();
+      const key = st && `${st.c},${st.m},${st.l},${Math.floor(now / 1e4)},${this._cfg.sleep_start},${this._cfg.sleep_end}`;
+      if (this._poopCache?.key === key) return this._poopCache;
+      const res = { key, piles: [], clean: 100, next: null };
+      this._poopCache = res;
+      if (!st) return res;
+      const cs = st.c / 1000;
+      const lying = [];
+      for (const [k, due] of this._poopTimes(st.c, now + 864e5).entries()) {
+        if (due > now) {
+          res.next = due;
+          break;
+        }
+        const present = lying.filter((p) => !(st.m & (1 << p.k) && due >= st.l));
+        if (present.length >= POOP.max) continue;
+        const r = seeded(cs, k, 11);
+        const taken = present.filter((p) => p.slot != null).map((p) => p.slot);
+        let pile;
+        if (taken.length < POOP.latrine) {
+          pile = { k, due, r, slot: [0, 1, 2].find((n) => !taken.includes(n)) };
+        } else {
+          // Wiese: Stelle mit Abstand zu den anderen Häufchen
+          const others = present.filter((p) => p.u != null).map((p) => p.u);
+          let u = 0;
+          for (let i = 0; i < 6; i++) {
+            u = seeded(cs, k, 20 + i);
+            if (others.every((o) => Math.abs(o - u) > 0.12)) break;
+          }
+          pile = { k, due, r, u };
+        }
+        lying.push(pile);
+      }
+      res.piles = lying.filter((p) => !(st.m & (1 << p.k)));
+      let dirt = 0;
+      for (const p of res.piles) dirt += 10 + 2 * Math.min(20, (now - p.due) / 36e5);
+      res.clean = clamp(100 - dirt, 0, 100);
+      return res;
+    }
+
+    _pileKey(p) {
+      return `${this._stats.c / 1000}:${p.k}`;
+    }
+
+    // Klo-Ecke: drei Plätze am linken Fuß des Aussichtssteins; Wiese: zwischen Heuhaufen und Klo-Ecke
+    _pileX(p) {
+      const { rock, fMin, pW } = this._g;
+      if (p.slot != null) return rock.l + rock.w * [0.04, 0.16, -0.08][p.slot];
+      const a = fMin * this._W;
+      const b = Math.max(a + pW * 0.5, rock.l - rock.w * 0.16);
+      return a + (b - a) * p.u;
+    }
+
+    _nearestPile() {
+      let best = null;
+      let bd = Infinity;
+      for (const p of this._poops().piles) {
+        if (this._poopPending && this._pileKey(p) === this._poopPending.key) continue;
+        const d = Math.abs(this._pileX(p) - this._x);
+        if (d < bd) [best, bd] = [p, d];
+      }
+      return best;
+    }
+
+    // Kann er das neue Häufchen live machen? Nur wenn er draußen ist und nichts Wichtigeres tut.
+    _canPoopLive() {
+      return this._running && !this._asleep && !this._inside && !this._wx.shelter && !this._next
+        && !['eatFood', 'goSleep', 'wakeUp', 'poop'].includes(this._action);
+    }
+
+    // Häufchen-Elemente an den berechneten Zustand angleichen
+    _renderPiles() {
+      if (!this._g || !this._stats) return;
+      const { piles } = this._poops();
+      const now = this._now();
+      const keep = new Set();
+      for (const p of piles) {
+        const key = this._pileKey(p);
+        keep.add(key);
+        const el = this._pileEls.get(key);
+        if (el) {
+          el.classList.toggle('old', now - p.due > POOP.fly * 36e5);
+          continue;
+        }
+        if (this._poopPending?.key === key) continue;
+        // Gerade fällig und man schaut zu: er macht es vor den Augen
+        if (this._pilesShown && !this._poopPending && now - p.due < 3 * 6e4 && this._canPoopLive()) {
+          this._poopPending = { ...p, key };
+          this._next = 'poop';
+          this._interrupt();
+          continue;
+        }
+        this._addPile(p, key, false);
+      }
+      for (const [key, el] of this._pileEls) {
+        if (keep.has(key)) continue;
+        // woanders weggemacht (anderes Gerät) oder Großputz
+        this._pileEls.delete(key);
+        if (!el.classList.contains('scooped')) {
+          el.classList.add('gone');
+          setTimeout(() => el.remove(), 900);
+        }
+      }
+      if (this._poopPending && !keep.has(this._poopPending.key)) this._poopPending = null;
+      this._pilesShown = true;
+    }
+
+    _addPile(p, key, plop) {
+      const el = document.createElement('div');
+      el.className = plop ? 'poo plop' : 'poo';
+      el.setAttribute('role', 'button');
+      el.setAttribute('aria-label', 'Saubermachen');
+      el.style.setProperty('--px', `${this._pileX(p).toFixed(1)}px`);
+      el.style.setProperty('--ps', (0.85 + p.r * 0.3).toFixed(2));
+      el.innerHTML = POO_SVG(p.r) + '<i class="fly"></i>';
+      el._pile = p;
+      el.classList.toggle('old', this._now() - p.due > POOP.fly * 36e5);
+      el.addEventListener('click', (e) => (e.stopPropagation(), this._cleanPile(key)));
+      this._el.poops.appendChild(el);
+      this._pileEls.set(key, el);
+    }
+
+    _revealPending() {
+      const p = this._poopPending;
+      if (!p) return;
+      this._poopPending = null;
+      if (this._pileEls.has(p.key) || !this._poops().piles.some((o) => this._pileKey(o) === p.key)) return;
+      this._addPile(p, p.key, true);
+      this._puff(this._pileX(p), this._g.gy, 2);
+    }
+
+    _placePiles() {
+      for (const el of this._pileEls.values()) el.style.setProperty('--px', `${this._pileX(el._pile).toFixed(1)}px`);
+    }
+
+    // Antippen: Schaufel kommt, Häufchen weg, Funkeln. Ist alles weg, gilt das als Großputz.
+    _cleanPile(key) {
+      const el = this._pileEls.get(key);
+      if (!el || el.classList.contains('scooped')) return;
+      const p = el._pile;
+      const x = this._pileX(p);
+      el.classList.add('scooped');
+      this._pileEls.delete(key);
+      setTimeout(() => el.remove(), 800);
+      const sc = document.createElement('div');
+      sc.className = 'scoop';
+      sc.innerHTML = SCOOP_SVG;
+      sc.style.left = `${x}px`;
+      sc.style.bottom = `${this._H - this._g.gy - this._H * 0.03}px`;
+      this._el.fx.appendChild(sc);
+      setTimeout(() => sc.remove(), 900);
+      setTimeout(() => this._sparkle(x, this._g.gy - this._H * 0.03, 3), 450);
+
+      const st = this._stats;
+      const now = sec(this._now());
+      const rest = this._poops().piles.filter((o) => o.k !== p.k);
+      if (rest.length) {
+        if (!st.m) st.l = now;
+        st.m = (st.m | (1 << p.k)) >>> 0;
+      } else {
+        st.c = st.l = now;
+        st.m = 0;
+      }
+      this._poopCache = null;
+      const awake = !this._asleep && !this._inside && this._g;
+      if (rest.length) {
+        this._renderStats();
+        this._save();
+        if (awake && !this._el.pika.classList.contains('walking')) this._jump('hop1');
+        return;
+      }
+      // alles sauber: Funkeln über die Wiese, Freudensprung
+      this._add('g', GAIN.clean);
+      const { fMin, rock } = this._g;
+      for (let i = 0; i < 7; i++) {
+        setTimeout(() => this._sparkle(rnd(fMin * this._W, rock.l + rock.w * 0.2), this._g.gy - this._H * rnd(0.02, 0.08), 1), 500 + i * 120);
+      }
+      if (this._asleep) {
+        this._hearts(1);
+        return;
+      }
+      setTimeout(() => {
+        this._happy();
+        if (!this._inside) this._jump('binky');
+        this._say('♥');
+      }, 600);
+    }
+
+    _sparkle(x, y, n) {
+      for (let i = 0; i < n; i++) {
+        const s = document.createElement('span');
+        s.className = 'spark';
+        s.innerHTML = `<svg viewBox="0 0 24 24"><path d="${STAR}"/></svg>`;
+        s.style.left = `${x + rnd(-8, 8)}px`;
+        s.style.top = `${y + rnd(-4, 4)}px`;
+        s.style.setProperty('--dx', `${rnd(-12, 12).toFixed(1)}px`);
+        s.style.animationDelay = `${i * 120}ms`;
+        this._el.fx.appendChild(s);
+        setTimeout(() => s.remove(), 1000 + i * 120);
+      }
     }
 
     _sleepTime() {

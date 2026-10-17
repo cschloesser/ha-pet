@@ -40,6 +40,14 @@
   <button id="lookout">Auf den Stein &amp; pfeifen</button>
   <button id="gather">Blüte zum Heu bringen</button>
 </div>
+<div class="bar"><b>Häufchen</b>
+  <button id="poo1">nächstes Häufchen</button>
+  <button id="poo4">+4 Std.</button>
+  <button id="poo24">+1 Tag</button>
+  <button id="sniff">dran schnuppern</button>
+  <button id="clean">alles sauber</button>
+  <button id="clock">Uhr zurück</button>
+</div>
 <div class="wrap">
   <div class="slot" style="width:600px;height:248px"><pika-pet-card id="a"></pika-pet-card></div>
   <div class="slot" style="width:380px;height:184px"><pika-pet-card id="b"></pika-pet-card></div>
@@ -115,6 +123,24 @@
   document.getElementById('burrow').addEventListener('click', () => cards.forEach((c) => { c._next = 'burrow'; c._interrupt(); }));
   document.getElementById('lookout').addEventListener('click', () => cards.forEach((c) => { c._next = 'lookout'; c._interrupt(); }));
   document.getElementById('gather').addEventListener('click', () => cards.forEach((c) => { if (c._flowers.length) { c._next = 'gather'; c._interrupt(); } }));
+  // Häufchen: die Karte rechnet sie aus der Uhrzeit, also die Uhr der Häufchen vorstellen
+  const shift = (ms) => cards.forEach((c) => {
+    c._dbgShift = ms == null ? 0 : c._dbgShift + ms;
+    c._poopCache = null;
+    c._renderStats();
+  });
+  document.getElementById('poo1').addEventListener('click', () => {
+    const n = cards[0]._poops().next;
+    if (n) shift(n - cards[0]._now() + 1000);
+  });
+  document.getElementById('poo4').addEventListener('click', () => shift(4 * 36e5));
+  document.getElementById('poo24').addEventListener('click', () => shift(24 * 36e5));
+  document.getElementById('clock').addEventListener('click', () => shift(null));
+  document.getElementById('sniff').addEventListener('click', () => cards.forEach((c) => { if (c._pileEls.size) { c._next = 'sniff'; c._interrupt(); } }));
+  document.getElementById('clean').addEventListener('click', () => {
+    const c = cards[0];
+    [...c._pileEls.keys()].forEach((k, i) => setTimeout(() => c._cleanPile(k), i * 250));
+  });
   document.getElementById('hungry').addEventListener('click', () => {
     const now = Math.round(Date.now() / 1000);
     hass.callService('input_text', 'set_value', { entity_id: 'input_text.pika_status', value: `20.0,${now},20.0,${now}` });
