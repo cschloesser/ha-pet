@@ -26,13 +26,13 @@ Ein kleiner Pika (Pfeifhase) wohnt in deinem Home-Assistant-Dashboard.
 - **Maus**: Hinter dem Aussichtsstein schaut eine kleine Maus seitlich oder über die Kuppe hervor, schnuppert und wackelt mit den Ohren. Manchmal flitzt sie auf die Wiese, macht Männchen und läuft zurück. Sie kommt auch nachts, aber nicht bei Regen.
 - Der Pika schaut hin, piepst das Vögelchen an (es zwitschert zurück) und geht neugierig ein Stück auf die Maus zu. Kommt er zu nah, flitzt sie mit „piep!“ zurück. Springt er auf den Stein, fliegt ein Vögelchen dort vorher weg.
 - **Antippen** verscheucht Vögelchen und Maus.
-- Die Besuche sind Zufall und laufen auf jedem Gerät für sich.
+- Besuche werden aus der Uhrzeit berechnet, deshalb kommen Vögelchen, Maus und Pino auf allen Geräten gleichzeitig.
 
 ## Freund-Pika
 
 Ein paarmal am Tag kommt **Pino** zu Besuch, ein Freund-Pika: etwas kleiner, rötlicher und mit hellem Fleck auf der Stirn.
 
-- **Wann**: Der erste Besuch kommt 2–5 Minuten nach dem Laden, danach liegen 25–60 Minuten zwischen zwei Besuchen. Pino bleibt 1,5–4 Minuten. Er kommt nur, wenn der Pika wach ist, es Tag ist und es nicht regnet oder gewittert.
+- **Wann**: Etwa alle 45 Minuten kommt Pino (21–65 Minuten zwischen zwei Besuchen) und bleibt 1,5–4 Minuten. Er kommt nur, wenn der Pika wach ist, es Tag ist und es nicht regnet oder gewittert.
 - **Ankunft**: Pino hoppelt vom linken oder rechten Rand herein und piepst. Der Pika bemerkt ihn, ruft „Pino!“, hoppelt zu ihm, und die beiden stupsen sich mit den Nasen an (Herzchen).
 - **Zusammen spielen**: Meistens spielen sie miteinander, ab und zu macht der Pika auch etwas allein.
   - **Fangen**: Abwechselnd hoppelt einer davon und der andere hinterher, mit kleinen Staubwölkchen.
@@ -43,7 +43,7 @@ Ein paarmal am Tag kommt **Pino** zu Besuch, ein Freund-Pika: etwas kleiner, rö
 - **Pinos Eigenleben**: Ist der Pika mit etwas anderem beschäftigt, hoppelt Pino herum, putzt sich, schaut sich um, piepst, blinzelt und zuckt mit den Ohren. Er bleibt auf der Wiese und geht nicht in den Bau.
 - **Antippen** streichelt Pino: Herzchen, ein kleiner Freudensprung und ein Piep. Die Balken des Pikas ändern sich dadurch nicht. Wird der Pika gestreichelt, kommt Pino neugierig näher und schaut zu.
 - **Abschied**: Pino sagt „tschüss!“ und hoppelt zum Rand hinaus. Der Pika schaut ihm nach und lässt kurz die Ohren hängen. Geht der Pika schlafen oder schlägt das Wetter um, geht Pino sofort.
-- Die Besuche laufen auf jedem Gerät für sich. Mit `friend: false` kommt Pino nicht, mit `friend_name` bekommt er einen anderen Namen.
+- Besuche werden aus der Uhrzeit berechnet, deshalb kommen Vögelchen, Maus und Pino auf allen Geräten gleichzeitig. Mit `friend: false` kommt Pino nicht, mit `friend_name` bekommt er einen anderen Namen.
 
 ## Beschäftigungen
 
@@ -199,4 +199,4 @@ Im Text-Helfer steht der Zustand als `satt,zeit,glück,zeit,großputz,maske,teil
 
 ## Entwicklung
 
-`preview.html` lädt die Karte mit einem simulierten `hass`-Objekt. Die Häufchen-Knöpfe stellen die Uhr der Häufchen vor (nächstes Häufchen, +4 Std., +1 Tag), die Besuch-Knöpfe holen Vögelchen und Maus sofort, die Hobby-Knöpfe starten eine Beschäftigung sofort (auch ohne passendes Wetter), die Flieger-Knöpfe schicken Testflüge los (Anflug, Abflug, Reiseflug, Hubschrauber, Kleinflugzeug). Dafür den Ordner über einen beliebigen lokalen Webserver öffnen. `areale.html` zeigt alle vier Areale nebeneinander.
+`preview.html` lädt die Karte mit einem simulierten `hass`-Objekt. Die Häufchen-Knöpfe stellen die Uhr der Häufchen vor (nächstes Häufchen, +4 Std., +1 Tag), die Besuch-Knöpfe holen Vögelchen und Maus sofort oder stellen die Besuchsuhr kurz vor den nächsten berechneten Besuch, die Hobby-Knöpfe starten eine Beschäftigung sofort (auch ohne passendes Wetter), die Flieger-Knöpfe schicken Testflüge los (Anflug, Abflug, Reiseflug, Hubschrauber, Kleinflugzeug). Dafür den Ordner über einen beliebigen lokalen Webserver öffnen. `areale.html` zeigt alle vier Areale nebeneinander.

@@ -65,8 +65,12 @@
   // Häufchen: alle 80–140 Minuten Wachzeit eins, das erste 10–30 Minuten nach dem Aufwachen. Höchstens 8
   // liegen gleichzeitig, die ersten 3 in der Klo-Ecke am Stein. Bis zum nächsten Großputz zählt die Karte
   // höchstens 24 (Bits der Maske für einzeln weggemachte Häufchen).
-  // Besucher: Abstand zwischen zwei Besuchen (ms)
-  const CRIT = { bird: [180000, 420000], mouse: [150000, 360000] };
+  // Besucher: Die Uhr ist in feste Fenster geteilt (win, ms). In jedem Fenster kommt mit Wahrscheinlichkeit p
+  // höchstens ein Besuch, sein Start liegt in den ersten win − room ms (room: Platz für den Besuch selbst, damit
+  // er vor dem nächsten Fenster vorbei ist). Mittlerer Abstand win / p wie früher: Vögelchen 3–7 Min Pause +
+  // ~35 s Besuch ≈ 5,6 Min, Maus 2,5–6 Min + ~7 s ≈ 4,4 Min. Alles aus seedRnd, also auf allen Geräten gleich.
+  const CRIT = { bird: { win: 240000, p: 0.72, room: 60000 }, mouse: { win: 180000, p: 0.69, room: 30000 } };
+  const CRIT_LATE = 20000; // so lange nach dem Start kommt ein Besuch noch, danach wird er übersprungen
   const POOP = { every: 80, spread: 60, morning: [10, 20], max: 8, latrine: 3, idx: 24, fly: 4 };
   const FLOWER_COLORS = ['#f6c945', '#f28fb1', '#ffffff', '#b99cf0', '#ff9f5a'];
 
@@ -350,6 +354,8 @@
     }
     return (h >>> 0) / 4294967296;
   };
+  // Dasselbe mit Texten als Schlüssel (Besuche: seedRnd('bird', fenster, n)) → Zahl in [0, 1)
+  const seedRnd = (...keys) => seeded(...keys.flatMap((k) => (typeof k === 'string' ? [...k].map((c) => c.charCodeAt(0)) : [k])));
 
   // ---------- Grafiken ----------
 
@@ -1157,6 +1163,10 @@
   // aus PIKA_SVG: eigene ids für Fellverlauf und Bauch-Clip (sonst griffe er auf die des Pikas zu), wärmere
   // Fell-, Bauch- und Ohrenfarben. Zubehör, das er nie braucht, entfernt _friendBuild aus seinem DOM.
   const FRIEND_SCALE = 0.85;
+  // Besuchsplan wie bei Vögelchen und Maus aus der Uhr: 45-Minuten-Fenster, in jedem ein Besuch (p 1, im Mittel
+  // 45 Min wie früher 25–60 Min Pause + 1,5–4 Min Besuch), Start in den ersten 20 Minuten, also 21–65 Min
+  // zwischen zwei Besuchen. Dauer 1,5–4 Minuten, Seite links/rechts – alles aus seedRnd('friend', fenster, n).
+  const FRIEND_WIN = { win: 45 * 6e4, p: 1, spread: 20 * 6e4, stay: [1.5, 4] };
   const FRIEND_SVG = [
     ['id="fur"', 'id="fur2"'], ['url(#fur)', 'url(#fur2)'],
     ['id="bodyclip"', 'id="bodyclip2"'], ['url(#bodyclip)', 'url(#bodyclip2)'],
@@ -2376,6 +2386,7 @@
       this._dbgSleep = null;
       this._dbgElev = null;
       this._dbgShift = 0; // Vorschau: Uhr für die Häufchen vorstellen
+      this._dbgShiftMs = 0; // Vorschau: Uhr für die Besuche (Vögelchen, Maus, Pino) vorstellen
       this._pileEls = new Map(); // sichtbare Häufchen: Schlüssel "großputz:k" → Element
       this._poopPending = null; // Häufchen, das er gerade live macht
       this._critId = 0; // Besucher (Vögelchen, Maus): Lauf-Nummer zum Abbrechen
@@ -4121,6 +4132,8 @@
         const p = this._el.pika.classList;
         const hat = f.xmas ? 'xmas' : f.birthday ? 'party' : f.witch ? 'witch' : f.karneval ? 'party' : null;
         for (const h of ['witch', 'xmas', 'party']) p.toggle(`fest-${h}`, hat === h);
+        // Pino trägt an Weihnachten auch eine Mütze (Regel .fest-xmas .hat-xmas), Hexen- und Partyhut nie
+        this._el.friends.classList.toggle('fest-xmas', !!f.xmas);
         this._festRender();
       }
       this._festFwSync();
@@ -4690,17 +4703,47 @@
       if (!this._attached || document.hidden || this._critOn) return;
       this._critOn = true;
       const id = ++this._critId;
-      const plan = (kind, [min, max]) => {
+      // Timer bis zum nächsten berechneten Start; after: Start des letzten, damit keiner zweimal kommt
+      const plan = (kind, after) => {
+        const now = this._visitNow();
+        const nx = this._critNext(kind, now, after);
         const t = setTimeout(async () => {
           if (id !== this._critId) return;
-          await this._visit(kind, id);
-          if (id === this._critId) plan(kind, CRIT[kind]);
-        }, rnd(min, max));
+          const late = this._visitNow() - nx.at;
+          if (late <= CRIT_LATE) await this._visit(kind, id, false, nx.pick, Math.max(0, late));
+          if (id === this._critId) plan(kind, nx.at);
+        }, Math.max(0, nx.at - now));
         this._critT.push(t);
       };
-      // der erste Besuch kommt bald, danach in größeren Abständen
-      plan('bird', [20000, 90000]);
-      plan('mouse', [30000, 120000]);
+      plan('bird');
+      plan('mouse');
+    }
+
+    // Uhr der Besuche: echte Zeit (Vorschau: um _dbgShiftMs vorgestellt). Nicht _dbgDate, das steht fest.
+    _visitNow() {
+      return Date.now() + this._dbgShiftMs;
+    }
+
+    // Nächster Besuch von kind (bird, mouse), der höchstens CRIT_LATE her ist und nach after liegt:
+    // { at: Startzeit, pick: feste Entscheidungen }. Gleiche Uhr → gleiches Ergebnis auf allen Geräten.
+    _critNext(kind, now, after = -Infinity) {
+      const { win, p, room } = CRIT[kind];
+      for (let k = Math.floor(Math.max(now - CRIT_LATE, after + 1) / win); ; k++) {
+        if (seedRnd(kind, k, 0) >= p) continue;
+        const at = k * win + Math.floor(seedRnd(kind, k, 1) * (win - room));
+        if (at < now - CRIT_LATE || at <= after) continue;
+        return { at, pick: this._critPick(kind, (n) => seedRnd(kind, k, n)) };
+      }
+    }
+
+    // Was beim Besuch feststeht; r(n) liefert Zahlen in [0, 1) (seedRnd fürs Fenster, Vorschau-Knöpfe: Math.random)
+    _critPick(kind, r) {
+      if (kind === 'bird') {
+        return { bird: Math.floor(r(2) * BIRDS.length), spot: r(3), rockX: 35 + r(4) * 30,
+          side: r(5) < 0.5 ? -1 : 1, out: r(6) < 0.5 ? -1 : 1, stay: 15000 + r(7) * 30000 };
+      }
+      const k = r(2); // wie früher seitlich : oben : auf die Wiese = 3 : 2 : 3
+      return { kind: k < 0.375 ? 'side' : k < 0.625 ? 'top' : 'run', x: 30 + r(3) * 40 };
     }
 
     _stopCritters() {
@@ -4725,11 +4768,13 @@
       return e == null ? !this._asleep : e > 3;
     }
 
-    async _visit(kind, id, force = false) {
+    // pk: feste Entscheidungen aus _critNext (ohne: Zufall, Vorschau-Knöpfe); late: so viele ms nach dem Start
+    async _visit(kind, id, force = false, pk = null, late = 0) {
       if (!this._g || (kind === 'bird' ? this._bird : this._mouse)) return;
       if (!force && !this._critterWeather(kind)) return;
+      pk ??= this._critPick(kind, () => Math.random());
       try {
-        await this[kind === 'bird' ? '_birdVisit' : '_mouseVisit'](id, force);
+        await this[kind === 'bird' ? '_birdVisit' : '_mouseVisit'](id, force, pk, late);
       } catch (e) {
         if (!(e instanceof Cancel)) console.warn('pika-pet-card:', e);
       }
@@ -4761,14 +4806,15 @@
     }
 
     // Vögelchen: fliegt im Bogen an, sitzt 15–45 s (Kopf schief, picken, hüpfen, zwitschern), fliegt weg
-    async _birdVisit(id, force) {
+    async _birdVisit(id, force, pk, late = 0) {
       const { rock, bur } = this._g;
       const spots = this._areal().perches.map(([x, y], i) => ({ id: `p${i}`, x: bur.l + x * bur.u, y: bur.base + y * bur.u }));
-      if (this._lift === 0 && this._action !== 'lookout') {
-        spots.push({ id: 'rock', x: rock.l + rnd(35, 65) * rock.ku, y: rock.top0 + 13 * rock.ku });
-      }
-      const spot = pick(spots);
-      const v = pick(BIRDS);
+      // Platz fest: Sitzplätze des Areals, dahinter der Stein. Ist der Pika gerade oben, der letzte Sitzplatz.
+      const si = Math.floor(pk.spot * (spots.length + 1));
+      const spot = si < spots.length ? spots[si]
+        : this._lift === 0 && this._action !== 'lookout' ? { id: 'rock', x: rock.l + pk.rockX * rock.ku, y: rock.top0 + 13 * rock.ku }
+          : spots[spots.length - 1];
+      const v = BIRDS[pk.bird];
       const el = document.createElement('div');
       el.className = 'bird flying';
       el.innerHTML = `<div class="bw" role="button" aria-label="${v.name}"><div class="bf"><div class="bb">${BIRD_SVG(v)}</div></div></div>`;
@@ -4780,7 +4826,7 @@
       this._el.birds.appendChild(el);
       try {
         // Anflug von schräg oben
-        const side = Math.random() < 0.5 ? -1 : 1;
+        const side = pk.side;
         const dx = side * this._W * rnd(0.45, 0.7);
         const dy = -spot.y - this._H * 0.15;
         this._birdFace(b, -side);
@@ -4801,7 +4847,7 @@
         this._noticeCritter(spot.x, true);
         await this._cw(id, 350, b);
         el.classList.remove('land');
-        const until = Date.now() + rnd(15000, 45000);
+        const until = Date.now() + Math.max(4000, pk.stay - late);
         while (!b.scared && Date.now() < until && (force || this._critterWeather('bird'))) {
           await this._cw(id, rnd(900, 2600), b);
           if (b.scared) break;
@@ -4823,7 +4869,7 @@
         b.sitting = false;
         el.classList.remove('tilt', 'peck', 'hop', 'fluff');
         el.classList.add('flying');
-        const out = b.scared ? (this._x > spot.x ? -1 : 1) : pick([-1, 1]);
+        const out = b.scared ? (this._x > spot.x ? -1 : 1) : pk.out;
         this._birdFace(b, out);
         const dur2 = b.scared ? 900 : rnd(1200, 1600);
         el.animate([
@@ -4863,7 +4909,7 @@
     }
 
     // Maus: schaut seitlich oder oben hinter dem Aussichtsstein hervor, flitzt manchmal auf die Wiese
-    async _mouseVisit(id) {
+    async _mouseVisit(id, force, pk) {
       const { rock, gy, pW } = this._g;
       const mw = this._H * 0.13;
       const mh = mw * (18 / 32);
@@ -4932,12 +4978,12 @@
           }
         }
       };
-      const kind = weighted([[3, 'side'], [2, 'top'], [3, 'run']]);
+      const kind = pk.kind;
       try {
         try {
           if (kind === 'top') {
             // hinter der Steinkuppe hochkommen, nur Kopf und Ohren schauen heraus
-            const x = rock.l + rnd(30, 70) * rock.ku;
+            const x = rock.l + pk.x * rock.ku;
             face(this._x >= x ? 1 : -1);
             move(x, topY + mh * 1.1);
             await step(60);
@@ -4992,7 +5038,7 @@
           pose('run', false);
           pose('stand', false);
           m.out = m.visible = false;
-          this._squeak(x, m.y - mh * 1.2, 'piep!');
+          this._peep(x, m.y - mh * 1.2, 'piep!');
           if (kind === 'top') move(x, topY + mh * 1.1, 180, 'ease-in');
           else {
             face(1);
@@ -5109,18 +5155,22 @@
     // Die EINZIGE Stelle, die entscheidet, wann Pino kommt, wie lange er bleibt und von welcher Seite.
     // Liefert den nächsten Besuch, der noch nicht vorbei ist: nextInMs bis zur Ankunft (0, wenn er gerade
     // fällig ist), stayMs Dauer ab Ankunft (bei einem laufenden Besuch: was davon noch übrig ist), side -1 von
-    // links, 1 von rechts. Hier Zufall pro Gerät: erster Besuch 2–5 Minuten nach dem Laden, danach 25–60
-    // Minuten Pause zwischen zwei Besuchen, Dauer 1,5–4 Minuten. Ob er wirklich kommt (Pika wach, Tag,
-    // trocken), prüft _friendDue; ein Besuch, der war oder ausfiel, wird nicht wiederholt (_frUsed).
+    // links, 1 von rechts. Aus der Uhrzeit berechnet (FRIEND_WIN, seedRnd), darum auf allen Geräten gleich.
+    // Ob er wirklich kommt (Pika wach, Tag, trocken), prüft _friendDue; ein Besuch, der war oder ausfiel,
+    // wird nicht wiederholt (_frUsed).
     _friendSchedule() {
-      const now = Date.now();
-      const draw = (at) => ({ at, stay: rnd(1.5, 4) * 6e4, side: pick([-1, 1]) });
-      let d = this._frSlot || draw(now + rnd(2, 5) * 6e4);
-      // vorbei: nächsten ziehen (nach langer Pause im Hintergrund höchstens eine Stunde zurück)
-      while (now >= d.at + d.stay) d = draw(Math.max(d.at + d.stay, now - 36e5) + rnd(25, 60) * 6e4);
-      this._frSlot = d;
-      const start = Math.max(now, d.at);
-      return { nextInMs: start - now, stayMs: d.at + d.stay - start, side: d.side };
+      const now = this._visitNow();
+      const { win, p, spread, stay: [s0, s1] } = FRIEND_WIN;
+      // ein Besuch endet in seinem Fenster (spread + Dauer < win), das vorige Fenster prüfen schadet nicht
+      for (let k = Math.floor(now / win) - 1; ; k++) {
+        const r = (n) => seedRnd('friend', k, n);
+        if (r(0) >= p) continue;
+        const at = k * win + Math.floor(r(1) * spread);
+        const end = at + Math.round((s0 + r(2) * (s1 - s0)) * 6e4);
+        if (now >= end) continue;
+        const start = Math.max(now, at);
+        return { nextInMs: start - now, stayMs: end - start, side: r(3) < 0.5 ? -1 : 1 };
+      }
     }
 
     _friendOn() {
@@ -5133,7 +5183,7 @@
       clearTimeout(this._frT);
       this._frT = null;
       if (!this._friendOn() || this._fr) return;
-      const now = Date.now();
+      const now = this._visitNow();
       const s = this._friendSchedule();
       const end = now + s.nextInMs + s.stayMs;
       if (end <= (this._frUsed || 0) + 500) this._frT = setTimeout(() => this._friendPlan(), this._frUsed - now + 1000);
@@ -5145,7 +5195,7 @@
       if (!this._friendOn() || this._fr) return;
       const s = this._friendSchedule();
       if (s.nextInMs > 1000) return this._friendPlan(); // Plan hat sich verschoben
-      this._frUsed = Date.now() + s.nextInMs + s.stayMs;
+      this._frUsed = this._visitNow() + s.nextInMs + s.stayMs;
       if (this._g && !this._friendBad()) this._friendCome(s.side, s.stayMs);
       else this._friendPlan();
     }
@@ -5986,7 +6036,8 @@
     }
     // ==================== Ende Freund-Pika ====================
 
-    _squeak(x, y, text) {
+    // Kleiner Schriftzug („piep!“, „plopp!“), der aufsteigt und verblasst. Nicht _squeak: das ist die Aktion.
+    _peep(x, y, text) {
       const s = document.createElement('span');
       s.className = 'squeak';
       s.textContent = text;
@@ -6359,7 +6410,7 @@
       const sc = this._el.scene.classList;
       sc.remove('day', 'dusk', 'night');
       sc.add(mode);
-      const month = new Date().getMonth();
+      const month = new Date(this._dbgDate ?? Date.now()).getMonth();
       sc.toggle('summer', month >= 4 && month <= 8);
       sc.toggle('sun-low', e != null && e < 8);
       sc.toggle('sun-down', e != null && e < -1);
@@ -7598,7 +7649,7 @@
         this._twitch();
         await this._wait(500);
         b.classList.add('pop');
-        this._squeak(nx, ny - H * 0.06, 'plopp!');
+        this._peep(nx, ny - H * 0.06, 'plopp!');
         this._jump('hop1');
         await this._wait(400);
         this._say(pick(['hihi!', 'hatschi!', 'hihi']), 1200);

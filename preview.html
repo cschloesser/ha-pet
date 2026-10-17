@@ -52,6 +52,11 @@
   <button id="bird">Vögelchen kommt</button>
   <button id="mouse">Maus schaut raus</button>
   <button id="watch">Pika schaut hin</button>
+  <button data-next="bird">nächster Vogel</button>
+  <button data-next="mouse">nächste Maus</button>
+  <button data-next="friend">nächster Pino</button>
+  <button data-next="any">nächster Besuch</button>
+  <button data-next="real">Besuchsuhr zurück</button>
 </div>
 <div class="bar"><b>Hobby</b>
   <button data-hob="read">Buch lesen</button>
@@ -238,6 +243,42 @@
   // Besuch sofort, auch wenn Wetter oder Tageszeit es sonst nicht erlauben würden
   document.getElementById('bird').addEventListener('click', () => cards.forEach((c) => c._visit('bird', c._critId, true)));
   document.getElementById('mouse').addEventListener('click', () => cards.forEach((c) => c._visit('mouse', c._critId, true)));
+  // Besuche werden aus der Uhr berechnet: Besuchsuhr aller Karten (_dbgShiftMs) 5 s vor den nächsten Start stellen
+  const visitAt = (c, kind) => {
+    if (kind !== 'friend') return c._critNext(kind, c._visitNow() + 1000).at;
+    // Pino: läuft gerade einer, den danach
+    const save = c._dbgShiftMs;
+    let s = c._friendSchedule();
+    if (!s.nextInMs) {
+      c._dbgShiftMs += s.stayMs + 1000;
+      s = c._friendSchedule();
+    }
+    const at = c._visitNow() + s.nextInMs;
+    c._dbgShiftMs = save;
+    return at;
+  };
+  document.querySelectorAll('[data-next]').forEach((b) =>
+    b.addEventListener('click', () => {
+      const k = b.dataset.next;
+      const c0 = cards[0];
+      let shift = 0;
+      if (k !== 'real') {
+        const kinds = k === 'any' ? ['bird', 'mouse', 'friend'] : [k];
+        const [at, kind] = kinds.map((x) => [visitAt(c0, x), x]).sort((a, z) => a[0] - z[0])[0];
+        shift = c0._dbgShiftMs + (at - 5000 - c0._visitNow());
+        log(`Besuchsuhr → ${new Date(at - 5000).toLocaleTimeString('de-DE')}, ${kind} um ${new Date(at).toLocaleTimeString('de-DE')}`);
+      } else log('Besuchsuhr: echte Zeit');
+      for (const c of cards) {
+        c._dbgShiftMs = shift;
+        c._restartCritters();
+        // Pino bleibt, wenn nur Vogel oder Maus vorgezogen werden (beides zusammen ansehen)
+        if (k === 'bird' || k === 'mouse') continue;
+        c._frUsed = 0;
+        c._friendStop();
+        c._friendPlan();
+      }
+    })
+  );
   document.getElementById('watch').addEventListener('click', () => cards.forEach((c) => {
     const n = c._bird?.sitting ? 'watchBird' : c._mouse?.out ? 'watchMouse' : null;
     if (n) { c._next = n; c._interrupt(); }
