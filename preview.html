@@ -433,7 +433,7 @@
             c._dbgSleep = sleep;
           }
           if (k === 'geburtstag') {
-            c.setConfig({ name: 'Pika', entity: 'input_text.pika_status', birthdays: [{ name: 'Mia', date: `${pad(today.getMonth() + 1)}-${pad(today.getDate())}` }] });
+            c.setConfig({ name: 'Pika', entity: 'input_text.pika_status', appliances: c._cfg?.appliances, birthdays: [{ name: 'Mia', date: `${pad(today.getMonth() + 1)}-${pad(today.getDate())}` }] });
           }
           if (k === 'mitternacht') c._festMidY = null; // Finale und Aufwachen bei jedem Klick
           c._tick(); // ruft auch c._tickFest()

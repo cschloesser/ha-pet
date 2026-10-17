@@ -1753,9 +1753,9 @@
 
   /* Haltungen des Pika bei der Arbeit */
   .pika.hb-hold .paws, .pika.hb-stir .paws, .pika.hb-polish .paws, .pika.hb-pat .paws { display: inline; }
-  /* Bei Regen hält eine Pfote das Blatt (.brolly): dann arbeitet nur die andere, nie drei Pfoten */
-  .pika.wet.hb-hold .paws ellipse + ellipse, .pika.wet.hb-stir .paws ellipse + ellipse,
-  .pika.wet.hb-polish .paws ellipse + ellipse, .pika.wet.hb-pat .paws ellipse + ellipse { display: none; }
+  /* Bei Regen hält eine Pfote das Blatt (.brolly): dann arbeitet nur die andere, nie drei Pfoten.
+     Gilt für jede Haltung, die .paws zeigt (Arbeit, Putzen, Fest-Aktionen) */
+  .pika.wet:not(.inside) .paws ellipse + ellipse { display: none; }
   .pika.hb-stir .paws { transform-box: fill-box; animation: hb-stirp .8s linear infinite; }
   @keyframes hb-stirp { 0%, 100% { transform: translate(-1.6px, 0); } 25% { transform: translate(0, 1.2px); } 50% { transform: translate(1.6px, 0); } 75% { transform: translate(0, -1.2px); } }
   .pika.hb-stir .hop { animation: hb-stir .8s ease-in-out infinite; }
