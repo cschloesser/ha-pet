@@ -43,7 +43,7 @@
  * werden aus Datum und Standort (hass.config) berechnet.
  */
 (() => {
-  const VERSION = '0.13.0';
+  const VERSION = '0.13.1';
 
   const DEFAULTS = {
     name: 'Pika',
@@ -7336,6 +7336,7 @@
       const R = Number(this._cfg.flight_radius) || 15;
       const shown = [];
       const fresh = [];
+      const pos = [];
       for (const [id, p] of this._planes) {
         const dt = (now - p.t0) / 1000;
         const e = p.e + p.ve * dt;
@@ -7378,6 +7379,15 @@
           p.el.style.transition = p.s.style.transition = p.tag.style.transition = p.hit.style.transition = 'none';
           fresh.push(p);
         }
+        p.show = !p.dead && !out && pa > 0.02;
+        // auch ein gerade ausblendender zählt beim Ausweichen mit, sonst springt der andere zurück
+        pos.push({ p, x, y, sc, vis: !out && pa > 0.02 });
+      }
+
+      this._planeSpread(pos.filter((o) => o.vis), H);
+      for (const { p, x, y, sc, vis } of pos) {
+        if (!vis) p.dy = 0;
+        p.y = y; // was man sieht: mit Ausweichen
         p.el.style.transform = `translate(${x.toFixed(1)}px, ${y.toFixed(1)}px)`;
         p.s.style.transform = `scale(${sc.toFixed(3)})`;
         // Tippfläche so groß wie das Flugzeug, aber mindestens fingergroß
@@ -7386,7 +7396,6 @@
         p.hit.style.width = `${hw.toFixed(0)}px`;
         p.hit.style.height = `${hh.toFixed(0)}px`;
         p.hit.style.transform = `translate(${(x - hw / 2).toFixed(1)}px, ${(y - hh / 2).toFixed(1)}px)`;
-        p.show = !p.dead && !out && pa > 0.02;
         if (p.show) shown.push({ p, x, y, half: H * 0.06 * sc });
       }
 
@@ -7424,6 +7433,42 @@
         p.el.classList.toggle('on', !!p.show);
         p.tag.classList.toggle('on', !!p.show);
         p.hit.classList.toggle('on', !!p.show);
+      }
+    }
+
+    // Überdecken dürfen sich zwei Flieger etwas, deckungsgleich sollen sie nie stehen (etwa Anflug und Abflug auf
+    // derselben Linie in gleicher Höhe, die sich begegnen). Wer sich im Bild nahe kommt, weicht senkrecht aus:
+    // ab Berührung der Flügelspitzen langsam, ab halber Breite voll, bis die Mitten 0,7 Flugzeughöhen auseinander
+    // liegen. Die Reihenfolge oben/unten bleibt wie beim letzten Mal, sonst tauschen gleich hohe die Plätze.
+    _planeSpread(list, H) {
+      for (const o of list) {
+        o.dy = 0;
+        o.hw = H * 0.15 * o.sc;
+        o.hh = H * 0.06 * o.sc;
+      }
+      list.sort((a, b) => a.y + (a.p.dy || 0) - (b.y + (b.p.dy || 0)));
+      const top = H * 0.1;
+      const bot = H * 0.52;
+      for (let k = 0; k < 4; k++) {
+        for (let i = 0; i < list.length; i++) {
+          for (let j = i + 1; j < list.length; j++) {
+            const a = list[i];
+            const b = list[j];
+            const wx = a.hw + b.hw;
+            const dx = Math.abs(a.x - b.x);
+            if (dx >= wx) continue;
+            const need = 0.7 * (a.hh + b.hh) * Math.min(1, 2 * (1 - dx / wx));
+            const gap = b.y + b.dy - (a.y + a.dy);
+            if (gap >= need) continue;
+            // je zur Hälfte; stößt einer an den Himmelsrand, schiebt die nächste Runde den anderen weiter
+            a.dy = Math.max(a.dy - (need - gap) / 2, top - a.y);
+            b.dy = Math.min(b.dy + (need - gap) / 2, bot - b.y);
+          }
+        }
+      }
+      for (const o of list) {
+        o.p.dy = o.dy;
+        o.y += o.dy;
       }
     }
 

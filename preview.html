@@ -72,6 +72,7 @@
   <button data-fl="reise">Reiseflug</button>
   <button data-fl="heli">Hubschrauber</button>
   <button data-fl="cessna">Kleinflugzeug</button>
+  <button data-fl="begegnung">Begegnung</button>
   <button data-fl="none">keine</button>
 </div>
 <!-- ==================== Vorschau-Knöpfe Himmel-Extras (Sternschnuppen, Glühwürmchen) ==================== -->
@@ -319,6 +320,13 @@
       airline_short: 'Turkish Airlines', airline_icao: 'THY', aircraft_model: 'Boeing 737-8F2', airport_origin_city: 'Amsterdam', airport_destination_city: 'Istanbul' }),
     heli: () => mk({ ...at(4, -1), heading: 275, altitude: 900, ground_speed: 110, flight_number: '', callsign: 'CHX8',
       aircraft_category: 'Helicopter', aircraft_model: 'Airbus Helicopters H135', airline_short: 'ADAC Luftrettung' }),
+    // zwei auf derselben Linie in gleicher Höhe, die sich in etwa 30 s mitten im Bild begegnen
+    begegnung: () => [
+      mk({ ...at(2.7, 0), heading: 270, altitude: 2500, ground_speed: 170, flight_number: 'EW1234',
+        airline_short: 'Eurowings', airline_icao: 'EWG', aircraft_model: 'Airbus A320-214', airport_origin_city: 'Munich', airport_destination_city: 'London' }),
+      mk({ ...at(-2.7, 0), heading: 90, altitude: 2500, ground_speed: 170, flight_number: 'LH2020',
+        airline_short: 'Lufthansa', airline_icao: 'DLH', aircraft_model: 'Airbus A321-131', airport_origin_city: 'London', airport_destination_city: 'Munich' }),
+    ],
     cessna: () => mk({ ...at(-6, 3), heading: 80, altitude: 2200, ground_speed: 95, flight_number: '', callsign: 'DEABC',
       aircraft_model: 'Cessna 172S Skyhawk', airport_origin_city: 'Marl', airport_destination_city: 'Paderborn' }),
   };
@@ -339,7 +347,7 @@
   }, 20000);
   document.querySelectorAll('[data-fl]').forEach((b) =>
     b.addEventListener('click', () => {
-      flights = b.dataset.fl === 'none' ? [] : [...flights, FLIGHTS[b.dataset.fl]()];
+      flights = b.dataset.fl === 'none' ? [] : flights.concat(FLIGHTS[b.dataset.fl]());
       pushFlights();
     })
   );
