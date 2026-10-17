@@ -31,7 +31,7 @@
  * werden aus Datum und Standort (hass.config) berechnet.
  */
 (() => {
-  const VERSION = '0.8.0';
+  const VERSION = '0.8.1';
 
   const DEFAULTS = {
     name: 'Pika',
@@ -1407,6 +1407,8 @@
      Hügeln, die Fähnchen liegen in einer eigenen Ebene darüber und sind antippbar. */
   .planes, .ptags { position: absolute; inset: 0; pointer-events: none; }
   .ptags { z-index: 4; }
+  /* Offenes Fähnchen ist die wichtigste Info: dann liegt die Ebene vor Statusleiste und Futterknopf */
+  .ptags.top { z-index: 6; }
   .plane { position: absolute; left: 0; top: 0; opacity: 0; transition: transform 1s linear, opacity 2s; will-change: transform; }
   .plane.on { opacity: 1; }
   /* Unsichtbare Tippfläche über dem Flugzeug (die Flugzeuge selbst liegen hinter den Hügeln) */
@@ -1449,7 +1451,7 @@
     color: #2f4256; background: rgba(255, 255, 255, .8); box-shadow: 0 1px 3px rgba(0, 0, 0, .15);
     pointer-events: none; cursor: pointer; opacity: 0; transition: transform 1s linear, opacity .3s, background 2.5s, color 2.5s;
   }
-  .ptag.on.open { opacity: 1; pointer-events: auto; }
+  .ptag.on.open { opacity: 1; pointer-events: auto; z-index: 1; }
   .ptag b { font-weight: 700; letter-spacing: .02em; }
   .ptag .more { font-size: .9em; opacity: .85; }
   .dusk .ptag { background: rgba(255, 255, 255, .72); }
@@ -3789,6 +3791,12 @@
       this._planeLoop();
     }
 
+    // Solange ein Fähnchen offen ist, liegt die Fähnchen-Ebene ganz vorne
+    _tagsTop() {
+      const any = [...this._planes.values()].some((p) => p.tag.classList.contains('open'));
+      this._el.ptags.classList.toggle('top', any);
+    }
+
     _newPlane(id, f) {
       const kind = planeKind(f);
       const el = document.createElement('div');
@@ -3808,9 +3816,13 @@
         const open = !tag.classList.contains('open');
         if (open) {
           this._planeText(p);
-          p.openT = setTimeout(() => tag.classList.remove('open'), 9000);
+          p.openT = setTimeout(() => {
+            tag.classList.remove('open');
+            this._tagsTop();
+          }, 9000);
         }
         tag.classList.toggle('open', open);
+        this._tagsTop();
       };
       hit.addEventListener('click', toggle);
       tag.addEventListener('click', toggle);
@@ -3888,6 +3900,7 @@
           p.tag.remove();
           p.hit.remove();
           this._planes.delete(id);
+          this._tagsTop();
           continue;
         }
         if (Math.abs(p.ve) > 0.005) p.left = p.ve > 0; // nach Osten = im Bild nach links
