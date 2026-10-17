@@ -43,7 +43,7 @@
  * werden aus Datum und Standort (hass.config) berechnet.
  */
 (() => {
-  const VERSION = '0.10.0';
+  const VERSION = '0.10.1';
 
   const DEFAULTS = {
     name: 'Pika',
@@ -1384,7 +1384,7 @@
   const BOTE_AUTOOPEN_MS = 2 * 60000;
   // Vorn auf dem Wiesenstreifen: so viel größer und so viel × Kartenhöhe tiefer als hinten
   const BOTE_FRONT = 1.1;
-  const BOTE_FRONT_DY = 0.06;
+  const BOTE_FRONT_DY = 0.035; // lässt unten Platz für den Fortschrittsbalken
   const BOTE_RUN = new Set(['run', 'pause', 'delayedstart', 'actionrequired', 'error', 'aborting']);
   const BOTE_HALT = new Set(['pause', 'delayedstart', 'actionrequired', 'error', 'aborting']);
   const BOTE_IDLE = new Set(['ready', 'inactive', 'off', 'standby']);
@@ -1600,7 +1600,7 @@
   .hb.hb-placed { transition: left .5s ease, top .5s ease, width .5s ease, filter 2.5s, opacity .5s; }
   .hb::after { content: ''; position: absolute; inset: -8px -4px 0; }
   /* Vorn auf dem Wiesenstreifen: näher am Betrachter, also vor Pika, Gras und Heu (unter Regen, Statusleiste, Futterknopf) */
-  .hb.hb-fr, .hb-bar.hb-fr { z-index: 4; }
+  .hb.hb-fr, .hb-bar { z-index: 4; }
   .hb.hb-bye { opacity: 0; pointer-events: none; }
   .hb-i { transform-origin: 50% 100%; }
   .hb svg { display: block; width: 100%; height: auto; overflow: visible; }
@@ -8011,14 +8011,16 @@
       s.width = `${w.toFixed(1)}px`;
       a.el.classList.toggle('hb-fr', fr);
       if (!a.el.classList.contains('hb-placed')) requestAnimationFrame(() => a.el?.classList.add('hb-placed'));
-      // Fortschrittsbalken: vorn knapp unter dem Requisit, hinten am Fuß des Requisits über dem Gras (unter dem Pika)
+      // Fortschrittsbalken immer unter dem Requisit: vorn mit kleinem Abstand unter der Grafik, hinten im
+      // Grasstreifen unter dem sichtbaren Teil (dort steckt auch der Pika im Gras, seine Pfoten bleiben frei)
       const [u0, u1] = sp.part;
       const bw = Math.min((u1 - u0) * k * 0.72, H * 0.16);
       const bh = clamp(H * 0.018, 3, 6);
       const bs = a.bar.style;
       a.bar.classList.toggle('hb-fr', fr);
       bs.left = `${(this._boteX(a, (u0 + u1) / 2) - bw / 2).toFixed(1)}px`;
-      bs.top = `${(fr ? Math.min(ground + 0.004 * H, H - bh - 2) : gy - 0.045 * H - bh - 2).toFixed(1)}px`;
+      const bottom = Math.max(ground, a.top + sp.vb[3] * k);
+      bs.top = `${(fr ? Math.min(bottom + 0.012 * H, H - bh - 0.02 * H) : gy - 0.03 * H).toFixed(1)}px`;
       bs.width = `${bw.toFixed(1)}px`;
       if (a.tag?.classList.contains('open')) this._boteTagPos(a);
     }
