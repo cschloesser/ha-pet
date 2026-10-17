@@ -215,7 +215,84 @@
   const TAIL_DEFAULT = { jet: '#3d8fd6', prop: '#d9473b', heli: '#e0b52c' };
   // Städte, wie sie Flightradar24 liefert (englisch), auf Deutsch
   // ==================== Himmel-Extras (Sternschnuppen, Glühwürmchen): Konstanten und Stil ====================
-  const STYLE_SKY = ``;
+  // Sternschnuppen: alle 1,5–5 Minuten eine Gelegenheit, jede fünfte ein Bolide, jede zehnte mit Nachzügler.
+  // Glühwürmchen: 10–14 Stück, gut die Hälfte tief über der Wiese, ein Drittel um den Heuhaufen.
+  const SKY = { meteor: [90000, 300000], bolide: 0.2, twin: 0.1, watch: 0.5, watchMs: 4000, ff: [10, 14] };
+  const STYLE_SKY = `
+  .meteors { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
+  /* Sternschnuppe: Hülle steht am Startpunkt und ist in Flugrichtung gedreht, Kopf und Schweif laufen --len weit */
+  .met { position: absolute; width: 0; height: 0; transform: rotate(var(--a)); }
+  .met b { position: absolute; top: 0; right: 0; animation: var(--d) linear forwards; }
+  .met .mt {
+    width: var(--tail); height: 1.5px; margin-top: -.75px; border-radius: 1px; transform-origin: 100% 50%;
+    background: linear-gradient(to right, rgba(190, 210, 255, 0), rgba(225, 235, 255, .75) 75%, rgba(255, 255, 255, .95));
+    animation-name: met-tail;
+  }
+  .met .mh {
+    width: 3px; height: 3px; margin: -1.5px -1.5px 0 0; border-radius: 50%; background: #fff;
+    box-shadow: 0 0 4px 1px rgba(215, 228, 255, .9); animation-name: met-head;
+  }
+  .met.bolide .mt {
+    height: 2.5px; margin-top: -1.25px;
+    background: linear-gradient(to right, rgba(255, 230, 190, 0), rgba(255, 244, 220, .8) 70%, rgba(255, 255, 255, 1));
+  }
+  .met.bolide .mh {
+    width: 5px; height: 5px; margin: -2.5px -2.5px 0 0; box-shadow: 0 0 8px 3px rgba(225, 255, 235, .95);
+    animation-name: met-bolide;
+  }
+  @keyframes met-tail {
+    0% { transform: translateX(0) scaleX(0); opacity: 0; }
+    12% { opacity: 1; }
+    45% { transform: translateX(calc(var(--len) * .45)) scaleX(1); }
+    80% { opacity: .9; }
+    100% { transform: translateX(var(--len)) scaleX(.45); opacity: 0; }
+  }
+  @keyframes met-head {
+    0% { transform: translateX(0) scale(.4); opacity: 0; }
+    12% { transform: translateX(calc(var(--len) * .12)) scale(1); opacity: 1; }
+    85% { opacity: 1; }
+    100% { transform: translateX(var(--len)) scale(.5); opacity: 0; }
+  }
+  /* Bolide: leuchtet kurz vor dem Verglühen hell auf */
+  @keyframes met-bolide {
+    0% { transform: translateX(0) scale(.5); opacity: 0; }
+    10% { transform: translateX(calc(var(--len) * .1)) scale(1); opacity: 1; }
+    68% { transform: translateX(calc(var(--len) * .68)) scale(1.2); }
+    78% { transform: translateX(calc(var(--len) * .78)) scale(2.6); opacity: 1; }
+    100% { transform: translateX(var(--len)) scale(.4); opacity: 0; }
+  }
+  .mflash { position: absolute; inset: 0; opacity: 0; animation: met-flash .7s ease-out forwards; }
+  @keyframes met-flash { 30% { opacity: 1; } 100% { opacity: 0; } }
+
+  /* Glühwürmchen: Ebene blendet sanft ein und aus (Sommernacht voll, späte Dämmerung schwach) */
+  .ff { position: absolute; inset: 0; pointer-events: none; opacity: 0; visibility: hidden; transition: opacity 3s, visibility 0s linear 3s; }
+  .ff.on, .ff.dim { visibility: visible; transition: opacity 3s, visibility 0s; }
+  .ff.on { opacity: 1; }
+  .ff.dim { opacity: .45; }
+  .ff.rest { display: none; }
+  .ff .fl {
+    left: 0; top: 0; width: 3.5px; height: 3.5px; margin: -1.75px; opacity: .2; transition: none;
+    background: #f3ffa6; box-shadow: 0 0 6px 2px rgba(214, 240, 92, .8);
+    animation: ff-drift var(--fd) ease-in-out var(--fdl) infinite, ff-pulse var(--fp) linear var(--fpl) infinite;
+  }
+  .ff .fl.big { width: 5.5px; height: 5.5px; margin: -2.75px; background: #f8ffbe; box-shadow: 0 0 10px 4px rgba(222, 245, 100, .8); }
+  @keyframes ff-drift {
+    0%, 100% { transform: translate(var(--x0), var(--y0)); }
+    25% { transform: translate(var(--x1), var(--y1)); }
+    50% { transform: translate(var(--x2), var(--y2)); }
+    75% { transform: translate(var(--x3), var(--y3)); }
+  }
+  /* unregelmäßig: zwei Aufleuchten verschiedener Stärke, dazwischen fast dunkel */
+  @keyframes ff-pulse {
+    0%, 100% { opacity: .15; }
+    9% { opacity: 1; }
+    20% { opacity: .3; }
+    46% { opacity: .12; }
+    56% { opacity: .7; }
+    64% { opacity: .85; }
+    78% { opacity: .15; }
+  }
+  `;
   // ==================== Ende Himmel-Extras ====================
 
   const CITY_DE = {
@@ -3845,13 +3922,296 @@
 
 
     // ==================== Himmel-Extras: Methoden ====================
-    _hassSky(hass) {}
-    _attachSky() {}
-    _detachSky() {}
-    _hiddenSky(hidden) {}
-    _layoutSky(first) {}
-    _tickSky() {}
-    _skyActs(ctx) { return []; }
+    // Sternschnuppen (nur zum Anschauen, kein Zähler): ein Zeitgeber alle 1,5–5 Minuten, der nur nachts bei
+    // klarem Himmel eine losschickt. Jede läuft als CSS-Animation in .meteors und entfernt sich danach selbst.
+    // Glühwürmchen: ersetzen die sechs Punkte aus _build durch 10–14 eigene; die Ebene .ff blendet je nach
+    // Lage (Sommernacht, späte Sommerdämmerung, trocken) ein oder aus.
+    _hassSky(hass) {
+      // erst nach _updateSky im selben hass-Aufruf, damit die Szenen-Klassen schon stimmen
+      if (this._skyQ) return;
+      this._skyQ = true;
+      queueMicrotask(() => {
+        this._skyQ = false;
+        this._skyState();
+      });
+    }
+
+    _attachSky() {
+      this._ffKey = null;
+      this._skyState();
+      if (!document.hidden) this._meteorPlan();
+    }
+
+    _detachSky() {
+      this._meteorStop();
+      clearTimeout(this._ffRestT);
+      this._el.meteors.textContent = '';
+    }
+
+    _hiddenSky(hidden) {
+      if (hidden) this._meteorStop();
+      else {
+        this._meteorPlan();
+        this._skyState();
+      }
+    }
+
+    _layoutSky(first) {
+      // neue Größe: neue Orte und Wege (die alten lägen sonst über Statusleiste oder Futterknopf)
+      if (this._ffSize !== `${this._W}x${this._H}`) this._ffPlace();
+    }
+
+    _tickSky() {
+      this._skyState();
+    }
+
+    _skyActs(ctx) {
+      const m = this._met;
+      const meteor = m && m.watch && !m.seen && Date.now() - m.at < SKY.watchMs;
+      return [
+        [meteor ? 12 : 0, 'watchMeteor'],
+        [this._ffShown() ? 1.5 : 0, 'watchFireflies'],
+      ];
+    }
+
+    // Sommer = Mai bis September, nach der Vorschau-Uhr, falls gesetzt
+    _skySummer() {
+      const month = new Date(this._dbgDate ?? Date.now()).getMonth();
+      return month >= 4 && month <= 8;
+    }
+
+    // Glühwürmchen bauen (Option fireflies), Sichtbarkeit nach Tageszeit, Jahreszeit und Wetter setzen
+    _skyState() {
+      if (!this._el) return;
+      const ff = this._el.ff;
+      const want = this._cfg.fireflies !== false;
+      if (want !== this._ffKey) {
+        this._ffKey = want;
+        this._ffBuild(want);
+      }
+      const sc = this._el.scene.classList;
+      const wx = this._wx;
+      const e = this._dbgElev ?? this._elev;
+      const ok = want && this._skySummer() && !wx.wet && !wx.storm;
+      const mode = !ok ? '' : sc.contains('night') ? 'on' : sc.contains('dusk') && e != null && e < -2 ? 'dim' : '';
+      if (mode === (this._ffMode ?? '')) return;
+      this._ffMode = mode;
+      clearTimeout(this._ffRestT);
+      if (mode) {
+        // aus der Ruhe holen (display: none) und erst danach einblenden, sonst springt die Deckkraft
+        if (ff.classList.contains('rest')) {
+          ff.classList.remove('rest');
+          void ff.offsetWidth;
+        }
+        ff.classList.toggle('on', mode === 'on');
+        ff.classList.toggle('dim', mode === 'dim');
+      } else {
+        ff.classList.remove('on', 'dim');
+        // nach dem Ausblenden ganz aus dem Bild, dann laufen auch keine Animationen mehr
+        this._ffRestT = setTimeout(() => !this._ffMode && ff.classList.add('rest'), 3500);
+      }
+    }
+
+    _ffShown() {
+      return !!this._ffMode && !!this._ffKey;
+    }
+
+    _ffBuild(on) {
+      const ff = this._el.ff;
+      this._ffMode = null;
+      ff.classList.remove('on', 'dim');
+      ff.classList.add('rest');
+      if (!on) {
+        ff.textContent = '';
+        return;
+      }
+      const n = Math.round(rnd(SKY.ff[0], SKY.ff[1]));
+      let html = '';
+      for (let i = 0; i < n; i++) {
+        const big = Math.random() < 0.3;
+        html += `<i class="fl${big ? ' big' : ''}" style="--fd:${rnd(7, 14).toFixed(1)}s;--fdl:${rnd(-14, 0).toFixed(2)}s;`
+          + `--fp:${rnd(1.2, 2.6).toFixed(2)}s;--fpl:${rnd(-2.6, 0).toFixed(2)}s"></i>`;
+      }
+      ff.innerHTML = html;
+      this._ffPlace();
+    }
+
+    // Jedem Glühwürmchen einen Ort und einen eigenen Driftweg (vier Punkte, px) geben. Gut die Hälfte schwirrt
+    // tief über der Wiese, ein Drittel um den Heuhaufen (--hl, --hw), der Rest etwas höher. Kein Weg führt
+    // über die Statusleiste oder den Futterknopf.
+    _ffPlace() {
+      const g = this._g;
+      const flies = this._el.ff.children;
+      if (!g || !flies.length) return;
+      const W = this._W;
+      const H = this._H;
+      this._ffSize = `${W}x${H}`;
+      const { gy } = g;
+      const hw = H * 0.26;
+      const hl = g.hay - hw / 2;
+      const avoid = [];
+      for (const el of [this._el.stats, this._el.feed]) {
+        if (el.offsetWidth) {
+          avoid.push({ l: el.offsetLeft - 10, t: el.offsetTop - 10, r: el.offsetLeft + el.offsetWidth + 10, b: el.offsetTop + el.offsetHeight + 10 });
+        }
+      }
+      const zone = (i) => {
+        const z = i % 3 === 0 ? 'hay' : i % 5 === 4 ? 'high' : 'low';
+        if (z === 'hay') return [rnd(hl - hw * 0.4, hl + hw * 1.4), rnd(gy - H * 0.32, gy - H * 0.06)];
+        if (z === 'high') return [rnd(W * 0.12, W * 0.95), rnd(H * 0.3, H * 0.55)];
+        return [rnd(W * 0.04, W * 0.96), rnd(gy - H * 0.2, gy - H * 0.03)];
+      };
+      [...flies].forEach((el, i) => {
+        let pts = null;
+        for (let k = 0; k < 30 && !pts; k++) {
+          const [x, y] = zone(i);
+          const ax = H * rnd(0.05, 0.16);
+          const ay = H * rnd(0.03, 0.1);
+          const p = [[x, y]];
+          for (let j = 1; j < 4; j++) p.push([x + rnd(-ax, ax), y + rnd(-ay, ay * 0.6)]);
+          const xs = p.map((q) => q[0]);
+          const ys = p.map((q) => q[1]);
+          const box = { l: Math.min(...xs) - 4, r: Math.max(...xs) + 4, t: Math.min(...ys) - 4, b: Math.max(...ys) + 4 };
+          const inside = box.l > 0 && box.r < W && box.t > H * 0.06 && box.b < gy;
+          if (inside && !avoid.some((a) => box.l < a.r && box.r > a.l && box.t < a.b && box.b > a.t)) pts = p;
+        }
+        // kein freier Platz gefunden (sehr kleine Karte): dieses eine bleibt dunkel
+        el.hidden = !pts;
+        if (!pts) return;
+        pts.forEach(([x, y], j) => {
+          el.style.setProperty(`--x${j}`, `${x.toFixed(1)}px`);
+          el.style.setProperty(`--y${j}`, `${y.toFixed(1)}px`);
+        });
+      });
+    }
+
+    _meteorPlan() {
+      clearTimeout(this._metT);
+      this._metT = setTimeout(() => {
+        this._metT = null;
+        this._meteorMaybe();
+        this._meteorPlan();
+      }, rnd(SKY.meteor[0], SKY.meteor[1]));
+    }
+
+    _meteorStop() {
+      clearTimeout(this._metT);
+      clearTimeout(this._metT2);
+      this._metT = this._metT2 = null;
+    }
+
+    // Nachts bei weniger als 70 % Bewölkung, ohne Nebel, Regen und Schnee
+    _meteorOk() {
+      if (this._cfg.shooting_stars === false || !this._g) return false;
+      const wx = this._wx;
+      const cover = Number.isFinite(wx.cover) ? wx.cover : 0;
+      return this._el.scene.classList.contains('night') && cover < 70 && !wx.fog && !wx.wet && !wx.snow;
+    }
+
+    _meteorMaybe() {
+      if (!this._meteorOk()) return;
+      this._meteor(Math.random() < SKY.bolide);
+      if (Math.random() < SKY.twin) {
+        clearTimeout(this._metT2);
+        this._metT2 = setTimeout(() => this._meteorOk() && this._meteor(Math.random() < SKY.bolide / 2), rnd(500, 2200));
+      }
+    }
+
+    // Eine Sternschnuppe: Start im oberen Himmel (3–45 % der Höhe), 15–35 % der Breite weit, leicht abwärts
+    _meteor(bolide = false) {
+      if (!this._g) return;
+      const W = this._W;
+      const H = this._H;
+      const dir = Math.random() < 0.5 ? 1 : -1;
+      const tilt = rnd(8, 26);
+      const len = W * rnd(0.15, 0.35);
+      const dx = len * Math.cos(tilt * RAD);
+      const dy = len * Math.sin(tilt * RAD);
+      const x = dir > 0 ? rnd(W * 0.04, Math.max(W * 0.05, W * 0.96 - dx)) : rnd(Math.min(W * 0.95, W * 0.04 + dx), W * 0.96);
+      const y = H * rnd(0.03, 0.45);
+      const dur = bolide ? rnd(0.95, 1.2) : rnd(0.5, 1.1);
+      const el = document.createElement('div');
+      el.className = `met${bolide ? ' bolide' : ''}`;
+      el.style.cssText = `left:${x.toFixed(1)}px;top:${y.toFixed(1)}px;--a:${(dir > 0 ? tilt : 180 - tilt).toFixed(1)}deg;`
+        + `--len:${len.toFixed(1)}px;--tail:${(len * rnd(0.35, 0.5) * (bolide ? 1.3 : 1)).toFixed(1)}px;--d:${dur.toFixed(2)}s`;
+      el.innerHTML = '<b class="mt"></b><b class="mh"></b>';
+      this._el.meteors.appendChild(el);
+      setTimeout(() => el.remove(), dur * 1000 + 200);
+      if (bolide) {
+        // kurzes Aufleuchten des Himmels um die Stelle, an der er aufglüht
+        const fx = x + dir * dx * 0.78;
+        const fy = y + dy * 0.78;
+        const f = document.createElement('i');
+        f.className = 'mflash';
+        f.style.cssText = `background:radial-gradient(circle at ${fx.toFixed(0)}px ${fy.toFixed(0)}px, rgba(215, 235, 255, .3), rgba(215, 235, 255, 0) ${(H * 0.5).toFixed(0)}px);`
+          + `animation-delay:${(dur * 0.68).toFixed(2)}s`;
+        this._el.meteors.appendChild(f);
+        setTimeout(() => f.remove(), dur * 680 + 900);
+      }
+      // Ist er wach, schaut er mit etwa jeder zweiten hin (Aktion watchMeteor in den 4 s danach)
+      const watch = !this._asleep && Math.random() < SKY.watch;
+      this._met = { at: Date.now(), x: x + (dir * dx) / 2, dir, bolide, watch, seen: false };
+      if (watch && !this._inside && (this._action === 'idle' || this._action === 'look')) this._interrupt();
+    }
+
+    // Einer Sternschnuppe nachschauen
+    async _watchMeteor() {
+      const m = this._met;
+      if (!m) return;
+      m.seen = true;
+      const p = this._el.pika;
+      this._face(m.x >= this._x ? 1 : -1);
+      p.classList.add('look-up');
+      await this._wait(250);
+      if (m.bolide) this._jump('hop1');
+      this._say(m.bolide ? 'oooh!' : 'oh!', 1200);
+      await this._wait(rnd(700, 1000));
+      // mit dem Kopf hinterher, in Flugrichtung
+      this._face(m.dir);
+      await this._wait(rnd(1300, 2200));
+      p.classList.remove('look-up');
+      await this._wait(rnd(400, 900));
+    }
+
+    // Ort (px in der Szene) eines zufälligen sichtbaren Glühwürmchens
+    _ffSpot() {
+      const els = [...this._el.ff.children].filter((el) => !el.hidden);
+      const el = els.length ? pick(els) : null;
+      if (!el) return null;
+      const r = el.getBoundingClientRect();
+      if (!r.width) return null;
+      const s = this._el.scene.getBoundingClientRect();
+      return { x: r.left + r.width / 2 - s.left, y: r.top + r.height / 2 - s.top };
+    }
+
+    // Den Glühwürmchen zuschauen: hinsetzen, hochschauen, mit dem Kopf folgen, einmal nach einem hüpfen
+    async _watchFireflies() {
+      const p = this._el.pika;
+      const { pW } = this._g;
+      let f = this._ffSpot();
+      if (f && Math.abs(f.x - this._x) > this._W * 0.3) {
+        await this._walkTo(f.x - Math.sign(f.x - this._x) * pW * rnd(0.6, 1.1), 0.7);
+      }
+      if (f) this._face(f.x >= this._x ? 1 : -1);
+      p.classList.add('crouch', 'look-up');
+      await this._wait(rnd(1200, 1900));
+      p.classList.remove('look-up');
+      let fwd = true;
+      for (let i = 0, n = 2 + Math.floor(rnd(0, 3)); i < n; i++) {
+        p.classList.toggle('look-f', fwd);
+        p.classList.toggle('look-b', !fwd);
+        fwd = !fwd;
+        await this._wait(rnd(600, 1200));
+      }
+      p.classList.remove('look-f', 'look-b', 'crouch');
+      f = this._ffSpot() || f;
+      if (f) this._face(f.x >= this._x ? 1 : -1);
+      p.classList.add('look-up');
+      await this._wait(200);
+      this._jump('hop1');
+      this._say('oh!', 1100);
+      await this._wait(rnd(1400, 2400));
+    }
     // ==================== Ende Himmel-Extras ====================
 
     _readFlights(st) {

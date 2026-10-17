@@ -73,7 +73,8 @@ Der Blick geht nach Süden: Osten (Sonnenaufgang) ist links, Westen rechts.
   - Bei Starkregen und Gewitter verkriecht er sich im Bau, schaut ab und zu heraus und erschrickt bei Blitzen.
   - Unter 3 °C trägt er einen Schal.
   - Bei Schnee knabbert er an seinem Heuvorrat.
-- Im Sommer gibt es nachts Glühwürmchen.
+- **Glühwürmchen** in Sommernächten (Mai bis September): 10 bis 14 Stück schwirren tief über der Wiese und um den Heuhaufen und blinken unregelmäßig gelbgrün, in der späten Dämmerung schon ein paar schwächer. Bei Regen und Gewitter verschwinden sie. Ist der Pika wach, setzt er sich hin, schaut ihnen nach und hüpft nach einem.
+- **Sternschnuppen** nachts bei klarem Himmel (nicht bei dichter Bewölkung, Nebel, Regen oder Schnee): alle paar Minuten eine, ab und zu ein heller Bolide, der kurz aufleuchtet, selten zwei kurz nacheinander. Ein wacher Pika schaut manchmal hoch: „oh!“
 
 ## Areale
 
@@ -105,6 +106,8 @@ sleep_start: sunset              # Schlafenszeit (Standard: Sonnenuntergang)
 sleep_end: sunrise               # Aufwachzeit (Standard: Sonnenaufgang)
 sun_entity: sun.sun              # Sonnenstand
 weather_entity: weather.forecast_home   # Wetter (Standard: met.no-Integration)
+shooting_stars: true             # Sternschnuppen nachts bei klarem Himmel
+fireflies: true                  # Glühwürmchen in Sommernächten
 areal: huegel                    # Bau: huegel, fels, stumpf, alpin
 flight_entity: sensor.flightradar24_current_in_area   # Flugzeuge (leer = keine)
 flight_radius: 15                # Radius der Flightradar24-Integration in km

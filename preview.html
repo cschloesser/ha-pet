@@ -71,6 +71,10 @@
 </div>
 <!-- ==================== Vorschau-Knöpfe Himmel-Extras (Sternschnuppen, Glühwürmchen) ==================== -->
 <div class="bar" id="bar-sky"><b>Himmel-Extras</b>
+  <button id="meteor">Sternschnuppe jetzt</button>
+  <button id="bolide">Bolide jetzt</button>
+  <button id="summernight">Sommernacht</button>
+  <button id="skywatch">Pika schaut hoch</button>
 </div>
 <!-- ==================== Ende Himmel-Extras ==================== -->
 
@@ -244,6 +248,28 @@
   });
 
   // ==================== Vorschau Himmel-Extras ====================
+  document.getElementById('meteor').addEventListener('click', () => cards.forEach((c) => c._meteor(false)));
+  document.getElementById('bolide').addEventListener('click', () => cards.forEach((c) => c._meteor(true)));
+  // Nacht an einem Juli-Abend, Pika bleibt wach (Glühwürmchen sind nur im Sommer zu sehen)
+  document.getElementById('summernight').addEventListener('click', () => cards.forEach((c) => {
+    const d = new Date();
+    d.setMonth(6, 15);
+    d.setHours(23, 0, 0, 0);
+    c._dbgAz = 330;
+    c._dbgElev = -25;
+    c._dbgSleep = false;
+    c._dbgDate = d.getTime();
+    c._tick(); // _updateSky, Aufwachen und Glühwürmchen
+  }));
+  // Glühwürmchen zuschauen, wenn welche da sind, sonst einer frischen Sternschnuppe nachschauen
+  document.getElementById('skywatch').addEventListener('click', () => cards.forEach((c) => {
+    if (c._ffShown()) c._next = 'watchFireflies';
+    else {
+      c._meteor(false);
+      c._next = 'watchMeteor';
+    }
+    c._interrupt();
+  }));
   // ==================== Ende Vorschau Himmel-Extras ====================
 
   // ==================== Vorschau Festtage ====================
