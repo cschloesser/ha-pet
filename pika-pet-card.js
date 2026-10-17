@@ -43,7 +43,7 @@
  * werden aus Datum und Standort (hass.config) berechnet.
  */
 (() => {
-  const VERSION = '0.13.1';
+  const VERSION = '0.13.2';
 
   const DEFAULTS = {
     name: 'Pika',
@@ -1806,6 +1806,8 @@
   ha-card { display: block; height: 100%; overflow: hidden; background: none; border-radius: var(--ha-card-border-radius, 12px); }
   .scene {
     position: relative; height: 100%; overflow: hidden; border-radius: inherit;
+    /* Größe kommt von außen, nichts ragt hinaus: Stil, Layout und Malen bleiben auf die Karte begrenzt */
+    contain: strict;
     user-select: none; -webkit-user-select: none; -webkit-tap-highlight-color: transparent;
     font-family: var(--ha-font-family-body, var(--paper-font-body1_-_font-family, system-ui, sans-serif));
     --h1: #a9d68f; --h2: #86c46b; --h3: #7ab960;
@@ -1863,6 +1865,8 @@
   .cloud::before { width: 45%; aspect-ratio: 1; left: 15%; bottom: 30%; }
   .cloud::after { width: 32%; aspect-ratio: 1; left: 50%; bottom: 35%; }
   .wind-w .cloud { animation-direction: reverse; }
+  /* Ausgeblendete Wolken (und Nebel) stehen still: jede laufende Animation hält die Bildwiederholung in Gang */
+  .cloud:not(.on), .scene:not(.foggy) .fog i { animation-play-state: paused; }
   .cloud.on { opacity: .92; }
   .dusk .cloud.on { opacity: .65; }
   .night .cloud.on { opacity: .5; }
@@ -1912,8 +1916,8 @@
   .tvl i { position: absolute; display: block; }
   .tvl .tvg {
     inset: 0; background: radial-gradient(ellipse 85% 75% at 50% 45%, var(--tvc, #9fd0ff), transparent 80%);
-    animation: tvflk 1.3s linear infinite;
   }
+  .tv-on .tvl .tvg { animation: tvflk 1.3s linear infinite; }
   .tvl .scr {
     left: 30%; width: 40%; top: 15%; height: 22%; border-radius: 3px; background: var(--tvc, #9fd0ff);
     border: 2px solid #1d1d22; box-shadow: 0 0 10px 4px var(--tvc, #9fd0ff);
@@ -2130,9 +2134,11 @@
     60% { transform: scale(.94, 1.08); }
   }
 
-  .all { transform-box: fill-box; transform-origin: 50% 100%; animation: breathe 3.4s ease-in-out infinite; }
+  /* Atmen auf der HTML-Hülle statt auf <g class="all">: so rechnet es die Grafikkarte, nicht jedes Bild der
+     Hauptthread. Drehpunkt = Mitte unten der Pika-Figur (viewBox 120 × 100: x 64,7, Füße bei y 95). */
+  .br { position: absolute; inset: 0; transform-origin: 54% 95%; animation: breathe 3.4s ease-in-out infinite; }
   @keyframes breathe { 50% { transform: scale(1.012, 1.025); } }
-  .sleeping .all { animation: breathe-deep 4.6s ease-in-out infinite; }
+  .sleeping .br { animation: breathe-deep 4.6s ease-in-out infinite; }
   @keyframes breathe-deep { 0%, 100% { transform: scale(1.03, .94); } 50% { transform: scale(1.06, .97); } }
 
   .ear { transform-box: fill-box; transform-origin: 50% 95%; transition: transform .45s; }
@@ -2202,7 +2208,8 @@
   }
   .cold .scarf, .wet .brolly { display: inline; }
   .sleeping .brolly { display: none; }
-  .brolly { transform-box: fill-box; transform-origin: 70% 100%; animation: brolly 2.6s ease-in-out infinite alternate; }
+  .brolly { transform-box: fill-box; transform-origin: 70% 100%; }
+  .wet .brolly { animation: brolly 2.6s ease-in-out infinite alternate; }
   @keyframes brolly { from { transform: rotate(-3deg); } to { transform: rotate(3deg); } }
   .carry .mfood, .eating .mfood { display: inline; }
   .mbloom { fill: var(--mf, #f6c945); stroke: rgba(0, 0, 0, .15); stroke-width: .5; }
@@ -2232,8 +2239,9 @@
   .gaming .th1 { animation: tap .22s ease-in-out infinite alternate; }
   .gaming .th2 { animation: tap .3s .1s ease-in-out infinite alternate; }
   @keyframes tap { to { transform: translateY(-1.3px); } }
-  .gbs rect:first-child { animation: gbj .9s steps(1) infinite; }
-  .gbs rect:last-child { animation: gbc 1.6s steps(1) infinite; }
+  /* nur beim Spielen: Chrome animiert SVG-Teile in ausgeblendeten (display: none) Gruppen sonst weiter */
+  .gaming .gbs rect:first-child { animation: gbj .9s steps(1) infinite; }
+  .gaming .gbs rect:last-child { animation: gbc 1.6s steps(1) infinite; }
   @keyframes gbj { 50% { transform: translateY(-2.6px); } }
   @keyframes gbc { 50% { opacity: 0; } }
   .meh .ear-l { transform: rotate(-26deg); }
@@ -2252,7 +2260,7 @@
   .kiting .ear { transform: translateY(-1.5px); }
   .tv .all { display: none; }
   .tv .bk { display: inline; }
-  .bk .rim { animation: tvflk 1.3s linear infinite; }
+  .tv .bk .rim { animation: tvflk 1.3s linear infinite; }
 
   .anchor { position: absolute; left: 75%; top: 20%; width: 0; height: 0; }
   .left .anchor { left: 25%; }
@@ -2781,7 +2789,7 @@
             <div class="pika" role="button" aria-label="Streicheln">
               <div class="clipw">
                 <div class="shadow"></div>
-                <div class="depth"><div class="flip"><div class="jump"><div class="hop">${PIKA_SVG}</div></div></div></div>
+                <div class="depth"><div class="flip"><div class="jump"><div class="hop"><div class="br">${PIKA_SVG}</div></div></div></div></div>
               </div>
               <div class="anchor">
                 <div class="zzz"><span>z</span><span>z</span><span>Z</span></div>
@@ -5619,7 +5627,7 @@
       el.setAttribute('role', 'button');
       el.setAttribute('aria-label', `${this._frName()} streicheln`);
       el.innerHTML = '<div class="clipw"><div class="shadow"></div><div class="depth"><div class="flip"><div class="jump">'
-        + `<div class="hop">${FRIEND_SVG}</div></div></div></div></div>`;
+        + `<div class="hop"><div class="br">${FRIEND_SVG}</div></div></div></div></div></div>`;
       el.querySelectorAll('.book, .gb, .tab, .kpaw, .bk, .brolly, .cap').forEach((n) => n.remove());
       // Sprechblase in eigener Hülle über dem Pika (z 4); sie läuft mit Pino mit (_frSetX, _frFace)
       const sw = document.createElement('div');
