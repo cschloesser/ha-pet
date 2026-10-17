@@ -94,6 +94,22 @@ appliances:
 
 Betriebszustände: `run`, `pause`, `delayedstart`, `actionrequired`, `error`, `aborting` zählen als „läuft“, `finished` als „fertig“, `ready` und `inactive` als „aus“. Schaltet sich ein Gerät nach dem Ausräumen ab (`ready` → `inactive`), verlängert das die 20 Minuten nicht. Unbekannte Zustände und fehlende Entities meldet die Karte einmal in der Browser-Konsole. Ohne `appliances` passiert nichts.
 
+## Kaffee
+
+Machst du dir am Kaffeevollautomaten (Home Connect) ein Getränk, trinkt der Pika mit:
+
+- **Während des Bezugs** hebt er die Nase, schnuppert und denkt an eine Tasse Kaffee (Denkblase). Dann setzt er sich erwartungsvoll neben den Bau. Schläft er, zuckt er nur kurz.
+- **Ist der Bezug fertig**, holt er sich aus dem Bau dasselbe Getränk und trinkt es Schluck für Schluck, oben auf dem Aussichtsstein oder neben dem Bau. Beim Schluck macht er die Augen zu, der Füllstand sinkt, solange es heiß ist, dampft es. Gefäße: Latte Macchiato und Caffè Latte im hohen Glas mit Löffel, Cappuccino, Flat White & Co. in der Tasse mit Schaumherz, Espresso und Ristretto im Tässchen, Kaffee und Caffè Crema im gepunkteten Becher, Heißwasser als Tee mit Teebeutel, warme Milch und Milchschaum im Glas. Bei Milchgetränken bekommt er ein Milchschaum-Bärtchen und leckt es am Ende ab. Danach macht der Koffein ein paar Freudensprünge, dann bringt er das leere Gefäß zurück in den Bau.
+- **Schläft er**, weckt ihn der Duft: Er trinkt verschlafen vor der Tür und schläft danach weiter. Bei Sturm bleibt er im Bau, der Kaffee verfällt nach 10 Minuten.
+- Spülen beim Ein- und Ausschalten und Reinigungsprogramme zählen nicht. Fertig ist ein Bezug, wenn das Programm mindestens 15 s nach dem Hochzählen des Tassenzählers endet. Deshalb erkennt jedes Gerät denselben Bezug, auch nach dem Neuladen (bis 10 Minuten danach). Ein Neustart von Home Assistant zählt nicht. Welche Bezüge schon getrunken sind, merkt sich jedes Gerät im Browser.
+
+```yaml
+coffee:
+  active: select.kaffeevollautomat_aktives_programm          # aktives Programm (Getränk läuft)
+  counter: sensor.kaffeevollautomat_kaffee_und_milchtassen   # optional, Tassenzähler (für Neuladen, ohne nur live)
+  selected: select.kaffeevollautomat_ausgewahltes_programm   # optional, Getränkeart, falls der Bezug nicht live gesehen wurde
+```
+
 ## Flugzeuge
 
 Echte Flüge aus der Umgebung ziehen über den Himmel. Die Daten kommen aus der [Flightradar24-Integration](https://github.com/AlexandrErohin/home-assistant-flightradar24) (HACS), Sensor `sensor.flightradar24_current_in_area`.
@@ -195,6 +211,7 @@ friend: true                     # Freund-Pika kommt zu Besuch (false = nie)
 friend_name: Pino                # Name des Freund-Pikas
 height: 180                      # Mindesthöhe in px (im Abschnitts-Layout zählt die Zeilenhöhe)
 appliances:                      # Waschmaschine, Trockner, Spülmaschine, siehe Haus-Bote
+coffee:                          # Kaffeevollautomat, siehe Kaffee
 ```
 
 Für `sleep_start` und `sleep_end` gehen feste Uhrzeiten (`"21:00"`) oder `sunset`/`sunrise` aus `sun.sun`, auch mit Versatz: `"sunset+01:00"` (eine Stunde nach Sonnenuntergang), `"sunrise-30"` (30 Minuten vor Sonnenaufgang). Ohne `sun.sun` gilt 21:00 bis 07:00, der Himmel richtet sich dann nach der Schlafenszeit. Uhrzeiten am besten in Anführungszeichen; `21:00` ohne geht aber auch (YAML macht 1260 daraus, reine Zahlen gelten als Minuten nach Mitternacht). Unverständliche Angaben wie `sunset+1h` fallen auf 21:00/07:00 zurück, mit Hinweis in der Konsole.
@@ -205,4 +222,4 @@ Im Text-Helfer steht der Zustand als `satt,zeit,glück,zeit,großputz,maske,teil
 
 ## Entwicklung
 
-`preview.html` lädt die Karte mit einem simulierten `hass`-Objekt. Die Häufchen-Knöpfe stellen die Uhr der Häufchen vor (nächstes Häufchen, +4 Std., +1 Tag), die Besuch-Knöpfe holen Vögelchen und Maus sofort oder stellen die Besuchsuhr kurz vor den nächsten berechneten Besuch, die Hobby-Knöpfe starten eine Beschäftigung sofort (auch ohne passendes Wetter), die Flieger-Knöpfe schicken Testflüge los (Anflug, Abflug, Reiseflug, Hubschrauber, Kleinflugzeug). Dafür den Ordner über einen lokalen Webserver öffnen, z. B. `node dev/serve.mjs . 8765` (lauscht nur auf localhost). `areale.html` zeigt alle vier Areale nebeneinander. Die Knopfzeilen Himmel-Extras, Festtage, Freund-Pika und Haus-Bote lösen die jeweiligen Erweiterungen sofort aus (Festtage stellen dafür das Datum der Karte um, Haus-Bote setzt Mock-Zustände der drei Geräte).
+`preview.html` lädt die Karte mit einem simulierten `hass`-Objekt. Die Häufchen-Knöpfe stellen die Uhr der Häufchen vor (nächstes Häufchen, +4 Std., +1 Tag), die Besuch-Knöpfe holen Vögelchen und Maus sofort oder stellen die Besuchsuhr kurz vor den nächsten berechneten Besuch, die Hobby-Knöpfe starten eine Beschäftigung sofort (auch ohne passendes Wetter), die Flieger-Knöpfe schicken Testflüge los (Anflug, Abflug, Reiseflug, Hubschrauber, Kleinflugzeug). Dafür den Ordner über einen lokalen Webserver öffnen, z. B. `node dev/serve.mjs . 8765` (lauscht nur auf localhost). `areale.html` zeigt alle vier Areale nebeneinander. Die Knopfzeilen Himmel-Extras, Festtage, Freund-Pika, Haus-Bote und Kaffee lösen die jeweiligen Erweiterungen sofort aus (Festtage stellen dafür das Datum der Karte um, Haus-Bote und Kaffee setzen Mock-Zustände der Geräte; ein Kaffeebezug dauert dort 18 s).

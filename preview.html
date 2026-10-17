@@ -165,6 +165,20 @@
 </div>
 <!-- ==================== Ende Haus-Bote ==================== -->
 
+<!-- ==================== Vorschau-Knöpfe Kaffee ==================== -->
+<div class="bar" id="bar-coffee"><b>Kaffee</b>
+  <button data-cf="latte_macchiato">Latte Macchiato</button>
+  <button data-cf="cappuccino">Cappuccino</button>
+  <button data-cf="espresso">Espresso</button>
+  <button data-cf="caffe_crema">Caffè Crema</button>
+  <button data-cf="hot_water">Heißwasser (Tee)</button>
+  <button data-cf="warm_milk">warme Milch</button>
+  <button id="cf-fast">Bezug sofort fertig</button>
+  <button id="cf-reload">Neuladen: vor 3 Min fertig</button>
+  <button id="cf-restart">HA-Neustart (kein Bezug)</button>
+</div>
+<!-- ==================== Ende Kaffee ==================== -->
+
 <div class="wrap">
   <div class="slot" style="width:600px;height:248px"><pika-pet-card id="a"></pika-pet-card></div>
   <div class="slot" style="width:380px;height:184px"><pika-pet-card id="b"></pika-pet-card></div>
@@ -441,7 +455,7 @@
             c._dbgSleep = sleep;
           }
           if (k === 'geburtstag') {
-            c.setConfig({ name: 'Pika', entity: 'input_text.pika_status', appliances: c._cfg?.appliances, birthdays: [{ name: 'Mia', date: `${pad(today.getMonth() + 1)}-${pad(today.getDate())}` }] });
+            c.setConfig({ name: 'Pika', entity: 'input_text.pika_status', appliances: c._cfg?.appliances, coffee: c._cfg?.coffee, birthdays: [{ name: 'Mia', date: `${pad(today.getMonth() + 1)}-${pad(today.getDate())}` }] });
           }
           if (k === 'mitternacht') c._festMidY = null; // Finale und Aufwachen bei jedem Klick
           c._tick(); // ruft auch c._tickFest()
@@ -569,6 +583,68 @@
     })
   );
   // ==================== Ende Vorschau Haus-Bote ====================
+
+  // ==================== Vorschau Kaffee ====================
+  // Wie Home Connect: Beim Bezug springt das aktive Programm auf das Getränk und der Tassenzähler zählt hoch,
+  // nach dem Bezug (hier 18 s statt ~100 s) steht das Programm wieder auf "unknown".
+  const CF = {
+    active: 'select.kaffeevollautomat_aktives_programm',
+    counter: 'sensor.kaffeevollautomat_kaffee_und_milchtassen',
+    selected: 'select.kaffeevollautomat_ausgewahltes_programm',
+  };
+  const CF_P = (d) => `consumer_products_coffee_maker_program_beverage_${d}`;
+  let cfCups = 1245;
+  let cfT = 0;
+  hbSet(CF.active, 'unknown', {}, 300);
+  hbSet(CF.counter, String(cfCups), { unit_of_measurement: 'cups' }, 300);
+  hbSet(CF.selected, CF_P('latte_macchiato'), {}, 300);
+  cards.forEach((c) => c.setConfig({ name: 'Pika', entity: 'input_text.pika_status', appliances: c._cfg?.appliances, coffee: CF }));
+  push();
+  const cfReset = () => {
+    try { localStorage.removeItem('pika-pet-coffee'); } catch {}
+    cards.forEach((c) => { c._cof = null; c._cofA = c._cofN = c._cofS = undefined; });
+  };
+  const cfStart = (drink, agoMin = 0) => {
+    clearTimeout(cfT);
+    hbSet(CF.selected, CF_P(drink), {}, agoMin);
+    hbSet(CF.active, CF_P(drink), {}, agoMin);
+    hbSet(CF.counter, String(++cfCups), { unit_of_measurement: 'cups' }, agoMin);
+  };
+  const cfEnd = (agoMin = 0) => hbSet(CF.active, 'unknown', {}, agoMin);
+  const cfDrink = () => states[CF.selected].state.split('beverage_')[1];
+  document.querySelectorAll('[data-cf]').forEach((b) =>
+    b.addEventListener('click', () => {
+      cfStart(b.dataset.cf);
+      push();
+      log(`Kaffee: ${b.dataset.cf} läuft (18 s)`);
+      cfT = setTimeout(() => (cfEnd(), push(), log('Kaffee: fertig')), 18000);
+    })
+  );
+  document.getElementById('cf-fast').addEventListener('click', () => {
+    if (!/beverage/.test(states[CF.active].state)) cfStart(cfDrink(), 0.5);
+    else states[CF.active].last_changed = states[CF.counter].last_changed = new Date(Date.now() - 30000).toISOString();
+    clearTimeout(cfT);
+    cfEnd();
+    push();
+    log('Kaffee: fertig');
+  });
+  // Karte neu geladen: Bezug lief vor 5 Min., fertig vor 3 Min.; was schon getrunken ist, vergessen
+  document.getElementById('cf-reload').addEventListener('click', () => {
+    cfReset();
+    cfStart(cfDrink(), 5);
+    cfEnd(3);
+    push();
+    log('Kaffee: Neuladen, Bezug vor 3 Min fertig');
+  });
+  // Neustart: alle last_changed gleichzeitig jetzt – darf nicht als Bezug zählen
+  document.getElementById('cf-restart').addEventListener('click', () => {
+    cfReset();
+    const t = new Date().toISOString();
+    for (const id of Object.values(CF)) states[id] = { ...states[id], last_changed: t, last_updated: t };
+    push();
+    log('Kaffee: HA-Neustart simuliert');
+  });
+  // ==================== Ende Vorschau Kaffee ====================
 </script>
 </body>
 </html>

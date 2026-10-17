@@ -35,6 +35,7 @@
  *   show_stats: true                 # Satt-/Glück-/Sauber-Balken anzeigen
  *   height: 180                      # Mindesthöhe in px
  *   appliances: [...]                # Haus-Bote: Geräte (siehe README)
+ *   coffee: { active, counter, selected }   # Kaffee: Pika trinkt nach jedem Bezug mit (siehe README)
  *   festive: true / birthdays: []    # Festtage und Geburtstage
  *   friend: true / friend_name: Pino # Freund-Pika
  *   shooting_stars: true / fireflies: true   # Himmel-Extras
@@ -43,7 +44,7 @@
  * werden aus Datum und Standort (hass.config) berechnet.
  */
 (() => {
-  const VERSION = '0.13.2';
+  const VERSION = '0.14.0';
 
   const DEFAULTS = {
     name: 'Pika',
@@ -60,6 +61,8 @@
     height: 180,
     // Haus-Bote: Geräte, deren Fortschritt und Fertig-Zustand der Pika zeigt (siehe Abschnitt "Haus-Bote")
     appliances: null,
+    // Kaffee: Kaffeevollautomat, nach jedem Bezug trinkt der Pika mit (siehe Abschnitt "Kaffee")
+    coffee: null,
     // Festtage: Deko im Jahreslauf und Geburtstage [{ name, date: 'MM-DD' }]
     festive: true,
     birthdays: [],
@@ -457,6 +460,66 @@
       <circle class="rim" cx="${cx}" cy="28" r="11.5" fill="none" stroke="var(--tvc, #9fd0ff)" stroke-width="1.4"/>
     </g>`;
 
+  // Kaffee in den Pfoten (Abschnitt "Kaffee"): Glas (Latte, Milch), Tasse mit Schaum (Cappuccino & Co.), Espressotasse,
+  // Becher (Kaffee, Tee). .lq sinkt mit --lv (Füllstand 1 … 0), .lqs (Schaum, Crema) verblasst, .cst = Dampf.
+  // Gezeichnet in 1:1, dann um 1,35 vergrößert und etwas tiefer an den Bauch gesetzt. .cpr ist die Pfote, die bei Regen den Blattschirm hält.
+  const CUP_STEAM = (x, y) => `<g class="cst" fill="none" stroke="#fff" stroke-width="1.2" stroke-linecap="round">
+        <path d="M${x - 2} ${y} q-1.4 -2.2 0 -4.4 q1.4 -2.2 0 -4.4"/><path d="M${x + 2} ${y - 0.6} q-1.4 -2.2 0 -4.4 q1.4 -2.2 0 -4.4"/></g>`;
+  const CUP_PAWS = (l, r) => `<g fill="${PK('paw')}" stroke="${OUT}" stroke-width="1.05">
+        <ellipse cx="${l[0]}" cy="${l[1]}" rx="3" ry="3.8"/><ellipse class="cpr" cx="${r[0]}" cy="${r[1]}" rx="3" ry="3.8"/></g>`;
+  const CUP_SVG = `
+      <g class="cup"><g transform="translate(0 4) translate(92 80) scale(1.35) translate(-92 -80)">
+        <g class="k-glass">
+          ${CUP_STEAM(92, 62)}
+          <path d="M95.2 64 L99.6 55.6" stroke="#b9c0c8" stroke-width="1.1" stroke-linecap="round"/>
+          <g class="lq">
+            <path d="M87.5 74.2 H96.5 L96.4 80 Q92 81.2 87.6 80Z" fill="#f4ead9"/>
+            <path class="cof" d="M87.2 69 H96.8 L96.5 74.2 H87.5Z" fill="#b07a4c"/>
+            <path d="M86.9 64.6 H97.1 L96.8 69 H87.2Z" fill="#fffaf3"/>
+          </g>
+          <path d="M86.6 63 L97.4 63 L96.4 80 Q92 81.2 87.6 80 Z" fill="#dff1ff" fill-opacity=".22" stroke="${OUT}" stroke-width=".9" stroke-linejoin="round"/>
+          <path d="M88.6 65 L89.2 78" stroke="#fff" stroke-width=".9" stroke-linecap="round" opacity=".7"/>
+          ${CUP_PAWS([86.4, 72], [97.6, 71.4])}
+        </g>
+        <g class="k-capp">
+          ${CUP_STEAM(92, 67.6)}
+          <ellipse cx="92" cy="79.4" rx="11" ry="2.2" fill="#f6f1ea" stroke="${OUT}" stroke-width=".9"/>
+          <path d="M99.2 71 q4.4 -.4 3.8 3.1 q-.6 2.7 -4.6 2.4" fill="none" stroke="${OUT}" stroke-width="2.2" stroke-linecap="round"/>
+          <path d="M99.2 71 q4.4 -.4 3.8 3.1 q-.6 2.7 -4.6 2.4" fill="none" stroke="#f6f1ea" stroke-width=".9" stroke-linecap="round"/>
+          <path d="M84.5 69 H99.5 Q99 78.2 92 78.4 Q85 78.2 84.5 69Z" fill="#f6f1ea" stroke="${OUT}" stroke-width=".9" stroke-linejoin="round"/>
+          <ellipse cx="92" cy="69" rx="7.5" ry="1.7" fill="#5b3620"/>
+          <g class="lqs">
+            <ellipse cx="92" cy="69.1" rx="6.6" ry="1.35" fill="#fff6e8"/>
+            <path d="M91.2 68.6 q-1 -.9 0 -1.2 q.8 -.1 .8 .5 q0 -.6 .8 -.5 q1 .3 0 1.2 l-.8 .6z" fill="#c9915e"/>
+          </g>
+          ${CUP_PAWS([83.8, 74.4], [100.6, 78.6])}
+        </g>
+        <g class="k-esp">
+          ${CUP_STEAM(92, 71.6)}
+          <ellipse cx="92" cy="79.6" rx="8.2" ry="1.8" fill="#f6f1ea" stroke="${OUT}" stroke-width=".9"/>
+          <path d="M96.2 73.8 q3 -.2 2.6 2 q-.4 1.8 -3.2 1.6" fill="none" stroke="${OUT}" stroke-width="1.8" stroke-linecap="round"/>
+          <path d="M87.6 73 H96.4 Q96 78.6 92 78.7 Q88 78.6 87.6 73Z" fill="#f6f1ea" stroke="${OUT}" stroke-width=".9" stroke-linejoin="round"/>
+          <ellipse cx="92" cy="73" rx="4.4" ry="1.05" fill="#3b2417"/>
+          <ellipse class="lqs" cx="92" cy="73.05" rx="3.8" ry=".8" fill="#c58a52"/>
+          ${CUP_PAWS([86.2, 76.4], [98.2, 79])}
+        </g>
+        <g class="k-mug">
+          ${CUP_STEAM(92, 64.6)}
+          <path d="M99 68.6 q4.8 0 4.8 4 q0 4 -4.8 4" fill="none" stroke="${OUT}" stroke-width="2.6" stroke-linecap="round"/>
+          <path d="M99 68.6 q4.8 0 4.8 4 q0 4 -4.8 4" fill="none" stroke="#4f86c6" stroke-width="1.2" stroke-linecap="round"/>
+          <path d="M85 66 H99 V77.6 Q99 80 96.6 80 H87.4 Q85 80 85 77.6Z" fill="#4f86c6" stroke="${OUT}" stroke-width=".9" stroke-linejoin="round"/>
+          <g fill="#fff" opacity=".85"><circle cx="88.6" cy="70.6" r=".9"/><circle cx="92.4" cy="74.2" r=".9"/><circle cx="95.8" cy="70.2" r=".9"/><circle cx="89.4" cy="77" r=".9"/></g>
+          <ellipse cx="92" cy="66" rx="7" ry="1.5" fill="#2b1a10"/>
+          <ellipse class="lqs" cx="92" cy="66.1" rx="6.1" ry="1.05" fill="#6b4428"/>
+          <g class="ttag"><path d="M95.6 66 Q97.6 64.6 99.4 66.4 V70" stroke="#e8e2d6" stroke-width=".6" fill="none"/>
+            <rect x="97.6" y="69.6" width="3.6" height="4.2" rx=".5" fill="#f6c945" stroke="${OUT}" stroke-width=".5"/></g>
+          ${CUP_PAWS([85, 72.6], [99, 74.6])}
+        </g>
+      </g></g>`;
+  // Milchschaum-Bärtchen unter der Nase nach dem ersten Schluck
+  const CUP_FOAM = `<path class="cfoam" d="M85.6 55.6 q1.4 -1.8 3 -.6 q1.2 -1.2 2.4 -.2 q1.2 -1 2.4 .2 q1.6 -1.2 3 .6 q-2.6 1.6 -5.4 1 q-2.8 .6 -5.4 -1z"
+          fill="#fffaf2" stroke="rgba(0,0,0,.2)" stroke-width=".4"/>`;
+
   const PIKA_SVG = `
   <svg class="pk" viewBox="0 0 120 100" aria-hidden="true">
     <defs>
@@ -493,6 +556,7 @@
                 stroke="${OUT}" stroke-width="1" fill="none" stroke-linecap="round"/>
           <ellipse class="omouth" cx="91" cy="57.6" rx="1.8" ry="2.2" fill="#7a3a30" stroke="${OUT}" stroke-width=".6"/>
         </g>
+        ${CUP_FOAM}
         <g class="callfx" fill="none" stroke="#fff" stroke-width="1.8" stroke-linecap="round">
           <path d="M113 51 q4 5 0 10"/><path d="M118 47.5 q6 8.5 0 17"/><path d="M123 44 q8 12 0 24"/>
         </g>
@@ -587,6 +651,7 @@
         <path d="M73 66 L69 80 L76.5 80.6 L79 67.5Z" fill="#d9534f" stroke="#a83a37" stroke-width=".8" stroke-linejoin="round"/>
         <path d="M70.5 75 L77.5 75.6" stroke="#f6f1ea" stroke-width="1.4"/>
       </g>
+      ${CUP_SVG}
       <g class="brolly">
         <path d="M105 63 Q115 34 99 3" stroke="#4f8a3a" stroke-width="2.2" fill="none" stroke-linecap="round"/>
         <path d="M52 14 Q68 -16 100 -10 Q127 -4 125 18 Q113 6 101 8 Q93 0 84 8 Q72 2 52 14Z"
@@ -1801,6 +1866,70 @@
   `;
   // ==================== Ende Haus-Bote ====================
 
+  // ==================== Kaffee: Konstanten und Stil ====================
+  // Getränkeprogramme (Home Connect): "…_program_beverage_<name>" bzw. "…_program_coffee_world_<name>".
+  // Spülen und Reinigen setzen kein aktives Programm.
+  const COFFEE_PROG = /beverage|coffee_world/;
+  // Programmname → Gefäß (Reihenfolge zählt: "latte_macchiato" vor "macchiato")
+  const COFFEE_KIND = [
+    [/latte_macchiato|caffe_latte|galao/, 'latte'],
+    [/milk_froth|warm_milk/, 'milk'],
+    [/cappuccino|flat_white|cortado|melange|au_lait|con_leche|brauner|macchiato|mocha|with_milk/, 'capp'],
+    [/ristretto|espresso/, 'esp'],
+    [/hot_water|tea/, 'tea'],
+  ];
+  const coffeeKind = (prog) => (COFFEE_KIND.find(([re]) => re.test(prog)) || [0, 'mug'])[1];
+  // Gefäß in der Grafik, Schlucke bis leer, Milchschaum-Bärtchen
+  const COFFEE_CUP = { latte: 'glass', milk: 'glass', capp: 'capp', esp: 'esp', mug: 'mug', tea: 'mug' };
+  const COFFEE_SIPS = { latte: 8, milk: 6, capp: 6, esp: 3, mug: 7, tea: 7 };
+  const COFFEE_FOAM = new Set(['latte', 'milk', 'capp']);
+  const coffeeName = (prog, kind) => (/cappuccino/.test(prog) ? 'Cappuccino!' : /flat_white/.test(prog) ? 'Flat White!'
+    : { latte: 'Latte!', milk: 'Milch!', esp: 'Espresso!', tea: 'Tee!' }[kind] || 'Kaffee!');
+  const COFFEE_FRESH = 10 * 60000; // so lange nach dem Bezug holt er sich noch einen
+  const COFFEE_CLS = [...new Set([...Object.values(COFFEE_CUP), ...Object.keys(COFFEE_CUP)])].map((k) => `ck-${k}`);
+  const COFFEE_STORE = 'pika-pet-coffee'; // zuletzt getrunkene Bezüge (pro Gerät), damit Neuladen nichts wiederholt
+  // Denkblase beim Schnuppern: Tasse mit Dampf
+  const COFFEE_THINK = `<svg viewBox="0 0 24 24" aria-hidden="true">
+    <path d="M8 8 q-1.4 -2 0 -4 q1.4 -2 0 -4 M12.5 8 q-1.4 -2 0 -4 q1.4 -2 0 -4" fill="none" stroke="#b9a48c" stroke-width="1.3" stroke-linecap="round" transform="translate(0 2)"/>
+    <path d="M17.4 12.4 q4.2 0 4.2 3.4 q0 3.4 -4.4 3.2" fill="none" stroke="#6b4428" stroke-width="1.8"/>
+    <path d="M3 11 H18 Q18 21.5 10.5 21.5 Q3 21.5 3 11Z" fill="#f6f1ea" stroke="#6b4428" stroke-width="1.2"/>
+    <ellipse cx="10.5" cy="11" rx="7.5" ry="1.6" fill="#b07a4c"/></svg>`;
+
+  const STYLE_COFFEE = `
+  .cup, .cfoam, .cup > g > g, .cup .ttag, .cup .cst { display: none; }
+  .coffee .cup { display: inline; }
+  .ck-glass .cup .k-glass, .ck-capp .cup .k-capp, .ck-esp .cup .k-esp, .ck-mug .cup .k-mug, .ck-tea .cup .ttag { display: inline; }
+  .ck-milk .cup .cof { fill: #f7efe2; }
+  .ck-tea .cup .lqs { fill: #c98a3a; }
+  /* Glas sinkt (Inhalt kleiner), Tassen: Schaum/Crema verschwindet und gibt den dunklen Rest frei */
+  .cup .lq { transform-box: fill-box; transform-origin: 50% 100%; transform: scaleY(var(--lv, 1)); transition: transform 1.2s ease; }
+  .cup .lqs { opacity: var(--lv, 1); transition: opacity 1.2s; }
+  /* Schluck: Gefäß samt Pfoten an den Mund, Augen zu */
+  .cup { transform-box: view-box; transform-origin: 92px 74px; transition: transform .45s cubic-bezier(.45, 0, .4, 1); }
+  .pika.ck-glass { --cupy: -8px; }
+  .pika.ck-capp { --cupy: -14px; }
+  .pika.ck-esp { --cupy: -18px; }
+  .pika.ck-mug, .pika.ck-tea { --cupy: -10.5px; }
+  .sip .cup { transform: translate(-1px, var(--cupy, -9px)) rotate(-14deg); }
+  .sip .eye { display: none; }
+  .sip .seye { display: inline; }
+  .coffee:not(.sip) .face { transform: translate(.6px, 1.4px); }
+  .foam .cfoam { display: inline; }
+  .lick .omouth { display: inline; }
+  /* Dampf nur, solange es heiß ist (und nur dann animiert) */
+  .coffee.hot .cup .cst { display: inline; }
+  .coffee.hot .cup .cst path { opacity: 0; transform-box: fill-box; animation: cst 2.6s ease-out infinite; }
+  .coffee.hot .cup .cst path + path { animation-delay: 1.3s; }
+  @keyframes cst {
+    from { opacity: 0; transform: translateY(1.5px) scaleY(.8); }
+    35% { opacity: .75; }
+    to { opacity: 0; transform: translateY(-6px) scaleY(1.15); }
+  }
+  /* Bei Regen hält die rechte Pfote den Blattschirm */
+  .pika.wet:not(.inside) .cup .cpr { display: none; }
+  `;
+  // ==================== Ende Kaffee ====================
+
   const STYLE = `
   :host { display: block; height: 100%; }
   ha-card { display: block; height: 100%; overflow: hidden; background: none; border-radius: var(--ha-card-border-radius, 12px); }
@@ -2671,6 +2800,7 @@
       this._hassFest(hass);
       this._hassFriend(hass);
       this._hassBote(hass);
+      this._hassCoffee(hass);
       this._updateSky();
     }
 
@@ -2748,7 +2878,7 @@
       ].map(([top, s, d, dl]) => `<div class="cloud" style="top:${top}%;--s:${s};--d:${d}s;--dl:${dl}s"></div>`).join('');
 
       this.shadowRoot.innerHTML = `
-        <style>${STYLE}${STYLE_SKY}${STYLE_FEST}${STYLE_FRIEND}${STYLE_BOTE}</style>
+        <style>${STYLE}${STYLE_SKY}${STYLE_FEST}${STYLE_FRIEND}${STYLE_BOTE}${STYLE_COFFEE}</style>
         <ha-card>
           <div class="scene day">
             <div class="sky sky-day"></div><div class="sky sky-dusk"></div><div class="sky sky-night"></div>
@@ -3044,7 +3174,8 @@
       const p = this._el.pika;
       if (p.classList.contains('walking')) this._freeze();
       p.classList.remove('walking', 'eating', 'groom', 'carry', 'look-f', 'look-b', 'look-up', 'happy', 'calling', 'crouch', 'squat', 'sniff',
-        'reading', 'doze', 'gaming', 'meh', 'lying', 'tablet', 'tplane', 'swipe', 'kiting', 'tv');
+        'reading', 'doze', 'gaming', 'meh', 'lying', 'tablet', 'tplane', 'swipe', 'kiting', 'tv',
+        'coffee', 'sip', 'hot', 'foam', 'lick', ...COFFEE_CLS);
       this._tvOn(false);
       this._kiteAway();
       this._mouth(null);
@@ -3056,6 +3187,8 @@
       if (!this._g) return this._wait(500);
       // Unterbrochen, während er auf dem Stein stand: erst herunter
       if (this._lift > 0) return this._run('hopDown');
+      // Frischer Kaffee: holt er sich sofort, der Duft weckt ihn sogar auf (danach schläft er weiter)
+      if (this._coffeeDue()) return this._run(this._asleep ? 'wakeUp' : 'coffee');
       const sleepy = this._sleepTime();
       if (sleepy && !this._asleep) {
         // Wollte er gerade ein Häufchen machen: liegt es eben gleich da, sonst bliebe es bis morgen unsichtbar
@@ -3122,6 +3255,7 @@
         ...this._festActs(ctx),
         ...this._friendActs(ctx),
         ...this._boteActs(ctx),
+        ...this._coffeeActs(ctx),
       ]);
       return this._run(act);
     }
@@ -4058,7 +4192,8 @@
 
     _tick() {
       this._renderStats();
-      if (this._sleepTime() !== this._asleep && this._action !== 'goSleep' && this._action !== 'wakeUp') {
+      // Frischer Kaffee hält ihn kurz wach (er trinkt aus und schläft dann weiter)
+      if (this._sleepTime() !== this._asleep && !['goSleep', 'wakeUp', 'coffee'].includes(this._action)) {
         this._interrupt();
       }
       this._updateSky();
@@ -4066,6 +4201,7 @@
       this._tickFest();
       this._tickFriend();
       this._tickBote();
+      this._tickCoffee();
     }
 
     _hiddenFeatures(hidden) {
@@ -5628,7 +5764,7 @@
       el.setAttribute('aria-label', `${this._frName()} streicheln`);
       el.innerHTML = '<div class="clipw"><div class="shadow"></div><div class="depth"><div class="flip"><div class="jump">'
         + `<div class="hop"><div class="br">${FRIEND_SVG}</div></div></div></div></div></div>`;
-      el.querySelectorAll('.book, .gb, .tab, .kpaw, .bk, .brolly, .cap').forEach((n) => n.remove());
+      el.querySelectorAll('.book, .gb, .tab, .kpaw, .bk, .brolly, .cap, .cup, .cfoam').forEach((n) => n.remove());
       // Sprechblase in eigener Hülle über dem Pika (z 4); sie läuft mit Pino mit (_frSetX, _frFace)
       const sw = document.createElement('div');
       sw.className = 'frsay';
@@ -8562,6 +8698,240 @@
       await this._comeOut();
     }
     // ==================== Ende Haus-Bote ====================
+
+    // ==================== Kaffee: Methoden ====================
+    // Kaffeevollautomat aus `coffee` ({ active, counter, selected }):
+    // - active: aktives Programm (select). Ein Getränkeprogramm heißt: gerade wird ein Bezug gemacht. Der Pika
+    //   schnuppert dann und denkt an Kaffee. Einschalten mit Spülen und Reinigen setzen kein Programm.
+    // - counter: Tassenzähler (zählt zu Beginn des Bezugs hoch). Fertig ist ein Bezug, wenn kein Getränk mehr
+    //   läuft und das Programm mindestens 15 s nach dem Zählerstand endete. So erkennt jedes Gerät denselben
+    //   Bezug, auch nach dem Neuladen. Ein Neustart von HA ändert alles zugleich und zählt deshalb nicht.
+    // - selected: ausgewähltes Programm. Daraus kommt die Getränkeart, wenn die Karte den Bezug nicht live sah.
+    // Bis 10 Minuten danach holt er sich dasselbe Getränk aus dem Bau und trinkt es (Schlaf unterbricht er dafür).
+
+    _hassCoffee(hass) {
+      const c = this._cfg?.coffee;
+      if (!c?.active) return;
+      const S = hass.states;
+      const a = S[c.active];
+      const n = c.counter ? S[c.counter] : undefined;
+      const sel = c.selected ? S[c.selected] : undefined;
+      if (a === this._cofA && n === this._cofN && sel === this._cofS) return;
+      this._cofA = a;
+      this._cofN = n;
+      this._cofS = sel;
+      const C = (this._cof ??= { brew: null, pend: null, done: this._coffeeLoad() });
+      const prog = String(a?.state || '').toLowerCase();
+      const now = Date.now();
+      if (COFFEE_PROG.test(prog)) {
+        if (C.brew?.prog !== prog) {
+          C.brew = { prog, at: Date.parse(a.last_changed) || now, sniffed: false };
+          // Steht er nur herum, gleich die Nase heben; schläft er, zuckt er kurz im Schlaf
+          if (this._asleep && this._el && now - C.brew.at < 60000) {
+            this._el.pika.classList.add('peek');
+            setTimeout(() => this._el.pika.classList.remove('peek'), 900);
+          } else if (['idle', 'look', 'wander', 'groom'].includes(this._action)) this._interrupt();
+        }
+        return;
+      }
+      const brew = C.brew;
+      C.brew = null;
+      if (!a || a.state === 'unavailable') return;
+      const end = Date.parse(a.last_changed) || now;
+      let key = null;
+      const t0 = n && Date.parse(n.last_changed);
+      if (t0) {
+        if (end - t0 >= 15000 && end - t0 < 15 * 60000) key = n.last_changed;
+      } else if (brew && end - brew.at >= 15000) key = `live ${brew.at}`; // ohne Zähler nur, was die Karte sah
+      if (!key || now - end > COFFEE_FRESH || C.done.includes(key) || C.pend?.key === key) return;
+      const p = brew?.prog || String(sel?.state || '').toLowerCase();
+      const kind = coffeeKind(p);
+      C.pend = { key, kind, name: coffeeName(p, kind), until: end + COFFEE_FRESH, stage: 'fetch', lv: 1 };
+      // Gleich holen statt die laufende Kleinigkeit zu Ende zu machen; im Schlaf weckt ihn der Duft
+      if (this._asleep ? !this._action : ['idle', 'look', 'wander', 'groom', 'squeak', 'binky', 'coffeeSniff'].includes(this._action)) {
+        this._interrupt();
+      }
+    }
+
+    _tickCoffee() {
+      const C = this._cof;
+      if (!C) return;
+      const now = Date.now();
+      // Nicht abgeholt (Sturm, Karte war versteckt): verfällt. Hängt ein Bezug ewig, nicht mehr schnuppern.
+      if (C.pend?.stage === 'fetch' && now > C.pend.until) C.pend = null;
+      if (C.brew && now - C.brew.at > 10 * 60000) C.brew.sniffed = true;
+    }
+
+    _coffeeDue() {
+      const P = this._cof?.pend;
+      return !!P && !this._next && !this._wx.shelter && (P.stage !== 'fetch' || Date.now() <= P.until);
+    }
+
+    _coffeeActs() {
+      const B = this._cof?.brew;
+      return B && !B.sniffed ? [[60, 'coffeeSniff']] : [];
+    }
+
+    _coffeeLoad() {
+      try {
+        const v = JSON.parse(localStorage.getItem(COFFEE_STORE) || '[]');
+        return Array.isArray(v) ? v.slice(-6) : [];
+      } catch {
+        return [];
+      }
+    }
+
+    _coffeeMark(key) {
+      const C = this._cof;
+      C.done = [...C.done.filter((k) => k !== key), key].slice(-6);
+      try {
+        localStorage.setItem(COFFEE_STORE, JSON.stringify(C.done));
+      } catch {
+        // privater Modus o. Ä.: dann eben nur bis zum Neuladen gemerkt
+      }
+    }
+
+    // Kaffeeduft: Nase hoch, schnuppern, an Kaffee denken, dann erwartungsvoll zum Bau
+    async _coffeeSniff() {
+      const B = this._cof?.brew;
+      if (!B) return;
+      B.sniffed = true;
+      const p = this._el.pika;
+      const think = this._el.think;
+      p.classList.add('look-up');
+      await this._wait(500);
+      this._twitch();
+      await this._wait(450);
+      this._twitch();
+      this._say(pick(['schnupper…', 'hm?', 'riecht gut!']), 1300);
+      await this._wait(1300);
+      p.classList.remove('look-up');
+      think.innerHTML = COFFEE_THINK;
+      try {
+        this._bubble(think, true);
+        await this._wait(2600);
+        this._bubble(think, false);
+        await this._wait(300);
+      } finally {
+        think.innerHTML = FOOD.lz.svg;
+      }
+      // neben die Nische (bzw. den Heuhaufen), mit Blick zur Tür
+      await this._walkTo(this._g.stand + this._g.pW * 0.16, 1.2);
+      this._face(-1);
+      await this._wait(rnd(1500, 3000));
+    }
+
+    // Im Bau eine Tasse holen, mit ihr herauskommen und trinken: auf dem Stein oder vor der Tür, Schluck für Schluck.
+    // Unterbrochen (Futter, Größenänderung) geht es an derselben Stelle im Ablauf weiter.
+    async _coffee() {
+      const P = this._cof.pend;
+      const p = this._el.pika;
+      const { stand, pW, rock } = this._g;
+      const night = this._sleepTime();
+      const setLv = () => {
+        p.style.setProperty('--lv', P.lv.toFixed(2));
+        p.classList.toggle('hot', P.lv > 0.45);
+      };
+      if (P.stage === 'fetch') {
+        this._coffeeMark(P.key);
+        if (!this._inside) {
+          this._say(night ? '*gähn*' : P.name, 1200);
+          await this._wait(500);
+          await this._enterBurrow(1.3);
+        } else {
+          if (night) {
+            this._say('*gähn*', 1200);
+            await this._wait(1000);
+          }
+          await this._to('hidden', 400);
+        }
+        await this._wait(rnd(1800, 2800)); // drinnen klappert es
+        P.stage = 'out';
+      }
+      p.classList.add('coffee', `ck-${COFFEE_CUP[P.kind]}`, `ck-${P.kind}`);
+      p.classList.toggle('foam', !!P.foam);
+      setLv();
+      // Nach einer Unterbrechung ist er vom Stein schon heruntergehüpft
+      if (P.stage === 'drink') P.rock = this._lift > 0;
+      if (P.stage === 'out') {
+        if (this._inside) {
+          await this._to('peek', 450);
+          await this._wait(rnd(500, 900));
+          await this._comeOut();
+        }
+        if (!night) this._say(P.name, 1300);
+        // Tagsüber und trocken gern oben auf dem Aussichtsstein, sonst vor der Tür
+        P.rock = !night && !this._wx.wet && Math.random() < 0.5;
+        if (P.rock) {
+          await this._walkTo((this._x > rock.cx && this._footX(1)) || this._footX(-1), 0.7);
+          if (this._bird?.perch === 'rock') {
+            this._bird.scare();
+            await this._wait(600);
+          }
+          await this._hopTo(rock.cx, rock.lift);
+          this._puff(rock.cx, this._g.gy - rock.lift, 2);
+        } else await this._walkTo(stand + pW * 0.16, 0.7); // wie beim Lesen: die Nische bleibt frei
+        this._face(P.rock ? pick([-1, 1]) : 1);
+        P.stage = 'drink';
+        await this._wait(800);
+      }
+      const sips = COFFEE_SIPS[P.kind];
+      while (P.lv > 0.01) {
+        await this._wait(rnd(2800, 5500));
+        p.classList.add('sip');
+        await this._wait(rnd(1100, 1700));
+        const first = P.lv === 1;
+        P.lv = Math.max(0, P.lv - 1 / sips);
+        p.classList.remove('sip');
+        setLv();
+        if (COFFEE_FOAM.has(P.kind)) {
+          P.foam = true;
+          p.classList.add('foam');
+        }
+        await this._wait(400);
+        const r = Math.random();
+        if (first && P.kind !== 'milk' && r < 0.4) {
+          this._say('heiß!', 900);
+          this._twitch();
+        } else if (r < 0.45) this._say(pick(['mmh…', 'ahh…', '♥', 'lecker!', 'schlürf']), 1200);
+        else if (r < 0.65) this._twitch();
+        else if (r < 0.8 && !night) this._face(-this._dir);
+      }
+      // Leer: zufrieden, Schaum ablecken
+      await this._wait(600);
+      this._happy(1400);
+      this._say('ahh!', 1200);
+      await this._wait(1500);
+      if (P.foam) {
+        p.classList.add('lick');
+        this._say('schleck!', 900);
+        await this._wait(600);
+        p.classList.remove('lick', 'foam');
+        await this._wait(400);
+      }
+      this._cof.pend = null;
+      // Koffein! Tagsüber ein paar Freudensprünge, nachts ein Gähnen (er schläft gleich weiter)
+      if (!night && P.kind !== 'tea' && P.kind !== 'milk' && Math.random() < 0.7) {
+        if (P.rock) {
+          await this._hopDown();
+          P.rock = false;
+        }
+        this._say(pick(['wach!', 'wuiii!', 'zack!']), 1100);
+        for (let i = 0; i < 2; i++) {
+          this._jump('binky');
+          await this._wait(1000);
+        }
+      } else if (night) {
+        this._say('*gähn*', 1200);
+        await this._wait(1200);
+      }
+      // Leere Tasse zurück in den Bau
+      if (P.rock) await this._hopDown();
+      await this._enterBurrow(1.1);
+      p.classList.remove('coffee', 'hot', ...COFFEE_CLS);
+      await this._wait(600);
+    }
+    // ==================== Ende Kaffee ====================
 
   }
 
