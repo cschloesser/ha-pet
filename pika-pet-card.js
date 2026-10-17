@@ -790,7 +790,7 @@
   };
   // 1. Advent: vierter Sonntag vor dem 25. 12. (Tagesnummer)
   const festAdvent1 = (y) => festDay(y, 12, 25) - (new Date(y, 11, 25).getDay() || 7) - 21;
-  // "Kim" / "Kim und Tom" / "Kim, Tom und Lea"
+  // "Mia" / "Mia und Tom" / "Mia, Tom und Lea"
   const festNames = (a) => (a.length < 2 ? a[0] || '' : `${a.slice(0, -1).join(', ')} und ${a[a.length - 1]}`);
   const festF1 = (n) => n.toFixed(1);
   const festSvg = (vb, body, cls) => `<svg class="${cls}" viewBox="0 0 ${vb[0]} ${vb[1]}" aria-hidden="true">${body}</svg>`;

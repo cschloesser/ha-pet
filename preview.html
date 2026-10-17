@@ -67,7 +67,7 @@
   <button data-hob="tv">Fernsehen</button>
 </div>
 <div class="bar"><b>Flieger</b>
-  <button data-fl="anflug">Anflug Dortmund</button>
+  <button data-fl="anflug">Anflug Frankfurt</button>
   <button data-fl="abflug">Abflug (tief)</button>
   <button data-fl="reise">Reiseflug</button>
   <button data-fl="heli">Hubschrauber</button>
@@ -171,7 +171,7 @@
   const cards = [document.getElementById('a'), document.getElementById('b')];
   const hass = {
     states,
-    config: { latitude: 51.54, longitude: 7.69 },
+    config: { latitude: 50.06, longitude: 8.69 },
     callService(domain, service, data) {
       states[data.entity_id] = { state: data.value, attributes: {} };
       log(`${domain}.${service} → ${data.value}`);
@@ -286,15 +286,15 @@
   // Flieger: wie die Flightradar24-Integration alle 20 s neue Positionen, raus aus 15 km = weg
   const HOME = hass.config;
   const KX = 111.32 * Math.cos((HOME.latitude * Math.PI) / 180);
-  const DTM = { airport_destination_latitude: 51.518311, airport_destination_longitude: 7.612242 };
+  const DTM = { airport_destination_latitude: 50.0379, airport_destination_longitude: 8.5622 };
   const at = (e, n) => ({ latitude: HOME.latitude + n / 110.57, longitude: HOME.longitude + e / KX });
   const dist = (f) => Math.hypot((f.longitude - HOME.longitude) * KX, (f.latitude - HOME.latitude) * 110.57);
   const mk = (o) => ({ id: Math.random().toString(16).slice(2, 10), on_ground: 0, aircraft_category: 'Airplane', vertical_speed: 0, ...o });
   const FLIGHTS = {
     anflug: () => mk({ ...at(9, 1.6), heading: 243, altitude: 2600, ground_speed: 150, vertical_speed: -700, flight_number: 'W62736',
-      airline_short: 'Wizz Air', airline_icao: 'WZZ', aircraft_model: 'Airbus A321-271NX', airport_origin_city: 'Katowice', airport_destination_city: 'Dortmund', ...DTM }),
+      airline_short: 'Wizz Air', airline_icao: 'WZZ', aircraft_model: 'Airbus A321-271NX', airport_origin_city: 'Katowice', airport_destination_city: 'Frankfurt', ...DTM }),
     abflug: () => mk({ ...at(-4, -0.9), heading: 63, altitude: 1500, ground_speed: 170, vertical_speed: 1800, flight_number: 'EW9542',
-      airline_short: 'Eurowings', airline_icao: 'EWG', aircraft_model: 'Airbus A320-214', airport_origin_city: 'Dortmund', airport_destination_city: 'Palma de Mallorca' }),
+      airline_short: 'Eurowings', airline_icao: 'EWG', aircraft_model: 'Airbus A320-214', airport_origin_city: 'Frankfurt', airport_destination_city: 'Palma de Mallorca' }),
     reise: () => mk({ ...at(-12, 4), heading: 105, altitude: 37000, ground_speed: 470, flight_number: 'TK1724',
       airline_short: 'Turkish Airlines', airline_icao: 'THY', aircraft_model: 'Boeing 737-8F2', airport_origin_city: 'Amsterdam', airport_destination_city: 'Istanbul' }),
     heli: () => mk({ ...at(4, -1), heading: 275, altitude: 900, ground_speed: 110, flight_number: '', callsign: 'CHX8',
@@ -413,7 +413,7 @@
             c._dbgSleep = sleep;
           }
           if (k === 'geburtstag') {
-            c.setConfig({ name: 'Pika', entity: 'input_text.pika_status', birthdays: [{ name: 'Kim', date: `${pad(today.getMonth() + 1)}-${pad(today.getDate())}` }] });
+            c.setConfig({ name: 'Pika', entity: 'input_text.pika_status', birthdays: [{ name: 'Mia', date: `${pad(today.getMonth() + 1)}-${pad(today.getDate())}` }] });
           }
           if (k === 'mitternacht') c._festMidY = null; // Finale und Aufwachen bei jedem Klick
           c._tick(); // ruft auch c._tickFest()

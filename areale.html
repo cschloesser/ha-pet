@@ -58,7 +58,7 @@
     },
   };
   const cards = [...document.querySelectorAll('pika-pet-card')];
-  const hass = { states, config: { latitude: 51.54, longitude: 7.69 }, callService: () => Promise.resolve() };
+  const hass = { states, config: { latitude: 50.06, longitude: 8.69 }, callService: () => Promise.resolve() };
   const push = () => { hass.states = { ...states }; cards.forEach((c) => (c.hass = hass)); };
   cards.forEach((c) => c.setConfig({ name: 'Pika', areal: c.dataset.areal }));
   push();

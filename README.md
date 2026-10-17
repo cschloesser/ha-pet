@@ -146,13 +146,13 @@ Mit `areal` wählst du den Bau:
 | **Ostern** Karfreitag bis Ostermontag | 4–6 bunt bemalte Eier im Gras (antippen = wackeln) | hoppelt hin, schnuppert, stupst ein Ei an |
 | **Maibaum** 30. 4. ab 18 Uhr, 1. 5. | Maibaum mit Kranz hinter dem Bau, die Bänder wehen mit dem Wind | |
 | **Sommerfest** 21. 6. | Wimpelkette zwischen Bau und Stein | macht öfter Freudensprünge |
-| **Geburtstag** (`birthdays`) | Kuchen mit Kerze vor dem Bau, Girlande „ALLES ♥ GUTE“ | Partyhütchen, pustet die Kerze aus (nach 20 s brennt sie wieder): „Alles Gute, Kim!“ |
+| **Geburtstag** (`birthdays`) | Kuchen mit Kerze vor dem Bau, Girlande „ALLES ♥ GUTE“ | Partyhütchen, pustet die Kerze aus (nach 20 s brennt sie wieder): „Alles Gute, Mia!“ |
 
-Geburtstage stehen in der Konfiguration, mehrere am selben Tag werden zusammen gefeiert („Alles Gute, Kim und Tom!“). Das Datum geht als `MM-TT`, `JJJJ-MM-TT` oder `TT.MM.`; wer am 29. 2. Geburtstag hat, feiert sonst am 28. 2.
+Geburtstage stehen in der Konfiguration, mehrere am selben Tag werden zusammen gefeiert („Alles Gute, Mia und Tom!“). Das Datum geht als `MM-TT`, `JJJJ-MM-TT` oder `TT.MM.`; wer am 29. 2. Geburtstag hat, feiert sonst am 28. 2.
 
 ```yaml
 birthdays:
-  - name: Kim
+  - name: Mia
     date: "03-14"
   - name: Tom
     date: "11-02"
@@ -184,8 +184,8 @@ flight_entity: sensor.flightradar24_current_in_area   # Flugzeuge (leer = keine)
 flight_radius: 15                # Radius der Flightradar24-Integration in km
 max_flights: 2                   # höchstens so viele Flugzeuge gleichzeitig
 festive: true                    # Festtage-Deko im Jahreslauf (false = nur Geburtstage)
-birthdays:                       # Geburtstage: Kuchen, Girlande, „Alles Gute, Kim!“ (Datum MM-TT)
-  - { name: Kim, date: "03-14" }
+birthdays:                       # Geburtstage: Kuchen, Girlande, „Alles Gute, Mia!“ (Datum MM-TT)
+  - { name: Mia, date: "03-14" }
 show_stats: true                 # Satt-/Glück-/Sauber-Balken
 friend: true                     # Freund-Pika kommt zu Besuch (false = nie)
 friend_name: Pino                # Name des Freund-Pikas
