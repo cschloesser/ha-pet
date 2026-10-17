@@ -43,7 +43,7 @@
  * werden aus Datum und Standort (hass.config) berechnet.
  */
 (() => {
-  const VERSION = '0.12.1';
+  const VERSION = '0.13.0';
 
   const DEFAULTS = {
     name: 'Pika',
@@ -1400,7 +1400,7 @@
   const BOTE_AUTOOPEN_MS = 2 * 60000;
   // Vorn auf dem Wiesenstreifen: so viel größer und so viel × Kartenhöhe tiefer als hinten
   const BOTE_FRONT = 1.1;
-  const BOTE_FRONT_DY = 0.035; // lässt unten Platz für den Fortschrittsbalken
+  const BOTE_FRONT_DY = 0.07; // ganz vorn am unteren Rand, der Fortschrittsbalken liegt auf dem Fuß des Requisits
   const BOTE_TALL = 0.55; // die hohe Wäscheleine steht vorn kleiner
   const BOTE_RUN = new Set(['run', 'pause', 'delayedstart', 'actionrequired', 'error', 'aborting']);
   const BOTE_HALT = new Set(['pause', 'delayedstart', 'actionrequired', 'error', 'aborting']);
@@ -1420,9 +1420,6 @@
     on: 'ready', idle: 'ready', programmed: 'ready', initial: 'ready', stop: 'ready', standby: 'ready',
     off: 'inactive', poweroff: 'inactive', sleep: 'inactive',
   };
-  // Sperrbereiche je Areal in Bau-Einheiten [x1, x2, Stufe]: Stufe 0 = nie verdecken, 1 = nur wenn sonst kein Platz
-  // (Hügel: Blumenkasten unter dem Fenster; Laternenpfahl und grüner Laden)
-  const BOTE_KEEP = { huegel: [[71, 89, 2], [10, 33, 1]] };
   const BOTE_TYPE = {
     washer: 'washer', washingmachine: 'washer', waschmaschine: 'washer',
     dryer: 'dryer', tumbledryer: 'dryer', trockner: 'dryer',
@@ -4462,8 +4459,8 @@
       const back = [];
       const on = [];
       const front = [];
-      // Bodenrechtecke der Deko in px: { x: Mitte, l: linke Kante, top, w, h }. Der Haus-Bote stellt seine
-      // Geräte so, dass sie diese Flächen meiden (_boteLayout); darum steht hier jedes Stück am Boden drin.
+      // Bodenrechtecke der Deko in px: { x: Mitte, l: linke Kante, top, w, h } (Kuchen, Kürbis, Stiefel, Baum
+      // nutzen sie für ihre Aktionen).
       const pos = {};
       // hayL/hayR: Heuhaufen in voller Größe (wächst bis scale 1,06 von H · 0,26) bzw. Vorratsnische
       // Plätze: Wunschmitte x und freier Bereich a..b (Tür, Heu, Stein). Passt eine Grafik nicht hinein
@@ -4503,11 +4500,13 @@
         const [x, w2] = fit(slot(...prefs), w);
         front.push(item(cls, x, bottom, w2, art, name));
       };
-      // Kürbis und Stiefel rechts neben der Tür: links davon ist der Platz der Spülmaschine (_boteLayout)
-      if (f.halloween) ground('fpump', ['R', 'L', 'M'], gy + 1, H * 0.14, FEST_PUMPKIN, 'pumpkin');
-      if (f.boot) ground('fboot', ['R', 'L', 'M'], gy + 1, H * 0.11, FEST_BOOT(f.boot.full), 'boot');
-      if (f.advent) ground('fwreath', ['R', 'L', 'M'], gy, H * 0.2, FEST_WREATH(f.advent.candles), 'wreath');
-      if (f.birthday) ground(`fcake${this._festCakeOut ? ' out' : ''}`, ['R', 'L', 'M'], gy + 1, H * 0.14, FEST_CAKE, 'cake');
+      // Bodendeko zuerst auf die Wiese zwischen Heu bzw. Nische und Stein: vorn links stehen die Haus-Bote-Geräte
+      // (an Weihnachten steht dort der Baum)
+      const P = f.xmas ? ['R', 'L', 'M'] : ['M', 'R', 'L'];
+      if (f.halloween) ground('fpump', P, gy + 1, H * 0.14, FEST_PUMPKIN, 'pumpkin');
+      if (f.boot) ground('fboot', P, gy + 1, H * 0.11, FEST_BOOT(f.boot.full), 'boot');
+      if (f.advent) ground('fwreath', P, gy, H * 0.2, FEST_WREATH(f.advent.candles), 'wreath');
+      if (f.birthday) ground(`fcake${this._festCakeOut ? ' out' : ''}`, P, gy + 1, H * 0.14, FEST_CAKE, 'cake');
       if (f.lights) on.push(onBur('flights', FEST_LIGHTS(edge)));
       if (f.karneval) on.push(onBur('fstream', FEST_STREAMERS(edge)));
       if (f.martin) {
@@ -7885,7 +7884,7 @@
       if (!view) {
         if (a.el) {
           const { el, bar } = a;
-          a.el = a.bar = a.spec = a.view = a.zone = null;
+          a.el = a.bar = a.spec = a.view = null;
           el.classList.add('hb-bye');
           bar.classList.remove('on');
           setTimeout(() => (el.remove(), bar.remove()), 600);
@@ -7917,7 +7916,6 @@
       const el = a.el;
       if (view !== a.view) {
         a.view = view;
-        a.zoneLv = 0; // neues Bild: Platz wieder streng suchen (bevorzugt den bisherigen)
         a.spec = BOTE_SVG[a.type](view, a.idx);
         el.firstElementChild.innerHTML = `<svg viewBox="${a.spec.vb.join(' ')}" aria-hidden="true">${a.spec.svg}</svg>`;
         el.classList.remove('hb-in', 'hb-emptied', 'hb-boop');
@@ -7954,198 +7952,43 @@
       if (relayout && !noLayout) this._boteLayout();
     }
 
-    // Feste Plätze vorn auf dem Wiesenstreifen (näher am Betrachter, also etwas größer, tiefer und vor dem Pika):
-    // Waschmaschine und Trockner vor dem Aussichtsstein (rechts der Klo-Ecke bis zum Futterknopf), die
-    // Spülmaschine links neben dem Eingang. Auf schmalen Karten (Handy) ist dort kein Platz: dann rücken sie als
-    // letzte Stufe nach links über Futterwiese und Klo-Ecke bis an die Nische, beide gleich klein, statt vor dem
-    // Eingang zu landen. Erst wenn ein Requisit auch so auf 0,55 verkleinert nicht passt,
-    // weicht es auf die Wiese rechts vom Eingang aus. Sperrbereiche teilen die Plätze auf: Deko am Bau
-    // (BOTE_KEEP), Festdeko am Boden, Heuhaufen bzw. Nische, Futter- und Blumenwiese, Klo-Ecke am Stein.
-    // Stufen: erst alles frei lassen, dann Laden/Laterne, dann die Futterwiese hergeben. Jedes Requisit bleibt
-    // möglichst auf seinem Platz und wird dort allein kleiner. Requisiten verschiedener Plätze meiden einander.
-    // Passt es dann noch nicht, kommt es dorthin, wo es am wenigsten überdeckt (überlappend, weiter vorn = davor).
-    // Setzt nur Positionen und tut nichts, wenn sich nichts ändert (auch von der Festdeko aus aufgerufen).
+    // Alle Geräte stehen nebeneinander ganz vorn links am unteren Rand (näher am Betrachter, also etwas größer und
+    // vor dem Pika), in der Reihenfolge der Konfiguration. Reicht der Platz bis zum Futterknopf nicht, werden alle
+    // gemeinsam gleich stark kleiner. Setzt nur Positionen und tut nichts, wenn sich nichts ändert.
     _boteLayout() {
       const B = this._bote;
       if (!this._g || !this._el || !B?.list.length) return;
-      // wer schon steht, kommt zuerst dran und behält seinen Platz
-      const vis = B.list.filter((a) => a.el && a.spec).sort((x, y) => (x.zone == null) - (y.zone == null) || x.idx - y.idx);
-      if (!vis.length) return;
-      const { hole, hay, rock, bur, fMin, fMax, stash } = this._g;
+      const row = B.list.filter((a) => a.el && a.spec).sort((x, y) => x.idx - y.idx);
+      if (!row.length) return;
       const H = this._H;
       const W = this._W;
-      // halbe sichtbare Breite des Heuhaufens bzw. der Nische (vorn davor stünde ein Requisit im Weg)
-      const hh = stash ? this._g.hW / 2 : 0.13 * H * (0.4 + (this._hay || 3) * 0.055);
+      const left = 6;
       const right = W - 60; // Futterknopf rechts unten
-      // Alle Requisiten sind Statusanzeigen und stehen in der ersten Reihe auf dem Wiesenstreifen (vor dem Pika,
-      // der sie hinten fast immer verdecken würde). types: Heimatplatz dieser Geräte; ohne types: Ausweichplatz.
-      const latrineR = rock.l + rock.w * 0.16 + 0.04 * H;
-      const gap = 0.025 * H;
-      const zones = [
-        // a3: ab Stufe 3 (gibt die Klo-Ecke frei) reicht der Platz nach links bis an Heuhaufen bzw. Nische
-        {
-          a: Math.min(latrineR + 0.01 * H, right - 0.1 * H),
-          a3: Math.min(Math.max(hay + hh + gap, hole.r + 0.01 * H), latrineR + 0.01 * H, right - 0.1 * H),
-          b: right,
-          al: 0.5,
-          fr: true,
-          types: ['washer', 'dryer'],
-        },
-        { a: 4, b: hole.l - 0.01 * H, al: 1, fr: true, types: ['dishwasher'] },
-        { a: hole.r + 0.01 * H, b: right, al: 0.5, fr: true },
-      ];
-      // Sperrbereiche [l, r, Stufe, nur vorn]; Stufe k > 0: ab Stufe k freigegeben, 0: nie
-      const keep = (BOTE_KEEP[this._arealKey] || []).map(([x1, x2, k]) => [bur.l + x1 * bur.u, bur.l + x2 * bur.u, k]);
-      keep.push([hay - hh, hay + hh, 1, true]);
-      keep.push([fMin * W - 0.065 * H, fMax * W + 0.065 * H, 2]);
-      // Klo-Ecke: erst auf Stufe 3, die nur Waschmaschine und Trockner auf ihrem Heimatplatz bekommen
-      keep.push([rock.l - rock.w * 0.08 - 0.04 * H, latrineR, 3]);
-      // Festdeko am Boden ({x: Mitte, l: linke Kante, w}); Eier und Raketenstäbe dürfen notfalls verdeckt werden
-      for (const [n, p] of Object.entries(this._festPos || {})) {
-        if (!(p?.w > 0)) continue;
-        const l = p.l ?? p.x - p.w / 2;
-        keep.push([l, l + p.w, /^(egg|stick)/.test(n) ? 2 : 0]);
-      }
-      // je Platz: Requisiten, Sperrstufe und ihre Lage ({a, w, l, dy})
-      const st = zones.map(() => ({ items: [], lv: 0, pos: [] }));
-      const ov = (l1, r1, l2, r2) => Math.max(0, Math.min(r1, r2) - Math.max(l1, l2));
-      // Was auf den anderen Plätzen schon steht (Ausweich- und Heimatplätze überschneiden sich)
-      const other = (z) => st.flatMap((zs, i) => (i !== z ? zs.pos.map((p) => [p.l, p.l + p.w]) : []));
-      // freie Stücke eines Platzes bei Stufe lv (9 = ohne Sperrbereiche), in Füllreihenfolge;
-      // cross: die Requisiten der anderen Ebene meiden
-      const segs = (z, lv, cross) => {
-        const zo = zones[z];
-        const cuts = keep.filter(([, , k, fo]) => lv < 9 && !(k && lv >= k) && !(fo && !zo.fr));
-        if (cross) cuts.push(...other(z).map(([l, r]) => [l - 0.01 * H, r + 0.01 * H]));
-        let s = [[lv >= 3 && zo.a3 != null ? zo.a3 : zo.a, zo.b]];
-        for (const [l, r] of cuts) s = s.flatMap(([a, b]) => [[a, Math.min(b, l)], [Math.max(a, r), b]]);
-        s = s.filter(([a, b]) => b - a > 2);
-        return zo.al === 1 ? s.reverse() : s;
-      };
-      // Requisiten (nach idx) in die Stücke verteilen und setzen. Passt alles: mit Abstand nach der Ausrichtung des
-      // Platzes. force: sonst ins Stück mit dem meisten Platz, dort gleichmäßig überlappend, jedes zweite etwas
-      // tiefer (näher am Betrachter) und davor.
-      const pack = (z, items, lv, cross, force) => {
-        const zo = zones[z];
-        const ss = segs(z, lv, cross).map(([a, b]) => ({ a, b, items: [], used: -gap }));
-        if (!ss.length) return null;
-        for (const it of items) {
-          let q = ss.find((o) => o.used + gap + it.w <= o.b - o.a);
-          if (!q) {
-            if (!force) return null;
-            q = ss.reduce((p, o) => (o.b - o.a - o.used > p.b - p.a - p.used ? o : p));
-          }
-          q.items.push(it);
-          q.used += gap + it.w;
-        }
-        const pos = [];
-        const lim = zo.fr ? right : W - 2;
-        for (const q of ss) {
-          const n = q.items.length;
-          if (!n) continue;
-          const len = q.b - q.a;
-          const over = q.used > len + 0.5;
-          const sum = q.items.reduce((t, it) => t + it.w, 0);
-          const g = over && n > 1 ? (len - sum) / (n - 1) : gap;
-          let x = q.a + (over ? (n > 1 ? 0 : (len - sum) * zo.al) : (len - q.used) * zo.al);
-          q.items.forEach((it, i) => {
-            pos.push({ a: it.a, w: it.w, l: clamp(x, 2, Math.max(2, lim - it.w)), dy: over && i % 2 ? 0.02 * H : 0 });
-            x += it.w + g;
-          });
-        }
-        return pos;
-      };
+      const gap = 0.02 * H;
       // die hohe Wäscheleine steht vorn deutlich kleiner, sonst überragt sie den Pika
-      const entry = (a, z, s) => ({ a, w: a.spec.vb[2] * BOTE_K * H * s * BOTE_FRONT * (a.spec.back ? BOTE_TALL : 1) });
-      // Passt es nicht dazu, werden die schon dort stehenden auf dieselbe Größe mitverkleinert (sonst bliebe der
-      // Erste groß stehen und der Zweite müsste auf den Ausweichplatz). sq: dürfen sich um bis zu ein Viertel
-      // überlappen (versetzt, das hintere etwas tiefer und davor), wie Wäschekorb vor der Trommel.
-      const tryAt = (a, z, s, lv, sq) => {
-        const L = Math.max(lv, st[z].lv);
-        const add = (its) => [...its, entry(a, z, s)].sort((x, y) => x.a.idx - y.a.idx);
-        let items = add(st[z].items);
-        let pos = pack(z, items, L, true, false);
-        if (!pos && st[z].items.length) {
-          items = add(st[z].items.map((it) => (it.w > entry(it.a, z, s).w ? entry(it.a, z, s) : it)));
-          pos = pack(z, items, L, true, false);
-        }
-        if (!pos && sq) {
-          pos = pack(z, items, L, true, true);
-          const o = pos?.slice().sort((p, q) => p.l - q.l);
-          if (o?.some((p, i) => i && o[i - 1].l + o[i - 1].w - p.l > 0.25 * Math.min(p.w, o[i - 1].w))) pos = null;
-        }
-        if (!pos) return false;
-        Object.assign(st[z], { items, lv: L, pos });
-        return true;
-      };
-      const all = zones.map((_, i) => i);
-      // Stufen [Sperrstufe, Größen]: erst kleiner werden, bevor die Futterwiese hergegeben wird
-      const big = [1, 0.9, 0.8, 0.7];
-      const small = [0.6, 0.55];
-      const steps = [[0, big], [1, big], [0, small], [1, small], [2, big], [2, small]];
-      const homeSteps = [...steps, [3, big], [3, small], [3, small, true]];
-      for (const a of vis) {
-        // erst alle Stufen auf dem Heimatplatz, dann der Ausweichplatz
-        const homes = all.filter((z) => zones[z].types?.includes(a.type));
-        const spare = all.filter((z) => !zones[z].types);
-        const mine = [...homes, ...spare];
-        const pz0 = a.zone < zones.length ? a.zone : null;
-        const fit = (zs, stp) => {
-          const pz = zs.includes(pz0) ? pz0 : null;
-          // zuerst der bisherige Platz auf der Stufe, auf der es dort stand (sonst springt es bei jedem Neuordnen)
-          return (pz != null && [...big, ...small].some((s) => tryAt(a, pz, s, a.zoneLv || 0)))
-            || stp.some(([lv, sc, sq]) => (pz != null && sc.some((s) => tryAt(a, pz, s, lv, sq)))
-            || sc.some((s) => zs.some((z) => tryAt(a, z, s, lv, sq))));
-        };
-        if (fit(homes, homeSteps) || fit(spare, steps)) continue;
-        // letzte Stufe: dorthin, wo es am wenigsten überdeckt; gibt es nirgends ein freies Stück, ohne Sperrbereiche
-        const pz = mine.includes(pz0) ? pz0 : null;
-        let best = null;
-        for (const z of pz == null ? mine : [pz, ...mine.filter((i) => i !== pz)]) {
-          const L = Math.max(2, st[z].lv);
-          const items = [...st[z].items, entry(a, z, 0.55)].sort((x, y) => x.a.idx - y.a.idx);
-          for (const cross of [true, false]) {
-            const pos = pack(z, items, L, cross, true);
-            if (!pos) continue;
-            const oth = other(z);
-            let cost = 0;
-            pos.forEach((p, i) => {
-              for (const q of pos.slice(i + 1)) cost += ov(p.l, p.l + p.w, q.l, q.l + q.w);
-              for (const [l, r] of oth) cost += ov(p.l, p.l + p.w, l, r);
-            });
-            if (!best || cost < best.cost - 0.5) best = { z, items, L, pos, cost };
-          }
-        }
-        if (!best) {
-          const z = spare[0];
-          const items = [...st[z].items, entry(a, z, 0.55)].sort((x, y) => x.a.idx - y.a.idx);
-          best = { z, items, L: 9, pos: pack(z, items, 9, false, true) };
-        }
-        Object.assign(st[best.z], { items: best.items, lv: best.L, pos: best.pos });
-      }
-      const out = st.flatMap((zs, z) => zs.pos.map((p) => ({ ...p, z, fr: !!zones[z].fr })));
-      const sig = `${W}x${H}|${out.map((p) => `${p.a.idx}${p.a.view}:${p.z}:${p.l.toFixed(1)}:${p.w.toFixed(1)}:${p.dy.toFixed(1)}`).join('|')}`;
+      const w1 = row.map((a) => a.spec.vb[2] * BOTE_K * H * BOTE_FRONT * (a.spec.back ? BOTE_TALL : 1));
+      const sum = w1.reduce((t, w) => t + w, 0);
+      const k = clamp((right - left - gap * (row.length - 1)) / sum, 0.4, 1);
+      let x = left;
+      const out = row.map((a, i) => {
+        const p = { a, l: x, w: w1[i] * k };
+        x += p.w + gap;
+        return p;
+      });
+      const sig = `${W}x${H}|${out.map((p) => `${p.a.idx}${p.a.view}:${p.l.toFixed(1)}:${p.w.toFixed(1)}`).join('|')}`;
       if (sig === B.sig) return;
       B.sig = sig;
-      for (const p of out) {
-        p.a.zone = p.z;
-        p.a.zoneLv = Math.min(2, st[p.z].lv); // Stufe 3 (Klo-Ecke) wird jedes Mal neu verdient
-        this._botePlace(p.a, p.l, p.w, p.fr, p.dy);
-      }
-      // Tiefe: tiefer stehende Requisiten liegen im DOM später, also davor; ohne Überlappung bleibt alles, wie es ist
-      const kids = [...this._el.props.children];
-      const els = out.slice().sort((x, y) => x.dy - y.dy || kids.indexOf(x.a.el) - kids.indexOf(y.a.el)).map((p) => p.a.el);
-      const cur = kids.filter((e) => els.includes(e));
-      if (els.some((e, i) => e !== cur[i])) for (const e of els) this._el.props.insertBefore(e, B.bars);
+      for (const p of out) this._botePlace(p.a, p.l, p.w);
     }
 
-    // Requisit setzen: vorn (fr) größer auf dem Wiesenstreifen, hinten knapp unter der Bodenlinie; dy = tiefer
-    _botePlace(a, l, w, fr, dy = 0) {
+    // Requisit vorn am unteren Rand setzen
+    _botePlace(a, l, w) {
+      const fr = true;
       const sp = a.spec;
       const H = this._H;
       const k = w / sp.vb[2];
       const { gy } = this._g;
-      const ground = gy + (fr ? BOTE_FRONT_DY : 0.006) * H + dy;
+      const ground = gy + BOTE_FRONT_DY * H;
       Object.assign(a, { l, k, w, fr, x: l + w / 2, top: ground - (sp.ground - sp.vb[1]) * k });
       a.vTop = this._boteY(a, sp.vt);
       const s = a.el.style;
