@@ -124,25 +124,42 @@
   <span style="width:96px;font-size:12px;color:#ccc">Waschmaschine</span>
   <button data-hb="washer:run30">läuft 30 %</button>
   <button data-hb="washer:run85">läuft 85 %</button>
+  <button data-hb="washer:frac">läuft (0,45 ohne Einheit)</button>
+  <button data-hb="washer:rest">Restzeit 25 Min</button>
   <button data-hb="washer:done">fertig</button>
   <button data-hb="washer:empty">ausgeräumt</button>
   <button data-hb="washer:off">aus</button>
+  <button data-hb="washer:abort">abbrechen</button>
+  <button data-hb="washer:on">einschalten</button>
+  <button data-hb="washer:offline">offline</button>
   <button data-hb="washer:go">Pika: hingehen</button>
   <i style="flex-basis:100%"></i><b></b>
   <span style="width:96px;font-size:12px;color:#ccc">Trockner</span>
   <button data-hb="dryer:run30">läuft 30 %</button>
   <button data-hb="dryer:run85">läuft 85 %</button>
+  <button data-hb="dryer:frac">läuft (0,45 ohne Einheit)</button>
+  <button data-hb="dryer:rest">Restzeit 25 Min</button>
   <button data-hb="dryer:done">fertig</button>
   <button data-hb="dryer:empty">ausgeräumt</button>
   <button data-hb="dryer:off">aus</button>
+  <button data-hb="dryer:abort">abbrechen</button>
+  <button data-hb="dryer:on">einschalten</button>
+  <button data-hb="dryer:offline">offline</button>
   <button data-hb="dryer:go">Pika: hingehen</button>
   <i style="flex-basis:100%"></i><b></b>
   <span style="width:96px;font-size:12px;color:#ccc">Spülmaschine</span>
   <button data-hb="dishwasher:run30">läuft 30 %</button>
   <button data-hb="dishwasher:run85">läuft 85 %</button>
+  <button data-hb="dishwasher:frac">läuft (0,45 ohne Einheit)</button>
+  <button data-hb="dishwasher:rest">Restzeit 25 Min</button>
   <button data-hb="dishwasher:done">fertig</button>
+  <button data-hb="dishwasher:dooropen">Tür auf (bleibt fertig)</button>
+  <button data-hb="dishwasher:doorclose">Tür zu</button>
   <button data-hb="dishwasher:empty">ausgeräumt</button>
   <button data-hb="dishwasher:off">aus</button>
+  <button data-hb="dishwasher:abort">abbrechen</button>
+  <button data-hb="dishwasher:on">einschalten</button>
+  <button data-hb="dishwasher:offline">offline</button>
   <button data-hb="dishwasher:go">Pika: hingehen</button>
 </div>
 <!-- ==================== Ende Haus-Bote ==================== -->
@@ -456,7 +473,8 @@
   // ==================== Ende Vorschau Freund-Pika ====================
 
   // ==================== Vorschau Haus-Bote ====================
-  // Home-Connect-Sensoren wie beim echten Haus; last_changed als ISO-String, "aus" liegt lange zurück
+  // Home-Connect-Sensoren wie beim echten Haus: last_changed ändert sich nur, wenn sich der Zustand ändert (dann
+  // "jetzt"), attributes mit Einheit bzw. device_class. Nur der Startzustand "aus" liegt lange zurück.
   const HB = {
     washer: { type: 'washer', state: 'sensor.waschmaschine_betriebszustand', progress: 'sensor.waschmaschine_programm_fortschritt', end: 'sensor.waschmaschine_programm_endzeit' },
     dryer: { type: 'dryer', state: 'sensor.trockner_betriebszustand', progress: 'sensor.trockner_programm_fortschritt', end: 'sensor.trockner_programm_endzeit' },
@@ -464,16 +482,27 @@
       end: 'sensor.geschirrspuler_programm_endzeit', door: 'sensor.geschirrspuler_tur' },
   };
   const hbAgo = (min) => new Date(Date.now() - min * 60000).toISOString();
-  const hbSet = (id, state, min = 0) => (states[id] = { state, attributes: {}, last_changed: hbAgo(min), last_updated: hbAgo(min) });
+  const hbSet = (id, state, attributes = {}, min = 0) => {
+    const o = states[id];
+    const same = o && o.state === state && min === 0;
+    states[id] = { state, attributes, last_changed: same ? o.last_changed : hbAgo(min), last_updated: hbAgo(min) };
+  };
+  const HB_PCT = { unit_of_measurement: '%' };
+  const HB_TS = { device_class: 'timestamp' };
   for (const d of Object.values(HB)) {
-    hbSet(d.state, 'inactive', 180);
-    hbSet(d.progress, 'unavailable', 180);
-    hbSet(d.end, 'unavailable', 180);
-    if (d.door) hbSet(d.door, 'closed', 180);
+    hbSet(d.state, 'inactive', {}, 180);
+    hbSet(d.progress, 'unavailable', {}, 180);
+    hbSet(d.end, 'unavailable', {}, 180);
+    if (d.door) hbSet(d.door, 'closed', {}, 180);
   }
   cards.forEach((c) => c.setConfig({ name: 'Pika', entity: 'input_text.pika_status', appliances: Object.values(HB) }));
   push();
   const HB_ACT = { washer: 'boteStir', dryer: 'boteWatchDrum', dishwasher: 'boteDip' };
+  const hbIdle = (d, st) => {
+    hbSet(d.state, st);
+    hbSet(d.progress, 'unavailable');
+    hbSet(d.end, 'unavailable');
+  };
   document.querySelectorAll('[data-hb]').forEach((b) =>
     b.addEventListener('click', () => {
       const [type, what] = b.dataset.hb.split(':');
@@ -490,16 +519,43 @@
       }
       if (what.startsWith('run')) {
         const p = Number(what.slice(3));
-        // läuft schon: last_changed bleibt
-        if (states[d.state].state !== 'run') hbSet(d.state, 'run');
-        hbSet(d.progress, String(p));
-        hbSet(d.end, new Date(Date.now() + (100 - p) * 1.4 * 60000).toISOString());
-        if (d.door) hbSet(d.door, 'locked');
-      } else {
-        hbSet(d.state, { done: 'finished', empty: 'ready', off: 'inactive' }[what], what === 'off' ? 120 : 0);
-        hbSet(d.progress, 'unavailable');
+        hbSet(d.state, 'run');
+        hbSet(d.progress, String(p), HB_PCT);
+        hbSet(d.end, new Date(Date.now() + (100 - p) * 1.4 * 60000).toISOString(), HB_TS);
+        if (d.door) hbSet(d.door, 'closed');
+      } else if (what === 'frac') {
+        // Fortschritt als Anteil 0–1 ohne Einheit (andere Integrationen)
+        hbSet(d.state, 'run');
+        hbSet(d.progress, '0.45');
+      } else if (what === 'rest') {
+        // Restzeit als Zahl in Minuten statt Zeitstempel
+        hbSet(d.state, 'run');
+        hbSet(d.end, '25', { unit_of_measurement: 'min', device_class: 'duration' });
+      } else if (what === 'done') {
+        hbSet(d.state, 'finished');
+        hbSet(d.progress, '100', HB_PCT);
         hbSet(d.end, 'unavailable');
-        if (d.door) hbSet(d.door, what === 'empty' ? 'open' : 'closed');
+        if (d.door) hbSet(d.door, 'closed');
+      } else if (what === 'empty') {
+        // Tür auf → Home Connect wechselt auf "ready"
+        hbIdle(d, 'ready');
+        if (d.door) hbSet(d.door, 'open');
+      } else if (what === 'off') {
+        hbIdle(d, 'inactive');
+        if (d.door) hbSet(d.door, 'closed');
+      } else if (what === 'abort') {
+        // Abbruch: kurz "aborting", dann "ready" (darf nicht als ausgeräumt zählen)
+        hbSet(d.state, 'aborting');
+        setTimeout(() => (hbIdle(d, 'ready'), push()), 1500);
+      } else if (what === 'on') {
+        // Einschalten bzw. Tür zum Einräumen öffnen: inactive → ready (darf nicht als ausgeräumt zählen)
+        hbIdle(d, 'ready');
+      } else if (what === 'offline') {
+        // WLAN weg: alle Sensoren des Geräts unavailable, das Requisit bleibt
+        for (const id of [d.state, d.progress, d.end, d.door]) if (id) hbSet(id, 'unavailable');
+      } else if (what === 'dooropen' || what === 'doorclose') {
+        // Tür bei weiter "fertig" (Zustand bleibt): auf = ausgeräumt, zu ändert nichts mehr
+        hbSet(d.door, what === 'dooropen' ? 'open' : 'closed');
       }
       push();
     })
