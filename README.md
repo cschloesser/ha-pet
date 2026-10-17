@@ -30,7 +30,20 @@ Ein kleiner Pika (Pfeifhase) wohnt in deinem Home-Assistant-Dashboard.
 
 ## Freund-Pika
 
-_(wird ergänzt)_
+Ein paarmal am Tag kommt **Pino** zu Besuch, ein Freund-Pika: etwas kleiner, rötlicher und mit hellem Fleck auf der Stirn.
+
+- **Wann**: Der erste Besuch kommt 2–5 Minuten nach dem Laden, danach liegen 25–60 Minuten zwischen zwei Besuchen. Pino bleibt 1,5–4 Minuten. Er kommt nur, wenn der Pika wach ist, es Tag ist und es nicht regnet oder gewittert.
+- **Ankunft**: Pino hoppelt vom linken oder rechten Rand herein und piepst. Der Pika bemerkt ihn, ruft „Pino!“, hoppelt zu ihm, und die beiden stupsen sich mit den Nasen an (Herzchen).
+- **Zusammen spielen**: Meistens spielen sie miteinander, ab und zu macht der Pika auch etwas allein.
+  - **Fangen**: Abwechselnd hoppelt einer davon und der andere hinterher, mit kleinen Staubwölkchen.
+  - **Zusammen sitzen**: Die beiden sitzen nebeneinander, schauen in dieselbe Richtung und wackeln mit den Ohren. Einer putzt den anderen.
+  - **Aussichtsstein**: Der Pika springt auf den Stein und pfeift, Pino schaut von unten hoch und piepst zurück. Manchmal hüpft Pino hinterher und setzt sich hinter ihn.
+  - **Knabbern**: Der Pika pflückt eine Blume, Pino knabbert an einer anderen oder von der anderen Seite an derselben.
+  - **Piep-Duett**: Die beiden piepsen abwechselnd, immer schneller, zum Schluss zusammen.
+- **Pinos Eigenleben**: Ist der Pika mit etwas anderem beschäftigt, hoppelt Pino herum, putzt sich, schaut sich um, piepst, blinzelt und zuckt mit den Ohren. Er bleibt auf der Wiese und geht nicht in den Bau.
+- **Antippen** streichelt Pino: Herzchen, ein kleiner Freudensprung und ein Piep. Die Balken des Pikas ändern sich dadurch nicht. Wird der Pika gestreichelt, kommt Pino neugierig näher und schaut zu.
+- **Abschied**: Pino sagt „tschüss!“ und hoppelt zum Rand hinaus. Der Pika schaut ihm nach und lässt kurz die Ohren hängen. Geht der Pika schlafen oder schlägt das Wetter um, geht Pino sofort.
+- Die Besuche laufen auf jedem Gerät für sich. Mit `friend: false` kommt Pino nicht, mit `friend_name` bekommt er einen anderen Namen.
 
 ## Beschäftigungen
 
@@ -110,6 +123,8 @@ flight_entity: sensor.flightradar24_current_in_area   # Flugzeuge (leer = keine)
 flight_radius: 15                # Radius der Flightradar24-Integration in km
 max_flights: 2                   # höchstens so viele Flugzeuge gleichzeitig
 show_stats: true                 # Satt-/Glück-/Sauber-Balken
+friend: true                     # Freund-Pika kommt zu Besuch (false = nie)
+friend_name: Pino                # Name des Freund-Pikas
 height: 180                      # Mindesthöhe in px (im Abschnitts-Layout zählt die Zeilenhöhe)
 ```
 
