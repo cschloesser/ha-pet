@@ -405,6 +405,29 @@
         <path d="M76 28 Q90 22 104 27" stroke="#fff" stroke-width="5" fill="none" stroke-linecap="round"/>
         <circle cx="62" cy="9" r="4.2" fill="#fff" stroke="${OUT}" stroke-width="1.2"/>
       </g>
+      <g class="hats">
+        <g class="hat-witch">
+          <ellipse cx="89" cy="22.6" rx="15" ry="3.6" transform="rotate(-6 89 22.6)" fill="#3d2f55" stroke="${OUT}" stroke-width="1.3"/>
+          <path d="M80.6 21.6 Q83.4 13 87.4 7 Q90.2 1.6 97.4 -.6 Q93.4 3.6 93.6 8.4 Q94.6 15 97.4 20.4 Q89 23.4 80.6 21.6Z"
+                fill="#4a3a6a" stroke="${OUT}" stroke-width="1.3" stroke-linejoin="round"/>
+          <path d="M81.4 18.6 Q89 21 96.4 17.8 L97.2 20.2 Q89 23.2 80.8 21.2Z" fill="#f28c28"/>
+          <rect x="87.2" y="18.8" width="3.4" height="3.2" rx=".6" fill="none" stroke="#f6c945" stroke-width="1"/>
+          <path d="M90.6 9.6 l.7 1.5 1.6 .2 -1.2 1.1 .3 1.6 -1.4 -.8 -1.4 .8 .3 -1.6 -1.2 -1.1 1.6 -.2Z" fill="#f6c945"/>
+        </g>
+        <g class="hat-xmas">
+          <path d="M77 28 Q80 12 62 9 Q91 0 103 27 Z" fill="#d9483b" stroke="${OUT}" stroke-width="1.4" stroke-linejoin="round"/>
+          <path d="M80 16 Q86 9 94 13" stroke="#f08a7e" stroke-width="1.4" fill="none" stroke-linecap="round" opacity=".7"/>
+          <path d="M76 28 Q90 22 104 27" stroke="${OUT}" stroke-width="7.4" fill="none" stroke-linecap="round"/>
+          <path d="M76 28 Q90 22 104 27" stroke="#f6f1ea" stroke-width="5.6" fill="none" stroke-linecap="round"/>
+          <circle cx="62" cy="9" r="4.6" fill="#f6f1ea" stroke="${OUT}" stroke-width="1.2"/>
+        </g>
+        <g class="hat-party">
+          <path d="M80.5 23.5 Q89 26 97.5 21.5 L92.5 1.5Z" fill="#5fb9de" stroke="${OUT}" stroke-width="1.3" stroke-linejoin="round"/>
+          <path d="M84.7 15.8 Q90 17.6 95.75 14.5 M88.3 9.2 Q91.5 10.4 94.25 8.5" stroke="#f6c945" stroke-width="2" fill="none"/>
+          <g fill="#f28fb1"><circle cx="86" cy="20.8" r="1.1"/><circle cx="92.8" cy="19.8" r="1.1"/><circle cx="90.4" cy="12.8" r="1"/></g>
+          <circle cx="92.5" cy="1.5" r="3.2" fill="#e8584e" stroke="${OUT}" stroke-width="1"/>
+        </g>
+      </g>
       <g class="scarf">
         <path d="M68 63 Q87 73 107 63" stroke="#d9534f" stroke-width="6.5" fill="none" stroke-linecap="round"/>
         <path d="M70 64 Q87 73.5 105 64.6" stroke="#f6f1ea" stroke-width="1.6" fill="none" stroke-dasharray="3 4"/>
@@ -653,7 +676,363 @@
   </svg>`;
 
   // ==================== Festtage: Konstanten, Grafiken und Stil ====================
-  const STYLE_FEST = ``;
+  // Deko im Jahreslauf. Ebenen: .fest-b hinter dem Land (.fsky Himmel: Feuerwerk, Fledermaus; .fback Tannenbaum,
+  // Maibaum, Wimpel; .fon liegt auf dem Bau, aber hinter dem Pika: Lichterkette, Luftschlangen, Laterne) und .fest-f
+  // vor Pika und Heu (.ffront Kürbis, Kranz, Stiefel, Kuchen, Eier; .fcf Konfetti; .fwl Lichtschein).
+  // Jede Grafik: viewBox mit dem Boden an der Unterkante, .b wird wie das Land abgedunkelt, .g (Flammen, Lämpchen)
+  // nicht; .nite leuchtet nur in Dämmerung und Nacht.
+  const FEST_COLORS = ['#e8584e', '#f6c945', '#5fb9de', '#7cc35a', '#f28fb1', '#b99cf0', '#ff9f5a'];
+  const FEST_FW_COLORS = ['#ff5a5f', '#ffd166', '#5fd1ff', '#b48cff', '#7dff9a', '#ff8ad8', '#fff3c4'];
+  // Tagesnummer (Ortsdatum, ohne Sommerzeit-Sprünge)
+  const festDay = (y, m, d) => Math.round(Date.UTC(y, m - 1, d) / 864e5);
+  // Ostersonntag nach Gauß/Meeus (gregorianisch) → [Monat, Tag]
+  const festEaster = (y) => {
+    const a = y % 19, b = Math.floor(y / 100), c = y % 100, d = Math.floor(b / 4), e = b % 4;
+    const f = Math.floor((b + 8) / 25), g = Math.floor((b - f + 1) / 3);
+    const h = (19 * a + b - d - g + 15) % 30, i = Math.floor(c / 4), k = c % 4;
+    const l = (32 + 2 * e + 2 * i - h - k) % 7, m = Math.floor((a + 11 * h + 22 * l) / 451);
+    const n = h + l - 7 * m + 114;
+    return [Math.floor(n / 31), (n % 31) + 1];
+  };
+  // 1. Advent: vierter Sonntag vor dem 25. 12. (Tagesnummer)
+  const festAdvent1 = (y) => festDay(y, 12, 25) - (new Date(y, 11, 25).getDay() || 7) - 21;
+  // "Kim" / "Kim und Tom" / "Kim, Tom und Lea"
+  const festNames = (a) => (a.length < 2 ? a[0] || '' : `${a.slice(0, -1).join(', ')} und ${a[a.length - 1]}`);
+  const festF1 = (n) => n.toFixed(1);
+  const festSvg = (vb, body, cls) => `<svg class="${cls}" viewBox="0 0 ${vb[0]} ${vb[1]}" aria-hidden="true">${body}</svg>`;
+  const festBez = (a, b, c, d, t) => {
+    const u = 1 - t;
+    return [0, 1].map((k) => u * u * u * a[k] + 3 * u * u * t * b[k] + 3 * u * t * t * c[k] + t * t * t * d[k]);
+  };
+  // Oberkante des Baus je Areal (Bau-Einheiten, etwas unter dem Rand): daran hängen Lichterkette und Luftschlangen
+  const FEST_EDGE = {
+    huegel: [
+      ...[0.3, 0.45, 0.6, 0.75, 0.9].map((t) => festBez([-4, 60], [-3, 30], [22, 10], [50, 10], t)),
+      ...[0.1, 0.25, 0.4, 0.55, 0.7].map((t) => festBez([50, 10], [78, 10], [103, 30], [104, 60], t)),
+    ].map(([x, y]) => [x, y + 1.4]),
+    fels: [[1, 41], [7, 32], [18, 28], [27, 20.5], [36, 14], [50, 12], [64, 14], [73, 20.5], [81, 32], [92, 35], [100.5, 45]],
+    stumpf: [[19.4, 50], [20.6, 36], [22, 27.4], [33, 30.8], [50, 32.4], [67, 30.8], [78, 27.4], [79.4, 36], [80.6, 50]],
+    alpin: [[2, 46], [5, 40], [14, 31], [24, 32], [31, 33], [34, 27], [37, 19], [46, 15.5], [56, 13], [65, 17.5], [72, 22.5],
+      [73, 30.5], [80, 31.5], [89, 33], [94, 39], [98.5, 47]],
+  };
+  // Durchhängende Kette durch die Punkte: dichte Punkte im Abstand ~step, je Feld sag Durchhang
+  const festChain = (pts, step, sag) => {
+    const out = [];
+    for (let i = 0; i < pts.length - 1; i++) {
+      const [x1, y1] = pts[i];
+      const [x2, y2] = pts[i + 1];
+      const n = Math.max(1, Math.round(Math.hypot(x2 - x1, y2 - y1) / step));
+      for (let k = i ? 1 : 0; k <= n; k++) {
+        const t = k / n;
+        out.push([x1 + (x2 - x1) * t, y1 + (y2 - y1) * t + sag * 4 * t * (1 - t)]);
+      }
+    }
+    return out;
+  };
+  const festPath = (pts) => pts.map(([x, y], i) => `${i ? 'L' : 'M'}${festF1(x)} ${festF1(y)}`).join('');
+  // Leuchtpunkte (Lichterkette, Baum): Verlauf je Farbe, ids pro Grafik eindeutig
+  const festGlows = (p) => FEST_COLORS.map((c, i) => GLOW_GRAD(`${p}${i}`, c)).join('');
+  const festBulbs = (pts, p, r) => pts.map(([x, y], i) => {
+    const ci = (i * 3) % FEST_COLORS.length;
+    return `<g class="fbl" style="animation-delay:${(-((i * 0.83) % 2.8)).toFixed(2)}s">`
+      + `<circle cx="${festF1(x)}" cy="${festF1(y)}" r="${r * 2.6}" fill="url(#${p}${ci})"/>`
+      + `<ellipse cx="${festF1(x)}" cy="${festF1(y)}" rx="${r * 0.72}" ry="${r}" fill="${FEST_COLORS[ci]}"/>`
+      + `<circle cx="${festF1(x - r * 0.2)}" cy="${festF1(y - r * 0.35)}" r="${r * 0.28}" fill="#fff" opacity=".8"/></g>`;
+  }).join('');
+
+  // Lichterkette am Bau (Bau-Einheiten): Kabel mit Lämpchen; tags matt, in Dämmerung und Nacht leuchtend
+  const FEST_LIGHTS = (edge) => {
+    const ch = festChain(edge, 5.2, 1.5);
+    const bulbs = ch.map(([x, y]) => [x, y + 1.7]);
+    return {
+      b: `<path d="${festPath(ch)}" stroke="#2f4a2a" stroke-width=".55" fill="none"/>`
+        + bulbs.map(([x, y], i) => `<rect x="${festF1(x - 0.55)}" y="${festF1(y - 1.9)}" width="1.1" height=".9" fill="#36443a"/>`
+          + `<ellipse cx="${festF1(x)}" cy="${festF1(y)}" rx="1.05" ry="1.45" fill="${FEST_COLORS[(i * 3) % FEST_COLORS.length]}" opacity=".7"/>`).join(''),
+      g: `<defs>${festGlows('fst-l')}</defs><g class="nite">${festBulbs(bulbs, 'fst-l', 1.45)}</g>`,
+    };
+  };
+  // Luftschlangen: zwei bunte, gewellte Schlangen über den Bau, dazu hängende Kringel
+  const FEST_STREAMERS = (edge) => {
+    const ch = festChain(edge, 1.6, 1.2);
+    const wave = (dy, ph) => festPath(ch.map(([x, y], i) => [x, y + dy + Math.sin(i * 1.15 + ph) * 0.9]));
+    // Kringel nur seitlich, nicht vor Tür und Schild
+    const curls = edge.slice(1, -1).filter(([x], i) => i % 2 === 0 && (x < 33 || x > 67)).map(([x, y], i) => {
+      const n = 2 + (i % 3);
+      return `<path d="M${festF1(x)} ${festF1(y + 1)} ${'q1.5 1.6 0 3.2 q-1.5 1.6 0 3.2 '.repeat(n).trim()}" stroke="${FEST_COLORS[(i + 2) % FEST_COLORS.length]}"`
+        + ` stroke-width=".85" fill="none" stroke-linecap="round"/>`;
+    }).join('');
+    return {
+      b: `<path d="${wave(0, 0)}" stroke="#f28fb1" stroke-width=".95" fill="none" stroke-linecap="round"/>`
+        + `<path d="${wave(2.4, 1.7)}" stroke="#f6c945" stroke-width=".95" fill="none" stroke-linecap="round"/>`
+        + curls,
+    };
+  };
+
+  // Geschnitzter Kürbis (viewBox 40 × 34), nachts leuchtet das Gesicht flackernd von innen
+  const FEST_FACE = 'M11.6 19 L16.4 19 L14.2 14.6Z M23.6 19 L28.4 19 L25.8 14.6Z M18.7 22 L21.3 22 L20 19.8Z'
+    + ' M11.4 24 Q20 31.4 28.6 24 L26.8 24.4 L25.3 26 L23.6 24.6 L21.8 26.2 L20 24.8 L18.2 26.2 L16.4 24.6 L14.7 26 L13.2 24.4Z';
+  const FEST_PUMPKIN = {
+    vb: [40, 34],
+    b: `<path d="M19.5 9.5 Q18.6 3.5 21.6 1.4 L23.6 2.8 Q21.6 4.8 22.4 9.5Z" fill="#6f8f3c" stroke="${OUT}" stroke-width="1" stroke-linejoin="round"/>
+      <path d="M23 3 q4 -2.5 6.5 .5" stroke="#6f8f3c" stroke-width="1.1" fill="none" stroke-linecap="round"/>
+      <ellipse cx="11.5" cy="21.6" rx="10" ry="11.6" fill="#e9802a" stroke="${OUT}" stroke-width="1.2"/>
+      <ellipse cx="28.5" cy="21.6" rx="10" ry="11.6" fill="#e9802a" stroke="${OUT}" stroke-width="1.2"/>
+      <ellipse cx="20" cy="21.3" rx="10.4" ry="12.4" fill="#f5973a" stroke="${OUT}" stroke-width="1.2"/>
+      <path d="M14.5 13 Q12.6 18 13.6 25" stroke="#ffc583" stroke-width="1.3" fill="none" stroke-linecap="round" opacity=".75"/>
+      <path d="${FEST_FACE}" fill="#4a2a12"/>`,
+    g: `<defs>${GLOW_GRAD('fst-pg', '#ffb347')}</defs><g class="nite"><g class="fflk">
+      <ellipse cx="20" cy="22" rx="25" ry="19" fill="url(#fst-pg)" opacity=".75"/>
+      <path d="${FEST_FACE}" fill="#ffcf4d"/></g></g>`,
+  };
+  // Papierlaterne am Bau (viewBox 26 × 34): Stöckchen links steckt im Bau, Laterne schaukelt
+  const FEST_LANTERN_BODY = `
+      <rect x="9.5" y="8.4" width="8" height="2.2" rx=".8" fill="${OUT}"/>
+      <ellipse cx="13.5" cy="18" rx="8.5" ry="8" fill="#e8584e" stroke="${OUT}" stroke-width="1.1"/>
+      <ellipse cx="13.5" cy="18" rx="5.4" ry="7.9" fill="#f6c945"/>
+      <ellipse cx="13.5" cy="18" rx="2.1" ry="7.9" fill="#5fb9de"/>
+      <path d="M5.4 14.6 Q13.5 12.6 21.6 14.6 M5.2 21.4 Q13.5 23.4 21.8 21.4" stroke="rgba(90, 64, 48, .35)" stroke-width=".6" fill="none"/>
+      <rect x="9.5" y="25.4" width="8" height="2" rx=".8" fill="${OUT}"/>
+      <path d="M13.5 27.4 V31.6 M12.4 31.6 H14.6" stroke="#e8584e" stroke-width="1" stroke-linecap="round"/>`;
+  const FEST_LANTERN = {
+    vb: [26, 34],
+    b: `<path d="M1 4.2 L15 1.6" stroke="#8a5a3b" stroke-width="1.6" stroke-linecap="round"/>
+      <g class="lsw"><path d="M13.5 2 V8.6" stroke="${OUT}" stroke-width=".6"/>${FEST_LANTERN_BODY}</g>`,
+    g: `<defs>${GLOW_GRAD('fst-mg', '#ffd27a')}</defs><g class="lsw"><g class="nite"><g class="fflk">
+      <circle cx="13.5" cy="18" r="15" fill="url(#fst-mg)"/>
+      <ellipse cx="13.5" cy="18" rx="7" ry="6.6" fill="#fff1b8" opacity=".45"/></g></g></g>`,
+  };
+  // Laterne am Stab, die der Pika trägt (in den Koordinaten der Pika-Grafik, viewBox 120 × 100)
+  const FEST_CARRY = `<svg viewBox="0 0 120 100" aria-hidden="true">
+    <defs>${GLOW_GRAD('fst-cg', '#ffd27a')}</defs>
+    <path d="M101 63 L128 6" stroke="#8a5a3b" stroke-width="1.9" stroke-linecap="round"/>
+    <g class="lsw">
+      <circle class="lgl" cx="128" cy="27.6" r="21" fill="url(#fst-cg)"/>
+      <g transform="translate(128 6) scale(1.35) translate(-13.5 -2)">
+        <path d="M13.5 2 V8.6" stroke="${OUT}" stroke-width=".6"/>${FEST_LANTERN_BODY.replace('#e8584e', '#f28fb1').replace('#5fb9de', '#7cc35a')}
+        <ellipse class="lgl" cx="13.5" cy="18" rx="6" ry="5.6" fill="#fff1b8" opacity=".5"/>
+      </g>
+    </g>
+    <ellipse cx="101" cy="62.4" rx="4" ry="5" fill="#ecdcc6" stroke="${OUT}" stroke-width="1.4"/>
+  </svg>`;
+  // Adventskranz (viewBox 44 × 28): n Kerzen brennen
+  const FEST_CANDLES = [[15.5, 15.6], [28.5, 15.6], [9, 21.6], [35, 21.6]]; // Kerzenfuß; brennen in Reihenfolge 1–4
+  const FEST_WREATH = (n) => ({
+    vb: [44, 28],
+    b: `<ellipse cx="22" cy="19.6" rx="18.6" ry="6.2" fill="none" stroke="${OUT}" stroke-width="7"/>
+      <ellipse cx="22" cy="19.6" rx="18.6" ry="6.2" fill="none" stroke="#2f6b33" stroke-width="5.4"/>
+      <path d="M5 18 l2.2 -1 M9 15.4 l2.4 -.5 M16 13.8 l2.4 .1 M26 13.8 l2.4 -.1 M33 15 l2.4 .6 M37.4 18.4 l1.6 1.4
+        M6 22.6 l2 1.2 M12 25 l2.4 .5 M30 25.4 l2.4 -.4 M36 23.2 l2 -1.2" stroke="#5fae4a" stroke-width="1" stroke-linecap="round"/>
+      ${FEST_CANDLES.map(([x, y]) => `<rect x="${x - 1.7}" y="${y - 9}" width="3.4" height="9" rx=".8" fill="#d9483b" stroke="${OUT}" stroke-width=".7"/>
+        <path d="M${x - 0.7} ${y - 7.6} V${y - 1.4}" stroke="#f08a7e" stroke-width=".7" stroke-linecap="round"/>
+        <path d="M${x} ${y - 9} v-1.3" stroke="#3a2a20" stroke-width=".6"/>`).join('')}
+      <g fill="#d9483b"><circle cx="7.4" cy="21" r="1"/><circle cx="20" cy="13.6" r="1"/><circle cx="31.6" cy="14.4" r=".9"/><circle cx="38" cy="21.4" r="1"/></g>
+      <path d="M22 25.5 Q16.5 21.5 16.6 26.2 Q17 28.4 22 25.5Z M22 25.5 Q27.5 21.5 27.4 26.2 Q27 28.4 22 25.5Z" fill="#e8584e" stroke="${OUT}" stroke-width=".7" stroke-linejoin="round"/>
+      <path d="M21.3 26 L19.6 30.4 L21.4 29.6Z M22.7 26 L24.4 30.4 L22.6 29.6Z" fill="#c94440" stroke="${OUT}" stroke-width=".5"/>
+      <circle cx="22" cy="25.6" r="1.3" fill="#c94440" stroke="${OUT}" stroke-width=".6"/>`,
+    g: `<defs>${GLOW_GRAD('fst-wg', '#ffcf70')}</defs>${FEST_CANDLES.slice(0, n).map(([x, y]) => {
+      const t = y - 9.8;
+      return `<g class="nite"><circle cx="${x}" cy="${t - 1.6}" r="6" fill="url(#fst-wg)"/></g>`
+        + `<g class="flm"><path d="M${x} ${t - 4} Q${x + 1.9} ${t - 1.2} ${x} ${t} Q${x - 1.9} ${t - 1.2} ${x} ${t - 4}Z" fill="#ffb53a"/>`
+        + `<path d="M${x} ${t - 2.4} Q${x + 0.9} ${t - 0.8} ${x} ${t} Q${x - 0.9} ${t - 0.8} ${x} ${t - 2.4}Z" fill="#fff3b0"/></g>`;
+    }).join('')}`,
+  });
+  // Nikolausstiefel (viewBox 30 × 38), am 6. 12. gefüllt
+  const FEST_BOOT = (full) => ({
+    vb: [30, 38],
+    b: `${full ? `
+      <path d="M10 14 V4.6 Q10 1.2 13 1.2 Q16 1.2 16 4.2" stroke="${OUT}" stroke-width="3.4" fill="none" stroke-linecap="round"/>
+      <path d="M10 14 V4.6 Q10 1.2 13 1.2 Q16 1.2 16 4.2" stroke="#fff" stroke-width="2.2" fill="none" stroke-linecap="round"/>
+      <path d="M10 14 V4.6 Q10 1.2 13 1.2 Q16 1.2 16 4.2" stroke="#e8584e" stroke-width="2.2" fill="none" stroke-dasharray="1.5 1.5"/>
+      <path d="M18 14 Q18.4 8 19.6 4.4" stroke="#4f8a3a" stroke-width="1.2" fill="none"/>
+      <circle cx="19.8" cy="3.8" r="3" fill="none" stroke="#f7cf2e" stroke-width="1.4" stroke-dasharray="1 .7"/>
+      <circle cx="19.8" cy="3.8" r="2.3" fill="#f7cf2e"/><circle cx="19.8" cy="3.8" r="1" fill="#eeac1c"/>
+      <ellipse cx="7.4" cy="10.6" rx="2.6" ry="2.2" fill="#a86d3a" stroke="${OUT}" stroke-width=".7"/>
+      <ellipse cx="14" cy="10.2" rx="2.4" ry="2.1" fill="#b57a45" stroke="${OUT}" stroke-width=".7"/>
+      <path d="M6.4 10 q1 -.8 2 0 M13.1 9.6 q.9 -.7 1.8 0" stroke="#7a4a26" stroke-width=".5" fill="none"/>` : ''}
+      <path d="M6 14 L6 33.5 Q6 37 9.5 37 L25.5 37 Q29 37 28.6 33.6 Q28.2 29.6 22.6 28.8 L20.4 28.2 L20.4 14Z" fill="#d9483b" stroke="${OUT}" stroke-width="1.2" stroke-linejoin="round"/>
+      <path d="M6.6 35 H28.2" stroke="#7a2d22" stroke-width="1.2"/>
+      <path d="M8.7 17.5 V29.5" stroke="#f08a7e" stroke-width="1.2" stroke-linecap="round" opacity=".7"/>
+      <rect x="4.4" y="10.4" width="17.6" height="5.8" rx="2.9" fill="#f6f1ea" stroke="${OUT}" stroke-width="1"/>
+      <g fill="#e2d9cc"><circle cx="8" cy="13.4" r=".8"/><circle cx="12.6" cy="12.6" r=".8"/><circle cx="17.4" cy="13.6" r=".8"/></g>`,
+  });
+  // Tannenbaum (viewBox 50 × 66) mit Kugeln, Lichterkette und Stern
+  const FEST_GARLANDS = [[[14, 26], [25, 31], [35, 25]], [[10, 41], [25, 47], [40, 40]], [[6, 56], [25, 62], [44, 55]]];
+  const FEST_TREE = (() => {
+    const q = ([a, c, b], t) => [0, 1].map((k) => (1 - t) ** 2 * a[k] + 2 * (1 - t) * t * c[k] + t * t * b[k]);
+    const bulbs = FEST_GARLANDS.flatMap((gl) => [0.12, 0.31, 0.5, 0.69, 0.88].map((t) => q(gl, t)).map(([x, y]) => [x, y + 1.2]));
+    const balls = [[16, 51, '#e8584e'], [34, 52, '#f6c945'], [25, 45.5, '#5fb9de'], [19, 37, '#f6c945'], [31, 36, '#e8584e'], [25, 20, '#5fb9de']];
+    const star = 'M0 -5 L1.5 -1.6 L5 -1.5 L2.3 .8 L3.1 4.4 L0 2.4 L-3.1 4.4 L-2.3 .8 L-5 -1.5 L-1.5 -1.6Z';
+    return {
+      vb: [50, 66],
+      b: `<rect x="21.5" y="56" width="7" height="10" fill="#8a5a3b" stroke="${OUT}" stroke-width="1"/>
+        <path d="M3 58 Q25 63 47 58 L31 35 Q25 36.4 19 35Z" fill="#3f8a4a" stroke="${OUT}" stroke-width="1.2" stroke-linejoin="round"/>
+        <path d="M8 42.5 Q25 47 42 42.5 L29.5 22 Q25 23 20.5 22Z" fill="#46944f" stroke="${OUT}" stroke-width="1.2" stroke-linejoin="round"/>
+        <path d="M13 27.5 Q25 31 37 27.5 L25 8Z" fill="#4f9e57" stroke="${OUT}" stroke-width="1.2" stroke-linejoin="round"/>
+        <path d="M21 14 L16.5 25 M18.5 27 L12 40 M15 43 L7.5 56" stroke="#7cc35a" stroke-width="1.1" stroke-linecap="round" opacity=".6"/>
+        ${FEST_GARLANDS.map(([a, c, b]) => `<path d="M${a[0]} ${a[1]} Q${c[0]} ${c[1]} ${b[0]} ${b[1]}" stroke="#2a3f28" stroke-width=".5" fill="none"/>`).join('')}
+        ${balls.map(([x, y, c]) => `<circle cx="${x}" cy="${y}" r="2.3" fill="${c}" stroke="${OUT}" stroke-width=".6"/><circle cx="${x - 0.7}" cy="${y - 0.8}" r=".7" fill="#fff" opacity=".7"/>`).join('')}
+        ${bulbs.map(([x, y], i) => `<circle cx="${festF1(x)}" cy="${festF1(y)}" r=".9" fill="${FEST_COLORS[(i * 3) % FEST_COLORS.length]}" opacity=".75"/>`).join('')}`,
+      g: `<defs>${festGlows('fst-t')}${GLOW_GRAD('fst-ts', '#ffe27a')}</defs>
+        <g class="nite"><circle cx="25" cy="7" r="9" fill="url(#fst-ts)"/>${festBulbs(bulbs, 'fst-t', 1.1)}</g>
+        <path transform="translate(25 7)" d="${star}" fill="#ffd75a" stroke="#b8862a" stroke-width=".6" stroke-linejoin="round"/>`,
+    };
+  })();
+  const FEST_GIFT = {
+    vb: [24, 20],
+    b: `<rect x="2.5" y="8" width="19" height="11.6" rx="1.2" fill="#5fb9de" stroke="${OUT}" stroke-width="1"/>
+      <rect x="1.5" y="5.6" width="21" height="4" rx="1" fill="#86d0ec" stroke="${OUT}" stroke-width="1"/>
+      <rect x="10.6" y="5.6" width="2.8" height="14" fill="#e8584e"/>
+      <path d="M12 5.6 Q6.5 .5 7.6 4.6 Q8.4 6.6 12 5.6Z M12 5.6 Q17.5 .5 16.4 4.6 Q15.6 6.6 12 5.6Z" fill="#e8584e" stroke="${OUT}" stroke-width=".8" stroke-linejoin="round"/>`,
+  };
+  // Maibaum (viewBox 40 × 160): Birkenstamm, Birkenkrone, Kranz, Bänder wehen mit dem Wind (nach rechts gezeichnet)
+  const FEST_MAI = {
+    vb: [40, 160],
+    b: `<rect x="18.3" y="24" width="3.4" height="140" fill="#f4efe6" stroke="${OUT}" stroke-width=".8"/>
+      <path d="M18.4 50 h1.7 M20 60 h1.5 M18.4 71 h1.9 M20.2 82 h1.3 M18.4 94 h1.6 M20 106 h1.5 M18.4 118 h1.8 M20 130 h1.4 M18.4 142 h1.7"
+        stroke="#3a3330" stroke-width="1.2"/>
+      <path d="M20 28 Q6 30 4.5 18 Q5 4 20 2 Q35 4 35.5 18 Q34 30 20 28Z" fill="#6bab4c" stroke="${OUT}" stroke-width="1.1"/>
+      <path d="M10 10 Q8 18 9 25 M16 6 Q14 16 15 27 M25 6 Q27 16 25.5 27 M31 11 Q33 18 31.5 24" stroke="#4f8a3a" stroke-width=".9" fill="none" stroke-linecap="round"/>
+      <ellipse cx="13" cy="11" rx="4" ry="5" fill="#86c46b"/><ellipse cx="25" cy="15" rx="4.4" ry="5.6" fill="#86c46b" opacity=".85"/>
+      <g class="rd">${[8.5, 12, 15.5, 24.5, 28, 31.5].map((x, i) => {
+        const len = [34, 44, 30, 40, 32, 46][i];
+        const s = len / 3;
+        return `<path class="rb" style="animation-delay:${(-i * 0.37).toFixed(2)}s;animation-duration:${(1 + (i % 3) * 0.18).toFixed(2)}s"`
+          + ` d="M${x} 47 q${festF1(s * 0.55)} ${festF1(s * 0.4)} ${festF1(s * 0.7)} ${festF1(s * 0.9)} t${festF1(s * 0.75)} ${festF1(s * 0.8)} t${festF1(s * 0.8)} ${festF1(s * 0.75)}"`
+          + ` stroke="${FEST_COLORS[i]}" stroke-width="2.4" fill="none" stroke-linecap="round"/>`;
+      }).join('')}</g>
+      <ellipse cx="20" cy="46" rx="13" ry="3.8" fill="none" stroke="${OUT}" stroke-width="5"/>
+      <ellipse cx="20" cy="46" rx="13" ry="3.8" fill="none" stroke="#5fae4a" stroke-width="3.6"/>
+      <g><circle cx="8" cy="46.8" r="1.5" fill="#f28fb1"/><circle cx="14" cy="49.4" r="1.5" fill="#f6c945"/><circle cx="21.5" cy="49.8" r="1.5" fill="#fff"/>
+        <circle cx="29" cy="48.6" r="1.5" fill="#b99cf0"/><circle cx="31.5" cy="43.6" r="1.3" fill="#f6c945"/><circle cx="11" cy="43" r="1.3" fill="#f28fb1"/></g>`,
+  };
+  // Geburtstagskuchen (viewBox 32 × 32) mit einer Kerze; .out = ausgepustet, Rauchfaden steigt auf
+  const FEST_CAKE = {
+    vb: [32, 32],
+    b: `<ellipse cx="16" cy="30.4" rx="15" ry="2.2" fill="#f4f1ea" stroke="${OUT}" stroke-width=".9"/>
+      <path d="M4.5 18 V27 Q16 31 27.5 27 V18Z" fill="#f3d7a6" stroke="${OUT}" stroke-width="1.1" stroke-linejoin="round"/>
+      <path d="M4.6 23.2 Q16 26.6 27.4 23.2" stroke="#fff6ea" stroke-width="1.6" fill="none"/>
+      <path d="M4.5 18 Q4.6 21.6 6.2 21.4 Q7.4 21.2 7.8 20 Q9 23.6 10.6 22.4 Q11.6 21.4 13 21.6 Q14.4 24.2 16 22.6 Q17.4 21.4 19 21.8
+        Q20.6 23.8 22 22 Q23 21 24.6 21.4 Q26.2 22.4 27.5 18Z" fill="#f7a8c4"/>
+      <ellipse cx="16" cy="18" rx="11.5" ry="3.6" fill="#f7a8c4" stroke="${OUT}" stroke-width="1.1"/>
+      <g stroke-width="1" stroke-linecap="round"><path d="M8.6 18.2 l1.2 -.5" stroke="#5fb9de"/><path d="M12 19.6 l1 .6" stroke="#f6c945"/>
+        <path d="M20.4 19.4 l1.2 -.4" stroke="#7cc35a"/><path d="M23.6 17.6 l.8 .8" stroke="#5fb9de"/><path d="M11.4 16.4 l1 -.4" stroke="#fff"/></g>
+      <circle cx="8.6" cy="16.4" r="1.5" fill="#e8584e" stroke="${OUT}" stroke-width=".6"/><circle cx="23.4" cy="16.2" r="1.5" fill="#e8584e" stroke="${OUT}" stroke-width=".6"/>
+      <rect x="14.7" y="8.4" width="2.6" height="9.4" rx=".7" fill="#5fb9de" stroke="${OUT}" stroke-width=".6"/>
+      <path d="M14.9 11 l2.2 -1.1 M14.9 13.8 l2.2 -1.1 M14.9 16.6 l2.2 -1.1" stroke="#fff" stroke-width=".7"/>
+      <path d="M16 8.4 v-1.3" stroke="#3a2a20" stroke-width=".6"/>`,
+    g: `<defs>${GLOW_GRAD('fst-kg', '#ffcf70')}</defs>
+      <g class="nite khalo"><circle cx="16" cy="5" r="7.5" fill="url(#fst-kg)"/></g>
+      <g class="flm"><path d="M16 2 Q18 5.2 16 7.4 Q14 5.2 16 2Z" fill="#ffb53a"/><path d="M16 4 Q17 5.8 16 7.1 Q15 5.8 16 4Z" fill="#fff3b0"/></g>
+      <path class="smk" d="M16 6.8 q-1.8 -2.6 0 -5 t0 -5 t0 -5" stroke="rgba(235, 235, 240, .9)" stroke-width="1" fill="none" stroke-linecap="round"/>`,
+  };
+  // Osterei (viewBox 12 × 15), Muster 0 Zickzack, 1 Punkte, 2 Streifen
+  const FEST_EGG_PATH = 'M6 .8 C9.6 .8 11.4 6 11.4 9.4 C11.4 12.6 9 14.4 6 14.4 C3 14.4 .6 12.6 .6 9.4 C.6 6 2.4 .8 6 .8Z';
+  const FEST_EGG = (c1, c2, kind) => `<path d="${FEST_EGG_PATH}" fill="${c1}" stroke="${OUT}" stroke-width=".8"/>${[
+    `<path d="M1.3 8.4 L3 6.9 L4.7 8.4 L6.4 6.9 L8.1 8.4 L9.8 6.9 L10.9 7.9" stroke="${c2}" stroke-width="1.1" fill="none" stroke-linejoin="round"/>`,
+    `<g fill="${c2}"><circle cx="4.2" cy="6" r=".95"/><circle cx="8" cy="6.6" r=".95"/><circle cx="6" cy="9.6" r=".95"/><circle cx="3.2" cy="11.2" r=".85"/><circle cx="8.8" cy="11.4" r=".85"/></g>`,
+    `<path d="M1 7.8 Q6 9.2 11 7.8 M.8 10.8 Q6 12.2 11.2 10.8" stroke="${c2}" stroke-width="1.3" fill="none"/>`,
+  ][kind]}<ellipse cx="4" cy="4.6" rx="1.1" ry="1.9" fill="#fff" opacity=".45" transform="rotate(20 4 4.6)"/>`;
+  // Abgebrannter Raketenstab (viewBox 40 × 8), liegt im Gras
+  const FEST_STICK = {
+    vb: [40, 8],
+    b: `<path d="M1 6.6 L29 5.2" stroke="#b08a5a" stroke-width="1.1" stroke-linecap="round"/>
+      <rect x="28" y="2.2" width="10" height="4.6" rx="1" fill="#4d4a52" stroke="${OUT}" stroke-width=".7"/>
+      <rect x="31" y="2.2" width="2" height="4.6" fill="#c94440"/>
+      <path d="M38 2.6 L39.6 4.5 L38 6.4Z" fill="#2a2a2a"/>`,
+  };
+  // Fledermaus (viewBox 40 × 22), Flügel schlagen am Körper
+  const FEST_BAT = `<svg viewBox="0 0 40 22" aria-hidden="true">
+    <path class="w" d="M18 10 Q11 2 1.5 6.5 Q5.5 8 5 11.5 Q8.5 9.6 10 13.4 Q13 10.6 18 13Z" fill="#3b3048" stroke="#1f1828" stroke-width=".6"/>
+    <path class="w" d="M22 10 Q29 2 38.5 6.5 Q34.5 8 35 11.5 Q31.5 9.6 30 13.4 Q27 10.6 22 13Z" fill="#3b3048" stroke="#1f1828" stroke-width=".6"/>
+    <ellipse cx="20" cy="12" rx="3.4" ry="4.6" fill="#3b3048"/>
+    <circle cx="20" cy="7.4" r="3" fill="#3b3048"/>
+    <path d="M17.6 5.6 L17.8 2.6 L19.2 4.8Z M22.4 5.6 L22.2 2.6 L20.8 4.8Z" fill="#3b3048"/>
+    <circle cx="18.9" cy="7.2" r=".6" fill="#ffd45a"/><circle cx="21.1" cy="7.2" r=".6" fill="#ffd45a"/>
+  </svg>`;
+
+  const STYLE_FEST = `
+  .fest-b, .fest-f, .fest-b > div, .fest-f > div { position: absolute; inset: 0; pointer-events: none; }
+  .fest-f { z-index: 3; }
+  /* liegt auf dem Bau, aber hinter dem Pika (z-index 3) */
+  .fest-b > .fon { z-index: 1; }
+  .fi { position: absolute; }
+  .fi > svg { position: absolute; left: 0; top: 0; width: 100%; height: 100%; overflow: visible; }
+  .fi .b { transition: filter 2.5s; }
+  .day.overcast .fi .b { filter: brightness(.9) saturate(.8); }
+  .dusk .fi .b { filter: brightness(.85) saturate(.85); }
+  .night .fi .b { filter: brightness(.5) saturate(.6); }
+  .fi .nite { opacity: 0; transition: opacity 2.5s; }
+  .dusk .fi .nite { opacity: .75; }
+  .night .fi .nite { opacity: 1; }
+  .fflk { animation: fflk 2.2s ease-in-out infinite alternate; }
+  @keyframes fflk { 0% { opacity: 1; } 25% { opacity: .7; } 40% { opacity: .95; } 65% { opacity: .78; } 100% { opacity: 1; } }
+  .flm { transform-box: fill-box; transform-origin: 50% 100%; animation: fflame .45s ease-in-out infinite alternate; }
+  @keyframes fflame { from { transform: scale(.88, 1.06) rotate(-5deg); } to { transform: scale(1.06, .9) rotate(4deg); } }
+  .fbl { animation: fblink 2.8s ease-in-out infinite alternate; }
+  @keyframes fblink { 0%, 45% { opacity: 1; } 100% { opacity: .3; } }
+  .lsw { transform-box: view-box; animation: flsw 2.6s ease-in-out infinite alternate; }
+  .flan .lsw { transform-origin: 13.5px 2px; }
+  .fest-carry .lsw { transform-origin: 128px 6px; animation-duration: 1.3s; }
+  @keyframes flsw { from { transform: rotate(-6deg); } to { transform: rotate(6deg); } }
+  /* Ostereier: antippen = wackeln */
+  .fegg { pointer-events: auto; cursor: pointer; }
+  .fegg > svg { left: 6px; top: 6px; width: calc(100% - 12px); height: calc(100% - 12px); transform-origin: 50% 100%; }
+  .fegg.wob > svg { animation: fwob .8s ease-in-out; }
+  @keyframes fwob { 15% { transform: rotate(-14deg); } 35% { transform: rotate(11deg); } 55% { transform: rotate(-7deg); } 75% { transform: rotate(4deg); } }
+  /* Kuchen: ausgepustet */
+  .fcake .smk { opacity: 0; stroke-dasharray: 22; stroke-dashoffset: 22; transform-box: fill-box; }
+  .fcake.out .flm, .fcake.out .khalo { display: none; }
+  .fcake.out .smk { animation: fsmk 2.6s ease-out forwards; }
+  @keyframes fsmk { 0% { opacity: .9; stroke-dashoffset: 22; } 50% { opacity: .7; } 100% { opacity: 0; stroke-dashoffset: 0; transform: translate(1px, -4px); } }
+  /* Maibaum: Bänder wehen in Windrichtung (--wd) */
+  .fmai .rd { transform-box: view-box; transform-origin: 20px 46px; transform: scaleX(var(--wd, 1)); transition: transform 3s; }
+  .fmai .rb { transform-box: view-box; transform-origin: 20px 46px; animation: frib 1.2s ease-in-out infinite alternate; }
+  @keyframes frib { from { transform: rotate(-4deg) skewY(3deg); } to { transform: rotate(5deg) skewY(-4deg); } }
+  .windy .fmai .rb { animation-duration: .55s; }
+  /* Wimpel und Girlande */
+  .fpn { transform-box: fill-box; transform-origin: 50% 0; animation: fpn 1.8s ease-in-out infinite alternate; }
+  @keyframes fpn { from { transform: rotate(-5deg); } to { transform: rotate(5deg); } }
+  .windy .fpn { animation-duration: .7s; }
+  /* Hüte am Pika: Weihnachtsmütze ersetzt beim Schlafen die Zipfelmütze, die anderen nur wach */
+  .hats > g { display: none; }
+  .fest-witch .hat-witch, .fest-party .hat-party, .fest-xmas .hat-xmas { display: inline; }
+  .sleeping .hat-witch, .sleeping .hat-party { display: none; }
+  .pika.sleeping.fest-xmas .cap { display: none; }
+  /* St. Martin: Laterne am Stab */
+  .fest-carry { position: absolute; inset: 0; display: none; pointer-events: none; }
+  .fest-lantern .fest-carry { display: block; }
+  .fest-carry svg { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
+  .fest-carry .lgl { opacity: .45; transition: opacity 2.5s; }
+  .dusk .fest-carry .lgl { opacity: .8; }
+  .night .fest-carry .lgl { opacity: 1; }
+  /* Zucken beim Knall */
+  .pika.fest-zuck .hop { animation: fzuck .4s ease-out; }
+  @keyframes fzuck { 25% { transform: translateY(-6%) scale(.96, 1.05); } 60% { transform: scale(1.04, .96); } }
+  /* Fledermaus */
+  .fbat { position: absolute; left: 0; top: 0; width: calc(var(--H) * .085); margin: calc(var(--H) * -.024) 0 0 calc(var(--H) * -.042); }
+  .fbat svg { display: block; width: 100%; height: auto; overflow: visible; }
+  .fbat .w { transform-box: view-box; transform-origin: 20px 11px; animation: fbflap .15s ease-in-out infinite alternate; }
+  @keyframes fbflap { to { transform: scaleY(-.45); } }
+  /* Feuerwerk: Rakete mit Schweif, Kugel aus Sternchen, Funken rieseln, Lichtschein auf der Wiese */
+  .fwr {
+    position: absolute; left: 0; top: 0; width: 2px; height: calc(var(--H) * .06); margin-left: -1px; border-radius: 1px;
+    transform-origin: 50% 0; background: linear-gradient(#fff6d6, rgba(255, 190, 110, .7) 30%, rgba(255, 160, 90, 0));
+    box-shadow: 0 0 4px rgba(255, 230, 160, .8);
+  }
+  .fwb { position: absolute; width: 0; height: 0; }
+  .fwb i { position: absolute; left: 0; top: 0; display: block; border-radius: 50%; }
+  .fwb .fwp { width: calc(var(--H) * .018); height: calc(var(--H) * .018); margin: calc(var(--H) * -.009); background: var(--c); box-shadow: 0 0 5px 1.5px var(--c); }
+  .fwb .fws { width: 2px; height: 2px; margin: -1px; background: #fff8dc; box-shadow: 0 0 3px 1px rgba(255, 240, 190, .9); }
+  .fwb .fwc {
+    width: calc(var(--H) * .07); height: calc(var(--H) * .07); margin: calc(var(--H) * -.035);
+    background: radial-gradient(closest-side, #fff, var(--c) 45%, transparent); animation: fwc .5s ease-out forwards;
+  }
+  @keyframes fwc { from { transform: scale(.3); opacity: 1; } to { transform: scale(1.7); opacity: 0; } }
+  .fest-f > .fwl { opacity: 0; background: radial-gradient(ellipse 95% 85% at var(--fx, 50%) var(--fy, 20%), var(--fc, #fff), transparent 80%); }
+  .fest-f > .fwl.go { animation: fwl 1.1s ease-out; }
+  @keyframes fwl { 8% { opacity: .2; } 100% { opacity: 0; } }
+  .fcf i { position: absolute; top: 0; display: block; }
+  `;
   // ==================== Ende Festtage ====================
 
   const FLOWER_SVG =(c) => `
@@ -3079,13 +3458,750 @@
 
 
     // ==================== Festtage: Methoden ====================
-    _hassFest(hass) {}
-    _attachFest() {}
-    _detachFest() {}
-    _hiddenFest(hidden) {}
-    _layoutFest(first) {}
-    _tickFest() {}
-    _festActs(ctx) { return []; }
+    // Welche Feste heute sind, bestimmt _festToday() aus der Ortszeit (Vorschau: _dbgDate). Der 20-s-Takt prüft
+    // neu; ändert sich etwas, wird die Deko neu aufgebaut. Alles ist Zierde: nichts kostet Werte, nichts wird gesammelt.
+    _hassFest(hass) {
+      // Geburtstage stehen in der Konfiguration: bei neuer Konfiguration gleich neu bestimmen
+      if (this._cfg !== this._festCfg && this._el) {
+        this._festCfg = this._cfg;
+        this._festEnsure();
+        this._festUpdate();
+      }
+    }
+
+    _attachFest() {
+      this._festEnsure();
+      this._festUpdate(true);
+    }
+
+    _detachFest() {
+      clearTimeout(this._festFwT);
+      this._festFwT = null;
+      clearTimeout(this._festCakeT);
+      this._festT?.forEach((t) => clearTimeout(t));
+      this._festT?.clear();
+      if (this._festEls) this._festEls.sky.innerHTML = this._festEls.cf.innerHTML = '';
+    }
+
+    _hiddenFest(hidden) {
+      if (hidden && this._festEls) this._festEls.sky.innerHTML = this._festEls.cf.innerHTML = '';
+      this._festFwSync();
+    }
+
+    _layoutFest(first) {
+      this._festEnsure();
+      this._festUpdate(true);
+    }
+
+    _tickFest() {
+      if (!this._el) return;
+      this._festEnsure();
+      this._festUpdate();
+      const f = this._fest;
+      const now = new Date(this._festNow());
+      // Mitternacht an Neujahr: Finale, und der Pika wacht auf und schaut aus dem Bau
+      if (f.fireworks && now.getMonth() === 0 && now.getDate() === 1 && now.getHours() === 0 && now.getMinutes() < 5
+        && this._festMidY !== now.getFullYear()) {
+        this._festMidY = now.getFullYear();
+        this._festFinale();
+        this._festForce('festFireworks');
+      }
+      if (document.hidden || !this._g) return;
+      // Halloween-Nacht: ab und zu flattert eine Fledermaus über den Himmel
+      if (f.witch && this._festDark() && Math.random() < 0.35) this._festBat();
+      // Karneval: alle paar Minuten kurz Konfetti
+      if (f.karneval) {
+        const t = Date.now();
+        this._festCfNext ??= t + rnd(5, 30) * 1000;
+        if (t >= this._festCfNext) {
+          this._festConfettiRain();
+          this._festCfNext = t + rnd(2, 5) * 60000;
+        }
+      } else this._festCfNext = null;
+      // Maibaum: Bänder drehen mit dem Wind
+      const mai = this._festEls?.back.querySelector('.fmai');
+      if (mai) mai.style.setProperty('--wd', this._windDir < 0 ? -1 : 1);
+    }
+
+    _festActs({ wx, g }) {
+      const f = this._fest || {};
+      const pos = this._festPos || {};
+      const ok = (n, min) => Date.now() >= ((this._festLast || {})[n] || 0) + min * 60000;
+      const dry = !wx.wet;
+      const out = [];
+      // Gewicht 0 in der Pause: so bleibt der Name in der Liste (Vorschau „Aktion“)
+      if (f.halloween && pos.pumpkin) out.push([dry && ok('festPumpkin', 4) ? 1.5 : 0, 'festPumpkin']);
+      if (f.martin?.walk) out.push([dry && ok('festLantern', 3) ? 3 : 0, 'festLantern']);
+      if (f.boot && pos.boot) out.push([ok('festBoot', 5) ? 1.6 : 0, 'festBoot']);
+      if (f.xmas && pos.tree) out.push([ok('festTree', 4) ? 2 : 0, 'festTree']);
+      if (f.fireworks) out.push([ok('festFireworks', 2) ? 12 : 0, 'festFireworks']);
+      if (f.karneval) out.push([dry && ok('festConfetti', 4) ? 1.6 : 0, 'festConfetti']);
+      if (f.ostern && this._festEggs?.length) out.push([ok('festEgg', 3) ? 2 : 0, 'festEgg']);
+      if (f.birthday && pos.cake) out.push([!this._festCakeOut && ok('festBirthday', 4) ? 2.5 : 0, 'festBirthday']);
+      // Sommerfest: öfter Freudensprünge
+      if (f.sommer) out.push([dry && g > 30 ? 3 : 0, 'binky']);
+      return out;
+    }
+
+    _festNow() {
+      return this._dbgDate ?? Date.now();
+    }
+
+    _festDark() {
+      const sc = this._el.scene.classList;
+      return sc.contains('night') || sc.contains('dusk');
+    }
+
+    _festMark(name) {
+      (this._festLast ||= {})[name] = Date.now();
+    }
+
+    // Kurzer Zeitgeber, der beim Abhängen der Karte mit aufgeräumt wird
+    _festLater(fn, ms) {
+      this._festT ||= new Set();
+      const t = setTimeout(() => {
+        this._festT.delete(t);
+        fn();
+      }, ms);
+      this._festT.add(t);
+    }
+
+    // Aktive Feste am (Orts-)Datum. festive: false lässt nur die Geburtstage übrig.
+    _festToday() {
+      const now = new Date(this._festNow());
+      const y = now.getFullYear();
+      const mo = now.getMonth() + 1;
+      const d = now.getDate();
+      const h = now.getHours();
+      const hm = h * 60 + now.getMinutes();
+      const md = mo * 100 + d;
+      const day = festDay(y, mo, d);
+      const f = { year: y };
+      if (this._cfg?.festive !== false) {
+        if (md >= 1024 && md <= 1031) f.halloween = true;
+        if (md === 1031) f.witch = true;
+        if (md === 1111) f.martin = { walk: h >= 16 };
+        const adv = festAdvent1(y);
+        if (day >= adv && md <= 1224) f.advent = { candles: Math.min(4, 1 + Math.floor((day - adv) / 7)) };
+        if (day >= adv || md <= 106) f.lights = true; // Lichterkette vom 1. Advent bis Heilige Drei Könige
+        if ((md === 1205 && h >= 18) || md === 1206) f.boot = { full: md === 1206 };
+        if (md >= 1224 && md <= 1226) f.xmas = true;
+        if ((md === 1231 && hm >= 23 * 60 + 55) || (md === 101 && h < 1)) f.fireworks = true;
+        if (md === 101 && h >= 1) f.sticks = true;
+        const [em, ed] = festEaster(y);
+        const e = festDay(y, em, ed);
+        // Weiberfastnacht (Ostern − 52) bis einschließlich Aschermittwoch (Ostern − 46)
+        if (day >= e - 52 && day <= e - 46) f.karneval = true;
+        if (day >= e - 2 && day <= e + 1) f.ostern = true; // Karfreitag bis Ostermontag
+        if ((md === 430 && h >= 18) || md === 501) f.maibaum = true;
+        if (md === 621) f.sommer = true;
+      }
+      // Geburtstage "MM-DD" (auch "YYYY-MM-DD" oder "TT.MM."); der 29. 2. wird sonst am 28. 2. gefeiert
+      const leap = new Date(y, 1, 29).getMonth() === 1;
+      const names = (Array.isArray(this._cfg?.birthdays) ? this._cfg.birthdays : []).filter((b) => {
+        const s = String(b?.date ?? '').trim();
+        let m = s.match(/^(?:\d{4}-)?(\d{1,2})-(\d{1,2})$/);
+        let bm;
+        let bd;
+        if (m) [bm, bd] = [Number(m[1]), Number(m[2])];
+        else if ((m = s.match(/^(\d{1,2})\.(\d{1,2})\.?$/))) [bd, bm] = [Number(m[1]), Number(m[2])];
+        else return false;
+        if (bm === 2 && bd === 29 && !leap) bd = 28;
+        return bm === mo && bd === d;
+      }).map((b) => String(b.name || '').trim()).filter(Boolean);
+      if (names.length) f.birthday = { names };
+      return f;
+    }
+
+    _festEnsure() {
+      if (this._festEls || !this._el?.festB) return;
+      const B = this._el.festB;
+      const F = this._el.festF;
+      B.innerHTML = '<div class="fsky"></div><div class="fback"></div><div class="fon"></div>';
+      F.innerHTML = '<div class="ffront"></div><div class="fcf"></div><div class="fwl"></div>';
+      this._festEls = {
+        sky: B.children[0], back: B.children[1], on: B.children[2],
+        front: F.children[0], cf: F.children[1], light: F.children[2],
+      };
+      // Laterne am Stab hoppelt mit dem Pika mit (in der Ebene .hop, dreht sich mit ihm um)
+      this._el.pika.querySelector('.hop').insertAdjacentHTML('beforeend', `<div class="fest-carry">${FEST_CARRY}</div>`);
+    }
+
+    // Feste neu bestimmen; bei Wechsel (oder force) Hüte und Deko neu
+    _festUpdate(force) {
+      const f = this._festToday();
+      const key = JSON.stringify(f);
+      const changed = key !== this._festKey;
+      this._festKey = key;
+      this._fest = f;
+      if (changed && !f.birthday) this._festCakeOut = false;
+      if (changed || force) {
+        const p = this._el.pika.classList;
+        const hat = f.xmas ? 'xmas' : f.birthday ? 'party' : f.witch ? 'witch' : f.karneval ? 'party' : null;
+        for (const h of ['witch', 'xmas', 'party']) p.toggle(`fest-${h}`, hat === h);
+        this._festRender();
+      }
+      this._festFwSync();
+    }
+
+    // Deko aufbauen. Plätze: rechts und links neben der Tür, die Wiese zwischen Heu und Stein, die Bau-Oberkante,
+    // hinter dem Bau; Statusleiste links oben und Futterknopf rechts unten bleiben frei.
+    _festRender() {
+      const E = this._festEls;
+      if (!E || !this._g) return;
+      const f = this._fest || {};
+      const { gy, hole, rock, bur, hay } = this._g;
+      const W = this._W;
+      const H = this._H;
+      const A = this._areal();
+      const back = [];
+      const on = [];
+      const front = [];
+      const pos = {};
+      const hayR = hay + H * 0.13;
+      const slots = { R: hole.r + H * 0.1, L: hole.l - H * 0.075, M: (hayR + rock.l) / 2 };
+      const used = new Set();
+      const slot = (...prefs) => {
+        const s = prefs.find((k) => !used.has(k));
+        if (!s) return null;
+        used.add(s);
+        return slots[s];
+      };
+      // Grafik mit Boden bei bottom, mittig über x
+      const item = (cls, x, bottom, w, art, name, style = '') => {
+        const h = (w * art.vb[1]) / art.vb[0];
+        if (name) pos[name] = { x, top: bottom - h, w, h };
+        return `<div class="fi ${cls}" style="left:${festF1(x - w / 2)}px;top:${festF1(bottom - h)}px;width:${festF1(w)}px;height:${festF1(h)}px${style}">`
+          + `${festSvg(art.vb, art.b, 'b')}${art.g ? festSvg(art.vb, art.g, 'g') : ''}</div>`;
+      };
+      // Grafik in Bau-Einheiten, genau über dem Bau
+      const onBur = (cls, art) => `<div class="fi ${cls}" style="left:${festF1(bur.l)}px;top:${festF1(bur.base)}px;`
+        + `width:${festF1(100 * bur.u)}px;height:${festF1(A.vh * bur.u)}px">${festSvg([100, A.vh], art.b, 'b')}`
+        + `${art.g ? festSvg([100, A.vh], art.g, 'g') : ''}</div>`;
+      const edge = FEST_EDGE[this._arealKey] || FEST_EDGE.huegel;
+
+      if (f.halloween) front.push(item('fpump', slot('L', 'R', 'M'), gy + 1, H * 0.14, FEST_PUMPKIN, 'pumpkin'));
+      if (f.boot) front.push(item('fboot', slot('L', 'R', 'M'), gy + 1, H * 0.11, FEST_BOOT(f.boot.full), 'boot'));
+      if (f.advent) front.push(item('fwreath', slot('R', 'L', 'M'), gy, H * 0.2, FEST_WREATH(f.advent.candles), 'wreath'));
+      if (f.birthday) {
+        front.push(item(`fcake${this._festCakeOut ? ' out' : ''}`, slot('R', 'L', 'M'), gy + 1, H * 0.14, FEST_CAKE, 'cake'));
+      }
+      if (f.lights) on.push(onBur('flights', FEST_LIGHTS(edge)));
+      if (f.karneval) on.push(onBur('fstream', FEST_STREAMERS(edge)));
+      if (f.martin) {
+        // Papierlaterne hängt an einem Stöckchen, das rechts oben aus dem Bau ragt (neben Tür und Fenster)
+        const [ex, ey] = edge.reduce((a, p) => (Math.abs(p[0] - 88) < Math.abs(a[0] - 88) ? p : a));
+        const w = H * 0.1;
+        const ax = bur.l + ex * bur.u;
+        const ay = bur.base + ey * bur.u;
+        const h = (w * 34) / 26;
+        on.push(`<div class="fi flan" style="left:${festF1(ax - w / 26)}px;top:${festF1(ay - (w * 4.2) / 26)}px;width:${festF1(w)}px;height:${festF1(h)}px">`
+          + `${festSvg(FEST_LANTERN.vb, FEST_LANTERN.b, 'b')}${festSvg(FEST_LANTERN.vb, FEST_LANTERN.g, 'g')}</div>`);
+      }
+      if (f.xmas) {
+        used.add('M');
+        const tw = (H * 0.42 * 50) / 66;
+        back.push(item('ftree', slots.M, gy + 2, tw, FEST_TREE, 'tree'));
+        front.push(item('fgift', slots.M - tw * 0.32, gy - 1, H * 0.1, FEST_GIFT));
+      }
+      if (f.maibaum) {
+        // hinter dem Bau, die Krone unterhalb der Statusleiste
+        const top = Math.max(44, H * 0.16);
+        const mh = gy - top;
+        const mw = mh / 4;
+        const x = bur.l + 80 * bur.u;
+        back.push(`<div class="fi fmai" style="left:${festF1(x - mw / 2)}px;top:${festF1(top)}px;width:${festF1(mw)}px;height:${festF1(mh)}px;`
+          + `--wd:${this._windDir < 0 ? -1 : 1}">${festSvg(FEST_MAI.vb, FEST_MAI.b, 'b')}</div>`);
+      }
+      if (f.birthday || f.sommer) back.push(this._festString(f.birthday ? ['A', 'L', 'L', 'E', 'S', '♥', 'G', 'U', 'T', 'E'] : null));
+      // Wiese für Eier und Raketenstäbe: rechts neben der Tür bis vor den Futterknopf
+      const lo = hole.r + H * 0.12;
+      const hi = Math.max(lo + H * 0.3, Math.min(W - 64, rock.l + rock.w * 0.75));
+      const eggX = [];
+      if (f.ostern) {
+        const n = 4 + Math.floor(seeded(f.year, 7) * 3);
+        const seg = (hi - lo) / n;
+        for (let i = 0; i < n; i++) {
+          const r = (k) => seeded(f.year, i, k);
+          const x = lo + seg * (i + 0.2 + 0.6 * r(1));
+          const c1 = FEST_COLORS[Math.floor(r(2) * FEST_COLORS.length)];
+          let c2 = FEST_COLORS[Math.floor(r(3) * FEST_COLORS.length)];
+          if (c2 === c1) c2 = '#fff';
+          const w = H * 0.06;
+          const h = w * 1.25;
+          const b = gy + 1 + r(4) * 2.5;
+          eggX.push(x);
+          front.push(`<div class="fi fegg" role="button" aria-label="Osterei" style="left:${festF1(x - w / 2 - 6)}px;top:${festF1(b - h - 6)}px;`
+            + `width:${festF1(w + 12)}px;height:${festF1(h + 12)}px">`
+            + `<svg class="b" viewBox="0 0 12 15" aria-hidden="true" style="rotate:${festF1((r(5) - 0.5) * 24)}deg">${FEST_EGG(c1, c2, Math.floor(r(6) * 3))}</svg></div>`);
+        }
+      }
+      if (f.sticks) {
+        [[0.3, -6], [0.68, 9]].forEach(([t, rot], i) => {
+          const x = lo + (hi - lo) * (t + (seeded(f.year, 31, i) - 0.5) * 0.1);
+          front.push(item('fstick', x, gy - H * 0.018, H * 0.2, FEST_STICK, null, `;rotate:${rot}deg`));
+        });
+      }
+
+      E.back.innerHTML = back.join('');
+      E.on.innerHTML = on.join('');
+      E.front.innerHTML = front.join('');
+      this._festPos = pos;
+      this._festCakeEl = E.front.querySelector('.fcake');
+      this._festEggs = [...E.front.querySelectorAll('.fegg')].map((el, i) => {
+        el.addEventListener('click', (e) => (e.stopPropagation(), this._festWobble(el)));
+        return { el, x: eggX[i] };
+      });
+    }
+
+    // Wimpelkette zwischen Bau und Stein (Sommerfest) bzw. Girlande „Alles Gute“ (Geburtstag), in px.
+    // Links hängt sie hinter der höchsten Stelle des Baus (Schornstein), rechts an einem Stöckchen hinter dem Stein.
+    _festString(letters) {
+      const { bur, rock } = this._g;
+      const W = this._W;
+      const H = this._H;
+      const A = this._areal();
+      const top = A.perches.reduce((a, p) => (p[1] < a[1] ? p : a));
+      const x1 = bur.l + top[0] * bur.u;
+      const y1 = bur.base + top[1] * bur.u + 1.5;
+      const x2 = rock.l + rock.w * 0.8;
+      const y2 = rock.top0 - H * 0.1;
+      const cx = (x1 + x2) / 2;
+      const cy = Math.max(y1, y2) + H * 0.07;
+      const P = (t) => [(1 - t) ** 2 * x1 + 2 * (1 - t) * t * cx + t * t * x2, (1 - t) ** 2 * y1 + 2 * (1 - t) * t * cy + t * t * y2];
+      const len = Math.hypot(x2 - x1, y2 - y1) * 1.05;
+      const n = letters ? letters.length : Math.max(7, Math.round(len / (H * 0.075)));
+      const spacing = (len * 0.88) / n;
+      const pw = letters ? Math.min(spacing * 0.9, H * 0.085) : Math.min(spacing * 0.8, H * 0.06);
+      const ph = pw * (letters ? 1.15 : 1.25);
+      let flags = '';
+      for (let i = 0; i < n; i++) {
+        const t = 0.06 + (0.88 * (i + 0.5)) / n;
+        const [x, y] = P(t);
+        const dx = 2 * (1 - t) * (cx - x1) + 2 * t * (x2 - cx);
+        const dy = 2 * (1 - t) * (cy - y1) + 2 * t * (y2 - cy);
+        const a = (Math.atan2(dy, dx) * 180) / Math.PI;
+        const c = FEST_COLORS[i % FEST_COLORS.length];
+        const ch = letters?.[i];
+        flags += `<g transform="translate(${festF1(x)} ${festF1(y)}) rotate(${festF1(a * 0.6)})"><g class="fpn" style="animation-delay:${(-i * 0.29).toFixed(2)}s">`
+          + `<path d="M${festF1(-pw / 2)} 0 L${festF1(pw / 2)} 0 L0 ${festF1(ph)}Z" fill="${c}" stroke="${OUT}" stroke-width=".8" stroke-linejoin="round"/>`
+          + (ch ? `<text x="0" y="${festF1(ph * 0.36)}" text-anchor="middle" dominant-baseline="middle" font-size="${festF1(pw * 0.62)}" font-weight="900"`
+            + ` fill="#fff" stroke="rgba(90, 64, 48, .55)" stroke-width=".7" paint-order="stroke">${ch}</text>` : '')
+          + '</g></g>';
+      }
+      const sw = Math.max(1.6, H * 0.012);
+      const body = `<path d="M${festF1(x2)} ${festF1(y2 - 3)} V${festF1(rock.top0 + 22 * rock.ku)}" stroke="#8a5a3b" stroke-width="${festF1(sw)}" stroke-linecap="round"/>`
+        + `<path d="M${festF1(x1)} ${festF1(y1)} Q${festF1(cx)} ${festF1(cy)} ${festF1(x2)} ${festF1(y2)}" stroke="#7a6a5a" stroke-width="1" fill="none"/>${flags}`;
+      return `<div class="fi fwim" style="left:0;top:0;width:${W}px;height:${H}px">${festSvg([W, H], body, 'b')}</div>`;
+    }
+
+    _festWobble(el) {
+      if (!el) return;
+      el.classList.remove('wob');
+      void el.offsetWidth;
+      el.classList.add('wob');
+    }
+
+    // ---- Himmel: Fledermaus, Feuerwerk, Konfetti ----
+
+    _festBat() {
+      const sky = this._festEls?.sky;
+      if (!sky || !this._g) return;
+      const W = this._W;
+      const H = this._H;
+      const el = document.createElement('div');
+      el.className = 'fbat';
+      el.innerHTML = FEST_BAT;
+      sky.appendChild(el);
+      const dir = pick([-1, 1]);
+      const y0 = H * rnd(0.12, 0.4);
+      const kf = [];
+      for (let i = 0; i <= 8; i++) {
+        const t = i / 8;
+        const x = dir > 0 ? -0.08 * W + t * 1.16 * W : 1.08 * W - t * 1.16 * W;
+        const y = y0 + Math.sin(t * Math.PI * 3.2) * H * 0.05 - Math.sin(t * Math.PI) * H * 0.06;
+        kf.push({ transform: `translate(${festF1(x)}px, ${festF1(y)}px)` });
+      }
+      const dur = rnd(5000, 8000);
+      el.animate(kf, { duration: dur, easing: 'linear', fill: 'forwards' });
+      this._festLater(() => el.remove(), dur + 100);
+    }
+
+    // Läuft zwischen 23:55 und 1:00: alle 3–8 s eine Rakete
+    _festFwSync() {
+      const on = !!this._fest?.fireworks && this._attached && !document.hidden && !!this._g;
+      if (on && !this._festFwT) {
+        const go = () => {
+          this._festRocket();
+          this._festFwT = setTimeout(go, rnd(3000, 8000));
+        };
+        this._festFwT = setTimeout(go, rnd(400, 1500));
+      } else if (!on && this._festFwT) {
+        clearTimeout(this._festFwT);
+        this._festFwT = null;
+      }
+    }
+
+    _festFinale() {
+      let t = 0;
+      for (let i = 0; i < 14; i++) {
+        t += rnd(250, 750);
+        this._festLater(() => this._festRocket(), t);
+      }
+    }
+
+    _festRocket() {
+      const sky = this._festEls?.sky;
+      if (!sky || !this._g || document.hidden) return;
+      const W = this._W;
+      const H = this._H;
+      const x0 = rnd(0.3, 0.92) * W;
+      const x1 = clamp(x0 + rnd(-0.06, 0.06) * W, 0.28 * W, 0.95 * W);
+      const y0 = H * 0.62;
+      const y1 = rnd(0.12, 0.36) * H;
+      const r = document.createElement('i');
+      r.className = 'fwr';
+      r.style.left = `${festF1(x0)}px`;
+      r.style.top = `${festF1(y0)}px`;
+      sky.appendChild(r);
+      const ang = (Math.atan2(x0 - x1, y0 - y1) * 180) / Math.PI;
+      const dur = rnd(900, 1400);
+      r.animate([
+        { transform: `translate(0, 0) rotate(${festF1(ang)}deg)`, opacity: 1 },
+        { transform: `translate(${festF1(x1 - x0)}px, ${festF1(y1 - y0)}px) rotate(${festF1(ang)}deg)`, opacity: 0.9 },
+      ], { duration: dur, easing: 'cubic-bezier(.2, .6, .4, 1)', fill: 'forwards' });
+      this._festLater(() => {
+        r.remove();
+        this._festBurst(x1, y1);
+      }, dur);
+    }
+
+    _festBurst(x, y) {
+      const sky = this._festEls?.sky;
+      if (!sky) return;
+      const H = this._H;
+      const c = pick(FEST_FW_COLORS);
+      const c2 = Math.random() < 0.4 ? pick(FEST_FW_COLORS) : c;
+      const R = H * rnd(0.09, 0.15);
+      const box = document.createElement('div');
+      box.className = 'fwb';
+      box.style.left = `${festF1(x)}px`;
+      box.style.top = `${festF1(y)}px`;
+      box.style.setProperty('--c', c);
+      const core = document.createElement('i');
+      core.className = 'fwc';
+      box.appendChild(core);
+      const n = 14 + Math.floor(rnd(0, 6));
+      for (let i = 0; i < n; i++) {
+        const a = (i / n) * Math.PI * 2 + rnd(-0.1, 0.1);
+        const d = R * rnd(0.85, 1.1);
+        const p = document.createElement('i');
+        p.className = 'fwp';
+        p.style.setProperty('--c', i % 2 ? c2 : c);
+        box.appendChild(p);
+        p.animate([
+          { transform: 'translate(0, 0) scale(1.4)', opacity: 1 },
+          { transform: `translate(${festF1(Math.cos(a) * d * 0.8)}px, ${festF1(Math.sin(a) * d * 0.8)}px) scale(1)`, opacity: 1, offset: 0.45 },
+          { transform: `translate(${festF1(Math.cos(a) * d)}px, ${festF1(Math.sin(a) * d + H * 0.06)}px) scale(.4)`, opacity: 0 },
+        ], { duration: rnd(1300, 1700), easing: 'cubic-bezier(.15, .7, .35, 1)', fill: 'forwards' });
+      }
+      // Funken glitzern und rieseln langsam herunter
+      for (let i = 0; i < 10; i++) {
+        const a = rnd(0, Math.PI * 2);
+        const d = R * rnd(0.3, 0.9);
+        const s = document.createElement('i');
+        s.className = 'fws';
+        box.appendChild(s);
+        s.animate([
+          { transform: `translate(${festF1(Math.cos(a) * d * 0.6)}px, ${festF1(Math.sin(a) * d * 0.6)}px)`, opacity: 0 },
+          { opacity: 1, offset: 0.25 },
+          { opacity: 0.3, offset: 0.5 },
+          { opacity: 1, offset: 0.7 },
+          { transform: `translate(${festF1(Math.cos(a) * d)}px, ${festF1(Math.sin(a) * d + H * 0.13)}px)`, opacity: 0 },
+        ], { duration: rnd(1600, 2300), delay: 250 + rnd(0, 300), easing: 'ease-in', fill: 'both' });
+      }
+      sky.appendChild(box);
+      this._festLater(() => box.remove(), 2900);
+      // Lichtschein auf der Wiese, wie beim Blitz, nur bunt und sanft
+      const L = this._festEls.light;
+      L.style.setProperty('--fx', `${festF1(x)}px`);
+      L.style.setProperty('--fy', `${festF1(y)}px`);
+      L.style.setProperty('--fc', c);
+      L.classList.remove('go');
+      void L.offsetWidth;
+      L.classList.add('go');
+      this._festBang?.();
+    }
+
+    _festConfettiRain() {
+      const box = this._festEls?.cf;
+      if (!box || !this._g || document.hidden) return;
+      const { gy } = this._g;
+      const W = this._W;
+      const H = this._H;
+      for (let i = 0; i < 46; i++) {
+        const c = document.createElement('i');
+        const w = H * rnd(0.014, 0.022);
+        c.style.left = `${rnd(-2, 100).toFixed(1)}%`;
+        c.style.width = `${festF1(w)}px`;
+        c.style.height = `${festF1(w * (Math.random() < 0.3 ? 1 : rnd(1.5, 2.2)))}px`;
+        c.style.borderRadius = Math.random() < 0.3 ? '50%' : '1px';
+        c.style.background = pick(FEST_COLORS);
+        box.appendChild(c);
+        const dx = rnd(-0.06, 0.06) * W;
+        const dur = rnd(2600, 4200);
+        const delay = rnd(0, 1600);
+        c.animate([
+          { transform: 'translate(0, -14px) rotate(0deg) rotateY(0deg)' },
+          { transform: `translate(${festF1(dx * 0.4 + rnd(-10, 10))}px, ${festF1(gy * 0.45)}px) rotate(${rnd(90, 300).toFixed(0)}deg) rotateY(180deg)`, offset: 0.45 },
+          { transform: `translate(${festF1(dx)}px, ${festF1(gy + 6)}px) rotate(${rnd(300, 700).toFixed(0)}deg) rotateY(360deg)` },
+        ], { duration: dur, delay, easing: 'linear', fill: 'both' });
+        this._festLater(() => c.remove(), dur + delay + 60);
+      }
+    }
+
+    // Erzwingt einmal eine Aktion, auch wenn er schläft: der nächste Schritt der Lebensschleife ist diese Aktion
+    _festForce(name) {
+      if (!this._g) return;
+      this._step = () => {
+        delete this._step;
+        return this._run(name);
+      };
+      this._interrupt();
+    }
+
+    // Kurz zusammenzucken (Knall)
+    _festZuck() {
+      const p = this._el.pika;
+      p.classList.remove('fest-zuck');
+      void p.offsetWidth;
+      p.classList.add('fest-zuck');
+      const c = pick(['twitch-l', 'twitch-r']);
+      p.classList.add(c);
+      setTimeout(() => p.classList.remove('fest-zuck', c), 500);
+    }
+
+    _festBlow() {
+      this._festCakeOut = true;
+      const el = this._festCakeEl;
+      if (el) {
+        el.classList.remove('out');
+        void el.offsetWidth;
+        el.classList.add('out');
+      }
+      clearTimeout(this._festCakeT);
+      this._festCakeT = setTimeout(() => {
+        this._festCakeOut = false;
+        this._festCakeEl?.classList.remove('out');
+      }, 20000);
+    }
+
+    // ---- Aktionen ----
+
+    // Halloween: am Kürbis schnuppern, vor dem Gesicht erschrecken, kichern
+    async _festPumpkin() {
+      const it = this._festPos?.pumpkin;
+      if (!it) return;
+      this._festMark('festPumpkin');
+      await this._approach(it.x, 0.8);
+      const p = this._el.pika;
+      await this._wait(300);
+      p.classList.add('sniff');
+      await this._wait(rnd(900, 1400));
+      p.classList.remove('sniff');
+      const toward = this._dir;
+      this._jump('hop1');
+      this._twitch();
+      this._say('huch!', 1100);
+      await this._wait(450);
+      await this._walkTo(this._x - toward * this._g.pW * 0.45, 1.8);
+      this._face(toward);
+      await this._wait(600);
+      p.classList.add('happy');
+      this._say(pick(['hihi', 'hihihi']), 1200);
+      await this._wait(1300);
+      p.classList.remove('happy');
+      await this._wait(rnd(400, 900));
+    }
+
+    // St. Martin: mit der Laterne am Stab über die Wiese, „Laterne, Laterne…“
+    async _festLantern() {
+      this._festMark('festLantern');
+      const { home, pW } = this._g;
+      const W = this._W;
+      const p = this._el.pika;
+      p.classList.add('fest-lantern');
+      try {
+        await this._wait(500);
+        this._say('Laterne, Laterne…', 2600);
+        const far = clamp(W * 0.78, home + pW * 1.5, W - pW * 0.6);
+        const near = home + pW * 0.7;
+        const legs = this._x > (far + near) / 2 ? [near, far] : [far, near];
+        for (const x of legs) {
+          await this._walkTo(x, 0.5);
+          this._note(pick(['♪', '♫']));
+          await this._wait(rnd(900, 1600));
+          if (Math.random() < 0.6) this._say(pick(['Laterne, Laterne…', '♪ ♫ ♪']), 2200);
+          await this._wait(rnd(600, 1200));
+        }
+        this._face(1);
+        await this._wait(rnd(1200, 2000));
+      } finally {
+        p.classList.remove('fest-lantern');
+      }
+    }
+
+    // Nikolaus: in den Stiefel schauen, freuen
+    async _festBoot() {
+      const it = this._festPos?.boot;
+      if (!it) return;
+      this._festMark('festBoot');
+      await this._approach(it.x, 0.9);
+      const p = this._el.pika;
+      p.classList.add('sniff');
+      await this._wait(rnd(900, 1300));
+      p.classList.remove('sniff');
+      if (this._fest.boot?.full) {
+        this._say('oh!', 1100);
+        this._jump('hop1');
+        await this._wait(500);
+        this._happy(1600);
+        await this._wait(1700);
+      } else {
+        this._say(pick(['noch leer…', 'morgen?']), 1500);
+        p.classList.add('look-up');
+        await this._wait(1700);
+      }
+    }
+
+    // Weihnachten: vor dem Baum sitzen und staunen, es funkelt
+    async _festTree() {
+      const t = this._festPos?.tree;
+      if (!t) return;
+      this._festMark('festTree');
+      await this._approach(t.x, 0.8);
+      const p = this._el.pika;
+      await this._wait(400);
+      p.classList.add('look-up');
+      this._say('ohh…', 1500);
+      for (let i = 0; i < 5; i++) {
+        this._sparkle(t.x + rnd(-t.w * 0.3, t.w * 0.3), t.top + rnd(t.h * 0.1, t.h * 0.8), 2);
+        await this._wait(rnd(900, 1600));
+      }
+      p.classList.remove('look-up');
+      this._happy(1500);
+      this._say(pick(['schön!', '♥']), 1200);
+      await this._wait(1600);
+    }
+
+    // Silvester: hochschauen, bei jedem Knall zucken, „Frohes Neues!“. Schläft er, wacht er dafür auf
+    // und schaut aus dem Bau; danach schläft er weiter.
+    async _festFireworks() {
+      if (!this._fest?.fireworks) return;
+      this._festMark('festFireworks');
+      const p = this._el.pika;
+      const sleeping = this._asleep && this._inside;
+      this._festBang = () => this._festZuck();
+      try {
+        if (sleeping) {
+          p.classList.remove('sleeping');
+          await this._to('peek', 900);
+          this._say('!', 900);
+          await this._wait(900);
+        } else {
+          if (this._lift > 0) await this._hopDown();
+          if (this._inside) await this._comeOut();
+          await this._walkTo(this._g.home + this._g.pW * 0.8, 0.9);
+          this._face(1);
+        }
+        p.classList.add('look-up');
+        await this._wait(900);
+        this._say('Frohes Neues!', 2400);
+        const until = Date.now() + rnd(35000, 50000);
+        let again = true;
+        while (Date.now() < until && this._fest?.fireworks) {
+          await this._wait(rnd(2500, 5000));
+          const r = Math.random();
+          if (r < 0.25) this._say(pick(['ohh!', 'wuiii!', 'oh!']), 1100);
+          else if (r < 0.4 && again) {
+            again = false;
+            this._say('Frohes Neues!', 2200);
+          } else if (r < 0.55 && !sleeping) this._face(-this._dir);
+        }
+        p.classList.remove('look-up');
+        this._happy(1400);
+        await this._wait(1200);
+      } finally {
+        this._festBang = null;
+        p.classList.remove('look-up', 'fest-zuck');
+        if (sleeping && this._asleep) {
+          p.classList.add('sleeping');
+          this._pose('sleep', 1200);
+        }
+      }
+    }
+
+    // Karneval: im Konfetti herumhüpfen, „Helau!“
+    async _festConfetti() {
+      this._festMark('festConfetti');
+      const { home, pW } = this._g;
+      this._festConfettiRain();
+      await this._wait(600);
+      this._say('Helau!', 1300);
+      this._jump('binky');
+      await this._wait(1000);
+      for (let i = 0; i < 3; i++) {
+        const x = clamp(this._x + rnd(0.4, 0.9) * pW * pick([-1, 1]), home + pW * 0.6, this._W - pW * 0.6);
+        await this._hopTo(x, 0);
+        await this._wait(rnd(250, 600));
+      }
+      this._jump('binky');
+      this._say('Helau!', 1300);
+      await this._wait(1300);
+    }
+
+    // Ostern: zu einem Ei hoppeln, schnuppern, anstupsen (es wackelt), kichern
+    async _festEgg() {
+      const eggs = this._festEggs;
+      if (!eggs?.length) return;
+      this._festMark('festEgg');
+      const i = Math.random() < 0.6
+        ? eggs.reduce((b, e, k) => (Math.abs(e.x - this._x) < Math.abs(eggs[b].x - this._x) ? k : b), 0)
+        : Math.floor(rnd(0, eggs.length));
+      await this._approach(eggs[i].x, 0.9);
+      const p = this._el.pika;
+      p.classList.add('sniff');
+      await this._wait(rnd(800, 1200));
+      this._festWobble(this._festEggs?.[i]?.el);
+      await this._wait(500);
+      p.classList.remove('sniff');
+      this._twitch();
+      p.classList.add('happy');
+      this._say(pick(['hihi', 'hihi!']), 1100);
+      await this._wait(1300);
+      p.classList.remove('happy');
+      await this._wait(rnd(300, 800));
+    }
+
+    // Geburtstag: zum Kuchen, Kerze auspusten (geht nach 20 s wieder an), Herzen, „Alles Gute, …!“
+    async _festBirthday() {
+      const it = this._festPos?.cake;
+      if (!it || this._festCakeOut) return;
+      this._festMark('festBirthday');
+      await this._approach(it.x, 1.1);
+      await this._wait(400);
+      const p = this._el.pika;
+      p.classList.add('calling');
+      await this._wait(300);
+      this._festBlow();
+      await this._wait(400);
+      p.classList.remove('calling');
+      await this._wait(500);
+      this._happy(1600);
+      this._say(`Alles Gute, ${festNames(this._fest.birthday?.names || [])}!`, 2800);
+      this._jump('binky');
+      await this._wait(2400);
+    }
     // ==================== Ende Festtage ====================
 
     _startCritters() {
