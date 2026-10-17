@@ -4,7 +4,7 @@ Ein kleiner Pika (Pfeifhase) wohnt in deinem Home-Assistant-Dashboard.
 
 - **Antippen** → streicheln: Herzchen, Freudensprung, Glück steigt
 - **Löwenzahn-Knopf** → füttern: Futter fällt herunter, er hoppelt hin und frisst
-- **Tagsüber** schaut er sich um, hoppelt herum, knabbert Blumen, trägt Blüten zu seinem Heuhaufen, putzt sich und piepst ab und zu
+- **Tagsüber** schaut er sich um, hoppelt herum, knabbert Blumen, trägt Blüten zu seinem Vorrat (beim Erdhügel in eine Nische im Hügel, sonst auf den Heuhaufen), putzt sich und piepst ab und zu
 - **Bau**: Ab und zu verschwindet er in seinem Bau und schaut ein paarmal heraus, bevor er wieder rauskommt
 - **Aussichtsstein**: Wie echte Pikas springt er auf den Stein mit Geröll, richtet sich auf und pfeift
 - **Nachts** (Standard: Sonnenuntergang bis Sonnenaufgang) schläft er mit Zipfelmütze im Eingang seines Baus
@@ -49,7 +49,7 @@ Ein paarmal am Tag kommt **Pino** zu Besuch, ein Freund-Pika: etwas kleiner, ing
 
 Höchstens alle 12–20 Minuten (die erste nach 2–6 Minuten) sucht er sich eine Beschäftigung:
 
-- **Buch lesen** am Heuhaufen oder vor der Tür: Der Kopf wandert die Zeilen entlang, er blättert um und kichert. Nachmittags nickt er manchmal mit dem Buch ein. Streicheln weckt ihn.
+- **Buch lesen** am Vorrat oder vor der Tür: Der Kopf wandert die Zeilen entlang, er blättert um und kichert. Nachmittags nickt er manchmal mit dem Buch ein. Streicheln weckt ihn.
 - **Gameboy**: Die Daumen tippen, kleine Piepser steigen auf. Nach jeder Runde macht er einen Freudensprung („Juhu!“) oder lässt die Ohren hängen („mööp“).
 - **Tablet**: Er liegt auf dem Bauch in der Wiese, das Display scheint ihm ins Gesicht, er wischt. Fliegt gerade ein echtes Flugzeug vorbei, zeigt das Tablet die Flugkarte, und er schaut zum Himmel.
 - **Drachen** bei Wind ab 20 km/h, trocken und hell: Der Drache steigt in Windrichtung auf, schwankt mit Schwänzchen und zerrt an der Schnur.
@@ -129,7 +129,7 @@ Der Blick geht nach Süden: Osten (Sonnenaufgang) ist links, Westen rechts.
 
 Mit `areal` wählst du den Bau:
 
-- `huegel` (Standard): Grashügel mit runder Holztür, Namensschild, Rundfenster mit Blumenkasten und Laterne. Nachts brennt Licht, bei unter 12 °C und abends raucht der Schornstein.
+- `huegel` (Standard): Grashügel mit runder Holztür, Namensschild, Rundfenster mit Blumenkasten, Vorratsnische rechts im Hügel (dort legt er die gesammelten Blüten ab, statt eines Heuhaufens) und Laterne. Nachts brennt Licht, bei unter 12 °C und abends raucht der Schornstein.
 - `fels`: Steinhaufen mit Steinbogen als Eingang
 - `stumpf`: Baumstumpf mit Höhle zwischen den Wurzeln, Fliegenpilze leuchten nachts
 - `alpin`: Geröllhalde mit Bergen im Hintergrund, Enzian und Edelweiß
@@ -199,7 +199,7 @@ appliances:                      # Waschmaschine, Trockner, Spülmaschine, siehe
 
 Für `sleep_start` und `sleep_end` gehen feste Uhrzeiten (`"21:00"`) oder `sunset`/`sunrise` aus `sun.sun`, auch mit Versatz: `"sunset+01:00"` (eine Stunde nach Sonnenuntergang), `"sunrise-30"` (30 Minuten vor Sonnenaufgang). Ohne `sun.sun` gilt 21:00 bis 07:00, der Himmel richtet sich dann nach der Schlafenszeit. Uhrzeiten am besten in Anführungszeichen; `21:00` ohne geht aber auch (YAML macht 1260 daraus, reine Zahlen gelten als Minuten nach Mitternacht). Unverständliche Angaben wie `sunset+1h` fallen auf 21:00/07:00 zurück, mit Hinweis in der Konsole.
 
-`wind_bearing` des Wetters darf eine Gradzahl oder ein Kürzel sein („SW“, „NNO“). Flugzeuge erscheinen auch, wenn die Uhr des Geräts von der HA-Uhr abweicht. Auf schmalen Karten (z. B. Handy) werden Aussichtsstein und Heuhaufen automatisch kleiner, damit alles ins Bild passt. Der Heuhaufen wird pro Gerät im Browser gespeichert und nicht geteilt.
+`wind_bearing` des Wetters darf eine Gradzahl oder ein Kürzel sein („SW“, „NNO“). Flugzeuge erscheinen auch, wenn die Uhr des Geräts von der HA-Uhr abweicht. Auf schmalen Karten (z. B. Handy) werden Aussichtsstein und Heuhaufen automatisch kleiner (die Nische des Erdhügels gehört zum Bau und behält ihre Größe), damit alles ins Bild passt. Der Vorrat (Heuhaufen bzw. Nische) wird pro Gerät im Browser gespeichert und nicht geteilt.
 
 Im Text-Helfer steht der Zustand als `satt,zeit,glück,zeit,großputz,maske,teilputz` (Zeiten in Sekunden). Hunger, Glück und Häufchen werden daraus beim Anzeigen berechnet, deshalb braucht es keine Automation. Ältere Werte mit vier Feldern werden weiter gelesen.
 

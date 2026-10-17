@@ -43,7 +43,7 @@
  * werden aus Datum und Standort (hass.config) berechnet.
  */
 (() => {
-  const VERSION = '0.10.3';
+  const VERSION = '0.11.0';
 
   const DEFAULTS = {
     name: 'Pika',
@@ -609,7 +609,8 @@
   // Jedes Areal hat einen Bau mit Eingang. Grafik in viewBox 0 0 100 vh, der Boden liegt bei vh - sink.
   // w/left: Breite und Lage relativ zur Kartenhöhe bzw. Baubreite. hole: Ausschnitt, in dem der Pika im Bau
   // zu sehen ist (x1..x2, Bogenoberkante top, Vorderkante lip, unterhalb verschwindet er). hay: linke Kante
-  // des Heuhaufens als Anteil der Baubreite. lights: leuchtet in Dämmerung und Nacht (ungedimmt).
+  // des Heuhaufens als Anteil der Baubreite. stash (statt Heuhaufen): Vorratsnische im Bau (x1..x2, Bogen top,
+  // Boden auf der Bodenlinie), dort legt der Pika die Blüten ab. lights: leuchtet in Dämmerung und Nacht (ungedimmt).
   const HOLE_GRAD = `<radialGradient id="holeg" cx=".5" cy=".9" r=".85">
       <stop offset="0" stop-color="#0d0907"/><stop offset="1" stop-color="#3b302a"/></radialGradient>`;
   const GLOW_GRAD = (id, c) => `<radialGradient id="${id}"><stop offset="0" stop-color="${c}" stop-opacity=".75"/>
@@ -645,9 +646,9 @@
         </g>`,
     },
     huegel: {
-      name: 'Erdhügel', w: 0.82, left: -0.06, vh: 60, sink: 4, hay: 0.84,
-      // Laternendach, Schornstein, Schild, Blumenkasten, Hügelkuppe
-      perches: [[13, 27.6], [65, 0.4], [47, 13.4], [84, 39.6], [36, 11.6]],
+      name: 'Erdhügel', w: 0.82, left: -0.06, vh: 60, sink: 4, stash: { x1: 92.5, x2: 112.5, top: 39 },
+      // Laternendach, Schornstein, Schild, Blumenkasten, Hügelkuppe, Nischenbogen
+      perches: [[13, 27.6], [65, 0.4], [47, 13.4], [84, 39.6], [36, 11.6], [102.5, 37.4]],
       hole: { x1: 37.5, x2: 62.5, top: 25.5, lip: 52.6 },
       svg: `
         <defs>${HOLE_GRAD}</defs>
@@ -656,13 +657,13 @@
           <rect x="60.5" y=".4" width="9" height="3" rx=".6" fill="#8c7d72"/>
           <path d="M61.5 7 H68.5 M64 7 V11.5 M66.5 11.5 V16 M61.5 11.5 H68.5" stroke-width=".6" opacity=".6"/>
         </g>
-        <path class="mound" d="M-4 60 C-3 30 22 10 50 10 C78 10 103 30 104 60Z" stroke="#5f8f45" stroke-width="1.5"/>
+        <path class="mound" d="M-4 60 C-3 30 22 10 50 10 C80 10 104 20 114 32 C121 41 125 50 126 60Z" stroke="#5f8f45" stroke-width="1.5"/>
         <path d="M14 30 Q28 15 46 13" stroke="#fff" stroke-opacity=".35" stroke-width="3" fill="none" stroke-linecap="round"/>
         <g stroke="#5f8f45" stroke-width="1.2" fill="none" stroke-linecap="round">
           <path d="M28 16.5 l-2 -4 M31 15 l.5 -4.5 M68 15 l1.5 -4 M72 17 l3 -3.5 M47 10 l-1 -4 M51 10 l1.5 -4.2"/>
         </g>
-        <g fill="#fff"><circle cx="6" cy="48" r="1.6"/><circle cx="9" cy="42" r="1.3"/><circle cx="90" cy="30" r="1.5"/><circle cx="94" cy="46" r="1.2"/></g>
-        <g fill="#f4c53d"><circle cx="6" cy="48" r=".6"/><circle cx="9" cy="42" r=".5"/><circle cx="90" cy="30" r=".6"/><circle cx="94" cy="46" r=".5"/></g>
+        <g fill="#fff"><circle cx="6" cy="48" r="1.6"/><circle cx="9" cy="42" r="1.3"/><circle cx="90" cy="30" r="1.5"/><circle cx="119.5" cy="50" r="1.2"/></g>
+        <g fill="#f4c53d"><circle cx="6" cy="48" r=".6"/><circle cx="9" cy="42" r=".5"/><circle cx="90" cy="30" r=".6"/><circle cx="119.5" cy="50" r=".5"/></g>
         <g transform="translate(6 1)">
           <circle cx="74" cy="32" r="6.6" fill="#5e3d26"/>
           <circle cx="74" cy="32" r="5.6" fill="#9a6a45"/>
@@ -674,6 +675,18 @@
           <g fill="#f07a95"><circle cx="70.6" cy="35.4" r="1.1"/><circle cx="77.4" cy="35.4" r="1.1"/></g>
           <g fill="#f6c945"><circle cx="71.7" cy="35.2" r="1"/><circle cx="78" cy="35.8" r=".9"/></g>
         </g>
+        <defs><linearGradient id="stashg" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" stop-color="#140d09"/><stop offset="1" stop-color="#3a2a1e"/></linearGradient></defs>
+        <path d="M92.5 57 V43.2 C92.5 37.8 112.5 37.8 112.5 43.2 V57Z" fill="url(#stashg)"/>
+        <path d="M95.3 52.8 V46 C95.3 43.4 109.7 43.4 109.7 46 V52.8Z" fill="#4b3628" opacity=".7"/>
+        <path d="M92.5 57 L95.3 52.8 H109.7 L112.5 57Z" fill="#6e4f37"/>
+        <path d="M92.5 44.2 L95.3 46 M112.5 44.2 L109.7 46" stroke="#000" stroke-opacity=".35" stroke-width=".5"/>
+        <g class="stashb"></g>
+        <path d="M93.3 43.8 C93.5 39.4 111.5 39.4 111.7 43.8" stroke="#000" stroke-opacity=".45" stroke-width="1.4" fill="none"/>
+        <path d="M92.5 57 V43.2 C92.5 37.8 112.5 37.8 112.5 43.2 V57" fill="none" stroke="#5e3d26" stroke-width="3.6"/>
+        <path d="M92.5 57 V43.2 C92.5 37.8 112.5 37.8 112.5 43.2 V57" fill="none" stroke="#9a6a45" stroke-width="2.4"/>
+        <path d="M92.5 57 V43.2 C92.5 37.8 112.5 37.8 112.5 43.2 V57" fill="none" stroke="#5e3d26" stroke-width=".4"
+          stroke-dasharray="2.5 4" opacity=".6"/>
         <path d="M36 55 V38 A14 14 0 0 1 64 38 V55Z" fill="url(#holeg)"/>
         <path d="M35 57 V38 A15 15 0 0 1 65 38 V57" fill="none" stroke="#5e3d26" stroke-width="5.6"/>
         <path d="M35 57 V38 A15 15 0 0 1 65 38 V57" fill="none" stroke="#9a6a45" stroke-width="3.8"/>
@@ -775,6 +788,9 @@
         </g>`,
     },
   };
+
+  // So viele eingesammelte Blüten bleiben liegen (Heuhaufen oder Nische), die älteste macht Platz
+  const STASH_MAX = 12;
 
   const HAY_SVG = `
   <svg viewBox="0 0 60 40" aria-hidden="true">
@@ -1969,6 +1985,10 @@
     transform-origin: 50% 100%; transform: scale(var(--hs, .6)); transition: transform .5s cubic-bezier(.3, 1.6, .5, 1);
   }
   .hay.boing { animation: boing .5s ease-out; }
+  /* Areal mit Vorratsnische: kein Heuhaufen, die zuletzt abgelegte Blüte ploppt in der Nische auf */
+  .stash .hay { display: none; }
+  .stashb .new { transform-box: fill-box; transform-origin: 50% 50%; animation: stash-in .45s cubic-bezier(.3, 1.6, .5, 1); }
+  @keyframes stash-in { from { transform: scale(0); } }
   @keyframes boing {
     35% { transform: scale(calc(var(--hs) * 1.1), calc(var(--hs) * .86)); }
     70% { transform: scale(calc(var(--hs) * .96), calc(var(--hs) * 1.06)); }
@@ -2823,9 +2843,11 @@
       this._arealKey = key;
       sc.add(`areal-${key}`);
       const A = this._areal();
+      sc.toggle('stash', !!A.stash);
       const svg = (body) => (body ? `<svg viewBox="0 0 100 ${A.vh}" aria-hidden="true">${body}</svg>` : '');
       this._el.burrow.innerHTML = svg(A.svg);
       this._el.lights.innerHTML = svg(A.lights);
+      if (this._blooms) this._renderHay();
       if (this._g) {
         this._stop();
         this._g = null;
@@ -2860,12 +2882,16 @@
       const A = this._areal();
       const bW = H * A.w;
       const bL0 = bW * A.left;
-      const hay0 = bL0 + bW * A.hay;
+      const S = A.stash;
+      const hay0 = bL0 + (S ? bW * S.x1 / 100 : bW * A.hay);
       // Schmale Karte (Handy): Stein bis 60 % und Heuhaufen bis 85 % kleiner, so dass Heu, Lücke und Stein
-      // in die Breite passen
+      // in die Breite passen. Die Nische (stash) gehört zum Bau und bleibt so groß wie er.
       const gap = pW * 0.4;
-      const sk = clamp((W - hay0 - H * 0.26 * 0.75 - gap) / (H * 0.26 * 0.25 + H * 0.6), 0.6, 1);
-      const hW = H * 0.26 * (0.75 + 0.25 * sk);
+      const sW = S ? bW * (S.x2 - S.x1) / 100 : 0;
+      const sk = S
+        ? clamp((W - hay0 - sW - gap) / (H * 0.6), 0.6, 1)
+        : clamp((W - hay0 - H * 0.26 * 0.75 - gap) / (H * 0.26 * 0.25 + H * 0.6), 0.6, 1);
+      const hW = S ? sW : H * 0.26 * (0.75 + 0.25 * sk);
       const kW = H * 0.6 * sk;
       // Bleibt Platz, rückt der Bau etwas nach rechts: Laterne und Blumen am linken Rand ganz im Bild
       const bL = bL0 + clamp(W - (hay0 + hW + gap + kW), 0, Math.max(0, -bL0 * 0.5));
@@ -2873,7 +2899,7 @@
       const Y = (v) => gy - (A.vh - A.sink - v) * u;
       const hole = { l: bL + A.hole.x1 * u, r: bL + A.hole.x2 * u, top: Y(A.hole.top), lip: Y(A.hole.lip) };
       hole.cx = (hole.l + hole.r) / 2;
-      const hL = bL + bW * A.hay;
+      const hL = bL + (S ? S.x1 * u : bW * A.hay);
       // Aussichtsstein rechts, links neben dem Futterknopf, aber nie über den rechten Rand hinaus
       const ku = kW / 100;
       const kL = Math.min(Math.max(hL + hW + gap, W - 66 - kW), W - kW);
@@ -2889,7 +2915,13 @@
         bur: { l: bL, u, base: gy - (A.vh - A.sink) * u }, // Bau-Einheiten → px
         home: hole.cx,
         hay: hL + hW / 2,
-        hW, // Breite des Heuhaufens (auf schmaler Karte kleiner als 0,26 H)
+        hW, // Breite des Heuhaufens (auf schmaler Karte kleiner als 0,26 H) bzw. der Nische
+        stash: !!S,
+        // Fläche am Boden, die Heuhaufen (volle Größe) bzw. Nische einnehmen, und wo der Pika zum Ablegen steht:
+        // am Haufen rechts davon, an der Nische rechts neben ihr (wirft hinein, sie bleibt sichtbar)
+        hayL: S ? hL : hL + hW / 2 - H * 0.138,
+        hayR: S ? hL + hW : hL + hW / 2 + H * 0.138,
+        stand: S ? hL + hW + pW * 0.5 : hL + hW / 2 + pW * 0.34,
         // Blumen und Futter zwischen Heuhaufen und Stein
         fMin: (hL + hW + pW * 0.3) / W,
         fMax: Math.max((hL + hW + pW * 0.3) / W + 0.08, (kL - H * 0.03) / W),
@@ -3341,7 +3373,7 @@
     }
 
     async _haySnack() {
-      await this._walkTo(this._g.hay + this._g.pW * 0.34);
+      await this._walkTo(this._g.stand);
       this._face(-1);
       await this._wait(300);
       await this._eat('#dcbc6a', rnd(2500, 3500));
@@ -3363,10 +3395,10 @@
       this._pickFlower(f);
       this._mouth(f.color);
       this._el.pika.classList.add('carry');
-      await this._walkTo(this._g.hay + this._g.pW * 0.34);
+      await this._walkTo(this._g.stand);
       this._face(-1);
       await this._wait(350);
-      // Blüte im Bogen auf den Haufen werfen, dort bleibt sie liegen
+      // Blüte im Bogen auf den Haufen bzw. in die Nische werfen, dort bleibt sie liegen
       this._el.pika.classList.remove('carry');
       const spot = this._haySpot();
       this._toss(f.color, spot);
@@ -3382,15 +3414,39 @@
       return { sx: +sx.toFixed(1), sy: +rnd(top + 3, Math.min(35, top + 11)).toFixed(1) };
     }
 
+    // Liegeplätze der Blüten in der Nische (Bau-Einheiten): Reihen von unten nach oben, abwechselnd 6 und 5
+    _stashSlots() {
+      const S = this._areal().stash;
+      if (!S) return [];
+      const F = this._areal().vh - this._areal().sink;
+      const P = [];
+      for (let row = 0; P.length < STASH_MAX; row++) {
+        for (let k = 0; k < 6 - (row % 2) && P.length < STASH_MAX; k++) {
+          P.push([S.x1 + 3.2 + (row % 2) * 1.5 + k * 2.75, F - 3.6 - row * 1.7 + (k % 2 ? 0.25 : -0.15)]);
+        }
+      }
+      return P;
+    }
+
     _toss(color, spot) {
       const { pW, pH, gy, hay } = this._g;
       const x0 = this._x + this._dir * 0.4 * pW;
       const y0 = gy - pH * 0.335 - this._lift;
-      // Ziel bei der Größe, die der Haufen gleich hat
-      const hW = this._g.hW;
-      const hs = 0.4 + Math.min(12, this._hay + 1) * 0.055;
-      const dx = hay + ((spot.sx - 30) / 60) * hW * hs - x0;
-      const dy = gy + 4 - ((40 - spot.sy) / 40) * hW * (2 / 3) * hs - y0;
+      let dx;
+      let dy;
+      if (this._g.stash) {
+        // Ziel: der Platz, auf dem die Blüte gleich in der Nische liegt
+        const { l, u, base } = this._g.bur;
+        const [bx, by] = this._stashSlots()[Math.min(this._blooms.length, STASH_MAX - 1)];
+        dx = l + bx * u - x0;
+        dy = base + by * u - y0;
+      } else {
+        // Ziel bei der Größe, die der Haufen gleich hat
+        const hW = this._g.hW;
+        const hs = 0.4 + Math.min(12, this._hay + 1) * 0.055;
+        dx = hay + ((spot.sx - 30) / 60) * hW * hs - x0;
+        dy = gy + 4 - ((40 - spot.sy) / 40) * hW * (2 / 3) * hs - y0;
+      }
       const el = document.createElement('span');
       el.className = 'toss';
       el.innerHTML = `<svg viewBox="0 0 10 10"><circle cx="5" cy="5" r="4.4" fill="${color}" stroke="rgba(0,0,0,.15)" stroke-width=".6"/>`
@@ -3586,11 +3642,11 @@
       b.classList.add('go');
     }
 
-    // Lesen am Heuhaufen oder vor der Tür: Kopf wandert die Zeilen entlang, blättert um, kichert.
-    // Nachmittags nickt er manchmal ein (Streicheln weckt ihn).
+    // Lesen am Heuhaufen bzw. neben der Nische oder vor der Tür: Kopf wandert die Zeilen entlang, blättert um,
+    // kichert. Nachmittags nickt er manchmal ein (Streicheln weckt ihn).
     async _read() {
-      const { hay, home, pW } = this._g;
-      await this._walkTo(Math.random() < 0.6 ? hay + pW * 0.5 : home + pW * 0.7, 0.8);
+      const { stand, home, pW } = this._g;
+      await this._walkTo(Math.random() < 0.6 ? stand + pW * 0.16 : home + pW * 0.7, 0.8);
       this._face(1);
       const p = this._el.pika;
       p.classList.add('reading');
@@ -4141,7 +4197,7 @@
         if (h) {
           const days = Math.floor((Date.now() - h.t) / 864e5);
           this._hay = clamp(h.n - days * 2, 1, 12);
-          if (Array.isArray(h.b)) this._blooms = h.b.slice(-Math.min(this._hay, 10));
+          if (Array.isArray(h.b)) this._blooms = h.b.slice(-Math.min(this._hay, STASH_MAX));
         }
       } catch (e) { /* kein Speicher – egal */ }
       this._renderHay();
@@ -4149,7 +4205,7 @@
 
     _addHay(color, spot) {
       this._hay = Math.min(12, this._hay + 1);
-      if (color && spot) this._blooms = [...this._blooms, { color, ...spot }].slice(-10);
+      if (color && spot) this._blooms = [...this._blooms, { color, ...spot }].slice(-STASH_MAX);
       this._renderHay(true);
       try {
         localStorage.setItem('pika-pet-card-hay', JSON.stringify({ n: this._hay, t: Date.now(), b: this._blooms }));
@@ -4157,6 +4213,30 @@
     }
 
     _renderHay(bounce) {
+      const S = this._areal().stash;
+      const sb = S && this._el.burrow.querySelector('.stashb');
+      if (S) {
+        if (!sb) return;
+        // Heubett auf dem Nischenboden (wächst mit dem Vorrat), darauf die Blüten mit Stiel
+        const F = this._areal().vh - this._areal().sink;
+        const P = this._stashSlots();
+        const n = this._blooms.length;
+        const top = F - 2.2 - Math.max(Math.ceil(n / 5.5), this._hay / 3) * 1.7;
+        const cx = (S.x1 + S.x2) / 2;
+        const f = (v) => +v.toFixed(2);
+        sb.innerHTML = `<path d="M${S.x1 + 0.8} ${F + 1} V${F - 1.4} Q${cx} ${f(top)} ${S.x2 - 0.8} ${F - 1.4} V${F + 1}Z"`
+          + ' fill="#dcbc6a" stroke="#a9853a" stroke-width=".45"/>'
+          + `<path d="M${S.x1 + 3} ${F - 1.2} l2.2 -1.4 M${cx - 2} ${F - 1} l2.6 -1.6 M${S.x2 - 6} ${F - 1.3} l2 -1.2"`
+          + ' stroke="#b38c3c" stroke-width=".4" fill="none"/>'
+          + this._blooms.map((b, i) => {
+            const [x, y] = P[i];
+            return `<g${bounce && i === n - 1 ? ' class="new"' : ''}>`
+              + `<path d="M${f(x - 2.1)} ${f(y + 1.1)} Q${f(x - 1.1)} ${f(y + 0.3)} ${f(x)} ${f(y)}" stroke="#5e8f3e" stroke-width=".5" fill="none"/>`
+              + `<circle cx="${f(x)}" cy="${f(y)}" r="1.5" fill="${b.color}" stroke="rgba(0,0,0,.22)" stroke-width=".25"/>`
+              + `<circle cx="${f(x)}" cy="${f(y)}" r=".55" fill="#e0a032"/></g>`;
+          }).join('');
+        return;
+      }
       const hay = this._el.hay;
       hay.style.setProperty('--hs', (0.4 + this._hay * 0.055).toFixed(3));
       hay.querySelector('.hayb').innerHTML = this._blooms.map((b) =>
@@ -4375,7 +4455,7 @@
       const E = this._festEls;
       if (!E || !this._g) return;
       const f = this._fest || {};
-      const { gy, hole, rock, bur, hay } = this._g;
+      const { gy, hole, rock, bur, hayL, hayR } = this._g;
       const W = this._W;
       const H = this._H;
       const A = this._areal();
@@ -4385,15 +4465,13 @@
       // Bodenrechtecke der Deko in px: { x: Mitte, l: linke Kante, top, w, h }. Der Haus-Bote stellt seine
       // Geräte so, dass sie diese Flächen meiden (_boteLayout); darum steht hier jedes Stück am Boden drin.
       const pos = {};
-      // Heuhaufen in voller Größe (wächst bis scale 1,06 von H · 0,26)
-      const hayL = hay - H * 0.138;
-      const hayR = hay + H * 0.138;
+      // hayL/hayR: Heuhaufen in voller Größe (wächst bis scale 1,06 von H · 0,26) bzw. Vorratsnische
       // Plätze: Wunschmitte x und freier Bereich a..b (Tür, Heu, Stein). Passt eine Grafik nicht hinein
       // (schmale Karte), wird sie bis auf 70 % kleiner, statt ins Heu zu ragen oder wegzufallen.
       const slots = {
         R: { x: hole.r + H * 0.1, a: hole.r, b: Math.max(hole.r + H * 0.1, hayL) },
         L: { x: hole.l - H * 0.075, a: 4, b: hole.l + H * 0.01 },
-        M: { x: (hay + H * 0.13 + rock.l) / 2, a: hayR, b: Math.max(hayR + H * 0.1, rock.l) },
+        M: { x: (hayR + rock.l) / 2, a: hayR, b: Math.max(hayR + H * 0.1, rock.l) },
       };
       const used = new Set();
       // Erster freier Platz der Wunschliste; sind alle belegt, der erste (lieber eng als gar nicht)
@@ -5780,9 +5858,10 @@
 
     // Pinos Wiese: rechts vom Bau bis zum rechten Rand (in den Bau darf er nicht). Auf schmalen Karten auch
     // rechts vom Heu (volle Größe, halbe Breite H · 0,13), sonst verschwände er dahinter (.fore liegt vorn).
+    // Die Nische gehört zum Bau und liegt hinten, vor ihr darf er stehen.
     _frRange() {
-      const { pW, home, hay } = this._g;
-      const lo = Math.max(home + pW * 0.8, hay + this._H * 0.13 + pW * FRIEND_SCALE * 0.3);
+      const { pW, home, hay, stash } = this._g;
+      const lo = Math.max(home + pW * 0.8, stash ? 0 : hay + this._H * 0.13 + pW * FRIEND_SCALE * 0.3);
       return [lo, Math.max(lo, this._W - pW * FRIEND_SCALE * 0.45)];
     }
 
@@ -6919,7 +6998,7 @@
       const H = this._H;
       this._ffSize = `${W}x${H}`;
       const { gy } = g;
-      const hw = H * 0.26;
+      const hw = g.stash ? g.hW : H * 0.26;
       const hl = g.hay - hw / 2;
       const avoid = [];
       for (const el of [this._el.stats, this._el.feed]) {
@@ -6927,9 +7006,10 @@
           avoid.push({ l: el.offsetLeft - 10, t: el.offsetTop - 10, r: el.offsetLeft + el.offsetWidth + 10, b: el.offsetTop + el.offsetHeight + 10 });
         }
       }
-      // Heuhaufen in voller Größe (wächst bis scale 1,06; Grafik 60 × 40, Spitze bei y 10)
+      // Heuhaufen in voller Größe (wächst bis scale 1,06; Grafik 60 × 40, Spitze bei y 10). Die Nische liegt
+      // hinten im Bau, vor ihr dürfen sie schwirren.
       const hs = hw * 1.06;
-      avoid.push({ l: g.hay - hs / 2, r: g.hay + hs / 2, t: gy + 4 - hs * 0.5 - 4, b: gy });
+      if (!g.stash) avoid.push({ l: g.hay - hs / 2, r: g.hay + hs / 2, t: gy + 4 - hs * 0.5 - 4, b: gy });
       const grass = gy - H * 0.05; // Oberkante der Grashalme
       const zone = (i) => {
         const z = i % 3 === 0 ? 'hay' : i % 5 === 4 ? 'high' : 'low';
@@ -7888,10 +7968,11 @@
       // wer schon steht, kommt zuerst dran und behält seinen Platz
       const vis = B.list.filter((a) => a.el && a.spec).sort((x, y) => (x.zone == null) - (y.zone == null) || x.idx - y.idx);
       if (!vis.length) return;
-      const { hole, hay, rock, bur, fMin, fMax } = this._g;
+      const { hole, hay, rock, bur, fMin, fMax, stash } = this._g;
       const H = this._H;
       const W = this._W;
-      const hh = 0.13 * H * (0.4 + (this._hay || 3) * 0.055); // halbe sichtbare Breite des Heuhaufens
+      // halbe sichtbare Breite des Heuhaufens bzw. der Nische (vorn davor stünde ein Requisit im Weg)
+      const hh = stash ? this._g.hW / 2 : 0.13 * H * (0.4 + (this._hay || 3) * 0.055);
       const right = W - 60; // Futterknopf rechts unten
       // Alle Requisiten sind Statusanzeigen und stehen in der ersten Reihe auf dem Wiesenstreifen (vor dem Pika,
       // der sie hinten fast immer verdecken würde): rechts vom Eingang bis zum Futterknopf und links vom Eingang
