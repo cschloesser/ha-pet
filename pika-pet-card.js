@@ -371,14 +371,27 @@
   // ---------- Grafiken ----------
 
   const OUT = '#5a4030';
+  // Fellfarben als CSS-Variablen (Name → Tagesfarbe). Nachts und im Bau setzt der STYLE dunklere Werte,
+  // ein CSS-Filter auf dem atmenden Pika müsste sonst jedes Bild neu gerechnet werden.
+  const PK_FILL = {
+    fu1: '#d0ad8d', fu2: '#b08a68', fu3: '#8a664b', bel: '#f0e2cf', ear: '#efe3d3', ein: '#e3a990',
+    paw: '#ecdcc6', mou: '#f4e8d8', cap: '#7c9be0',
+  };
+  const PK = (k) => `var(--pk-${k}, ${PK_FILL[k]})`;
+  // Wie filter: brightness(b) saturate(s), nur einmal ausgerechnet
+  const PK_DIM = (b, s) => Object.entries(PK_FILL).map(([k, hex]) => {
+    const c = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16) * b);
+    const L = 0.213 * c[0] + 0.715 * c[1] + 0.072 * c[2];
+    return `--pk-${k}: #${c.map((v) => Math.round(clamp(L + (v - L) * s, 0, 255)).toString(16).padStart(2, '0')).join('')};`;
+  }).join(' ');
   // Körper als eine durchgehende Bohnenform (Pikas haben keinen sichtbaren Hals)
   const BODY = 'M30 90 C14 88 11 61 25 49 C37 37 55 31 67 28 C76 21 99 19 107 35 C113 48 112 66 104 78 C100 85 96 90 88 91 C70 94 46 94 30 90 Z';
   const EAR = (cx, cy, side) => `
     <g class="ear ear-${side}">
       <circle cx="${cx}" cy="${cy}" r="12.4" fill="${OUT}"/>
-      <circle cx="${cx}" cy="${cy}" r="10.8" fill="#efe3d3"/>
+      <circle cx="${cx}" cy="${cy}" r="10.8" fill="${PK('ear')}"/>
       <circle cx="${cx}" cy="${cy + 0.8}" r="8.8" fill="url(#fur)"/>
-      <ellipse cx="${cx}" cy="${cy + 1.8}" rx="4.9" ry="5.5" fill="#e3a990"/>
+      <ellipse cx="${cx}" cy="${cy + 1.8}" rx="4.9" ry="5.5" fill="${PK('ein')}"/>
     </g>`;
   const EYE = (cx, side) => `
     <g class="eye eye-${side}">
@@ -402,9 +415,9 @@
   <svg class="pk" viewBox="0 0 120 100" aria-hidden="true">
     <defs>
       <radialGradient id="fur" gradientUnits="userSpaceOnUse" cx="88" cy="40" r="72">
-        <stop offset="0" stop-color="#d0ad8d"/>
-        <stop offset=".55" stop-color="#b08a68"/>
-        <stop offset="1" stop-color="#8a664b"/>
+        <stop offset="0" stop-color="${PK('fu1')}"/>
+        <stop offset=".55" stop-color="${PK('fu2')}"/>
+        <stop offset="1" stop-color="${PK('fu3')}"/>
       </radialGradient>
       <clipPath id="bodyclip"><path d="${BODY}"/></clipPath>
     </defs>
@@ -413,10 +426,10 @@
       <g class="body">
         <path d="${BODY}" fill="url(#fur)" stroke="${OUT}" stroke-width="2.6" stroke-linejoin="round"/>
         <g clip-path="url(#bodyclip)">
-          <ellipse cx="82" cy="82" rx="20" ry="13" fill="#f0e2cf"/>
+          <ellipse cx="82" cy="82" rx="20" ry="13" fill="${PK('bel')}"/>
         </g>
       </g>
-      <g class="feet" fill="#ecdcc6" stroke="${OUT}" stroke-width="1.6">
+      <g class="feet" fill="${PK('paw')}" stroke="${OUT}" stroke-width="1.6">
         <ellipse cx="33" cy="90.5" rx="9" ry="3.6"/>
         <ellipse cx="82" cy="91" rx="6" ry="3.4"/>
         <ellipse cx="97" cy="90.5" rx="6" ry="3.4"/>
@@ -428,7 +441,7 @@
         <path d="M84 56 L70 53.5 M84 57.6 L70 59.8 M98 56 L113 53.5 M98 57.6 L113 59.8"
               stroke="${OUT}" stroke-width=".7" opacity=".45" stroke-linecap="round"/>
         <g class="mouth-g">
-          <ellipse cx="91" cy="55" rx="7.5" ry="5.2" fill="#f4e8d8"/>
+          <ellipse cx="91" cy="55" rx="7.5" ry="5.2" fill="${PK('mou')}"/>
           <path d="M88.7 51.6 q2.3 -1.1 4.6 0 q-.6 1.9 -2.3 2.5 q-1.7 -.6 -2.3 -2.5z" fill="#7a4438"/>
           <path d="M91 54.1 v1.5 M91 55.6 q-1.5 1.7 -3 .4 M91 55.6 q1.5 1.7 3 .4"
                 stroke="${OUT}" stroke-width="1" fill="none" stroke-linecap="round"/>
@@ -444,7 +457,7 @@
         <circle class="mbloom" cx="108" cy="61" r="4.4"/>
         <circle cx="108" cy="61" r="1.6" fill="#e0a032" opacity=".8"/>
       </g>
-      <g class="paws" fill="#ecdcc6" stroke="${OUT}" stroke-width="1.4">
+      <g class="paws" fill="${PK('paw')}" stroke="${OUT}" stroke-width="1.4">
         <ellipse cx="84" cy="61" rx="4" ry="5"/>
         <ellipse cx="98" cy="61" rx="4" ry="5"/>
       </g>
@@ -455,7 +468,7 @@
         <path d="M91 62.5 L103 58.5 L102.5 71 L91 75.2Z" fill="#c94440" stroke="${OUT}" stroke-width="1.2" stroke-linejoin="round"/>
         <path d="M82.5 64.6 l5 1.3 M82.5 67.2 l3.6 .9" stroke="#f6d9a8" stroke-width=".9" stroke-linecap="round"/>
         <circle cx="97" cy="65.6" r="1.7" fill="#f6c945"/>
-        <g fill="#ecdcc6" stroke="${OUT}" stroke-width="1.4">
+        <g fill="${PK('paw')}" stroke="${OUT}" stroke-width="1.4">
           <ellipse cx="79.5" cy="66.5" rx="3.6" ry="4.5"/><ellipse cx="102.6" cy="65" rx="3.6" ry="4.5"/>
         </g>
       </g>
@@ -468,7 +481,7 @@
         </g>
         <path d="M85.4 74 h4.2 M87.5 71.9 v4.2" stroke="#3c3c3c" stroke-width="1.4"/>
         <circle cx="94.6" cy="74.8" r="1.2" fill="#a8326e"/><circle cx="97.5" cy="73" r="1.2" fill="#a8326e"/>
-        <g fill="#ecdcc6" stroke="${OUT}" stroke-width="1.4">
+        <g fill="${PK('paw')}" stroke="${OUT}" stroke-width="1.4">
           <ellipse class="th1" cx="83" cy="73.4" rx="3.6" ry="4.4"/><ellipse class="th2" cx="99.4" cy="72.4" rx="3.6" ry="4.4"/>
         </g>
       </g>
@@ -486,13 +499,13 @@
           <path d="M80 81 L114 73.4" stroke="#7fb0d9" stroke-width=".6" stroke-dasharray="1.2 1"/>
           <path d="M92.5 78.4 l4.5 -.5 l-1.8 -1.9 h1.1 l2.9 1.6 l2.5 -.3 q1.1 .3 .1 .8 l-2.5 .3 l-2.5 2 h-1.1 l1.4 -2 l-4.5 .5z" fill="#2f4256"/>
         </g>
-        <g fill="#ecdcc6" stroke="${OUT}" stroke-width="1.2">
+        <g fill="${PK('paw')}" stroke="${OUT}" stroke-width="1.2">
           <ellipse cx="82" cy="82.6" rx="4" ry="2.8"/><ellipse class="tpaw" cx="105" cy="79.6" rx="3.8" ry="2.8"/>
         </g>
       </g>
-      <ellipse class="kpaw" cx="105" cy="50" rx="3.8" ry="4.8" fill="#ecdcc6" stroke="${OUT}" stroke-width="1.4"/>
+      <ellipse class="kpaw" cx="105" cy="50" rx="3.8" ry="4.8" fill="${PK('paw')}" stroke="${OUT}" stroke-width="1.4"/>
       <g class="cap">
-        <path d="M77 28 Q80 12 62 9 Q91 0 103 27 Z" fill="#7c9be0" stroke="${OUT}" stroke-width="1.4" stroke-linejoin="round"/>
+        <path d="M77 28 Q80 12 62 9 Q91 0 103 27 Z" fill="${PK('cap')}" stroke="${OUT}" stroke-width="1.4" stroke-linejoin="round"/>
         <circle cx="79" cy="17" r="1.3" fill="#fff" opacity=".8"/>
         <circle cx="88" cy="13" r="1.3" fill="#fff" opacity=".8"/>
         <circle cx="91" cy="22" r="1.3" fill="#fff" opacity=".8"/>
@@ -533,14 +546,14 @@
         <path d="M52 14 Q68 -16 100 -10 Q127 -4 125 18 Q113 6 101 8 Q93 0 84 8 Q72 2 52 14Z"
               fill="#5fae4a" stroke="#3f7f31" stroke-width="1.4" stroke-linejoin="round"/>
         <path d="M56 11 Q87 -10 121 14" stroke="#8fd16f" stroke-width="1.1" fill="none" stroke-linecap="round"/>
-        <ellipse cx="105" cy="63" rx="4" ry="4.6" fill="#ecdcc6" stroke="${OUT}" stroke-width="1.4"/>
+        <ellipse cx="105" cy="63" rx="4" ry="4.6" fill="${PK('paw')}" stroke="${OUT}" stroke-width="1.4"/>
       </g>
     </g>
     <g class="bk">
       ${BACK_EAR(74, 'l')}${BACK_EAR(99, 'r')}
       <path d="${BACK}" fill="url(#fur)" stroke="${OUT}" stroke-width="2.6" stroke-linejoin="round"/>
       <path d="M79 35 Q86.5 30.5 94 35" stroke="#d6b796" stroke-width="2.2" fill="none" stroke-linecap="round" opacity=".7"/>
-      <path d="M86.5 29.5 q-1.6 -3 0 -4.8 q1.5 1.9 0 4.8" fill="#8a664b"/>
+      <path d="M86.5 29.5 q-1.6 -3 0 -4.8 q1.5 1.9 0 4.8" fill="${PK('fu3')}"/>
       <path d="${BACK}" fill="#140d1e" opacity=".5"/>
       <path class="rim" d="${BACK}" fill="none" stroke="var(--tvc, #9fd0ff)" stroke-width="2.2"/>
     </g>
@@ -1697,8 +1710,9 @@
   }
   .day .sun, .dusk .sun { opacity: 1; }
   .sun-low .sun { background: radial-gradient(#ffe0b0, #ff9a5c 70%); box-shadow: 0 0 22px 8px rgba(255, 150, 90, .4); }
-  .overcast .sun { opacity: .25; }
-  .sun-down .sun { opacity: 0; }
+  /* Dichte Wolken (auch Regen, Schnee) lassen nur einen Hauch der Scheibe durch, Gewitter und Nebel gar nichts */
+  .overcast .sun { opacity: .07; }
+  .storm .sun, .foggy .sun, .sun-down .sun { opacity: 0; }
   .moon { width: calc(var(--H) * .12); filter: drop-shadow(0 0 6px rgba(244, 239, 207, .55)); }
   .moon svg { display: block; width: 100%; height: 100%; }
   .moon-lit { fill: #f4efcf; }
@@ -1931,6 +1945,7 @@
   .pika {
     position: absolute; left: 0; top: calc(var(--gy) - var(--ph) * .945); width: var(--pw); height: var(--ph);
     z-index: 3; cursor: pointer; will-change: transform;
+    transform-origin: 50% 94.5%; /* Füße: auf dem Stein ist er etwas kleiner (weiter hinten) */
   }
   .shadow {
     position: absolute; left: 12%; right: 12%; bottom: 0; height: 10%; border-radius: 50%;
@@ -1938,37 +1953,47 @@
   }
   .flip, .jump, .hop, .clipw, .depth { position: absolute; inset: 0; transform-origin: 50% 100%; }
   /* Im Bau: Ausschnitt auf den Eingang (clip-path setzt das Skript), kleiner und dunkler (weiter hinten),
-     --dy schiebt ihn hinter die Vorderkante. Der Kopf steht mittig im Eingang (--hc, --hh je Blickrichtung). */
+     --dy schiebt ihn hinter die Vorderkante. Der Kopf steht mittig im Eingang (--hc, --hh je Blickrichtung).
+     Abgedunkelt wird über feste Fellfarben (PK_DIM), nicht per Filter. */
   .depth { --hd: 1; }
   .left .depth { --hd: -1; }
   .inside .depth {
     transform: translate(calc(var(--hc) - var(--hh) * var(--hd)), var(--dy)) scale(var(--ds));
-    filter: brightness(.85);
   }
   .inside .shadow { opacity: 0; }
   .pika.inside .brolly { display: none; }
   .flip { transition: transform .25s; }
   .left .flip { transform: scaleX(-1); }
-  .pk { display: block; width: 100%; height: 100%; overflow: visible; transition: filter 2.5s; }
-  .night .pk { filter: brightness(.8) saturate(.85); }
+  .pk { display: block; width: 100%; height: 100%; overflow: visible; }
+  /* Nachts und im Bau dunklere Fellfarben statt filter (der atmende Pika müsste sonst jedes Bild neu gefiltert werden).
+     Pino (aus PIKA_SVG, eigene Fellfarben als Rückfallwerte) behält vorerst den Nachtfilter. */
+  .night .pika .pk { ${PK_DIM(0.8, 0.85)} }
+  .pika.inside .pk { ${PK_DIM(0.85, 1)} }
+  .night .pika.inside .pk { ${PK_DIM(0.68, 0.85)} }
+  .pk stop, .pk [fill^="var(--pk-"] { transition: fill 1s, stop-color 1s; }
+  .friend .pk { transition: filter 2.5s; }
+  .night .friend .pk { filter: brightness(.8) saturate(.85); }
 
-  .walking .hop { animation: hop .36s ease-in-out infinite; }
+  /* Hoppeln: kurz am Boden (gestaucht), aufwärts abbremsen, abwärts beschleunigen */
+  .walking .hop { animation: hop .36s linear infinite; }
   @keyframes hop {
-    0%, 100% { transform: translateY(0) scale(1.03, .97); }
-    50% { transform: translateY(-10%) scale(.97, 1.03); }
+    0%, 100% { transform: translateY(0) scale(1.05, .95); animation-timing-function: ease-out; }
+    10% { transform: translateY(-1.5%) scale(.98, 1.03); animation-timing-function: cubic-bezier(.3, .6, .5, 1); }
+    50% { transform: translateY(-10%) scale(.98, 1.02); animation-timing-function: cubic-bezier(.5, 0, .7, .4); }
+    88% { transform: translateY(0) scale(1, 1); animation-timing-function: ease-out; }
   }
   .jump.hop1 { animation: jump .6s cubic-bezier(.3, .7, .4, 1); }
   @keyframes jump {
-    15% { transform: scale(1.08, .9); }
-    45% { transform: translateY(-30%) scale(.95, 1.06); }
-    75% { transform: translateY(0) scale(1.06, .94); }
+    15% { transform: scale(1.08, .9); animation-timing-function: cubic-bezier(.25, .6, .45, 1); }
+    45% { transform: translateY(-30%) scale(.95, 1.06); animation-timing-function: cubic-bezier(.5, 0, .75, .5); }
+    75% { transform: translateY(0) scale(1.07, .93); animation-timing-function: ease-out; }
   }
   .jump.binky { animation: binky .9s ease-in-out; }
   @keyframes binky {
-    12% { transform: scale(1.1, .88); }
+    12% { transform: scale(1.1, .88); animation-timing-function: cubic-bezier(.25, .6, .45, 1); }
     40% { transform: translateY(-40%) rotate(-14deg); }
-    60% { transform: translateY(-26%) rotate(10deg); }
-    82% { transform: translateY(0) scale(1.06, .94); }
+    60% { transform: translateY(-26%) rotate(10deg); animation-timing-function: cubic-bezier(.5, 0, .75, .5); }
+    82% { transform: translateY(0) scale(1.07, .93); animation-timing-function: ease-out; }
   }
   .stretch .hop { animation: stretch 1.2s ease-in-out; }
   @keyframes stretch {
@@ -2133,6 +2158,12 @@
   .think::before, .think::after { content: ''; position: absolute; background: #fff; border-radius: 50%; }
   .think::before { width: 8px; height: 8px; left: 28%; bottom: -8px; }
   .think::after { width: 4px; height: 4px; left: 22%; bottom: -14px; }
+  /* Im Bau steht die Blase rechts neben dem Eingang (Anker --ax), damit das Schild darüber frei bleibt */
+  .inside .bubble { transform: translateX(-6%) scale(.3); transform-origin: 6% 100%; }
+  .inside .bubble.on { transform: translateX(-6%) scale(1); }
+  .inside .say::after { left: 6%; }
+  .inside .think::before { left: 8%; }
+  .inside .think::after { left: 2%; }
 
   .fx { position: absolute; inset: 0; pointer-events: none; z-index: 4; }
   .heart {
@@ -2355,15 +2386,17 @@
   .night .plane .trail { background: linear-gradient(to left, rgba(180, 192, 228, .3), rgba(180, 192, 228, 0)); }
   .overcast .plane.hi .pl-s { opacity: .3; }
   .foggy .plane .pl-s { opacity: .25; }
+  /* Nie breiter als die Karte (Handy): zu lange Zeilen enden mit … */
   .ptag {
     position: absolute; left: 0; top: 0; padding: .1em .65em .15em; border-radius: .9em;
+    box-sizing: border-box; max-width: calc(100% - 8px); overflow: hidden; text-overflow: ellipsis;
     font-size: clamp(10px, calc(var(--H) * .05), 14px); line-height: 1.35; white-space: nowrap;
     color: #2f4256; background: rgba(255, 255, 255, .8); box-shadow: 0 1px 3px rgba(0, 0, 0, .15);
     pointer-events: none; cursor: pointer; opacity: 0; transition: transform 1s linear, opacity .3s, background 2.5s, color 2.5s;
   }
   .ptag.on.open { opacity: 1; pointer-events: auto; z-index: 1; }
   .ptag b { font-weight: 700; letter-spacing: .02em; }
-  .ptag .more { font-size: .9em; opacity: .85; }
+  .ptag .more { font-size: .9em; opacity: .85; overflow: hidden; text-overflow: ellipsis; }
   .dusk .ptag { background: rgba(255, 255, 255, .72); }
   .night .ptag { color: #e4e9f6; background: rgba(22, 32, 62, .72); }
   `;
@@ -2664,6 +2697,10 @@
       const H = this._el.scene.clientHeight;
       if (!W || !H) return;
       const first = !this._g;
+      // Gleiche Größe (z. B. der erste Aufruf des ResizeObservers gleich nach _attach): nichts zu tun
+      if (!first && W === this._W && H === this._H) return;
+      // Beim Laufen ist this._x schon das Ziel: echte Stelle merken (noch mit der alten Pika-Breite)
+      const liveX = !first && !this._inside && !(this._lift > 0) && this._el.pika.classList.contains('walking') ? this._liveX() : null;
       const ratio = first ? 1 : W / this._W;
       this._W = W;
       this._H = H;
@@ -2673,17 +2710,24 @@
       // Bau: viewBox-Einheit u, Boden der Grafik liegt auf gy
       const A = this._areal();
       const bW = H * A.w;
-      const bL = bW * A.left;
+      const bL0 = bW * A.left;
+      const hay0 = bL0 + bW * A.hay;
+      // Schmale Karte (Handy): Stein bis 60 % und Heuhaufen bis 85 % kleiner, so dass Heu, Lücke und Stein
+      // in die Breite passen
+      const gap = pW * 0.4;
+      const sk = clamp((W - hay0 - H * 0.26 * 0.75 - gap) / (H * 0.26 * 0.25 + H * 0.6), 0.6, 1);
+      const hW = H * 0.26 * (0.75 + 0.25 * sk);
+      const kW = H * 0.6 * sk;
+      // Bleibt Platz, rückt der Bau etwas nach rechts: Laterne und Blumen am linken Rand ganz im Bild
+      const bL = bL0 + clamp(W - (hay0 + hW + gap + kW), 0, Math.max(0, -bL0 * 0.5));
       const u = bW / 100;
       const Y = (v) => gy - (A.vh - A.sink - v) * u;
       const hole = { l: bL + A.hole.x1 * u, r: bL + A.hole.x2 * u, top: Y(A.hole.top), lip: Y(A.hole.lip) };
       hole.cx = (hole.l + hole.r) / 2;
-      const hW = H * 0.26;
       const hL = bL + bW * A.hay;
-      // Aussichtsstein rechts, links neben dem Futterknopf
-      const kW = H * 0.6;
+      // Aussichtsstein rechts, links neben dem Futterknopf, aber nie über den rechten Rand hinaus
       const ku = kW / 100;
-      const kL = Math.max(hL + hW + pW * 0.4, W - 66 - kW);
+      const kL = Math.min(Math.max(hL + hW + gap, W - 66 - kW), W - kW);
       const rock = { l: kL, w: kW, cx: kL + kW / 2, lift: (46 - 13) * ku };
       const rs = this._el.rock.style;
       rs.left = `${kL}px`;
@@ -2696,6 +2740,7 @@
         bur: { l: bL, u, base: gy - (A.vh - A.sink) * u }, // Bau-Einheiten → px
         home: hole.cx,
         hay: hL + hW / 2,
+        hW, // Breite des Heuhaufens (auf schmaler Karte kleiner als 0,26 H)
         // Blumen und Futter zwischen Heuhaufen und Stein
         fMin: (hL + hW + pW * 0.3) / W,
         fMax: Math.max((hL + hW + pW * 0.3) / W + 0.08, (kL - H * 0.03) / W),
@@ -2730,8 +2775,12 @@
         this._lift = rock.lift;
         this._setX(rock.cx, true);
       } else {
-        this._setX(this._x * ratio, true);
+        this._setX((liveX ?? this._x) * ratio, true);
+        // Mitten im Laufen angehalten: Aktion neu wählen, sonst hoppelt er bis zum Ende auf der Stelle
+        if (liveX != null) this._interrupt();
       }
+      // Fähnchen neu messen (Schriftgröße hängt an --H)
+      for (const p of this._planes.values()) p.tw = 0;
       this._layoutSky(first);
       this._layoutFest(first);
       this._layoutFriend(first);
@@ -2993,6 +3042,8 @@
     }
 
     async _hopTo(x, lift, crouch = true) {
+      const { pW } = this._g;
+      x = clamp(x, pW * 0.45, this._W - pW * 0.45); // wie beim Laufen im Bild bleiben
       if (Math.abs(x - this._x) > 2) this._face(x > this._x ? 1 : -1);
       const p = this._el.pika;
       if (crouch) {
@@ -3110,15 +3161,16 @@
       }
       const tr = ms ? `${ms}ms cubic-bezier(.45, 0, .4, 1)` : '0s';
       cw.style.transition = `clip-path ${tr}`;
-      this._el.depth.style.transition = `transform ${tr}, filter ${tr}`;
+      this._el.depth.style.transition = `transform ${tr}`;
       if (name === 'out') {
         p.classList.remove('inside');
         cw.style.clipPath = open;
         return;
       }
       const hw = hole.r - hole.l;
-      // Beim Fernsehen sitzt er weiter drinnen (kleiner), damit man das Licht vom Fernseher um ihn herum sieht
-      const ds = clamp((0.85 * hw) / (0.43 * pW), 0.4, 0.9) * (name === 'tv' ? 0.68 : 1);
+      // Im Bau ein Stück kleiner als die Tür (weiter hinten). Beim Fernsehen sitzt er noch weiter drinnen,
+      // damit man das Licht vom Fernseher um ihn herum sieht.
+      const ds = clamp((0.85 * hw) / (0.43 * pW), 0.4, 0.9) * (name === 'tv' ? 0.68 : 0.8);
       const v = { door: 0.945, peek: 0.6, sleep: 0.53, ears: 0.25, hidden: -0.15, tv: 0.8 }[name];
       const px = (n) => `${n.toFixed(1)}px`;
       cw.style.clipPath = `inset(${px(hole.top - top)} ${px(L + pW - hole.r)} ${px(top + pH - hole.lip)} ${px(hole.l - L)} `
@@ -3128,8 +3180,8 @@
       s.setProperty('--dy', px(hole.lip + pH * ds * (1 - v) - (top + pH)));
       s.setProperty('--hc', px(hole.cx - this._x));
       s.setProperty('--hh', px(0.22 * pW * ds));
-      s.setProperty('--ax', px(hole.r - L - hw * 0.1));
-      s.setProperty('--ay', px(hole.top - top + pH * 0.05));
+      s.setProperty('--ax', px(hole.r - L + hw * 0.02)); // Sprechblase rechts neben dem Eingang
+      s.setProperty('--ay', px(hole.top - top + pH * 0.02));
       p.classList.add('inside');
     }
 
@@ -3180,7 +3232,7 @@
       const x0 = this._x + this._dir * 0.4 * pW;
       const y0 = gy - pH * 0.335 - this._lift;
       // Ziel bei der Größe, die der Haufen gleich hat
-      const hW = this._H * 0.26;
+      const hW = this._g.hW;
       const hs = 0.4 + Math.min(12, this._hay + 1) * 0.055;
       const dx = hay + ((spot.sx - 30) / 60) * hW * hs - x0;
       const dy = gy + 4 - ((40 - spot.sy) / 40) * hW * (2 / 3) * hs - y0;
@@ -3589,8 +3641,10 @@
       clearTimeout(this._tvT);
       this._el.scene.classList.toggle('tv-on', on);
       if (!on) return;
+      // Farbe nur dort setzen, wo sie gebraucht wird (an der Szene würde sie den ganzen Baum neu berechnen)
       const next = () => {
-        this._el.scene.style.setProperty('--tvc', pick(TV_COLORS));
+        const c = pick(TV_COLORS);
+        for (const el of [this._el.tvl, this._el.lights, this._el.pika]) el.style.setProperty('--tvc', c);
         this._tvT = setTimeout(next, rnd(600, 2600));
       };
       next();
@@ -3677,7 +3731,9 @@
       const p = this._el.pika;
       this._x = x;
       if (instant) p.style.transition = 'none';
-      p.style.transform = `translate(${(x - this._g.pW / 2).toFixed(1)}px, ${(-this._lift).toFixed(1)}px)`;
+      // Auf dem Stein (weiter hinten) etwas kleiner, Ursprung sind die Füße
+      p.style.transform = `translate(${(x - this._g.pW / 2).toFixed(1)}px, ${(-this._lift).toFixed(1)}px)`
+        + (this._lift > 0 ? ' scale(.9)' : '');
       if (instant) void p.offsetWidth;
     }
 
@@ -6418,9 +6474,13 @@
       else if (e > 4) mode = this._asleep ? 'dusk' : 'day';
       else if (e > -5) mode = 'dusk';
       else mode = 'night';
+      // Läuft bei jedem hass-Update: Klassen nur bei echter Änderung anfassen (toggle mit force schreibt nur
+      // dann), jede Klassenänderung an der Szene lässt den ganzen Baum neu berechnen
       const sc = this._el.scene.classList;
-      sc.remove('day', 'dusk', 'night');
-      sc.add(mode);
+      if (!sc.contains(mode)) {
+        sc.remove('day', 'dusk', 'night');
+        sc.add(mode);
+      }
       const month = new Date(this._dbgDate ?? Date.now()).getMonth();
       sc.toggle('summer', month >= 4 && month <= 8);
       sc.toggle('sun-low', e != null && e < 8);
@@ -6437,7 +6497,8 @@
         const m = moonPosition(now, cfg.latitude, cfg.longitude);
         const ph = moonPhase(now);
         this._place(this._el.moon, skyPos(m.az, m.alt));
-        this._el.moonLit.setAttribute('d', moonPath(ph));
+        const d = moonPath(ph);
+        if (d !== this._moonD) this._el.moonLit.setAttribute('d', (this._moonD = d));
         this._moonUp = m.alt > 2 && ph > 0.03 && ph < 0.97;
       }
       sc.toggle('moon-up', !!this._moonUp);
@@ -6815,6 +6876,12 @@
       // Flugzeug antippen: Flugnummer, Ziel, Airline, Typ, Strecke, Höhe und Tempo; nochmal tippen schließt
       const toggle = (e) => {
         e.stopPropagation();
+        // Die Tippfläche eines tiefen Fliegers liegt über Pika und Häufchen: die haben Vorrang
+        if (e.currentTarget === hit) {
+          const under = this.shadowRoot.elementsFromPoint(e.clientX, e.clientY)
+            .find((el) => !el.closest('.ptags') && el.closest('.pika, .poo'));
+          if (under) return under.closest('.pika, .poo').click();
+        }
         clearTimeout(p.openT);
         const open = !tag.classList.contains('open');
         if (open) {
@@ -6935,7 +7002,7 @@
         }
         t.w = t.p.tw;
         t.h = t.p.th;
-        t.tx = clamp(t.x - t.w / 2, 4, W - t.w - 4);
+        t.tx = clamp(t.x - t.w / 2, 4, Math.max(4, W - t.w - 4)); // breiter als die Karte: links bündig
         t.ty = t.y + t.half + 3;
       }
       shown.sort((a, b) => a.y - b.y);
@@ -6946,7 +7013,7 @@
           if (a.tx < b.tx + b.w && b.tx < a.tx + a.w && a.ty < b.ty + b.h && b.ty < a.ty + a.h) a.ty = a.y - a.half - a.h - 3;
         }
       }
-      for (const t of shown) t.p.tag.style.transform = `translate(${t.tx.toFixed(1)}px, ${clamp(t.ty, 2, H - t.h - 4).toFixed(1)}px)`;
+      for (const t of shown) t.p.tag.style.transform = `translate(${t.tx.toFixed(1)}px, ${clamp(t.ty, 2, Math.max(2, H - t.h - 4)).toFixed(1)}px)`;
 
       // Neue erst an ihren Platz setzen, dann einblenden
       if (fresh.length) {
