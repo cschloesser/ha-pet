@@ -43,7 +43,7 @@
  * werden aus Datum und Standort (hass.config) berechnet.
  */
 (() => {
-  const VERSION = '0.10.1';
+  const VERSION = '0.10.2';
 
   const DEFAULTS = {
     name: 'Pika',
@@ -1385,6 +1385,7 @@
   // Vorn auf dem Wiesenstreifen: so viel größer und so viel × Kartenhöhe tiefer als hinten
   const BOTE_FRONT = 1.1;
   const BOTE_FRONT_DY = 0.035; // lässt unten Platz für den Fortschrittsbalken
+  const BOTE_TALL = 0.55; // die hohe Wäscheleine steht vorn kleiner
   const BOTE_RUN = new Set(['run', 'pause', 'delayedstart', 'actionrequired', 'error', 'aborting']);
   const BOTE_HALT = new Set(['pause', 'delayedstart', 'actionrequired', 'error', 'aborting']);
   const BOTE_IDLE = new Set(['ready', 'inactive', 'off', 'standby']);
@@ -1405,7 +1406,7 @@
   };
   // Sperrbereiche je Areal in Bau-Einheiten [x1, x2, Stufe]: Stufe 0 = nie verdecken, 1 = nur wenn sonst kein Platz
   // (Hügel: Blumenkasten unter dem Fenster; Laternenpfahl und grüner Laden)
-  const BOTE_KEEP = { huegel: [[71, 89, 0], [10, 33, 1]] };
+  const BOTE_KEEP = { huegel: [[71, 89, 2], [10, 33, 1]] };
   const BOTE_TYPE = {
     washer: 'washer', washingmachine: 'washer', waschmaschine: 'washer',
     dryer: 'dryer', tumbledryer: 'dryer', trockner: 'dryer',
@@ -7863,16 +7864,15 @@
       const W = this._W;
       const hh = 0.13 * H * (0.4 + (this._hay || 3) * 0.055); // halbe sichtbare Breite des Heuhaufens
       const right = W - 60; // Futterknopf rechts unten
+      // Alle Requisiten sind Statusanzeigen und stehen in der ersten Reihe auf dem Wiesenstreifen (vor dem Pika,
+      // der sie hinten fast immer verdecken würde): rechts vom Eingang bis zum Futterknopf und links vom Eingang
       const zones = [
         { a: hole.r + 0.01 * H, b: right, al: 0.5, fr: true },
         { a: 4, b: hole.l - 0.01 * H, al: 1, fr: true },
-        { a: hole.r + 0.015 * H, b: hay - hh + 0.06 * H, al: 0.5 },
-        { a: hay + hh - 0.04 * H, b: Math.min(rock.l + 0.03 * H, right), al: 0 },
-        { a: 4, b: hole.l - 0.02 * H, al: 1 },
       ];
       // Sperrbereiche [l, r, Stufe, nur vorn]; Stufe k > 0: ab Stufe k freigegeben, 0: nie
       const keep = (BOTE_KEEP[this._arealKey] || []).map(([x1, x2, k]) => [bur.l + x1 * bur.u, bur.l + x2 * bur.u, k]);
-      keep.push([hay - hh, hay + hh, 0, true]);
+      keep.push([hay - hh, hay + hh, 1, true]);
       keep.push([fMin * W - 0.065 * H, fMax * W + 0.065 * H, 2]);
       keep.push([rock.l - rock.w * 0.08 - 0.04 * H, rock.l + rock.w * 0.16 + 0.04 * H, 0]);
       // Festdeko am Boden ({x: Mitte, l: linke Kante, w}); Eier und Raketenstäbe dürfen notfalls verdeckt werden
@@ -7931,12 +7931,10 @@
         }
         return pos;
       };
-      const entry = (a, z, s) => ({ a, w: a.spec.vb[2] * BOTE_K * H * s * (zones[z].fr ? BOTE_FRONT : 1) });
+      // die hohe Wäscheleine steht vorn deutlich kleiner, sonst überragt sie den Pika
+      const entry = (a, z, s) => ({ a, w: a.spec.vb[2] * BOTE_K * H * s * BOTE_FRONT * (a.spec.back ? BOTE_TALL : 1) });
       const tryAt = (a, z, s, lv) => {
-        const zo = zones[z];
-        if (zo.fr && a.spec.back) return false;
-        // die hohe Wäscheleine darf statt der Laterne gleich auch die Futterwiese nehmen (sonst winzig)
-        const L = Math.max(a.spec.back && lv === 1 ? 2 : lv, st[z].lv);
+        const L = Math.max(lv, st[z].lv);
         const items = [...st[z].items, entry(a, z, s)].sort((x, y) => x.a.idx - y.a.idx);
         const pos = pack(z, items, L, true, false);
         if (!pos) return false;
@@ -7949,17 +7947,15 @@
       const small = [0.6, 0.55];
       const steps = [[0, big], [1, big], [0, small], [1, small], [2, big], [2, small]];
       for (const a of vis) {
-        const pz = a.zone;
+        const pz = a.zone < zones.length ? a.zone : null;
         // zuerst der bisherige Platz auf der Stufe, auf der es dort stand (sonst springt es bei jedem Neuordnen)
         const ok = (pz != null && big.some((s) => tryAt(a, pz, s, a.zoneLv || 0)))
           || steps.some(([lv, sc]) => (pz != null && sc.some((s) => tryAt(a, pz, s, lv)))
           || sc.some((s) => all.some((z) => tryAt(a, z, s, lv))));
         if (ok) continue;
-        // letzte Stufe: dorthin, wo es am wenigsten überdeckt (im eigenen Platz und vor/hinter der anderen Ebene);
-        // gibt es nirgends ein freies Stück, ohne Sperrbereiche auf die Wiese
+        // letzte Stufe: dorthin, wo es am wenigsten überdeckt; gibt es nirgends ein freies Stück, ohne Sperrbereiche
         let best = null;
         for (const z of pz == null ? all : [pz, ...all.filter((i) => i !== pz)]) {
-          if (zones[z].fr && a.spec.back) continue;
           const L = Math.max(2, st[z].lv);
           const items = [...st[z].items, entry(a, z, 0.55)].sort((x, y) => x.a.idx - y.a.idx);
           for (const cross of [true, false]) {
@@ -7975,8 +7971,8 @@
           }
         }
         if (!best) {
-          const items = [...st[3].items, entry(a, 3, 0.55)].sort((x, y) => x.a.idx - y.a.idx);
-          best = { z: 3, items, L: 9, pos: pack(3, items, 9, false, true) };
+          const items = [...st[0].items, entry(a, 0, 0.55)].sort((x, y) => x.a.idx - y.a.idx);
+          best = { z: 0, items, L: 9, pos: pack(0, items, 9, false, true) };
         }
         Object.assign(st[best.z], { items: best.items, lv: best.L, pos: best.pos });
       }
