@@ -80,6 +80,24 @@
 
 <!-- ==================== Vorschau-Knöpfe Festtage (Deko im Jahreslauf, Geburtstage) ==================== -->
 <div class="bar" id="bar-fest"><b>Festtage</b>
+  <button data-fest="halloween">Halloween</button>
+  <button data-fest="martin">St. Martin</button>
+  <button data-fest="advent">2. Advent</button>
+  <button data-fest="nikolaus">Nikolaus</button>
+  <button data-fest="heiligabend">Heiligabend</button>
+  <button data-fest="silvester">Silvester 23:59</button>
+  <button data-fest="mitternacht">Mitternacht</button>
+  <button data-fest="neujahr">Neujahr</button>
+  <button data-fest="karneval">Karneval</button>
+  <button data-fest="ostern">Ostern</button>
+  <button data-fest="mai">1. Mai</button>
+  <button data-fest="sommer">Sommerfest</button>
+  <button data-fest="geburtstag">Geburtstag</button>
+  <button data-fest="heute">Heute</button>
+  <button id="fest-act">Aktion!</button>
+  <button id="fest-rocket">Rakete</button>
+  <button id="fest-confetti">Konfetti</button>
+  <button id="fest-bat">Fledermaus</button>
 </div>
 <!-- ==================== Ende Festtage ==================== -->
 
@@ -304,6 +322,82 @@
   // ==================== Ende Vorschau Himmel-Extras ====================
 
   // ==================== Vorschau Festtage ====================
+  // Stellt die Uhr der Karte (_dbgDate) auf eine passende Zeit des Festtags im aktuellen Jahr, dazu die Sonne
+  // (Tag, Dämmerung, Nacht wach, Nacht schlafend). _dbgDate steht fest, die Uhr läuft also nicht weiter.
+  (() => {
+    const Y = new Date().getFullYear();
+    const easter = (y) => {
+      const a = y % 19, b = Math.floor(y / 100), c = y % 100, d = Math.floor(b / 4), e = b % 4;
+      const f = Math.floor((b + 8) / 25), g = Math.floor((b - f + 1) / 3);
+      const h = (19 * a + b - d - g + 15) % 30, i = Math.floor(c / 4), k = c % 4;
+      const l = (32 + 2 * e + 2 * i - h - k) % 7, m = Math.floor((a + 11 * h + 22 * l) / 451);
+      const n = h + l - 7 * m + 114;
+      return new Date(y, Math.floor(n / 31) - 1, (n % 31) + 1);
+    };
+    const E = easter(Y);
+    const at = (y, mo, d, h, mi = 0, s = 0) => new Date(y, mo - 1, d, h, mi, s).getTime();
+    const rel = (base, days, h, mi = 0) => new Date(base.getFullYear(), base.getMonth(), base.getDate() + days, h, mi).getTime();
+    const xmas = new Date(Y, 11, 25);
+    const adv4 = new Date(Y, 11, 25 - (xmas.getDay() || 7));
+    const today = new Date();
+    const SUN = { day: [180, 28, false], dusk: [250, -2, false], night: [300, -25, false], sleep: [330, -25, true] };
+    const FEST = {
+      halloween: [() => at(Y, 10, 31, 20), 'night'],
+      martin: [() => at(Y, 11, 11, 17, 30), 'dusk'],
+      advent: [() => rel(adv4, -14, 18), 'night'],
+      nikolaus: [() => at(Y, 12, 6, 10), 'day'],
+      heiligabend: [() => at(Y, 12, 24, 18, 30), 'night'],
+      silvester: [() => at(Y, 12, 31, 23, 59), 'sleep'],
+      mitternacht: [() => at(Y + 1, 1, 1, 0, 0, 5), 'sleep'],
+      neujahr: [() => at(Y + 1, 1, 1, 12), 'day'],
+      karneval: [() => rel(E, -48, 11, 11), 'day'],
+      ostern: [() => rel(E, 0, 11), 'day'],
+      mai: [() => at(Y, 5, 1, 12), 'day'],
+      sommer: [() => at(Y, 6, 21, 15), 'day'],
+      geburtstag: [() => at(today.getFullYear(), today.getMonth() + 1, today.getDate(), 15), 'day'],
+    };
+    const pad = (n) => String(n).padStart(2, '0');
+    document.querySelectorAll('[data-fest]').forEach((btn) =>
+      btn.addEventListener('click', () => {
+        const k = btn.dataset.fest;
+        for (const c of cards) {
+          if (k === 'heute') {
+            c._dbgDate = c._dbgSleep = c._dbgElev = c._dbgAz = null;
+          } else {
+            const [ts, sun] = FEST[k];
+            const [az, el, sleep] = SUN[sun];
+            c._dbgDate = ts();
+            c._dbgAz = az;
+            c._dbgElev = el;
+            c._dbgSleep = sleep;
+          }
+          if (k === 'geburtstag') {
+            c.setConfig({ name: 'Pika', entity: 'input_text.pika_status', birthdays: [{ name: 'Kim', date: `${pad(today.getMonth() + 1)}-${pad(today.getDate())}` }] });
+          }
+          if (k === 'mitternacht') c._festMidY = null; // Finale und Aufwachen bei jedem Klick
+          c._tick(); // ruft auch c._tickFest()
+          if (k === 'halloween') c._festBat();
+          if (k === 'karneval') c._festConfettiRain();
+        }
+        const d = cards[0]._dbgDate;
+        log(`Festtage: ${d ? new Date(d).toLocaleString('de-DE') : 'heute'} → ${Object.keys(cards[0]._fest).filter((x) => x !== 'year').join(', ') || '—'}`);
+      })
+    );
+    // Passende Aktion sofort (schläft er, wacht er fürs Feuerwerk auf)
+    document.getElementById('fest-act').addEventListener('click', () => cards.forEach((c) => {
+      const acts = c._festActs({ wx: c._wx, g: 100 }).map(([, n]) => n);
+      if (!acts.length) return;
+      if (c._asleep) {
+        if (acts.includes('festFireworks')) c._festForce('festFireworks');
+      } else {
+        c._next = acts[0];
+        c._interrupt();
+      }
+    }));
+    document.getElementById('fest-rocket').addEventListener('click', () => cards.forEach((c) => c._festRocket()));
+    document.getElementById('fest-confetti').addEventListener('click', () => cards.forEach((c) => c._festConfettiRain()));
+    document.getElementById('fest-bat').addEventListener('click', () => cards.forEach((c) => c._festBat()));
+  })();
   // ==================== Ende Vorschau Festtage ====================
 
   // ==================== Vorschau Freund-Pika ====================

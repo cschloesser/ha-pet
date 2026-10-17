@@ -132,7 +132,33 @@ Mit `areal` wählst du den Bau:
 
 ## Festtage
 
-_(wird ergänzt)_
+Über das Jahr schmückt der Pika seinen Bau. Alles richtet sich nach dem Datum in Ortszeit, ist reine Zierde (kostet keine Werte, wird nicht gesammelt) und passt sich Tag und Nacht an. Mit `festive: false` bleibt nur der Geburtstag.
+
+| Wann | Deko | Pika |
+| --- | --- | --- |
+| **Halloween** 24.–31. 10. | geschnitzter Kürbis neben der Tür, nachts leuchtet das Gesicht flackernd | schnuppert am Kürbis, erschrickt („huch!“), kichert; am 31. 10. mit Hexenhut, nachts flattern Fledermäuse über den Himmel |
+| **St. Martin** 11. 11. | bunte Papierlaterne hängt am Bau, leuchtet abends | ab 16 Uhr zieht er mit einer Laterne am Stab über die Wiese: „Laterne, Laterne…“ |
+| **Advent** 1. Advent bis 24. 12. | Adventskranz vor dem Bau, so viele Kerzen brennen, wie Adventssonntage waren; Lichterkette an der Bau-Oberkante (bis 6. 1., leuchtet in Dämmerung und Nacht) | |
+| **Nikolaus** 5. 12. ab 18 Uhr, 6. 12. | Stiefel vor der Tür, am 6. 12. gefüllt (Löwenzahn, Nüsse, Zuckerstange) | schaut hinein und freut sich („oh!“) |
+| **Weihnachten** 24.–26. 12. | Tannenbaum mit Kugeln, Lichterkette und Stern zwischen Heu und Stein, Geschenk darunter | trägt eine Weihnachtsmütze (auch beim Schlafen statt der Zipfelmütze), staunt vor dem Baum |
+| **Silvester** 31. 12. ab 23:55 bis 1:00 | Feuerwerk: Raketen, bunte Kugeln mit Funken, Lichtschein auf der Wiese, um Mitternacht ein Finale; am 1. 1. liegen zwei abgebrannte Raketenstäbe im Gras | wacht um Mitternacht auf, schaut aus dem Bau, zuckt bei jedem Knall: „Frohes Neues!“, dann schläft er weiter |
+| **Karneval** Weiberfastnacht bis Aschermittwoch | Luftschlangen am Bau, alle paar Minuten regnet Konfetti | Partyhütchen, hüpft im Konfetti: „Helau!“ |
+| **Ostern** Karfreitag bis Ostermontag | 4–6 bunt bemalte Eier im Gras (antippen = wackeln) | hoppelt hin, schnuppert, stupst ein Ei an |
+| **Maibaum** 30. 4. ab 18 Uhr, 1. 5. | Maibaum mit Kranz hinter dem Bau, die Bänder wehen mit dem Wind | |
+| **Sommerfest** 21. 6. | Wimpelkette zwischen Bau und Stein | macht öfter Freudensprünge |
+| **Geburtstag** (`birthdays`) | Kuchen mit Kerze vor dem Bau, Girlande „ALLES ♥ GUTE“ | Partyhütchen, pustet die Kerze aus (nach 20 s brennt sie wieder): „Alles Gute, Kim!“ |
+
+Geburtstage stehen in der Konfiguration, mehrere am selben Tag werden zusammen gefeiert („Alles Gute, Kim und Tom!“). Das Datum geht als `MM-TT`, `JJJJ-MM-TT` oder `TT.MM.`; wer am 29. 2. Geburtstag hat, feiert sonst am 28. 2.
+
+```yaml
+birthdays:
+  - name: Kim
+    date: "03-14"
+  - name: Tom
+    date: "11-02"
+```
+
+In `preview.html` stellen die Festtage-Knöpfe die Uhr der Karte auf den jeweiligen Tag (Karneval und Ostern im aktuellen Jahr berechnet), „Mitternacht“ zeigt das Aufwachen zum Feuerwerk, „Aktion!“ startet die passende Fest-Aktion sofort, „Heute“ stellt die echte Zeit wieder her.
 
 ## Installation (HACS)
 
@@ -157,6 +183,9 @@ areal: huegel                    # Bau: huegel, fels, stumpf, alpin
 flight_entity: sensor.flightradar24_current_in_area   # Flugzeuge (leer = keine)
 flight_radius: 15                # Radius der Flightradar24-Integration in km
 max_flights: 2                   # höchstens so viele Flugzeuge gleichzeitig
+festive: true                    # Festtage-Deko im Jahreslauf (false = nur Geburtstage)
+birthdays:                       # Geburtstage: Kuchen, Girlande, „Alles Gute, Kim!“ (Datum MM-TT)
+  - { name: Kim, date: "03-14" }
 show_stats: true                 # Satt-/Glück-/Sauber-Balken
 friend: true                     # Freund-Pika kommt zu Besuch (false = nie)
 friend_name: Pino                # Name des Freund-Pikas
