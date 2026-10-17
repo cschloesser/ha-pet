@@ -6,6 +6,7 @@
  *   Nachts             → schläft er mit Zipfelmütze im Bau (Standard: Sonnenuntergang bis -aufgang)
  *   Ab und zu, Gewitter → verschwindet er in seinem Bau und schaut heraus
  *   Über den Tag        → macht er kleine Häufchen (erst in die Klo-Ecke am Stein); antippen = wegmachen
+ *   Ab und zu Besuch    → Vögelchen landet auf Bau, Laterne oder Stein; Maus schaut hinter dem Stein hervor
  *   Sonst              → schaut sich um, hoppelt, knabbert Blumen, sammelt Heu, putzt sich
  *
  * Konfiguration:
@@ -24,7 +25,7 @@
  * werden aus Datum und Standort (hass.config) berechnet.
  */
 (() => {
-  const VERSION = '0.5.0';
+  const VERSION = '0.6.0';
 
   const DEFAULTS = {
     name: 'Pika',
@@ -43,6 +44,8 @@
   // Häufchen: alle 80–140 Minuten Wachzeit eins, das erste 10–30 Minuten nach dem Aufwachen. Höchstens 8
   // liegen gleichzeitig, die ersten 3 in der Klo-Ecke am Stein. Bis zum nächsten Großputz zählt die Karte
   // höchstens 24 (Bits der Maske für einzeln weggemachte Häufchen).
+  // Besucher: Abstand zwischen zwei Besuchen (ms)
+  const CRIT = { bird: [180000, 420000], mouse: [150000, 360000] };
   const POOP = { every: 80, spread: 60, morning: [10, 20], max: 8, latrine: 3, idx: 24, fly: 4 };
   const FLOWER_COLORS = ['#f6c945', '#f28fb1', '#ffffff', '#b99cf0', '#ff9f5a'];
 
@@ -252,6 +255,7 @@
   const AREALE = {
     fels: {
       name: 'Felsbau', w: 0.72, left: -0.1, vh: 66, sink: 5, hay: 0.86,
+      perches: [[46, 10.2], [17, 26.2], [83, 30.2]],
       hole: { x1: 39.5, x2: 60.5, top: 34, lip: 57.5 },
       svg: `
         <defs>${HOLE_GRAD}</defs>
@@ -279,6 +283,8 @@
     },
     huegel: {
       name: 'Erdhügel', w: 0.82, left: -0.06, vh: 60, sink: 4, hay: 0.84,
+      // Laternendach, Schornstein, Schild, Blumenkasten, Hügelkuppe
+      perches: [[13, 27.6], [65, 0.4], [47, 13.4], [84, 39.6], [36, 11.6]],
       hole: { x1: 37.5, x2: 62.5, top: 25.5, lip: 52.6 },
       svg: `
         <defs>${HOLE_GRAD}</defs>
@@ -341,6 +347,7 @@
     },
     stumpf: {
       name: 'Baumstumpf', w: 0.64, left: -0.06, vh: 84, sink: 5, hay: 0.9,
+      perches: [[40, 23.5], [61, 23]],
       hole: { x1: 38.5, x2: 61.5, top: 42.5, lip: 76.6 },
       svg: `
         <defs>${HOLE_GRAD}</defs>
@@ -383,6 +390,7 @@
     },
     alpin: {
       name: 'Geröllhalde', w: 0.78, left: -0.1, vh: 64, sink: 4, hay: 0.84, mountains: true,
+      perches: [[55, 11.5], [21, 30], [81, 30.2]],
       flowers: ['#ffffff', '#3d6fd6', '#ffffff', '#f6c945', '#b99cf0'],
       hole: { x1: 39, x2: 61, top: 34, lip: 55.3 },
       svg: `
@@ -515,6 +523,54 @@
         + `<ellipse cx="${x - 1}" cy="${y - 1.1}" rx="1.1" ry=".75" fill="#a47a52" opacity=".75"/>`;
     }).join('')}</svg>`;
   };
+  // ---------- Besucher ----------
+  // Rundes Vögelchen (viewBox 30 × 26, Füße bei y 26, schaut nach rechts). Sitzend liegt der Flügel an (.wf),
+  // im Flug schlägt der hochgestellte Flügel (.wu). Kopf .bh dreht sich am Hals (Picken, Kopf schief).
+  const BIRDS = [
+    { name: 'Rotkehlchen', body: '#a08b70', head: '#a08b70', wing: '#85705a', breast: '#f2843a', face: '#f2843a', beak: '#3a2f28' },
+    { name: 'Blaumeise', body: '#f2d14f', head: '#fbfbf7', wing: '#5b97d8', breast: '#f6dc6a', cap: '#4f8fd6', stripe: '#2c3a5a', beak: '#3a2f28' },
+    { name: 'Spatz', body: '#b38d66', head: '#a8805a', wing: '#86603f', breast: '#ebe0cf', cap: '#8e9196', bib: '#3a302a', beak: '#4a3a2c' },
+  ];
+  const BOUT = '#4a3a2c';
+  const BIRD_SVG = (v) => `
+  <svg viewBox="0 0 30 26" aria-hidden="true">
+    <path d="M7.5 15.5 L.6 11.6 Q-.2 15.4 1.6 18.6Z" fill="${v.wing}" stroke="${BOUT}" stroke-width=".8" stroke-linejoin="round"/>
+    <g class="legs" stroke="#c98a4b" stroke-width="1" stroke-linecap="round" fill="none">
+      <path d="M12.5 22.5 V25.4 M11 25.6 H14 M16.5 22.5 V25.4 M15 25.6 H18"/>
+    </g>
+    <ellipse cx="14" cy="16.2" rx="10" ry="7.9" fill="${v.body}" stroke="${BOUT}" stroke-width="1"/>
+    <ellipse cx="17.6" cy="18" rx="6" ry="4.8" fill="${v.breast}"/>
+    <path class="wf" d="M6.6 13.8 Q13 10 18.6 14.6 Q14 20.4 7.4 17.2Z" fill="${v.wing}" stroke="${BOUT}" stroke-width=".7" stroke-linejoin="round"/>
+    <path class="wu" d="M9 14 Q4.6 1.6 16.4 3.2 Q17.4 9 15.4 14Z" fill="${v.wing}" stroke="${BOUT}" stroke-width=".7" stroke-linejoin="round"/>
+    <g class="bh">
+      <circle cx="20.5" cy="9.6" r="6.3" fill="${v.head}" stroke="${BOUT}" stroke-width="1"/>
+      ${v.face ? `<ellipse cx="22.2" cy="12.4" rx="4.3" ry="3.3" fill="${v.face}"/>` : ''}
+      ${v.cap ? `<path d="M14.5 7.7 A6.3 6.3 0 0 1 26.5 7.7Z" fill="${v.cap}"/>` : ''}
+      ${v.stripe ? `<path d="M15.2 10.6 Q20 9.6 26.6 9.4" stroke="${v.stripe}" stroke-width="1.1" fill="none" stroke-linecap="round"/>` : ''}
+      ${v.bib ? `<ellipse cx="23.6" cy="14" rx="1.9" ry="1.4" fill="${v.bib}"/>` : ''}
+      <circle cx="23" cy="8.7" r="1.35" fill="#1f1a17"/><circle cx="23.4" cy="8.2" r=".45" fill="#fff"/>
+      <circle cx="22.4" cy="11.8" r="1.3" fill="#f28fb1" opacity=".45"/>
+      <path d="M26.3 9.2 L29.6 10.5 L26.3 11.8Z" fill="${v.beak}" stroke="${v.beak}" stroke-width=".4" stroke-linejoin="round"/>
+    </g>
+  </svg>`;
+  // Kleine Maus (viewBox 32 × 18, Füße bei y 18, schaut nach rechts), Schwanz ragt links heraus
+  const MOUSE_SVG = `
+  <svg viewBox="0 0 32 18" aria-hidden="true">
+    <path class="mtail" d="M5.5 14.5 Q-1 16 -3.5 11.5 Q-5.5 7 -1.5 5.5" stroke="#c99a98" stroke-width="1.1" fill="none" stroke-linecap="round"/>
+    <circle cx="16.8" cy="5" r="3" fill="#a8998c" stroke="#5f544b" stroke-width=".8"/>
+    <circle cx="16.8" cy="5" r="1.8" fill="#f2b8bd"/>
+    <ellipse cx="12.6" cy="12" rx="8.8" ry="5.8" fill="#a8998c" stroke="#5f544b" stroke-width=".9"/>
+    <ellipse cx="14" cy="14.6" rx="5.6" ry="2.8" fill="#e9ded2"/>
+    <g class="mhead">
+      <path d="M16 7.8 Q22 4.6 28.4 10.4 Q27.4 12.8 23 12.8 Q17.6 12.8 16 10Z" fill="#a8998c" stroke="#5f544b" stroke-width=".9" stroke-linejoin="round"/>
+      <g class="mear"><circle cx="20.4" cy="4.4" r="3.4" fill="#a8998c" stroke="#5f544b" stroke-width=".8"/>
+      <circle cx="20.4" cy="4.4" r="2.1" fill="#f2b8bd"/></g>
+      <circle cx="23.4" cy="8.6" r="1.05" fill="#1f1a17"/><circle cx="23.7" cy="8.25" r=".35" fill="#fff"/>
+      <circle class="mnose" cx="28.3" cy="10.3" r="1" fill="#e98a96"/>
+      <path class="whisk" d="M27 11 L31.2 9.6 M27 11.3 L31.4 11.6 M26.8 11.6 L30.6 13.2" stroke="#5f544b" stroke-width=".35" fill="none"/>
+    </g>
+    <g fill="#f2b8bd"><ellipse cx="8.6" cy="17.4" rx="2" ry=".9"/><ellipse cx="18" cy="17.4" rx="2" ry=".9"/></g>
+  </svg>`;
   // Kehrschaufel mit Holzstiel, liegt bei y 22 auf dem Boden
   const SCOOP_SVG = `
   <svg viewBox="0 0 44 24" aria-hidden="true">
@@ -605,10 +661,12 @@
   .scene.night.snowcover { --h1: #55627c; --h2: #4c5974; --h3: #44516b; }
   .snowcover .flowers { opacity: 0; }
 
-  .land, .flowers, .foods { position: absolute; inset: 0; transition: filter 2.5s, opacity 2s; }
-  .day.overcast .land, .day.overcast .flowers, .day.overcast .hills, .day.overcast .fore { filter: brightness(.9) saturate(.8); }
-  .dusk .land, .dusk .flowers, .dusk .foods, .dusk .fore { filter: brightness(.85) saturate(.85); }
-  .night .land, .night .flowers, .night .foods, .night .fore { filter: brightness(.5) saturate(.6); }
+  .land, .flowers, .foods, .birds, .mice, .mice-f { position: absolute; inset: 0; transition: filter 2.5s, opacity 2s; }
+  .birds, .mice, .mice-f { pointer-events: none; }
+  .day.overcast .land, .day.overcast .flowers, .day.overcast .hills, .day.overcast .fore,
+  .day.overcast .birds, .day.overcast .mice, .day.overcast .mice-f { filter: brightness(.9) saturate(.8); }
+  .dusk .land, .dusk .flowers, .dusk .foods, .dusk .fore, .dusk .birds, .dusk .mice, .dusk .mice-f { filter: brightness(.85) saturate(.85); }
+  .night .land, .night .flowers, .night .foods, .night .fore, .night .birds, .night .mice, .night .mice-f { filter: brightness(.5) saturate(.6); }
   .burrow, .lights { position: absolute; }
   .lights { pointer-events: none; }
   .burrow svg, .lights svg { display: block; width: 100%; height: auto; overflow: visible; }
@@ -961,6 +1019,73 @@
   @keyframes no { 25% { transform: translateX(-4px); } 75% { transform: translateX(4px); } }
   .bar-c { background: #5fb9de; }
 
+  /* Vögelchen: .bird steht mit den Füßen auf dem Sitzplatz (left/top), Flug per Web Animation */
+  .bird { position: absolute; width: 0; height: 0; --bw: calc(var(--H) * .1); }
+  .bird .bw {
+    position: absolute; left: calc(var(--bw) * -.5 - 8px); bottom: -4px; width: var(--bw); padding: 8px 8px 4px;
+    pointer-events: auto; cursor: pointer;
+  }
+  .bird.flying .bw { pointer-events: none; }
+  .bf, .bb { transform-origin: 50% 100%; }
+  .bf { transition: transform .15s; }
+  .bird.left .bf { transform: scaleX(-1); }
+  .bird svg { display: block; width: 100%; height: auto; overflow: visible; }
+  .bird .wu { display: none; transform-box: fill-box; transform-origin: 60% 100%; }
+  .bird.flying .wu { display: inline; animation: flap .14s ease-in-out infinite alternate; }
+  .bird.flying .wf { display: none; }
+  .bird.flying .legs { opacity: 0; }
+  @keyframes flap { to { transform: scaleY(-.75); } }
+  .bh { transform-box: view-box; transform-origin: 18px 14px; transition: transform .18s ease-out; }
+  .bird.tilt .bh { transform: rotate(-16deg); }
+  .bird.peck .bh { animation: peck .45s ease-in-out; }
+  @keyframes peck { 45% { transform: rotate(38deg) translateY(1px); } }
+  .bird.hop .bb { animation: bhop .32s ease-out; }
+  @keyframes bhop { 40% { transform: translateY(-35%) scale(.95, 1.06); } 80% { transform: scale(1.06, .92); } }
+  .bird.fluff .bb { animation: fluff .7s ease-in-out; }
+  @keyframes fluff { 30%, 60% { transform: scale(1.14, .94); } }
+  .bird.land .bb { animation: bland .3s ease-out; }
+  @keyframes bland { 30% { transform: scale(1.12, .84); } }
+  .note {
+    position: absolute; font-size: calc(var(--H) * .07); font-weight: 800; color: #fff; line-height: 1; pointer-events: none;
+    text-shadow: 0 1px 2px rgba(60, 40, 30, .6); animation: note 1.3s ease-out forwards;
+  }
+  @keyframes note {
+    0% { transform: translate(0, 0) scale(.4) rotate(-10deg); opacity: 0; }
+    20% { opacity: 1; }
+    100% { transform: translate(var(--dx, 8px), calc(var(--H) * -.12)) scale(1) rotate(12deg); opacity: 0; }
+  }
+
+  /* Maus: läuft hinter Stein und Bau (Ebene davor), translate setzt das Skript */
+  .mouse { position: absolute; left: 0; top: 0; width: 0; height: 0; --mw: calc(var(--H) * .13); }
+  .mouse .mw {
+    position: absolute; left: calc(var(--mw) * -.5 - 8px); bottom: -6px; width: var(--mw); padding: 10px 8px 6px;
+    pointer-events: auto; cursor: pointer;
+  }
+  .mf, .mb { transform-origin: 50% 100%; }
+  .mouse.left .mf { transform: scaleX(-1); }
+  .mouse svg { display: block; width: 100%; height: auto; overflow: visible; }
+  .mouse.run .mb { animation: scurry .12s linear infinite alternate; }
+  @keyframes scurry { from { transform: translateY(0) rotate(-2deg); } to { transform: translateY(-9%) rotate(2deg); } }
+  .mouse.run .mtail { animation: tailw .24s ease-in-out infinite alternate; }
+  .mtail { transform-box: view-box; transform-origin: 5px 14px; }
+  @keyframes tailw { to { transform: rotate(10deg); } }
+  .mouse.stand .mb { transform: scale(.88, 1.16); transition: transform .2s; }
+  .mouse .mhead { transform-box: view-box; transform-origin: 17px 10px; transition: transform .2s; }
+  .mouse.look .mhead { transform: rotate(-12deg); }
+  .mouse .mnose, .mouse .whisk { transform-box: fill-box; transform-origin: 0% 50%; }
+  .mouse.sniff .mnose { animation: mnose .18s ease-in-out infinite alternate; }
+  .mouse.sniff .whisk { animation: whisk .18s ease-in-out infinite alternate; }
+  @keyframes mnose { to { transform: translate(.4px, -.3px) scale(1.15); } }
+  @keyframes whisk { to { transform: rotate(-8deg); } }
+  .mear { transform-box: fill-box; transform-origin: 50% 90%; }
+  .mouse.twitch .mear { animation: twitch .45s; }
+  .squeak {
+    position: absolute; padding: .1em .45em; border-radius: 999px; background: #fff; color: #4a3a2c; pointer-events: none;
+    font-size: calc(var(--H) * .05); font-weight: 800; white-space: nowrap; box-shadow: 0 1px 4px rgba(0, 0, 0, .2);
+    transform: translate(-50%, -100%); animation: squeak 1s ease-out forwards;
+  }
+  @keyframes squeak { 0% { opacity: 0; scale: .4; } 15% { opacity: 1; scale: 1; } 75% { opacity: 1; } 100% { opacity: 0; translate: 0 -6px; } }
+
   /* Häufchen liegen vorn auf dem Boden (vor dem Gras). Die Tippfläche ist größer als die Köttelchen. */
   .poops { position: absolute; inset: 0; z-index: 3; pointer-events: none; transition: filter 2.5s; }
   .day.overcast .poops { filter: brightness(.9) saturate(.8); }
@@ -1064,6 +1189,9 @@
       this._dbgShift = 0; // Vorschau: Uhr für die Häufchen vorstellen
       this._pileEls = new Map(); // sichtbare Häufchen: Schlüssel "großputz:k" → Element
       this._poopPending = null; // Häufchen, das er gerade live macht
+      this._critId = 0; // Besucher (Vögelchen, Maus): Lauf-Nummer zum Abbrechen
+      this._critT = [];
+      this._bird = this._mouse = null;
     }
 
     setConfig(config) {
@@ -1139,7 +1267,7 @@
       this._attached = true;
       this._ro = new ResizeObserver(() => this._layout());
       this._ro.observe(this._el.scene);
-      this._onVis = () => (document.hidden ? this._stop() : this._start());
+      this._onVis = () => (document.hidden ? (this._stop(), this._stopCritters()) : (this._start(), this._startCritters()));
       document.addEventListener('visibilitychange', this._onVis);
       this._loop(() => this._blink(), 2200, 6000);
       this._loop(() => this._twitch(), 5000, 13000);
@@ -1148,12 +1276,14 @@
       this._timers.push(setInterval(() => this._regrow(), 150000));
       this._layout();
       this._start();
+      this._startCritters();
     }
 
     _detach() {
       if (!this._attached) return;
       this._attached = false;
       this._stop();
+      this._stopCritters();
       this._ro?.disconnect();
       document.removeEventListener('visibilitychange', this._onVis);
       this._timers.forEach((t) => clearInterval(t));
@@ -1198,13 +1328,16 @@
               <path class="h1" d="M0 64 Q16 50 36 60 T72 55 T100 50 V100 H0Z"/>
               <path class="h2" d="M0 83 Q25 79 50 83 T100 82 V100 H0Z"/>
             </svg>
+            <div class="mice"></div>
             <div class="land">
               <div class="burrow"></div>
               <div class="lookout">${LOOKOUT_SVG}</div>
             </div>
             <div class="lights"></div>
+            <div class="birds"></div>
             <div class="flowers"></div>
             <div class="foods"></div>
+            <div class="mice-f"></div>
             <div class="ff">${flies}</div>
             <div class="pika" role="button" aria-label="Streicheln">
               <div class="clipw">
@@ -1239,6 +1372,7 @@
         scene: $('.scene'), pika: $('.pika'), jump: $('.jump'), mfood: $('.mfood'),
         flowers: $('.flowers'), foods: $('.foods'), fx: $('.fx'), hay: $('.hay'),
         stats: $('.stats'), name: $('.nm'), barS: $('.bar-s'), barG: $('.bar-g'),
+        birds: $('.birds'), mice: $('.mice'), miceF: $('.mice-f'),
         stS: $('.st-s'), stG: $('.st-g'), barC: $('.bar-c'), stC: $('.st-c'), poops: $('.poops'), feed: $('.feed'), say: $('.say'), think: $('.think'),
         sun: $('.sun'), moon: $('.moon'), moonLit: $('.moon-lit'), clouds: [...this.shadowRoot.querySelectorAll('.cloud')],
         precip: $('.precip'), flash: $('.flash'),
@@ -1277,6 +1411,7 @@
         this._el.pika.classList.remove('sleeping', 'inside');
         this._el.clipw.style.clipPath = '';
         this._layout();
+        this._restartCritters();
       }
     }
 
@@ -1310,8 +1445,11 @@
       rs.left = `${kL}px`;
       rs.top = `${gy - 46 * ku}px`;
       rs.width = `${kW}px`;
+      rock.ku = ku;
+      rock.top0 = gy - 46 * ku; // Oberkante der Stein-Grafik
       this._g = {
         pH, pW, gy, hole, rock,
+        bur: { l: bL, u, base: gy - (A.vh - A.sink) * u }, // Bau-Einheiten → px
         home: hole.cx,
         hay: hL + hW / 2,
         // Blumen und Futter zwischen Heuhaufen und Stein
@@ -1342,7 +1480,11 @@
       } else {
         this._setX(this._x * ratio, true);
       }
-      if (!first) this._placePiles();
+      if (!first) {
+        this._placePiles();
+        // Besucher sitzen an festen Pixeln: bei Größenänderung lieber neu kommen lassen
+        if (this._bird || this._mouse) this._restartCritters();
+      }
     }
 
     // Ohne Übergang einschlafen (im Bau) bzw. aufwachen (vor dem Bau)
@@ -1457,6 +1599,8 @@
         [wx.wet ? 0 : g > 70 ? 1.2 : g > 40 ? 0.4 : 0, 'binky'],
         [s < 30 ? 3 : 0, 'hungry'],
         [piles.length && clean < 60 ? 1.2 : 0, 'sniff'],
+        [this._bird?.sitting ? 2.5 : 0, 'watchBird'],
+        [this._mouse?.out ? 2.5 : 0, 'watchMouse'],
       ]);
       return this._run(act);
     }
@@ -1501,6 +1645,11 @@
       const { rock } = this._g;
       await this._walkTo((this._x > rock.cx && this._footX(1)) || this._footX(-1));
       await this._wait(rnd(200, 600));
+      // Sitzt ein Vögelchen auf dem Stein, fliegt es vorher weg
+      if (this._bird?.perch === 'rock') {
+        this._bird.scare();
+        await this._wait(600);
+      }
       await this._hopTo(rock.cx, rock.lift);
       this._puff(rock.cx, this._g.gy - rock.lift, 2);
       await this._wait(rnd(400, 900));
@@ -1844,6 +1993,46 @@
       await this._wait(rnd(400, 900));
     }
 
+    // Zum Vögelchen hinschauen, piepsen – es zwitschert zurück
+    async _watchBird() {
+      const b = this._bird;
+      if (!b?.sitting) return;
+      const { pW } = this._g;
+      const d = b.x - this._x;
+      if (Math.abs(d) > this._W * 0.3 || Math.abs(d) < pW * 0.4) {
+        await this._walkTo(b.x - (Math.sign(d) || 1) * pW * rnd(0.8, 1.3), 0.8);
+      }
+      this._face(b.x >= this._x ? 1 : -1);
+      const p = this._el.pika;
+      p.classList.add('look-up');
+      await this._wait(rnd(1200, 2200));
+      if (Math.random() < 0.6 && this._bird === b) {
+        p.classList.add('calling');
+        this._say(pick(['iiep!', 'mip!']), 900);
+        await this._wait(650);
+        p.classList.remove('calling');
+        setTimeout(() => this._bird === b && this._tweet(b), 400);
+      }
+      await this._wait(rnd(1200, 2500));
+    }
+
+    // Der Maus zuschauen, manchmal neugierig ein Stück hin (zu nah, und sie flitzt weg)
+    async _watchMouse() {
+      const m = this._mouse;
+      if (!m?.visible) return;
+      const p = this._el.pika;
+      this._face(m.x >= this._x ? 1 : -1);
+      p.classList.add('look-f');
+      await this._wait(rnd(900, 1600));
+      if (m.out && Math.random() < 0.5) {
+        p.classList.remove('look-f');
+        await this._walkTo(m.x - this._dir * this._g.pW * rnd(0.7, 1.1), 0.6);
+        p.classList.add('look-f');
+      }
+      if (Math.random() < 0.4) this._say(pick(['mip?', 'iiep?']), 1000);
+      await this._wait(rnd(1000, 2200));
+    }
+
     async _eatFood(food) {
       this._say('!');
       await this._wait(400);
@@ -2185,6 +2374,349 @@
         void hay.offsetWidth;
         hay.classList.add('boing');
       }
+    }
+
+    // ---------- Besucher: Vögelchen und Maus ----------
+    // Laufen neben der Pika-Schleife her und sind reine Zierde, darum zeigt jedes Gerät eigene Besuche.
+
+    _startCritters() {
+      if (!this._attached || document.hidden || this._critOn) return;
+      this._critOn = true;
+      const id = ++this._critId;
+      const plan = (kind, [min, max]) => {
+        const t = setTimeout(async () => {
+          if (id !== this._critId) return;
+          await this._visit(kind, id);
+          if (id === this._critId) plan(kind, CRIT[kind]);
+        }, rnd(min, max));
+        this._critT.push(t);
+      };
+      // der erste Besuch kommt bald, danach in größeren Abständen
+      plan('bird', [20000, 90000]);
+      plan('mouse', [30000, 120000]);
+    }
+
+    _stopCritters() {
+      this._critOn = false;
+      this._critId++;
+      this._critT.forEach((t) => clearTimeout(t));
+      this._critT = [];
+      for (const c of [this._bird, this._mouse]) c?.el.remove();
+      this._bird = this._mouse = null;
+    }
+
+    _restartCritters() {
+      this._stopCritters();
+      this._startCritters();
+    }
+
+    // Vögel kommen nur bei Tag, beide nicht bei Regen oder Gewitter
+    _critterWeather(kind) {
+      if (!this._g || this._wx.wet || this._wx.storm) return false;
+      if (kind === 'mouse') return true;
+      const e = this._dbgElev ?? this._elev;
+      return e == null ? !this._asleep : e > 3;
+    }
+
+    async _visit(kind, id, force = false) {
+      if (!this._g || (kind === 'bird' ? this._bird : this._mouse)) return;
+      if (!force && !this._critterWeather(kind)) return;
+      try {
+        await this[kind === 'bird' ? '_birdVisit' : '_mouseVisit'](id, force);
+      } catch (e) {
+        if (!(e instanceof Cancel)) console.warn('pika-pet-card:', e);
+      }
+    }
+
+    // Besucher-Objekt mit scare(): Antippen oder der Pika verscheucht ihn
+    _critter(props) {
+      const c = { ...props, scared: false };
+      c.scaredP = new Promise((r) => (c.scare = () => ((c.scared = true), r())));
+      return c;
+    }
+
+    // Warten; endet früher, wenn c verscheucht wird. Bricht ab, wenn die Besucher gestoppt wurden.
+    async _cw(id, ms, c) {
+      await (c ? Promise.race([pause(ms), c.scaredP]) : pause(ms));
+      if (id !== this._critId) throw new Cancel();
+    }
+
+    // Pika schaut kurz hin, wenn er gerade nichts vorhat
+    _noticeCritter(x, up) {
+      if (this._asleep || this._inside || !['idle', 'look'].includes(this._action)) return;
+      const p = this._el.pika;
+      this._face(x >= this._x ? 1 : -1);
+      const c = up ? 'look-up' : 'look-f';
+      p.classList.remove('look-f', 'look-b', 'look-up');
+      p.classList.add(c);
+      clearTimeout(this._lookT);
+      this._lookT = setTimeout(() => p.classList.remove(c), 1800);
+    }
+
+    // Vögelchen: fliegt im Bogen an, sitzt 15–45 s (Kopf schief, picken, hüpfen, zwitschern), fliegt weg
+    async _birdVisit(id, force) {
+      const { rock, bur } = this._g;
+      const spots = this._areal().perches.map(([x, y], i) => ({ id: `p${i}`, x: bur.l + x * bur.u, y: bur.base + y * bur.u }));
+      if (this._lift === 0 && this._action !== 'lookout') {
+        spots.push({ id: 'rock', x: rock.l + rnd(35, 65) * rock.ku, y: rock.top0 + 13 * rock.ku });
+      }
+      const spot = pick(spots);
+      const v = pick(BIRDS);
+      const el = document.createElement('div');
+      el.className = 'bird flying';
+      el.innerHTML = `<div class="bw" role="button" aria-label="${v.name}"><div class="bf"><div class="bb">${BIRD_SVG(v)}</div></div></div>`;
+      el.style.left = `${spot.x}px`;
+      el.style.top = `${spot.y}px`;
+      const b = this._critter({ el, perch: spot.id, x: spot.x, y: spot.y, sitting: false, dir: 1 });
+      el.querySelector('.bw').addEventListener('click', (e) => (e.stopPropagation(), b.scare()));
+      this._bird = b;
+      this._el.birds.appendChild(el);
+      try {
+        // Anflug von schräg oben
+        const side = Math.random() < 0.5 ? -1 : 1;
+        const dx = side * this._W * rnd(0.45, 0.7);
+        const dy = -spot.y - this._H * 0.15;
+        this._birdFace(b, -side);
+        const dur = rnd(1500, 2100);
+        const fly = el.animate([
+          { transform: `translate(${dx}px, ${dy}px)` },
+          { transform: `translate(${dx * 0.45}px, ${dy * 0.3}px)`, offset: 0.5 },
+          { transform: `translate(${dx * 0.1}px, ${-this._H * 0.07}px)`, offset: 0.85 },
+          { transform: 'translate(0, 0)' },
+        ], { duration: dur, easing: 'ease-out', fill: 'forwards' });
+        await this._cw(id, dur);
+        fly.cancel();
+        el.classList.remove('flying');
+        el.classList.add('land');
+        b.sitting = true;
+        // zum Pika schauen
+        if (Math.abs(this._x - spot.x) > 4) this._birdFace(b, this._x > spot.x ? 1 : -1);
+        this._noticeCritter(spot.x, true);
+        await this._cw(id, 350, b);
+        el.classList.remove('land');
+        const until = Date.now() + rnd(15000, 45000);
+        while (!b.scared && Date.now() < until && (force || this._critterWeather('bird'))) {
+          await this._cw(id, rnd(900, 2600), b);
+          if (b.scared) break;
+          const act = weighted([[3, 'tilt'], [3, 'peck'], [2, 'hop'], [2, 'tweet'], [1, 'fluff'], [2, 'turn']]);
+          if (act === 'tweet') this._tweet(b);
+          else if (act === 'turn') this._birdFace(b, -b.dir);
+          else {
+            const n = act === 'peck' ? 1 + Math.floor(rnd(0, 3)) : 1;
+            for (let i = 0; i < n && !b.scared; i++) {
+              el.classList.add(act);
+              await this._cw(id, { tilt: rnd(800, 1600), peck: 460, hop: 340, fluff: 720 }[act], b);
+              el.classList.remove(act);
+              if (act === 'hop' && Math.random() < 0.4) this._birdFace(b, -b.dir);
+              if (n > 1) await this._cw(id, 120, b);
+            }
+          }
+        }
+        // Abflug, erschrocken schneller
+        b.sitting = false;
+        el.classList.remove('tilt', 'peck', 'hop', 'fluff');
+        el.classList.add('flying');
+        const out = b.scared ? (this._x > spot.x ? -1 : 1) : pick([-1, 1]);
+        this._birdFace(b, out);
+        const dur2 = b.scared ? 900 : rnd(1200, 1600);
+        el.animate([
+          { transform: 'translate(0, 0)' },
+          { transform: `translate(${out * this._W * 0.08}px, ${-this._H * 0.08}px)`, offset: 0.25 },
+          { transform: `translate(${out * this._W * 0.6}px, ${-spot.y - this._H * 0.2}px)` },
+        ], { duration: dur2, easing: 'ease-in', fill: 'forwards' });
+        await this._cw(id, dur2);
+      } finally {
+        if (this._bird === b) this._bird = null;
+        el.remove();
+      }
+    }
+
+    _birdFace(b, dir) {
+      b.dir = dir;
+      b.el.classList.toggle('left', dir < 0);
+    }
+
+    // ♪ steigt am Schnabel auf
+    _tweet(b) {
+      if (!b?.sitting) return;
+      const bw = this._H * 0.1;
+      for (let i = 0; i < (Math.random() < 0.4 ? 2 : 1); i++) {
+        const n = document.createElement('span');
+        n.className = 'note';
+        n.textContent = pick(['♪', '♫', '♪']);
+        n.style.left = `${b.x + b.dir * bw * 0.35}px`;
+        n.style.top = `${b.y - bw * 0.95}px`;
+        n.style.setProperty('--dx', `${b.dir * rnd(4, 14)}px`);
+        n.style.animationDelay = `${i * 250}ms`;
+        this._el.fx.appendChild(n);
+        setTimeout(() => n.remove(), 1400 + i * 250);
+      }
+      b.el.classList.add('tilt');
+      setTimeout(() => b.el.classList.remove('tilt'), 500);
+    }
+
+    // Maus: schaut seitlich oder oben hinter dem Aussichtsstein hervor, flitzt manchmal auf die Wiese
+    async _mouseVisit(id) {
+      const { rock, gy, pW } = this._g;
+      const mw = this._H * 0.13;
+      const mh = mw * (18 / 32);
+      const el = document.createElement('div');
+      el.className = 'mouse';
+      el.innerHTML = `<div class="mw" role="button" aria-label="Maus"><div class="mf"><div class="mb">${MOUSE_SVG}</div></div></div>`;
+      const m = this._critter({ el, x: 0, y: 0, dir: 1, visible: false, out: false });
+      el.querySelector('.mw').addEventListener('click', (e) => (e.stopPropagation(), m.scare()));
+      this._mouse = m;
+      this._el.mice.appendChild(el);
+
+      const yG = gy - this._H * 0.022; // Laufweg knapp hinter dem Pika
+      const edge = rock.l + 7 * rock.ku; // linke Steinkante
+      const hideX = edge + mw * 0.75;
+      const peekX = edge + mw * 0.1;
+      const door = edge - mw * 0.6; // ganz neben dem Stein: hier wechselt sie zwischen hinterer und vorderer Ebene
+      // Hinter dem Stein läuft sie in der Ebene hinter Bau und Stein, auf der Wiese vor den Blumen
+      const layer = (front) => (front ? this._el.miceF : this._el.mice).appendChild(el);
+      const topY = rock.top0 + 13.5 * rock.ku;
+      const face = (d) => ((m.dir = d), el.classList.toggle('left', d < 0));
+      const move = (x, y, ms = 0, ease = 'ease-out') => {
+        el.style.transition = ms ? `transform ${ms}ms ${ease}` : 'none';
+        el.style.transform = `translate(${x.toFixed(1)}px, ${y.toFixed(1)}px)`;
+        m.x = x;
+        m.y = y;
+        if (!ms) void el.offsetWidth;
+      };
+      const liveX = () => {
+        const t = getComputedStyle(el).transform;
+        return t && t !== 'none' ? new DOMMatrixReadOnly(t).m41 : m.x;
+      };
+      const pose = (c, on) => el.classList.toggle(c, on);
+      // Warten; kommt der Pika zu nah, wird sie verscheucht
+      const FLEE = {};
+      const step = async (ms) => {
+        await this._cw(id, ms, m);
+        if (m.out && Math.abs(this._liveX() - m.x) < pW * 0.55) m.scare();
+        if (m.scared) throw FLEE;
+      };
+      const run = async (x, speed = 1) => {
+        face(x >= m.x ? 1 : -1);
+        const ms = (Math.abs(x - m.x) / (this._H * 1.1 * speed)) * 1000;
+        pose('run', true);
+        move(x, yG, ms, 'linear');
+        await step(ms);
+        pose('run', false);
+      };
+      const lookAround = async (n) => {
+        for (let i = 0; i < n; i++) {
+          const r = Math.random();
+          if (r < 0.35) {
+            pose('sniff', true);
+            await step(rnd(700, 1300));
+            pose('sniff', false);
+          } else if (r < 0.55) {
+            pose('twitch', true);
+            await step(450);
+            pose('twitch', false);
+          } else if (r < 0.75) {
+            pose('look', true);
+            await step(rnd(600, 1100));
+            pose('look', false);
+          } else {
+            face(-m.dir);
+            await step(rnd(400, 800));
+          }
+        }
+      };
+      const kind = weighted([[3, 'side'], [2, 'top'], [3, 'run']]);
+      try {
+        try {
+          if (kind === 'top') {
+            // hinter der Steinkuppe hochkommen, nur Kopf und Ohren schauen heraus
+            const x = rock.l + rnd(30, 70) * rock.ku;
+            face(this._x >= x ? 1 : -1);
+            move(x, topY + mh * 1.1);
+            await step(60);
+            move(x, topY + mh * 0.2, 450);
+            m.visible = true;
+            await step(450);
+            await lookAround(2 + Math.floor(rnd(0, 3)));
+            m.visible = false;
+            move(x, topY + mh * 1.1, 260, 'ease-in');
+            await step(300);
+          } else {
+            face(-1);
+            move(hideX, yG);
+            await step(60);
+            move(peekX, yG, 500);
+            m.visible = true;
+            await step(500);
+            await lookAround(1 + Math.floor(rnd(0, 3)));
+            if (kind === 'run') {
+              // raus auf die Wiese, schnuppern, Männchen machen, zurück
+              const minX = Math.max(this._g.fMin * this._W, mw);
+              await run(door);
+              layer(true);
+              m.out = true;
+              await run(rnd(minX, Math.max(minX, door - mw * 0.7)));
+              this._noticeCritter(m.x, false);
+              await lookAround(1);
+              if (Math.random() < 0.6) {
+                face(this._x >= m.x ? 1 : -1);
+                pose('stand', true);
+                await step(rnd(900, 1600));
+                pose('stand', false);
+              }
+              await lookAround(1 + Math.floor(rnd(0, 2)));
+              if (Math.random() < 0.4) await run(clamp(m.x + rnd(-1, 1) * mw * 2, minX, door), 0.8);
+              await run(door);
+              m.out = false;
+              layer(false);
+              await run(peekX);
+              await step(rnd(300, 900));
+            }
+            m.visible = false;
+            face(1);
+            move(hideX, yG, 350);
+            await step(400);
+          }
+        } catch (e) {
+          if (e !== FLEE) throw e;
+          // piep! und schnell zurück hinter den Stein
+          const x = liveX();
+          move(x, m.y);
+          pose('run', false);
+          pose('stand', false);
+          m.out = m.visible = false;
+          this._squeak(x, m.y - mh * 1.2, 'piep!');
+          if (kind === 'top') move(x, topY + mh * 1.1, 180, 'ease-in');
+          else {
+            face(1);
+            pose('run', true);
+            const dash = async (tx) => {
+              const ms = (Math.abs(tx - m.x) / (this._H * 2)) * 1000;
+              move(tx, yG, ms, 'linear');
+              await this._cw(id, ms);
+            };
+            if (el.parentNode === this._el.miceF) {
+              await dash(door);
+              layer(false);
+            }
+            await dash(hideX);
+          }
+          await this._cw(id, 250);
+        }
+      } finally {
+        if (this._mouse === m) this._mouse = null;
+        el.remove();
+      }
+    }
+
+    _squeak(x, y, text) {
+      const s = document.createElement('span');
+      s.className = 'squeak';
+      s.textContent = text;
+      s.style.left = `${x}px`;
+      s.style.top = `${y}px`;
+      this._el.fx.appendChild(s);
+      setTimeout(() => s.remove(), 1100);
     }
 
     // ---------- Zustand ----------
