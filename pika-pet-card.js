@@ -8,6 +8,8 @@
  *   Über den Tag        → macht er kleine Häufchen (erst in die Klo-Ecke am Stein); antippen = wegmachen
  *   Ab und zu Besuch    → Vögelchen landet auf Bau, Laterne oder Stein; Maus schaut hinter dem Stein hervor
  *   Echte Flugzeuge     → ziehen über den Himmel, mit Flugnummer und Ziel (Flightradar24-Integration)
+ *   Beschäftigungen     → liest, spielt Gameboy, liegt mit dem Tablet in der Wiese, lässt bei Wind einen
+ *                         Drachen steigen, guckt bei Regen im Bau Fernsehen (höchstens alle 12–20 Minuten)
  *   Sonst              → schaut sich um, hoppelt, knabbert Blumen, sammelt Heu, putzt sich
  *
  * Konfiguration:
@@ -29,7 +31,7 @@
  * werden aus Datum und Standort (hass.config) berechnet.
  */
 (() => {
-  const VERSION = '0.7.1';
+  const VERSION = '0.8.0';
 
   const DEFAULTS = {
     name: 'Pika',
@@ -163,6 +165,33 @@
     <circle class="bcn" cx="60" cy="13.6" r="1.2"/><circle class="strobe" cx="6.5" cy="11.2" r="1"/></svg>`,
   };
   const PLANE_SIZE = { jet: 1, prop: 0.55, heli: 0.5 };
+
+  // Fernsehbild: wechselt alle paar Sekunden die Farbe (Schnitt), daraus Licht im Eingang und Lichtsaum
+  const TV_COLORS = ['#9fd0ff', '#e8f4ff', '#a8f0c6', '#ffd59e', '#c8b6ff', '#ff9fb2', '#9fe7ff'];
+
+  // Drachen in px um die Pfote (0, 0): Schnur bis (kx, ky), dort der Drache (Größe K) mit Gesicht und Schwanz
+  const KITE_SVG = (kx, ky, K) => {
+    const f = (n) => n.toFixed(1);
+    const bows = [1.25, 1.85, 2.45].map((t, i) => {
+      const a = f(-K * 0.12), b = f(K * 0.12), y1 = f(K * (t - 0.06)), y2 = f(K * (t + 0.06));
+      return `<path d="M${a} ${y1} L${b} ${y2} L${b} ${y1} L${a} ${y2}Z" fill="${['#e8584e', '#5fb9de', '#f6c945'][i]}"/>`;
+    }).join('');
+    return `<svg width="1" height="1" aria-hidden="true"><g class="kl"><g class="kr">
+      <path d="M0 0 Q${f(kx * 0.6)} ${f(ky * 0.3)} ${f(kx)} ${f(ky)}" stroke="rgba(255, 255, 255, .85)" stroke-width="1" fill="none"/>
+      <g transform="translate(${f(kx)} ${f(ky)})"><g class="kb">
+        <g class="kt">
+          <path d="M0 ${f(K * 0.8)} q${f(K * 0.18)} ${f(K * 0.3)} 0 ${f(K * 0.6)} t0 ${f(K * 0.6)} t0 ${f(K * 0.6)}" stroke="#5a4030" stroke-width="1" fill="none"/>
+          ${bows}
+        </g>
+        <path d="M0 ${f(-K * 0.6)} L${f(K * 0.42)} 0 L0 ${f(K * 0.8)} L${f(-K * 0.42)} 0Z" fill="#f6c945" stroke="#5a4030" stroke-width="1.2" stroke-linejoin="round"/>
+        <path d="M0 ${f(-K * 0.6)} L${f(K * 0.42)} 0 L0 0Z M0 0 L${f(-K * 0.42)} 0 L0 ${f(K * 0.8)}Z" fill="#e8584e"/>
+        <path d="M0 ${f(-K * 0.6)} V${f(K * 0.8)} M${f(-K * 0.42)} 0 H${f(K * 0.42)}" stroke="#7a5236" stroke-width=".8" opacity=".7"/>
+        <circle cx="${f(-K * 0.13)}" cy="${f(-K * 0.14)}" r="${f(K * 0.035)}" fill="#2a1a12"/>
+        <circle cx="${f(K * 0.13)}" cy="${f(-K * 0.14)}" r="${f(K * 0.035)}" fill="#2a1a12"/>
+        <path d="M${f(-K * 0.1)} ${f(K * 0.03)} q${f(K * 0.1)} ${f(K * 0.09)} ${f(K * 0.2)} 0" stroke="#2a1a12" stroke-width="1" fill="none" stroke-linecap="round"/>
+      </g></g>
+    </g></g></svg>`;
+  };
   // Leitwerk in Airline-Farbe (ICAO-Kürzel), sonst Himmelblau
   const TAIL = {
     WZZ: '#c6007e', WMT: '#c6007e', WUK: '#c6007e', EWG: '#a1195b', EWL: '#a1195b', RYR: '#073590', RUK: '#073590',
@@ -250,6 +279,15 @@
     <path class="seye seye-${side}" d="M${cx - 3.8} 46.6 q3.8 3.2 7.6 0"/>
     <path class="heye" d="M${cx - 3.8} 47.6 q3.8 -3.8 7.6 0"/>`;
 
+  // Rückansicht beim Fernsehen: runder Rücken, Ohren von hinten, Lichtsaum in der Farbe des Fernsehbilds
+  const BACK = 'M58 92 C53 74 60 54 69 45 C71 33 79 28 86.5 28 C94 28 102 33 104 45 C113 54 120 74 115 92 C102 96 71 96 58 92Z';
+  const BACK_EAR = (cx, side) => `
+    <g class="ear ear-${side}">
+      <circle cx="${cx}" cy="28" r="11.5" fill="url(#fur)" stroke="${OUT}" stroke-width="2.2"/>
+      <circle cx="${cx}" cy="28" r="11.5" fill="#140d1e" opacity=".5"/>
+      <circle class="rim" cx="${cx}" cy="28" r="11.5" fill="none" stroke="var(--tvc, #9fd0ff)" stroke-width="1.4"/>
+    </g>`;
+
   const PIKA_SVG = `
   <svg class="pk" viewBox="0 0 120 100" aria-hidden="true">
     <defs>
@@ -300,6 +338,49 @@
         <ellipse cx="84" cy="61" rx="4" ry="5"/>
         <ellipse cx="98" cy="61" rx="4" ry="5"/>
       </g>
+      <g class="book">
+        <path d="M91 62.5 L79.5 59.4 L79.5 57.8 L91 61Z M91 62.5 L102.5 58.6 L102.5 57 L91 61Z" fill="#fffaf0" stroke="${OUT}" stroke-width=".6" stroke-linejoin="round"/>
+        <path class="bflip" d="M91 61 L101.5 56.8 L100.6 53.8 L91 58.4Z" fill="#fff" stroke="${OUT}" stroke-width=".5" stroke-linejoin="round"/>
+        <path d="M91 62.5 L79 59.4 L79.5 72 L91 75.2Z" fill="#d9534f" stroke="${OUT}" stroke-width="1.2" stroke-linejoin="round"/>
+        <path d="M91 62.5 L103 58.5 L102.5 71 L91 75.2Z" fill="#c94440" stroke="${OUT}" stroke-width="1.2" stroke-linejoin="round"/>
+        <path d="M82.5 64.6 l5 1.3 M82.5 67.2 l3.6 .9" stroke="#f6d9a8" stroke-width=".9" stroke-linecap="round"/>
+        <circle cx="97" cy="65.6" r="1.7" fill="#f6c945"/>
+        <g fill="#ecdcc6" stroke="${OUT}" stroke-width="1.4">
+          <ellipse cx="79.5" cy="66.5" rx="3.6" ry="4.5"/><ellipse cx="102.6" cy="65" rx="3.6" ry="4.5"/>
+        </g>
+      </g>
+      <g class="gb" transform="rotate(-6 91 68)">
+        <rect x="82" y="56.5" width="18" height="24" rx="2.2" fill="#cfccc4" stroke="${OUT}" stroke-width="1.2"/>
+        <rect x="84.2" y="58.6" width="13.6" height="10.6" rx="1" fill="#6d6f76"/>
+        <rect x="85.6" y="59.8" width="10.8" height="8.2" fill="#9bbc0f"/>
+        <g class="gbs" fill="#306230">
+          <rect x="87.2" y="64.6" width="2" height="2"/><rect x="85.6" y="66.8" width="10.8" height="1.2"/><rect x="93.4" y="61.4" width="1.4" height="1.4"/>
+        </g>
+        <path d="M85.4 74 h4.2 M87.5 71.9 v4.2" stroke="#3c3c3c" stroke-width="1.4"/>
+        <circle cx="94.6" cy="74.8" r="1.2" fill="#a8326e"/><circle cx="97.5" cy="73" r="1.2" fill="#a8326e"/>
+        <g fill="#ecdcc6" stroke="${OUT}" stroke-width="1.4">
+          <ellipse class="th1" cx="83" cy="73.4" rx="3.6" ry="4.4"/><ellipse class="th2" cx="99.4" cy="72.4" rx="3.6" ry="4.4"/>
+        </g>
+      </g>
+      <g class="tab">
+        <ellipse class="tglow" cx="95" cy="66" rx="17" ry="11" fill="#bfe3ff"/>
+        <path d="M81 70 L113 70 L118 84 L76 84Z" fill="#2f3440" stroke="${OUT}" stroke-width="1" stroke-linejoin="round"/>
+        <path d="M82.8 71.6 L111.4 71.6 L115.4 82.4 L78.8 82.4Z" fill="#cfeaff"/>
+        <g class="tscr-f">
+          <path d="M79 82.4 Q90 78.6 100 80.6 T115.3 80 L115.4 82.4Z" fill="#86c46b"/>
+          <path d="M101 80.4 V77.2" stroke="#4f8a3a" stroke-width=".7"/>
+          <circle cx="101" cy="76.6" r="1.9" fill="#f28fb1"/><circle cx="101" cy="76.6" r=".7" fill="#f6c945"/>
+          <circle cx="88" cy="75" r="1.5" fill="#ffd75a"/>
+        </g>
+        <g class="tscr-p">
+          <path d="M80 81 L114 73.4" stroke="#7fb0d9" stroke-width=".6" stroke-dasharray="1.2 1"/>
+          <path d="M92.5 78.4 l4.5 -.5 l-1.8 -1.9 h1.1 l2.9 1.6 l2.5 -.3 q1.1 .3 .1 .8 l-2.5 .3 l-2.5 2 h-1.1 l1.4 -2 l-4.5 .5z" fill="#2f4256"/>
+        </g>
+        <g fill="#ecdcc6" stroke="${OUT}" stroke-width="1.2">
+          <ellipse cx="82" cy="82.6" rx="4" ry="2.8"/><ellipse class="tpaw" cx="105" cy="79.6" rx="3.8" ry="2.8"/>
+        </g>
+      </g>
+      <ellipse class="kpaw" cx="105" cy="50" rx="3.8" ry="4.8" fill="#ecdcc6" stroke="${OUT}" stroke-width="1.4"/>
       <g class="cap">
         <path d="M77 28 Q80 12 62 9 Q91 0 103 27 Z" fill="#7c9be0" stroke="${OUT}" stroke-width="1.4" stroke-linejoin="round"/>
         <circle cx="79" cy="17" r="1.3" fill="#fff" opacity=".8"/>
@@ -321,6 +402,14 @@
         <path d="M56 11 Q87 -10 121 14" stroke="#8fd16f" stroke-width="1.1" fill="none" stroke-linecap="round"/>
         <ellipse cx="105" cy="63" rx="4" ry="4.6" fill="#ecdcc6" stroke="${OUT}" stroke-width="1.4"/>
       </g>
+    </g>
+    <g class="bk">
+      ${BACK_EAR(74, 'l')}${BACK_EAR(99, 'r')}
+      <path d="${BACK}" fill="url(#fur)" stroke="${OUT}" stroke-width="2.6" stroke-linejoin="round"/>
+      <path d="M79 35 Q86.5 30.5 94 35" stroke="#d6b796" stroke-width="2.2" fill="none" stroke-linecap="round" opacity=".7"/>
+      <path d="M86.5 29.5 q-1.6 -3 0 -4.8 q1.5 1.9 0 4.8" fill="#8a664b"/>
+      <path d="${BACK}" fill="#140d1e" opacity=".5"/>
+      <path class="rim" d="${BACK}" fill="none" stroke="var(--tvc, #9fd0ff)" stroke-width="2.2"/>
     </g>
   </svg>`;
 
@@ -423,6 +512,8 @@
           <circle class="lt" cx="74" cy="32" r="4.3" fill="#ffcf70"/>
           <path class="lt" d="M70.3 29.4 Q72.6 30 73.4 34.6 L70.4 34.6Z M77.7 29.4 Q75.4 30 74.6 34.6 L77.6 34.6Z" fill="#d9705f"/>
           <path class="lt" d="M74 27.7 V36.3 M69.7 32 H78.3" stroke="#7a5236" stroke-width="1"/>
+          <circle class="tvw" cx="74" cy="32" r="4.3"/>
+          <path class="tvw-x" d="M74 27.7 V36.3 M69.7 32 H78.3" stroke="#7a5236" stroke-width="1"/>
         </g>
         <circle class="lt flk" cx="13" cy="32" r="10" fill="url(#lg)"/>
         <rect class="lt" x="11.6" y="29.6" width="2.8" height="4.8" fill="#ffd66b"/>`,
@@ -766,6 +857,40 @@
   .rock-snow { display: none; }
   .snowcover .rock-snow { display: inline; }
   .rtuft { fill: var(--h3); transition: fill 2.5s; }
+  /* Fernsehen: flackerndes Licht im Eingang (der Fernseher steht drinnen), Bau-Fenster flackert mit */
+  .tvl { position: absolute; pointer-events: none; overflow: hidden; opacity: 0; transition: opacity .8s; }
+  .tv-on .tvl { opacity: 1; }
+  .tvl i { position: absolute; display: block; }
+  .tvl .tvg {
+    inset: 0; background: radial-gradient(ellipse 85% 75% at 50% 45%, var(--tvc, #9fd0ff), transparent 80%);
+    animation: tvflk 1.3s linear infinite;
+  }
+  .tvl .scr {
+    left: 30%; width: 40%; top: 15%; height: 22%; border-radius: 3px; background: var(--tvc, #9fd0ff);
+    border: 2px solid #1d1d22; box-shadow: 0 0 10px 4px var(--tvc, #9fd0ff);
+  }
+  .tvw, .tvw-x { opacity: 0; transition: opacity .8s; }
+  .tvw { fill: var(--tvc, #9fd0ff); }
+  .tv-on .tvw { opacity: .8; animation: tvflk 1.3s linear infinite; }
+  .tv-on .tvw-x { opacity: 1; }
+  @keyframes tvflk { 0%, 100% { opacity: .55; } 20% { opacity: .75; } 35% { opacity: .45; } 60% { opacity: .7; } 80% { opacity: .5; } }
+  /* Drachen: Schnur und Drachen hängen an der Pfote (Ursprung), steigen auf und schwanken im Wind */
+  .kites { position: absolute; inset: 0; pointer-events: none; transition: filter 2.5s; }
+  .day.overcast .kites { filter: brightness(.9) saturate(.8); }
+  .dusk .kites { filter: brightness(.85) saturate(.85); }
+  .kite { position: absolute; width: 0; height: 0; transition: opacity .6s; }
+  .kite.gone { opacity: 0; }
+  .kite svg { position: absolute; left: 0; top: 0; overflow: visible; }
+  .kite .kl { transform-box: view-box; transform-origin: 0 0; transform: rotate(var(--k0, 0deg)) scale(.25); transition: transform 3s ease-out; }
+  .kite.up .kl { transform: none; }
+  .kite .kr { transform-box: view-box; transform-origin: 0 0; animation: ksway var(--kd, 3s) ease-in-out infinite alternate; }
+  .kite.tug .kr { animation: ktug .6s ease-out; }
+  @keyframes ksway { from { transform: rotate(-3deg); } to { transform: rotate(4deg); } }
+  @keyframes ktug { 40% { transform: rotate(6deg) scale(1.03); } }
+  .kite .kb { transform-box: fill-box; transform-origin: 50% 30%; animation: kbob 1.2s ease-in-out infinite alternate; }
+  @keyframes kbob { from { transform: rotate(-9deg); } to { transform: rotate(9deg); } }
+  .kite .kt { transform-box: fill-box; transform-origin: 50% 0; animation: ktail .5s ease-in-out infinite alternate; }
+  @keyframes ktail { from { transform: skewX(-14deg); } to { transform: skewX(14deg); } }
   .pane { fill: #cfe6f2; }
   /* Schornsteinrauch bei Kälte und abends, zieht mit dem Wind */
   .smoke circle { fill: #eef1f4; opacity: 0; transform-box: fill-box; transform-origin: center; }
@@ -1025,6 +1150,45 @@
   .groom .paws { display: inline; transform-box: fill-box; animation: rub .3s ease-in-out infinite alternate; }
   @keyframes rub { from { transform: translateY(1px); } to { transform: translateY(-6px); } }
   .sleeping .cap { display: inline; }
+
+  /* Beschäftigungen: Buch, Gameboy, Tablet (auf dem Bauch), Drachenschnur, Fernsehen (Rückansicht im Bau) */
+  .book, .gb, .tab, .kpaw, .bk { display: none; }
+  .reading .book, .gaming .gb, .tablet .tab, .kiting .kpaw { display: inline; }
+  .reading .face { animation: read 3.4s ease-in-out infinite; }
+  @keyframes read { 0%, 100% { transform: translate(0, 2px); } 70% { transform: translate(2.6px, 2.6px); } 82% { transform: translate(-.4px, 2px); } }
+  .book .bflip { opacity: 0; transform-box: view-box; transform-origin: 91px 61px; }
+  .book .bflip.go { animation: flip .65s ease-in-out; }
+  @keyframes flip { 0% { opacity: 1; transform: scaleX(1); } 100% { opacity: 1; transform: scaleX(-1); } }
+  .doze .face { animation: none; transform: translate(1px, 4px); }
+  .doze .eye { display: none; }
+  .doze .seye { display: inline; }
+  .doze .zzz { display: block; }
+  .doze .book { transform-box: fill-box; transform-origin: 50% 100%; transform: translateY(3px) rotate(5deg); transition: transform 1.5s; }
+  .gaming .face { transform: translate(1.5px, 2.2px); }
+  .gaming .th1 { animation: tap .22s ease-in-out infinite alternate; }
+  .gaming .th2 { animation: tap .3s .1s ease-in-out infinite alternate; }
+  @keyframes tap { to { transform: translateY(-1.3px); } }
+  .gbs rect:first-child { animation: gbj .9s steps(1) infinite; }
+  .gbs rect:last-child { animation: gbc 1.6s steps(1) infinite; }
+  @keyframes gbj { 50% { transform: translateY(-2.6px); } }
+  @keyframes gbc { 50% { opacity: 0; } }
+  .meh .ear-l { transform: rotate(-26deg); }
+  .meh .ear-r { transform: rotate(24deg); }
+  .lying .hop { transform: scale(1.12, .8); transition: transform .4s ease-out; }
+  .tablet .face { transform: translate(2px, 2.6px); }
+  .tablet.look-up .face { transform: translate(1px, -2.5px); }
+  .tab .tglow { opacity: .16; }
+  .dusk .tab .tglow, .night .tab .tglow { opacity: .35; }
+  .tab .tscr-p, .tplane .tab .tscr-f { display: none; }
+  .tplane .tab .tscr-p { display: inline; }
+  .tab .tpaw { transform-box: fill-box; }
+  .swipe .tab .tpaw { animation: swipe .6s ease-in-out; }
+  @keyframes swipe { 50% { transform: translateX(-9px); } }
+  .kiting .face { transform: translate(1px, -2.5px); }
+  .kiting .ear { transform: translateY(-1.5px); }
+  .tv .all { display: none; }
+  .tv .bk { display: inline; }
+  .bk .rim { animation: tvflk 1.3s linear infinite; }
 
   .anchor { position: absolute; left: 75%; top: 20%; width: 0; height: 0; }
   .left .anchor { left: 25%; }
@@ -1479,7 +1643,9 @@
               <div class="lookout">${LOOKOUT_SVG}</div>
             </div>
             <div class="lights"></div>
+            <div class="tvl"><i class="tvg"></i><i class="scr"></i></div>
             <div class="birds"></div>
+            <div class="kites"></div>
             <div class="flowers"></div>
             <div class="foods"></div>
             <div class="mice-f"></div>
@@ -1519,6 +1685,7 @@
         flowers: $('.flowers'), foods: $('.foods'), fx: $('.fx'), hay: $('.hay'),
         stats: $('.stats'), name: $('.nm'), barS: $('.bar-s'), barG: $('.bar-g'),
         birds: $('.birds'), mice: $('.mice'), miceF: $('.mice-f'), planes: $('.planes'), ptags: $('.ptags'),
+        tvl: $('.tvl'), kites: $('.kites'), bflip: $('.bflip'),
         stS: $('.st-s'), stG: $('.st-g'), barC: $('.bar-c'), stC: $('.st-c'), poops: $('.poops'), feed: $('.feed'), say: $('.say'), think: $('.think'),
         sun: $('.sun'), moon: $('.moon'), moonLit: $('.moon-lit'), clouds: [...this.shadowRoot.querySelectorAll('.cloud')],
         precip: $('.precip'), flash: $('.flash'),
@@ -1607,6 +1774,14 @@
         el.style.top = `${Y(0)}px`;
         el.style.width = `${bW}px`;
       }
+      // Fernsehlicht füllt den Eingang
+      const ts = this._el.tvl.style;
+      const tw = hole.r - hole.l;
+      ts.left = `${hole.l}px`;
+      ts.top = `${hole.top}px`;
+      ts.width = `${tw}px`;
+      ts.height = `${hole.lip - hole.top}px`;
+      ts.borderRadius = `${tw / 2}px ${tw / 2}px 0 0`;
       const vars = { W, H, pw: pW, ph: pH, gy, hw: hW, hl: hL, fw: H * 0.085, dw: H * 0.13 };
       for (const [k, v] of Object.entries(vars)) this._el.scene.style.setProperty(`--${k}`, `${v}px`);
 
@@ -1697,7 +1872,10 @@
     _cleanup() {
       const p = this._el.pika;
       if (p.classList.contains('walking')) this._freeze();
-      p.classList.remove('walking', 'eating', 'groom', 'carry', 'look-f', 'look-b', 'look-up', 'happy', 'calling', 'crouch', 'squat', 'sniff');
+      p.classList.remove('walking', 'eating', 'groom', 'carry', 'look-f', 'look-b', 'look-up', 'happy', 'calling', 'crouch', 'squat', 'sniff',
+        'reading', 'doze', 'gaming', 'meh', 'lying', 'tablet', 'tplane', 'swipe', 'kiting', 'tv');
+      this._tvOn(false);
+      this._kiteAway();
       this._mouth(null);
       this._bubble(this._el.think, false);
       this._action = null;
@@ -1715,15 +1893,20 @@
       const food = this._foods.find((f) => f.landed);
       const wx = this._wx;
       const next = this._next;
-      const stayIn = next ? next === 'burrow' : wx.shelter && !food;
+      const stayIn = next ? next === 'burrow' || next === 'tv' : wx.shelter && !food;
       if (this._inside && !stayIn) return this._run('comeOut');
       if (next) {
         this._next = null;
+        this._forced = true; // Vorschau: auch ohne passendes Wetter
         return this._run(next);
       }
+      this._forced = false;
       if (food) return this._run('eatFood', food);
-      // Bei Starkregen und Gewitter im Bau bleiben und ab und zu herausschauen
-      if (wx.shelter) return this._run(this._inside ? 'hideout' : 'shelter');
+      // Bei Starkregen und Gewitter im Bau bleiben und ab und zu herausschauen – oder fernsehen
+      if (wx.shelter) {
+        if (this._inside && this._hobbyOk(true) && Math.random() < 0.5) return this._run('tv');
+        return this._run(this._inside ? 'hideout' : 'shelter');
+      }
 
       const s = this._get('s');
       const g = this._get('g');
@@ -1731,7 +1914,16 @@
       this._el.pika.classList.toggle('sad', g < 25 || s < 15 || clean < 30);
       // Unter Schnee gibt es keine Blumen, bei Regen bleibt das Heu trocken (kein Sammeln)
       const hasFlowers = this._flowers.length > 0 && !wx.snowcover;
+      // Beschäftigungen höchstens alle 12–20 Minuten; Fernsehen bei Regen oder in der Dämmerung
+      const hob = this._hobbyOk(wx.wet);
+      const elev = this._dbgElev ?? this._elev;
+      const dry = hob && !wx.wet;
       const act = weighted([
+        [dry ? 1.2 : 0, 'read'],
+        [dry ? 1 : 0, 'game'],
+        [dry && !wx.snowcover ? 0.9 : 0, 'tablet'],
+        [hob && this._kiteWind() ? 3 : 0, 'kite'],
+        [hob ? (wx.wet ? 3 : elev != null && elev < 4 ? 1 : 0) : 0, 'tv'],
         [3, 'idle'],
         [3, 'look'],
         [3, 'wander'],
@@ -1984,8 +2176,9 @@
         return;
       }
       const hw = hole.r - hole.l;
-      const ds = clamp((0.85 * hw) / (0.43 * pW), 0.4, 0.9);
-      const v = { door: 0.945, peek: 0.6, sleep: 0.53, ears: 0.25, hidden: -0.15 }[name];
+      // Beim Fernsehen sitzt er weiter drinnen (kleiner), damit man das Licht vom Fernseher um ihn herum sieht
+      const ds = clamp((0.85 * hw) / (0.43 * pW), 0.4, 0.9) * (name === 'tv' ? 0.68 : 1);
+      const v = { door: 0.945, peek: 0.6, sleep: 0.53, ears: 0.25, hidden: -0.15, tv: 0.8 }[name];
       const px = (n) => `${n.toFixed(1)}px`;
       cw.style.clipPath = `inset(${px(hole.top - top)} ${px(L + pW - hole.r)} ${px(top + pH - hole.lip)} ${px(hole.l - L)} `
         + `round ${px(hw / 2)} ${px(hw / 2)} 0px 0px)`;
@@ -2200,6 +2393,268 @@
       await this._wait(rnd(1500, 2800));
     }
 
+    // ---------- Beschäftigungen ----------
+
+    // Höchstens alle 12–20 Minuten eine; die erste nach 2–6 Minuten. Bei Regen (Fernsehen) früher.
+    _hobbyOk(wet) {
+      const now = Date.now();
+      this._hobbyNext ??= now + rnd(2, 6) * 60000;
+      return now >= this._hobbyNext - (wet ? 8 * 60000 : 0);
+    }
+
+    _hobbyDone() {
+      this._hobbyNext = Date.now() + rnd(12, 20) * 60000;
+    }
+
+    _hobbySpot() {
+      const { fMin, fMax } = this._g;
+      return rnd(fMin, fMax) * this._W;
+    }
+
+    // Drachenwetter: mäßiger bis frischer Wind, trocken, hell
+    _kiteWind() {
+      const e = this._dbgElev ?? this._elev;
+      const w = this._wind || 0;
+      return w >= 20 && w < 65 && !this._wx.wet && !this._wx.storm && (e == null || e > 3);
+    }
+
+    // Kleiner Ton über dem Kopf (Gameboy)
+    _note(text) {
+      const { pW, pH, gy } = this._g;
+      const n = document.createElement('span');
+      n.className = 'note';
+      n.textContent = text;
+      n.style.left = `${this._x + this._dir * pW * 0.2}px`;
+      n.style.top = `${gy - pH * 0.75 - this._lift}px`;
+      n.style.setProperty('--dx', `${this._dir * rnd(4, 14)}px`);
+      this._el.fx.appendChild(n);
+      setTimeout(() => n.remove(), 1400);
+    }
+
+    _pageFlip() {
+      const b = this._el.bflip;
+      b.classList.remove('go');
+      b.getBoundingClientRect();
+      b.classList.add('go');
+    }
+
+    // Lesen am Heuhaufen oder vor der Tür: Kopf wandert die Zeilen entlang, blättert um, kichert.
+    // Nachmittags nickt er manchmal ein (Streicheln weckt ihn).
+    async _read() {
+      const { hay, home, pW } = this._g;
+      await this._walkTo(Math.random() < 0.6 ? hay + pW * 0.5 : home + pW * 0.7, 0.8);
+      this._face(1);
+      const p = this._el.pika;
+      p.classList.add('reading');
+      this._hobbyDone();
+      const h = new Date().getHours();
+      const dozeNow = !!this._dbgDoze;
+      this._dbgDoze = false;
+      const sleepy = dozeNow || (h >= 13 && h < 17 && Math.random() < 0.35);
+      const until = Date.now() + rnd(50000, 100000);
+      let dozed = false;
+      while (Date.now() < until) {
+        await this._wait(rnd(2500, 5000));
+        if (sleepy && !dozed && (dozeNow || Date.now() > until - 40000)) {
+          dozed = true;
+          p.classList.add('doze');
+          const end = Date.now() + rnd(10000, 18000);
+          while (Date.now() < end && p.classList.contains('doze')) await this._wait(500);
+          if (p.classList.contains('doze')) {
+            p.classList.remove('doze');
+            this._jump('hop1');
+            this._say('!', 900);
+          }
+          await this._wait(1200);
+          continue;
+        }
+        const r = Math.random();
+        if (r < 0.5) this._pageFlip();
+        else if (r < 0.65) this._say(pick(['hihi', 'hihi!', 'oh!', 'hm…']), 1100);
+        else if (r < 0.75) this._twitch();
+      }
+      await this._wait(600);
+    }
+
+    // Gameboy: Daumen tippen, Piepser steigen auf; nach jeder Runde Freudensprung oder hängende Ohren
+    async _game() {
+      await this._walkTo(this._hobbySpot(), 0.8);
+      this._face(pick([-1, 1]));
+      const p = this._el.pika;
+      p.classList.add('gaming');
+      this._hobbyDone();
+      const rounds = 2 + Math.floor(rnd(0, 3));
+      for (let i = 0; i < rounds; i++) {
+        const end = Date.now() + rnd(8000, 18000);
+        while (Date.now() < end) {
+          await this._wait(rnd(900, 2600));
+          this._note(pick(['♪', '♫', 'pi', 'pu', 'piu']));
+        }
+        if (Math.random() < 0.55) {
+          this._jump('binky');
+          this._say(pick(['Juhu!', 'Jaaa!']), 1200);
+        } else {
+          p.classList.add('meh');
+          this._say(pick(['mööp', 'och…']), 1200);
+          await this._wait(1600);
+          p.classList.remove('meh');
+        }
+        await this._wait(1200);
+      }
+      await this._wait(400);
+    }
+
+    // Auf dem Bauch mit dem Tablet: wischt, kichert. Fliegt gerade ein echtes Flugzeug vorbei,
+    // zeigt das Tablet die Flugkarte, und er schaut zum Himmel.
+    async _tablet() {
+      await this._walkTo(this._hobbySpot(), 0.8);
+      this._face(pick([-1, 1]));
+      const p = this._el.pika;
+      p.classList.add('lying');
+      await this._wait(400);
+      p.classList.add('tablet');
+      this._hobbyDone();
+      const until = Date.now() + rnd(45000, 90000);
+      while (Date.now() < until) {
+        const plane = [...this._planes.values()].find((pl) => pl.show && !pl.gone);
+        p.classList.toggle('tplane', !!plane);
+        await this._wait(rnd(1800, 4000));
+        const r = Math.random();
+        if (plane && plane.show && r < 0.35) {
+          this._face(plane.x >= this._x ? 1 : -1);
+          p.classList.add('look-up');
+          this._say(pick(['da!', 'oh!']), 1000);
+          await this._wait(rnd(1800, 2800));
+          p.classList.remove('look-up');
+        } else if (r < 0.7) {
+          p.classList.add('swipe');
+          await this._wait(650);
+          p.classList.remove('swipe');
+        } else if (r < 0.82) {
+          this._say(pick(['hihi', 'oh!', '♥']), 1000);
+        }
+      }
+      p.classList.remove('tablet', 'tplane');
+      await this._wait(300);
+      p.classList.remove('lying');
+      await this._wait(400);
+    }
+
+    // Drachen steigen lassen: der Drache steht im Wind (Windrichtung aus dem Wetter), schwankt und zerrt
+    async _kite() {
+      const { pW, pH, gy, fMin, fMax } = this._g;
+      const W = this._W;
+      const H = this._H;
+      const kd = this._windDir || -1;
+      await this._walkTo(clamp(W * (kd < 0 ? 0.64 : 0.38), fMin * W, fMax * W), 0.9);
+      this._face(kd);
+      const p = this._el.pika;
+      p.classList.add('kiting');
+      this._hobbyDone();
+      // Pfote (viewBox 105/50) in px; der Drache steht schräg oben im Wind
+      const px = this._x + kd * pW * (105 / 120 - 0.5);
+      const py = gy - pH * 0.945 + pH * 0.5 - this._lift;
+      const K = H * 0.12;
+      const kx = clamp(px + kd * W * rnd(0.26, 0.38), K, W - K) - px;
+      const ky = H * rnd(0.1, 0.17) - py;
+      const el = document.createElement('div');
+      el.className = 'kite';
+      el.style.left = `${px.toFixed(1)}px`;
+      el.style.top = `${py.toFixed(1)}px`;
+      el.style.setProperty('--k0', `${kd * 60}deg`);
+      el.style.setProperty('--kd', `${clamp(4.5 - (this._wind || 30) / 20, 1.6, 4).toFixed(2)}s`);
+      el.innerHTML = KITE_SVG(kx, ky, K);
+      this._kiteAway();
+      this._kiteEl = el;
+      this._el.kites.appendChild(el);
+      void el.offsetWidth;
+      el.classList.add('up');
+      this._say(pick(['wuiii!', 'hoch!']), 1200);
+      const until = Date.now() + rnd(40000, 80000);
+      while (Date.now() < until && (this._forced || this._kiteWind())) {
+        await this._wait(rnd(3000, 6000));
+        const r = Math.random();
+        if (r < 0.3) {
+          el.classList.remove('tug');
+          void el.offsetWidth;
+          el.classList.add('tug');
+        } else if (r < 0.5) {
+          this._say(pick(['wuiii!', 'hihi', 'iiep!']), 1100);
+        } else if (r < 0.6) {
+          this._twitch();
+        }
+      }
+      // einholen
+      el.classList.remove('up');
+      await this._wait(2800);
+      this._kiteAway();
+    }
+
+    _kiteAway() {
+      const el = this._kiteEl;
+      if (!el) return;
+      this._kiteEl = null;
+      el.classList.add('gone');
+      setTimeout(() => el.remove(), 700);
+    }
+
+    // Fernsehen im Bau: sitzt mit dem Rücken zu uns im Eingang, das Licht vom Fernseher flackert bunt
+    async _tv() {
+      const p = this._el.pika;
+      if (!this._inside) await this._enterBurrow(this._wx.shelter ? 1.4 : 1);
+      else if (this._poseName !== 'hidden') await this._to('hidden', 400);
+      this._hobbyDone();
+      this._tvOn(true);
+      await this._wait(700);
+      p.classList.add('tv');
+      await this._to('tv', 700);
+      const until = Date.now() + (this._wx.wet ? rnd(80000, 160000) : rnd(45000, 90000));
+      while (Date.now() < until) {
+        await this._wait(rnd(2500, 6000));
+        // nach dem Streicheln wieder zum Fernseher drehen
+        if (!p.classList.contains('tv')) {
+          await this._wait(1200);
+          p.classList.add('tv');
+          await this._to('tv', 500);
+          continue;
+        }
+        const r = Math.random();
+        if (r < 0.25) {
+          this._say(pick(['hihi', 'hihi!', 'ohh!', 'hihihi']), 1100);
+        } else if (r < 0.45) {
+          this._twitch();
+        } else if (r < 0.57) {
+          // dreht sich kurz um und schaut heraus
+          p.classList.remove('tv');
+          this._pose('peek', 400);
+          await this._wait(500);
+          if (Math.random() < 0.5) this._say(pick(['mip?', 'iiep!']), 900);
+          await this._wait(rnd(1400, 2400));
+          p.classList.add('tv');
+          await this._to('tv', 500);
+        } else if (r < 0.65) {
+          this._jump('hop1');
+          this._say('!', 800);
+        }
+      }
+      this._tvOn(false);
+      await this._wait(500);
+      p.classList.remove('tv');
+      await this._to('hidden', 500);
+    }
+
+    _tvOn(on) {
+      if (!this._el) return;
+      clearTimeout(this._tvT);
+      this._el.scene.classList.toggle('tv-on', on);
+      if (!on) return;
+      const next = () => {
+        this._el.scene.style.setProperty('--tvc', pick(TV_COLORS));
+        this._tvT = setTimeout(next, rnd(600, 2600));
+      };
+      next();
+    }
+
     async _eatFood(food) {
       this._say('!');
       await this._wait(400);
@@ -2409,6 +2864,12 @@
         return;
       }
       this._happy();
+      // Beim Fernsehen dreht er sich um, beim Lesen eingenickt wacht er auf
+      if (p.classList.contains('tv')) p.classList.remove('tv');
+      if (p.classList.contains('doze')) {
+        p.classList.remove('doze');
+        this._say('oh!', 900);
+      }
       // Im Bau: kommt zum Streicheln an den Eingang
       if (this._inside) return this._pose('peek', 300);
       if (!p.classList.contains('walking')) this._jump(Math.random() < 0.25 ? 'binky' : 'hop1');
@@ -3546,6 +4007,8 @@
       fx.shelter = fx.storm; // bei Starkregen und Gewitter bleibt er vor seinem Bau
       // Windrichtung = woher der Wind kommt. Aus Westen ziehen Wolken nach Osten, im Bild also nach links.
       const fromWest = !(raw.bearing > 0 && raw.bearing < 180);
+      this._wind = raw.wind;
+      this._windDir = fromWest ? -1 : 1; // wohin der Wind im Bild weht (Drachen)
       const key = JSON.stringify([fx, Math.round(raw.wind / 5), fromWest]);
       if (key === this._wxKey) return;
       this._wxKey = key;

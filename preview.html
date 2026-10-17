@@ -53,6 +53,14 @@
   <button id="mouse">Maus schaut raus</button>
   <button id="watch">Pika schaut hin</button>
 </div>
+<div class="bar"><b>Hobby</b>
+  <button data-hob="read">Buch lesen</button>
+  <button data-hob="doze">… und einnicken</button>
+  <button data-hob="game">Gameboy</button>
+  <button data-hob="tablet">Tablet</button>
+  <button data-hob="kite">Drachen</button>
+  <button data-hob="tv">Fernsehen</button>
+</div>
 <div class="bar"><b>Flieger</b>
   <button data-fl="anflug">Anflug Dortmund</button>
   <button data-fl="abflug">Abflug (tief)</button>
@@ -200,6 +208,15 @@
       flights = b.dataset.fl === 'none' ? [] : [...flights, FLIGHTS[b.dataset.fl]()];
       pushFlights();
     })
+  );
+  // Beschäftigung sofort, auch ohne passendes Wetter (Drachen fliegt dann mit der Windrichtung aus dem Wetter)
+  document.querySelectorAll('[data-hob]').forEach((b) =>
+    b.addEventListener('click', () => cards.forEach((c) => {
+      const h = b.dataset.hob;
+      c._dbgDoze = h === 'doze';
+      c._next = h === 'doze' ? 'read' : h;
+      c._interrupt();
+    }))
   );
   document.getElementById('hungry').addEventListener('click', () => {
     const now = Math.round(Date.now() / 1000);
