@@ -179,6 +179,19 @@
 </div>
 <!-- ==================== Ende Kaffee ==================== -->
 
+<!-- ==================== Vorschau-Knöpfe Aktivitäten ==================== -->
+<div class="bar" id="bar-act"><b>Aktivitäten</b>
+  <button data-act="music">Musik</button>
+  <button data-act="paint">Malen</button>
+  <button data-act="bubbles">Seifenblasen</button>
+  <button data-act="sport">Frühsport</button>
+  <button data-act="rope">Seilspringen</button>
+  <button data-act="weights">Gewichtheben</button>
+  <button id="act-show">Bildschirm an (Begrüßung)</button>
+  <button id="act-mood">Tagesform + Takt anzeigen</button>
+</div>
+<!-- ==================== Ende Aktivitäten ==================== -->
+
 <div class="wrap">
   <div class="slot" style="width:600px;height:248px"><pika-pet-card id="a"></pika-pet-card></div>
   <div class="slot" style="width:380px;height:184px"><pika-pet-card id="b"></pika-pet-card></div>
@@ -645,6 +658,20 @@
     log('Kaffee: HA-Neustart simuliert');
   });
   // ==================== Ende Vorschau Kaffee ====================
+
+  // ==================== Aktivitäten ====================
+  document.querySelectorAll('[data-act]').forEach((b) =>
+    b.addEventListener('click', () => cards.forEach((c) => { c._next = b.dataset.act; c._interrupt(); }))
+  );
+  document.getElementById('act-show').addEventListener('click', () => cards.forEach((c) => { c._showAt = 0; c._showReq(); }));
+  document.getElementById('act-mood').addEventListener('click', () => {
+    const c = cards[0];
+    const tf = c._tagesform();
+    const min = (t) => (t == null ? '–' : t <= Date.now() ? 'jetzt' : `in ${Math.round((t - Date.now()) / 6e4)} Min`);
+    log(`Tagesform: Lieblinge ${tf.fav.join(', ')}, keine Lust auf ${tf.meh} · zuletzt ${c._actRecent().join(', ') || '–'} · `
+      + `groß ${min(c._hobbyNext)}, klein ${min(c._miniNext)} · Frühsport fällig: ${c._sportDue() ? 'ja' : 'nein'}`);
+  });
+  // ==================== Ende Aktivitäten ====================
 </script>
 </body>
 </html>

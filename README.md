@@ -23,7 +23,7 @@ Ein kleiner Pika (Pfeifhase) wohnt in deinem Home-Assistant-Dashboard.
 ## Besuch
 
 - **Vögelchen**: Alle paar Minuten fliegt ein kleines, rundes Rotkehlchen, eine Blaumeise oder ein Spatz im Bogen heran. Es landet auf Laterne, Schornstein, Schild, Blumenkasten, Hügelkuppe oder dem Aussichtsstein (je nach Areal andere Plätze), legt den Kopf schief, pickt, hüpft, plustert sich auf und zwitschert. Nach 15–45 Sekunden fliegt es weiter. Es kommt nur bei Tag und nicht bei Regen.
-- **Maus**: Hinter dem Aussichtsstein schaut eine kleine Maus seitlich oder über die Kuppe hervor, schnuppert und wackelt mit den Ohren. Manchmal flitzt sie auf die Wiese, macht Männchen und läuft zurück. Sie kommt auch nachts, aber nicht bei Regen.
+- **Maus**: Hinter dem Aussichtsstein schaut eine kleine Maus seitlich oder über die Kuppe hervor, schnuppert und wackelt mit den Ohren. Meistens flitzt sie auf die Wiese, macht Männchen, schnuppert sich ein, zwei Stückchen weiter und läuft zurück (15–25 Sekunden). Sie kommt auch nachts, aber nicht bei Regen.
 - Der Pika schaut hin, piepst das Vögelchen an (es zwitschert zurück) und geht neugierig ein Stück auf die Maus zu. Kommt er zu nah, flitzt sie mit „piep!“ zurück. Springt er auf den Stein, fliegt ein Vögelchen dort vorher weg.
 - **Antippen** verscheucht Vögelchen und Maus.
 - Besuche werden aus der Uhrzeit berechnet, deshalb kommen Vögelchen, Maus und Pino auf allen Geräten gleichzeitig.
@@ -32,7 +32,7 @@ Ein kleiner Pika (Pfeifhase) wohnt in deinem Home-Assistant-Dashboard.
 
 Ein paarmal am Tag kommt **Pino** zu Besuch, ein Freund-Pika: etwas kleiner, ingwerfarben, mit türkisem Halstuch und hellem Fleck auf der Stirn.
 
-- **Wann**: Etwa alle 45 Minuten kommt Pino (21–65 Minuten zwischen zwei Besuchen) und bleibt 1,5–4 Minuten. Er kommt nur, wenn der Pika wach ist, es Tag ist und es nicht regnet oder gewittert. Passt es zu Beginn nicht (z. B. kurzer Niesel), kommt er später im selben Zeitfenster.
+- **Wann**: Etwa alle 30 Minuten kommt Pino und bleibt 3–6 Minuten. Er kommt nur, wenn der Pika wach ist, es Tag ist und es nicht regnet oder gewittert. Passt es zu Beginn nicht (z. B. kurzer Niesel), kommt er später im selben Zeitfenster.
 - **Ankunft**: Pino hoppelt vom linken oder rechten Rand herein und piepst. Der Pika bemerkt ihn, ruft „Pino!“, hoppelt zu ihm, und die beiden stupsen sich mit den Nasen an (Herzchen).
 - **Zusammen spielen**: Meistens spielen sie miteinander, ab und zu macht der Pika auch etwas allein.
   - **Fangen**: Abwechselnd hoppelt einer davon und der andere hinterher, mit kleinen Staubwölkchen.
@@ -47,13 +47,29 @@ Ein paarmal am Tag kommt **Pino** zu Besuch, ein Freund-Pika: etwas kleiner, ing
 
 ## Beschäftigungen
 
-Höchstens alle 12–20 Minuten (die erste nach 2–6 Minuten) sucht er sich eine Beschäftigung:
+Große Beschäftigungen (1–3 Minuten) gibt es alle 10–15 Minuten, solange jemand hinschaut, sonst alle 30–40 (die erste nach 2–6 Minuten). Dazwischen kommen alle 3–5 Minuten kleine (15–30 Sekunden): Seilspringen und Gewichtheben.
+
+- **Abwechslung**: Die letzten drei großen Beschäftigungen kommen nicht gleich wieder dran (je Gerät gemerkt, auch über Neuladen).
+- **Tagesform**: Jeden Tag hat er zwei Lieblingsbeschäftigungen (doppelt so oft) und eine, auf die er keine Lust hat (selten). Sie werden aus dem Datum gewürfelt und sind auf allen Geräten gleich. Welche Beschäftigung gerade läuft, entscheidet jedes Gerät selbst.
+- **Tageszeit**: Nachmittags liest er lieber, abends macht er lieber Musik, mittags malt er lieber.
+- **Begrüßung**: Wird die Karte sichtbar (Bildschirm geht an, App oder Dashboard wird geöffnet), winkt er „Hallo!“ und führt danach zur Hälfte gleich eine große Beschäftigung vor. Ist er gerade beschäftigt, ruft er nur „Huhu!“; schläft er, blinzelt er mit einem Auge. Höchstens alle 5 Minuten. Mit `screen_entity` (z. B. dem Bildschirm-Schalter von Fully Kiosk) zählt auch das Einschalten des Bildschirms, und bei ausgeschaltetem Bildschirm gilt der langsame Takt.
+
+Die großen:
 
 - **Buch lesen** am Vorrat oder vor der Tür: Der Kopf wandert die Zeilen entlang, er blättert um und kichert. Nachmittags nickt er manchmal mit dem Buch ein. Streicheln weckt ihn.
 - **Gameboy**: Die Daumen tippen, kleine Piepser steigen auf. Nach jeder Runde macht er einen Freudensprung („Juhu!“) oder lässt die Ohren hängen („mööp“).
 - **Tablet**: Er liegt auf dem Bauch in der Wiese, das Display scheint ihm ins Gesicht, er wischt. Fliegt gerade ein echtes Flugzeug vorbei, zeigt das Tablet die Flugkarte, und er schaut zum Himmel.
 - **Drachen** bei Wind ab 20 km/h, trocken und hell: Der Drache steigt in Windrichtung auf, schwankt mit Schwänzchen und zerrt an der Schnur.
 - **Fernsehen** im Bau, bei Regen und Gewitter oder in der Dämmerung: Er sitzt mit dem Rücken zu uns im dunklen Eingang. Der Bildschirm leuchtet über seinem Kopf, sein Fell hat einen bunten Lichtsaum, beim Erdhügel flackert auch das Fenster. Ab und zu dreht er sich um und schaut heraus. Streicheln holt ihn kurz an die Tür.
+- **Musik**: Ukulele, er wiegt sich, Noten steigen auf. Manchmal singt er mit („la-la-la ♪“) oder verspielt sich („plonk!“). Sitzt ein Vögelchen da, zwitschert es mit. Zum Schluss Verbeugung.
+- **Malen** an der Staffelei, trocken und hell: Das Bild entsteht Schicht für Schicht (Himmel in der Farbe der Tageszeit, Sonne, Hügel, Motiv, Kleinkram). Motive: Blume, Selbstbildnis, Bau, Regenbogen, Pino oder ein Flugzeug, wenn gerade eins fliegt. Zwischendurch betrachtet er es, am Ende ist er stolz (oder nicht ganz zufrieden).
+- **Seifenblasen**, trocken, hell, Wind unter 30 km/h: Die Blasen treiben mit dem Wind, schillern und platzen. Ab und zu springt er einer hinterher („plopp!“). Antippen bringt eine Blase zum Platzen.
+- **Frühsport** einmal am Morgen (10–180 Minuten nach dem Aufwachen): Stirnband, Hampelmann, Kniebeugen, Laufen auf der Stelle, Strecken; er zählt mit und schwitzt.
+
+Die kleinen:
+
+- **Seilspringen**: Er zählt mit, wird manchmal schneller oder springt doppelt durch. Verheddert er sich, ist Schluss („hoppla!“).
+- **Gewichtheben** mit der Pusteblumen-Hantel: in die Hocke, „hnnngh!“, über den Kopf. Manchmal plumpst sie herunter, oben fliegen gern ein paar Schirmchen davon.
 
 ## Haus-Bote
 
@@ -212,6 +228,7 @@ friend_name: Pino                # Name des Freund-Pikas
 height: 180                      # Mindesthöhe in px (im Abschnitts-Layout zählt die Zeilenhöhe)
 appliances:                      # Waschmaschine, Trockner, Spülmaschine, siehe Haus-Bote
 coffee:                          # Kaffeevollautomat, siehe Kaffee
+screen_entity: switch.tablet_bildschirm   # optional: Bildschirm-Schalter (Fully Kiosk), siehe Beschäftigungen
 ```
 
 Für `sleep_start` und `sleep_end` gehen feste Uhrzeiten (`"21:00"`) oder `sunset`/`sunrise` aus `sun.sun`, auch mit Versatz: `"sunset+01:00"` (eine Stunde nach Sonnenuntergang), `"sunrise-30"` (30 Minuten vor Sonnenaufgang). Ohne `sun.sun` gilt 21:00 bis 07:00, der Himmel richtet sich dann nach der Schlafenszeit. Uhrzeiten am besten in Anführungszeichen; `21:00` ohne geht aber auch (YAML macht 1260 daraus, reine Zahlen gelten als Minuten nach Mitternacht). Unverständliche Angaben wie `sunset+1h` fallen auf 21:00/07:00 zurück, mit Hinweis in der Konsole.
@@ -222,4 +239,4 @@ Im Text-Helfer steht der Zustand als `satt,zeit,glück,zeit,großputz,maske,teil
 
 ## Entwicklung
 
-`preview.html` lädt die Karte mit einem simulierten `hass`-Objekt. Die Häufchen-Knöpfe stellen die Uhr der Häufchen vor (nächstes Häufchen, +4 Std., +1 Tag), die Besuch-Knöpfe holen Vögelchen und Maus sofort oder stellen die Besuchsuhr kurz vor den nächsten berechneten Besuch, die Hobby-Knöpfe starten eine Beschäftigung sofort (auch ohne passendes Wetter), die Flieger-Knöpfe schicken Testflüge los (Anflug, Abflug, Reiseflug, Hubschrauber, Kleinflugzeug). Dafür den Ordner über einen lokalen Webserver öffnen, z. B. `node dev/serve.mjs . 8765` (lauscht nur auf localhost). `areale.html` zeigt alle vier Areale nebeneinander. Die Knopfzeilen Himmel-Extras, Festtage, Freund-Pika, Haus-Bote und Kaffee lösen die jeweiligen Erweiterungen sofort aus (Festtage stellen dafür das Datum der Karte um, Haus-Bote und Kaffee setzen Mock-Zustände der Geräte; ein Kaffeebezug dauert dort 18 s).
+`preview.html` lädt die Karte mit einem simulierten `hass`-Objekt. Die Häufchen-Knöpfe stellen die Uhr der Häufchen vor (nächstes Häufchen, +4 Std., +1 Tag), die Besuch-Knöpfe holen Vögelchen und Maus sofort oder stellen die Besuchsuhr kurz vor den nächsten berechneten Besuch, die Hobby-Knöpfe starten eine Beschäftigung sofort (auch ohne passendes Wetter), die Flieger-Knöpfe schicken Testflüge los (Anflug, Abflug, Reiseflug, Hubschrauber, Kleinflugzeug). Dafür den Ordner über einen lokalen Webserver öffnen, z. B. `node dev/serve.mjs . 8765` (lauscht nur auf localhost). `areale.html` zeigt alle vier Areale nebeneinander. Die Knopfzeilen Himmel-Extras, Festtage, Freund-Pika, Haus-Bote, Kaffee und Aktivitäten lösen die jeweiligen Erweiterungen sofort aus (Festtage stellen dafür das Datum der Karte um, Haus-Bote und Kaffee setzen Mock-Zustände der Geräte; ein Kaffeebezug dauert dort 18 s).
