@@ -47,7 +47,7 @@
  * werden aus Datum und Standort (hass.config) berechnet.
  */
 (() => {
-  const VERSION = '0.16.1';
+  const VERSION = '0.16.2';
 
   const DEFAULTS = {
     name: 'Pika',
@@ -84,6 +84,10 @@
 
   const RATE = { s: 5, g: 4 }; // Abnahme pro Stunde (satt, glücklich)
   const GAIN = { feed: 25, pet: 8, clean: 10 };
+  // Selbst gefressen (Wiesenblume, Heu): wenig und nur bis SELF_MAX. Jedes Gerät knabbert für sich und Blumen
+  // wachsen alle 2,5 Min nach, ohne Grenze wäre er immer satt. Über die Hälfte bringt ihn nur das Füttern.
+  const SELF = { flower: 3, hay: 2 };
+  const SELF_MAX = 50;
   // Häufchen: alle 80–140 Minuten Wachzeit eins, das erste 10–30 Minuten nach dem Aufwachen. Höchstens 8
   // seit dem letzten Großputz (einzeln weggemachte zählen mit), die ersten 3 in der Klo-Ecke am Stein. idx:
   // so viele Fälligkeiten rechnet die Karte höchstens (Bits der Maske für einzeln weggemachte Häufchen).
@@ -3974,6 +3978,7 @@
       this._face(-1);
       await this._wait(300);
       await this._eat('#dcbc6a', rnd(2500, 3500));
+      this._selfFed(SELF.hay);
       await this._wait(rnd(300, 900));
     }
 
@@ -3983,6 +3988,7 @@
       await this._approach(f.xf * this._W);
       this._pickFlower(f);
       await this._eat(f.color, rnd(2500, 4000));
+      this._selfFed(SELF.flower);
       await this._wait(rnd(300, 900));
     }
 
@@ -6993,6 +6999,7 @@
         const ms = rnd(2600, 3800);
         this._frEat(fr, f2 ? f2.color : f1.color, ms + 300);
         await this._eat(f1.color, ms);
+        this._selfFed(SELF.flower);
         await w(300);
         this._frEatEnd(fr);
         this._frSay(fr, pick(['mmh!', 'lecker!', '♥']), 1100);
@@ -7087,6 +7094,12 @@
     _get(k) {
       const v = this._raw(k);
       return k === 'g' ? Math.min(v, 60 + 0.4 * this._poops().clean) : v;
+    }
+
+    // Satt durch selbst Gefressenes, höchstens bis SELF_MAX
+    _selfFed(d) {
+      const room = SELF_MAX - this._raw('s');
+      if (room > 0) this._add('s', Math.min(d, room));
     }
 
     _add(k, d) {
