@@ -151,6 +151,7 @@ Der Blick geht nach Süden: Osten (Sonnenaufgang) ist links, Westen rechts.
 - **Wetter** aus `weather_entity`:
   - Wolken nach Bedeckung, grauer Himmel bei bedecktem Wetter
   - Regen, Starkregen, Gewitter mit Blitzen, Schnee mit verschneiten Hügeln, Nebelschwaden
+  - Mit `precip_entity` (Niederschlag in mm/h) regnet es bei „rainy“ erst ab `rain_min` (Standard 0,3 mm/h). Vorhersagen wie DWD melden „rainy“ schon bei Niesel, der oft gar nicht ankommt.
   - Wolken ziehen und Blumen biegen sich mit Windstärke und Windrichtung
 - **Pika** reagiert darauf:
   - Bei Regen hält er sich ein Blatt als Schirm über den Kopf und bleibt in der Nähe seines Baus.
@@ -218,6 +219,8 @@ sleep_start: sunset              # Schlafenszeit (Standard: Sonnenuntergang)
 sleep_end: sunrise               # Aufwachzeit (Standard: Sonnenaufgang)
 sun_entity: sun.sun              # Sonnenstand
 weather_entity: weather.forecast_home   # Wetter (Standard: met.no-Integration)
+precip_entity: sensor.niederschlag      # optional: Niederschlag in mm/h
+rain_min: 0.3                    # ab so viel mm/h regnet es bei "rainy" (nur mit precip_entity)
 shooting_stars: true             # Sternschnuppen nachts bei klarem Himmel
 fireflies: true                  # Glühwürmchen in Sommernächten
 areal: huegel                    # Bau: huegel, fels, stumpf, alpin

@@ -32,6 +32,11 @@
   <button data-wx="snowy">Schnee</button>
   <button data-wx="fog">Nebel</button>
   <button data-wx="windy">windig</button>
+  <b>Niederschlag</b>
+  <button data-mm="">kein Sensor</button>
+  <button data-mm="0.1">0,1 mm/h</button>
+  <button data-mm="0.3">0,3 mm/h</button>
+  <button data-mm="1.2">1,2 mm/h</button>
 </div>
 <div class="bar"><b>Sonstiges</b>
   <button id="cold">Kalt/Warm</button>
@@ -262,6 +267,16 @@
       const w = states['weather.forecast_home'];
       const wind = b.dataset.wx === 'windy' ? 45 : b.dataset.wx === 'pouring' || b.dataset.wx.startsWith('lightning') ? 30 : 12;
       states['weather.forecast_home'] = { state: b.dataset.wx, attributes: { ...w.attributes, wind_speed: wind, cloud_coverage: { sunny: 5, partlycloudy: 40 }[b.dataset.wx] ?? 90 } };
+      push();
+    })
+  );
+  // Niederschlagssensor: "rainy" zeigt erst ab rain_min (0,3 mm/h) Regen
+  document.querySelectorAll('[data-mm]').forEach((b) =>
+    b.addEventListener('click', () => {
+      const mm = b.dataset.mm;
+      states['sensor.niederschlag'] = { state: mm, attributes: { unit_of_measurement: 'mm/h' } };
+      cards.forEach((c) => (c._cfg.precip_entity = mm ? 'sensor.niederschlag' : null));
+      log(mm ? `Niederschlag ${mm} mm/h` : 'ohne Niederschlagssensor');
       push();
     })
   );

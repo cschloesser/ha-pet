@@ -28,6 +28,8 @@
  *   sleep_end: sunrise               # Aufwachzeit: "07:00", "sunrise" oder z. B. "sunrise-30" (Minuten)
  *   sun_entity: sun.sun              # Sonnenstand (Höhe + Azimut) für Himmel und Sonne
  *   weather_entity: weather.forecast_home   # Wolken, Regen, Schnee, Nebel, Gewitter, Wind
+ *   precip_entity: sensor.niederschlag      # optional: Niederschlag in mm/h, darunter bleibt "rainy" trocken
+ *   rain_min: 0.3                    # ab so viel mm/h regnet es bei "rainy" (nur mit precip_entity)
  *   areal: huegel                    # Bau: huegel (Erdhügel), fels, stumpf, alpin
  *   flight_entity: sensor.flightradar24_current_in_area   # Flüge im Umkreis (leer = keine Flugzeuge)
  *   flight_radius: 15                # Radius der Integration in km: so weit weg liegt der Bildrand
@@ -45,7 +47,7 @@
  * werden aus Datum und Standort (hass.config) berechnet.
  */
 (() => {
-  const VERSION = '0.16.0';
+  const VERSION = '0.16.1';
 
   const DEFAULTS = {
     name: 'Pika',
@@ -56,6 +58,9 @@
     sleep_end: 'sunrise',
     sun_entity: 'sun.sun',
     weather_entity: 'weather.forecast_home',
+    // Niederschlag in mm/h: Meldet das Wetter "rainy" bei weniger als rain_min, ist es nur bewölkt
+    precip_entity: null,
+    rain_min: 0.3,
     areal: 'huegel',
     flight_entity: 'sensor.flightradar24_current_in_area',
     flight_radius: 15,
@@ -3219,9 +3224,11 @@
         }
       }
       const w = hass.states[c.weather_entity];
-      if (w !== this._lastWeather) {
+      const pr = c.precip_entity ? hass.states[c.precip_entity] : undefined;
+      if (w !== this._lastWeather || pr !== this._lastPrecip) {
         this._lastWeather = w;
-        this._readWeather(w);
+        this._lastPrecip = pr;
+        this._readWeather(w, pr);
       }
       const fl = c.flight_entity ? hass.states[c.flight_entity] : undefined;
       if (fl !== this._lastFlights) {
@@ -8148,7 +8155,7 @@
 
     // ---------- Wetter ----------
 
-    _readWeather(w) {
+    _readWeather(w, pr) {
       if (w) {
         const a = w.attributes || {};
         let wind = Number(a.wind_speed);
@@ -8164,6 +8171,8 @@
           wind: Number.isFinite(wind) ? wind : 0,
           bearing: windDeg(a.wind_bearing),
           temp: Number.isFinite(temp) ? temp : null,
+          // NaN ohne Sensor oder wenn er nicht verfügbar ist, dann zählt nur die Wetterlage
+          precip: pr ? parseFloat(pr.state) : NaN,
         };
       } else {
         this._wxRaw = null;
@@ -8174,7 +8183,9 @@
     _applyWeather() {
       if (!this._el) return;
       const raw = { cond: null, wind: 0, temp: null, ...(this._wxRaw || {}), ...(this._dbgWeather || {}) };
-      const def = WEATHER[raw.cond] || { cover: 25 };
+      // Vorhersagen melden "rainy" schon bei Niesel: unter rain_min mm/h ist es nur bewölkt
+      const drizzle = raw.cond === 'rainy' && raw.precip < this._cfg.rain_min;
+      const def = drizzle ? WEATHER.cloudy : WEATHER[raw.cond] || { cover: 25 };
       // Bei trockener Lage zählt die gemeldete Bedeckung, bei Regen, Schnee & Co. die Wetterlage
       const dry = !def.rain && !def.snow && !def.storm && !def.fog;
       const cover = dry && Number.isFinite(raw.cover) ? raw.cover : def.cover;
