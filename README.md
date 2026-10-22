@@ -243,7 +243,9 @@ Für `sleep_start` und `sleep_end` gehen feste Uhrzeiten (`"21:00"`) oder `sunse
 
 `wind_bearing` des Wetters darf eine Gradzahl oder ein Kürzel sein („SW“, „NNO“). Flugzeuge erscheinen auch, wenn die Uhr des Geräts von der HA-Uhr abweicht. Auf schmalen Karten (z. B. Handy) werden Aussichtsstein und Heuhaufen automatisch kleiner (die Nische des Erdhügels gehört zum Bau und behält ihre Größe), damit alles ins Bild passt. Der Vorrat (Heuhaufen bzw. Nische) steht mit `plan_entity` im Helfer, sonst im Browser des Geräts.
 
-Im Text-Helfer steht der Zustand als `satt,zeit,glück,zeit,großputz,maske,teilputz` (Zeiten in Sekunden). Hunger, Glück und Häufchen werden daraus beim Anzeigen berechnet, deshalb braucht es keine Automation. Ältere Werte mit vier Feldern werden weiter gelesen.
+Im Text-Helfer steht der Zustand als `satt,zeit,glück,zeit,großputz,maske,teilputz` (Zeiten in Sekunden). Hunger, Glück und Häufchen werden daraus beim Anzeigen berechnet, deshalb braucht es keine Automation. Ältere Werte mit vier Feldern werden weiter gelesen. Jedes Schreiben wartet auf die Bestätigung von HA: Geht es verloren (Verbindung weg, Fehler), sendet die Karte erneut, und schrieben zwei Geräte gleichzeitig, werden beide Änderungen zusammengeführt. `entity` und `plan_entity` müssen zwei verschiedene `input_text`-Helfer sein, sonst zeigt die Karte eine Fehlermeldung.
+
+Die Karte schont das Gerät: Ist sie nicht zu sehen (Tab im Hintergrund, Bildschirm aus, aus dem Bild gescrollt), ruhen Schleife, Besuche und alle Animationen. Nach längerer Pause wählt sie die nächste Beschäftigung erst mit frischem Stand aus HA. Nachts ohne Wind stehen die Blumen still, Kerzen, Lichterkette und Regenschirm bewegen sich in Stufen. Mit der Systemeinstellung „Bewegung reduzieren“ ruhen Wolken, Sterne, Blumen, Rauch, Niederschlag und Blinklichter.
 
 ## Entwicklung
 

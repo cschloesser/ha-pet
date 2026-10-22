@@ -47,7 +47,7 @@
  * werden aus Datum und Standort (hass.config) berechnet.
  */
 (() => {
-  const VERSION = '0.16.2';
+  const VERSION = '0.17.0';
 
   const DEFAULTS = {
     name: 'Pika',
@@ -1121,7 +1121,7 @@
   const festGlows = (p) => FEST_COLORS.map((c, i) => GLOW_GRAD(`${p}${i}`, c)).join('');
   const festBulbs = (pts, p, r) => pts.map(([x, y], i) => {
     const ci = (i * 3) % FEST_COLORS.length;
-    return `<g class="fbl" style="animation-delay:${(-((i * 0.83) % 2.8)).toFixed(2)}s">`
+    return `<g class="fbl" style="animation-delay:${(-(i % 3) * 0.93).toFixed(2)}s">`
       + `<circle cx="${festF1(x)}" cy="${festF1(y)}" r="${r * 2.6}" fill="url(#${p}${ci})"/>`
       + `<ellipse cx="${festF1(x)}" cy="${festF1(y)}" rx="${r * 0.72}" ry="${r}" fill="${FEST_COLORS[ci]}"/>`
       + `<circle cx="${festF1(x - r * 0.2)}" cy="${festF1(y - r * 0.35)}" r="${r * 0.28}" fill="#fff" opacity=".8"/></g>`;
@@ -1354,9 +1354,13 @@
   /* Flackern und Blinken nur in Dämmerung und Nacht: tags ist .nite unsichtbar, das Neuzeichnen spart sich das Tablet */
   .dusk .fflk, .night .fflk { animation: fflk 2.2s ease-in-out infinite alternate; }
   @keyframes fflk { 0% { opacity: 1; } 25% { opacity: .7; } 40% { opacity: .95; } 65% { opacity: .78; } 100% { opacity: 1; } }
-  .flm { transform-box: fill-box; transform-origin: 50% 100%; animation: fflame .45s ease-in-out infinite alternate; }
+  /* Flammen flackern in Stufen (ein Kerzenflackern ist ohnehin sprunghaft): Kranz und Kuchen stehen tage- und
+     wochenlang, so wird ihr SVG nur etwa neunmal pro Sekunde neu gemalt */
+  .flm { transform-box: fill-box; transform-origin: 50% 100%; animation: fflame .45s steps(4) infinite alternate; }
   @keyframes fflame { from { transform: scale(.88, 1.06) rotate(-5deg); } to { transform: scale(1.06, .9) rotate(4deg); } }
-  .dusk .fbl, .night .fbl { animation: fblink 2.8s ease-in-out infinite alternate; }
+  /* Lämpchen in drei Gruppen, die im Wechsel blinken (Verzögerung je Gruppe), in Stufen: wenige Neuzeichnungen pro
+     Sekunde statt jedes Bild für jedes Lämpchen einzeln */
+  .dusk .fbl, .night .fbl { animation: fblink 2.8s steps(6) infinite alternate; }
   @keyframes fblink { 0%, 45% { opacity: 1; } 100% { opacity: .3; } }
   .lsw { transform-box: view-box; animation: flsw 2.6s ease-in-out infinite alternate; }
   .flan .lsw { transform-origin: 13.5px 2px; }
@@ -2139,7 +2143,7 @@
   const ACT_SHOW_COOL = 5 * 6e4;
   const ACT_GREET = ['Hallo!', 'Hi!', 'Da bist du ja!', 'iiep!', 'Hallöchen!', 'Huhu!'];
   const ACT_CLS = ['waving', 'music', 'sing', 'painting', 'dab', 'mix', 'blowing', 'blow', 'sport', 'jjack', 'knee',
-    'roping', 'rope-hold', 'rdbl', 'lifting', 'lift-gnd', 'lift-lo', 'lift-hi', 'strain'];
+    'roping', 'rope-hold', 'rdbl', 'lifting', 'lift-gnd', 'lift-lo', 'lift-hi', 'strain', 'stretch'];
   // Frühsport nur morgens: 10–180 Minuten nach dem Aufwachen, einmal am Tag (im Helfer plan_entity vermerkt)
   const SPORT_WIN = [10, 180];
   const SPORT_INTRO = 1700;
@@ -2244,8 +2248,8 @@
   .waving .face { transform: translate(1px, -1px); }
 
   /* Musik: Ukulele, wiegt sich, Schlagpfote */
-  .music .hop { animation: sway 1.7s ease-in-out infinite alternate; }
-  @keyframes sway { from { transform: rotate(-2.5deg); } to { transform: rotate(2.5deg); } }
+  .music .hop { animation: msway 1.7s ease-in-out infinite alternate; }
+  @keyframes msway { from { transform: rotate(-2.5deg); } to { transform: rotate(2.5deg); } }
   .music .face { transform: translate(.6px, 1.4px); }
   .ustrum { transform-box: fill-box; }
   .music .ustrum { animation: strum .32s ease-in-out infinite alternate; }
@@ -2773,7 +2777,9 @@
   .cold .scarf, .wet .brolly { display: inline; }
   .sleeping .brolly { display: none; }
   .brolly { transform-box: fill-box; transform-origin: 70% 100%; }
-  .wet .brolly { animation: brolly 2.6s ease-in-out infinite alternate; }
+  /* In Stufen: das Blatt dreht nur ±3°, stufenweise sieht man keinen Unterschied, das Pika-SVG wird aber nur
+     etwa viermal pro Sekunde neu gemalt statt in jedem Bild (Regen dauert oft Stunden). Im Bau und im Schlaf ruht es. */
+  .wet:not(.inside):not(.sleeping) .brolly { animation: brolly 2.6s steps(10) infinite alternate; }
   @keyframes brolly { from { transform: rotate(-3deg); } to { transform: rotate(3deg); } }
   .carry .mfood, .eating .mfood { display: inline; }
   .mbloom { fill: var(--mf, #f6c945); stroke: rgba(0, 0, 0, .15); stroke-width: .5; }
@@ -3101,6 +3107,22 @@
   .ptag .more { font-size: .9em; opacity: .85; overflow: hidden; text-overflow: ellipsis; }
   .dusk .ptag { background: rgba(255, 255, 255, .72); }
   .night .ptag { color: #e4e9f6; background: rgba(22, 32, 62, .72); }
+
+  /* ---- Sparen ---- */
+  /* Niemand sieht hin (Tab versteckt, Karte aus dem Bild): alle Animationen anhalten, sie laufen danach weiter */
+  .scene.paused, .scene.paused * { animation-play-state: paused !important; }
+  /* Nachts ohne Wind stehen die Blumen still (die Ebene ist dann gefiltert, jedes Schaukeln kostete ein Neufiltern);
+     eine nachwachsende wächst trotzdem fertig */
+  .scene.night:not(.windy) .flower { animation-play-state: paused; }
+  .scene.night:not(.windy) .flower.grow { animation-play-state: running, paused; }
+  /* Weniger Bewegung gewünscht (Systemeinstellung): Wolken, Sterne, Blumen, Rauch, Niederschlag und Blinklichter ruhen */
+  @media (prefers-reduced-motion: reduce) {
+    .cloud, .stars b, .flower, .smoke circle, .precip .pl, .precip .pw, .fog i, .lt.flk, .br, .brolly,
+    .plane .bcn, .plane .strobe, .fbl, .flm, .fflk, .lsw, .hb-i, .hb-tw, .hb-heat > g, .hb-steam > g {
+      animation: none !important;
+    }
+    .precip { opacity: .6; }
+  }
   `;
 
   // ---------- Karte ----------
@@ -3140,10 +3162,18 @@
       this._bird = this._mouse = null;
       this._planes = new Map(); // Flug-ID → Flugzeug am Himmel
       this._planeT = null;
+      this._sent = [];
     }
 
     setConfig(config) {
-      this._cfg = { ...DEFAULTS, ...(config || {}) };
+      const cfg = { ...DEFAULTS, ...(config || {}) };
+      // Grobe Fehler gleich als Fehlerkarte zeigen statt still falsch zu speichern
+      for (const k of ['entity', 'plan_entity']) {
+        if (cfg[k] && !/^input_text\.\w+$/.test(cfg[k])) throw new Error(`pika-pet-card: ${k} muss ein input_text-Helfer sein (ist "${cfg[k]}")`);
+      }
+      if (cfg.entity && cfg.entity === cfg.plan_entity) throw new Error('pika-pet-card: entity und plan_entity brauchen zwei verschiedene Helfer');
+      if (cfg.areal && !AREALE[cfg.areal]) console.warn(`pika-pet-card: areal "${cfg.areal}" gibt es nicht (${Object.keys(AREALE).join(', ')}), nehme huegel`);
+      this._cfg = cfg;
       if (!this._el) this._build();
       this._applyAreal();
       this._el.name.textContent = this._cfg.name;
@@ -3158,6 +3188,7 @@
         clearTimeout(this._freshT);
         this._pendingWrite = this._synced = this._noEntity = false;
         this._gain = { s: 0, g: 0, c: false };
+        this._sent = []; // gesendet, von HA noch nicht bestätigt: { v, gain, at }
         this._lastEntityState = null; // beim nächsten hass neu lesen, auch wenn der Helfer fehlt
         this._stats = null;
         if (!ent) this._loadLocal();
@@ -3172,6 +3203,7 @@
     }
 
     set hass(hass) {
+      const fresh = hass !== this._hass;
       this._hass = hass;
       const c = this._cfg;
       if (c.entity) {
@@ -3186,11 +3218,20 @@
             if (!this._stats) this._loadLocal();
           }
           this._noEntity = st === undefined;
-          if (parsed) {
+          const own = parsed ? this._sent.findIndex((e) => e.v === st) : -1;
+          if (own >= 0) {
+            // Echo eines eigenen Schreibens: bestätigt (ältere auch, HA arbeitet der Reihe nach). Der eigene Stand
+            // ist schon so weit oder weiter, nichts übernehmen.
+            this._sent.splice(0, own + 1);
+          } else if (parsed) {
             this._synced = true;
-            if (this._pendingWrite && this._stats) {
-              // Eigene Änderung wartet noch aufs Senden: zusammenführen statt den fremden Stand zu verwerfen
-              this._stats = mergeStats(this._stats, parsed, this._gain, Date.now());
+            const gain = this._sentGain();
+            if (this._stats && (this._pendingWrite || gain.s || gain.g || gain.c)) {
+              // Eigene Änderung ungesendet oder noch unbestätigt: zusammenführen statt den fremden Stand zu
+              // übernehmen. Der fremde kam bei HA vor dem eigenen an, ihm fehlt also alles, was hier noch offen ist.
+              this._stats = mergeStats(this._stats, parsed, gain, Date.now());
+              this._sent.forEach((e) => (e.gain = { s: 0, g: 0, c: false })); // steckt jetzt im nächsten Schreiben
+              this._gain = gain;
               this._save();
             } else {
               this._stats = parsed;
@@ -3239,14 +3280,19 @@
         this._lastFlights = fl;
         this._readFlights(fl);
       }
-      this._hassSky(hass);
-      this._hassFest(hass);
-      this._hassFriend(hass);
-      this._hassBote(hass);
-      this._hassCoffee(hass);
-      this._hassPlan(hass);
-      this._hassAct(hass);
+      // Ein Fehler in einer Erweiterung (unerwartete Daten) soll die anderen nicht mitreißen
+      for (const f of [this._hassSky, this._hassFest, this._hassFriend, this._hassBote, this._hassCoffee, this._hassPlan, this._hassAct]) {
+        try {
+          f.call(this, hass);
+        } catch (e) {
+          if (!this._hassErr?.has(f.name)) {
+            (this._hassErr ??= new Set()).add(f.name);
+            console.warn(`pika-pet-card: ${f.name}`, e);
+          }
+        }
+      }
       this._updateSky();
+      if (fresh && this._planStale) this._planFresh();
     }
 
     getCardSize() {
@@ -3270,8 +3316,17 @@
       this._attached = true;
       this._ro = new ResizeObserver(() => this._layout());
       this._ro.observe(this._el.scene);
-      this._onVis = () => (document.hidden ? (this._stop(), this._stopCritters(), this._hiddenFeatures(true)) : (this._showReq(), this._start(), this._startCritters(), this._hiddenFeatures(false), this._planeSnap()));
+      this._onVis = () => this._visSync();
       document.addEventListener('visibilitychange', this._onVis);
+      // Karte aus dem Bild gescrollt (Handy, iPad): wie ein versteckter Tab alles anhalten
+      this._offscreen = false;
+      this._away0 = document.hidden;
+      this._el.scene.classList.toggle('paused', this._away0);
+      this._io = new IntersectionObserver((es) => {
+        this._offscreen = !es[es.length - 1].isIntersecting;
+        this._visSync();
+      });
+      this._io.observe(this._el.scene);
       this._loop(() => this._blink(), 2200, 6000);
       this._loop(() => this._twitch(), 5000, 13000);
       this._loop(() => this._lightning(), 6000, 16000);
@@ -3295,6 +3350,8 @@
       this._stop();
       this._stopCritters();
       this._ro?.disconnect();
+      this._io?.disconnect();
+      clearTimeout(this._staleT);
       document.removeEventListener('visibilitychange', this._onVis);
       this._timers.forEach((t) => clearInterval(t));
       this._timers = [];
@@ -3580,8 +3637,56 @@
 
     // ---------- Lebensschleife ----------
 
+    // Sieht gerade niemand die Karte? Tab versteckt (beim Tablet auch: Bildschirm aus) oder außerhalb des Bildes
+    _away() {
+      return document.hidden || !!this._offscreen;
+    }
+
+    // Sichtbarkeit hat sich geändert: unsichtbar ruht alles (Schleife, Besucher, Animationen), sichtbar geht es weiter
+    _visSync() {
+      const away = this._away();
+      if (!this._attached || away === this._away0) return;
+      this._away0 = away;
+      this._el.scene.classList.toggle('paused', away);
+      if (away) {
+        this._hidAt = document.hidden ? Date.now() : null;
+        this._stop();
+        this._stopCritters();
+        this._hiddenFeatures(true);
+        return;
+      }
+      // Länger versteckt: Der Stand aus HA (Tagesplan, Wetter) ist wohl veraltet, die Verbindung baut sich gerade neu
+      // auf. Beschäftigungen erst wählen, wenn ein frischer Stand da ist, sonst zeigte dieses Gerät eine andere.
+      if (this._hidAt && Date.now() - this._hidAt > 30000) this._planStaleArm();
+      this._hidAt = null;
+      this._showReq();
+      this._start();
+      this._startCritters();
+      this._hiddenFeatures(false);
+      this._planeSnap();
+      this._tick();
+    }
+
+    _planStaleArm() {
+      this._planStale = true;
+      clearTimeout(this._staleT);
+      // Kommt kein neuer Stand (es hat sich nichts geändert), gilt der alte nach 4 s, sobald die Verbindung steht
+      const check = () => {
+        if (this._hass?.connected === false) this._staleT = setTimeout(check, 2000);
+        else this._planFresh();
+      };
+      this._staleT = setTimeout(check, 4000);
+    }
+
+    _planFresh() {
+      if (!this._planStale) return;
+      this._planStale = false;
+      clearTimeout(this._staleT);
+      if (this._running && ACT_SMALL.includes(this._action) && this._slotNow()) this._interrupt();
+    }
+
     _start() {
-      if (this._running || !this.isConnected || document.hidden || !this._g) return;
+      if (this._running || !this.isConnected || this._away() || !this._g) return;
       this._running = true;
       this._loopAt = Date.now(); // frisch gestartet: in eine laufende Beschäftigung ohne Hinlaufen einsteigen
       this._slotArm();
@@ -3643,8 +3748,9 @@
 
     async _step() {
       if (!this._g) return this._wait(500);
-      // Unterbrochen, während er auf dem Stein stand: erst herunter
-      if (this._lift > 0) return this._run('hopDown');
+      // Unterbrochen, während er auf dem Stein stand: erst herunter. Trinkt er dort oben Kaffee, trinkt er weiter.
+      const cof = this._cof?.pend;
+      if (this._lift > 0 && !(cof?.rock && cof.stage === 'drink' && this._coffeeDue())) return this._run('hopDown');
       // Frischer Kaffee: holt er sich sofort, der Duft weckt ihn sogar auf (danach schläft er weiter)
       if (this._coffeeDue()) return this._run(this._asleep ? 'wakeUp' : 'coffee');
       const sleepy = this._sleepTime();
@@ -3660,6 +3766,8 @@
       const next = this._next;
       this._slot = null;
       this._slotArm();
+      const fu = next || food || this._inside ? null : this._friendUrgent();
+      if (fu) return this._run(fu);
       // Beschäftigung aus dem Tagesplan: läuft gerade eine, macht er mit (Futter und Vorschau-Knöpfe gehen vor)
       const S = next || food ? null : this._slotNow();
       if (S) {
@@ -4699,12 +4807,15 @@
 
     _loop(fn, min, max) {
       const h = { t: 0 };
-      const next = () => (h.t = setTimeout(() => (fn(), next()), rnd(min, max)));
+      // Unsichtbar nur weiterzählen, nichts tun (Blinzeln, Ohrenzucken, Blitze sieht keiner)
+      const next = () => (h.t = setTimeout(() => (this._away() || fn(), next()), rnd(min, max)));
       this._loops.push(h);
       next();
     }
 
     _tick() {
+      // Unsichtbar: nur Fristen pflegen, alles andere holt der Tick beim Sichtbarwerden nach
+      if (this._away()) return this._tickCoffee();
       this._renderStats();
       // Frischer Kaffee hält ihn kurz wach (er trinkt aus und schläft dann weiter)
       if (this._sleepTime() !== this._asleep && !['goSleep', 'wakeUp', 'coffee'].includes(this._action)) {
@@ -4780,7 +4891,8 @@
         if (this._asleep) {
           this._el.pika.classList.add('peek');
           setTimeout(() => this._el.pika.classList.remove('peek'), 900);
-        } else if (this._action !== 'eatFood') {
+        } else if (this._action !== 'eatFood' && this._action !== 'coffee') {
+          // Beim Kaffee nicht: das Futter frisst er ohnehin erst danach, er hüpfte nur vom Stein
           this._interrupt();
         }
       }, 800);
@@ -4944,14 +5056,15 @@
       this._festUpdate();
       const f = this._fest;
       const now = new Date(this._festNow());
-      // Mitternacht an Neujahr: Finale, und der Pika wacht auf und schaut aus dem Bau
-      if (f.fireworks && now.getMonth() === 0 && now.getDate() === 1 && now.getHours() === 0 && now.getMinutes() < 5
+      // Mitternacht an Neujahr: Finale, und der Pika wacht auf und schaut aus dem Bau. Nur sichtbar: sonst liefe es
+      // ungesehen ab, und wer den Bildschirm um 0:03 einschaltet, bekäme keins mehr
+      if (f.fireworks && !this._away() && this._g && now.getMonth() === 0 && now.getDate() === 1 && now.getHours() === 0 && now.getMinutes() < 5
         && this._festMidY !== now.getFullYear()) {
         this._festMidY = now.getFullYear();
         this._festFinale();
         this._festForce('festFireworks');
       }
-      if (document.hidden || !this._g) return;
+      if (this._away() || !this._g) return;
       // Halloween-Nacht: ab und zu flattert eine Fledermaus über den Himmel
       if (f.witch && this._festDark() && Math.random() < 0.35) this._festBat();
       // Karneval: alle paar Minuten kurz Konfetti
@@ -5306,7 +5419,7 @@
 
     // Läuft zwischen 23:55 und 1:00: alle 3–8 s eine Rakete
     _festFwSync() {
-      const on = !!this._fest?.fireworks && this._attached && !document.hidden && !!this._g;
+      const on = !!this._fest?.fireworks && this._attached && !this._away() && !!this._g;
       if (on && !this._festFwT) {
         const go = () => {
           this._festRocket();
@@ -5329,7 +5442,7 @@
 
     _festRocket() {
       const sky = this._festEls?.sky;
-      if (!sky || !this._g || document.hidden) return;
+      if (!sky || !this._g || this._away()) return;
       const W = this._W;
       const H = this._H;
       const x0 = rnd(0.3, 0.92) * W;
@@ -5412,7 +5525,7 @@
 
     _festConfettiRain() {
       const box = this._festEls?.cf;
-      if (!box || !this._g || document.hidden) return;
+      if (!box || !this._g || this._away()) return;
       const { gy } = this._g;
       const W = this._W;
       const H = this._H;
@@ -5593,14 +5706,16 @@
         }
         p.classList.add('look-up');
         await this._wait(900);
-        this._say('Frohes Neues!', 2400);
+        // Vor Mitternacht (ab 23:55) wird noch nicht gratuliert
+        const ny = () => new Date(this._festNow()).getMonth() === 0;
+        this._say(ny() ? 'Frohes Neues!' : pick(['gleich!', 'bald ist Neujahr!', 'ohh!']), 2400);
         const until = Date.now() + rnd(35000, 50000);
         let again = true;
         while (Date.now() < until && this._fest?.fireworks) {
           await this._wait(rnd(2500, 5000));
           const r = Math.random();
           if (r < 0.25) this._say(pick(['ohh!', 'wuiii!', 'oh!']), 1100);
-          else if (r < 0.4 && again) {
+          else if (r < 0.4 && again && ny()) {
             again = false;
             this._say('Frohes Neues!', 2200);
           } else if (r < 0.55 && !sleeping) this._face(-this._dir);
@@ -5682,7 +5797,7 @@
     // ==================== Ende Festtage ====================
 
     _startCritters() {
-      if (!this._attached || document.hidden || this._critOn) return;
+      if (!this._attached || this._away() || this._critOn) return;
       this._critOn = true;
       const id = ++this._critId;
       // Start des letzten Besuchs je Art, über Neustarts hinweg (Display aus/an, Areal): kein Besuch kommt zweimal
@@ -5907,7 +6022,7 @@
     }
 
     // Maus: schaut seitlich oder oben hinter dem Aussichtsstein hervor, flitzt manchmal auf die Wiese
-    async _mouseVisit(id, force, pk) {
+    async _mouseVisit(id, force, pk, late = 0) {
       const { rock, gy, pW } = this._g;
       const mw = this._H * 0.15;
       const mh = mw * (18 / 32);
@@ -5955,8 +6070,15 @@
         await step(ms);
         pose('run', false);
       };
+      // Später eingestiegen (Bildschirm an, Neuladen): so viel Herumschauen weglassen, dass sie etwa zur selben
+      // Zeit wie auf den anderen Geräten wieder verschwindet
+      let behind = late;
       const lookAround = async (n) => {
         for (let i = 0; i < n; i++) {
+          if (behind > 0) {
+            behind -= 950;
+            continue;
+          }
           const r = Math.random();
           if (r < 0.35) {
             pose('sniff', true);
@@ -6121,6 +6243,15 @@
       this._friendCheck();
     }
 
+    // Begrüßen und Verabschieden dauern nur Sekunden und gehen sogar der Beschäftigung aus dem Tagesplan vor;
+    // sonst verpasste er Pino, solange er liest oder malt (der Abschied gilt nur 15 s)
+    _friendUrgent() {
+      const bye = this._frBye;
+      if (bye && !bye.done && Date.now() < bye.until) return 'byeFriend';
+      const fr = this._fr;
+      return fr && fr.arrived && !fr.leaving && !fr.greeted ? 'greetFriend' : null;
+    }
+
     _friendActs(ctx) {
       const bye = this._frBye;
       if (bye && !bye.done && Date.now() < bye.until) return [[80, 'byeFriend']];
@@ -6176,7 +6307,7 @@
     }
 
     _friendOn() {
-      return !!this._cfg?.friend && !!this._attached && !document.hidden;
+      return !!this._cfg?.friend && !!this._attached && !this._away();
     }
 
     // Nächsten Besuch einplanen. Einer, der schon mit Abschied endete, zählt nicht noch einmal:
@@ -7111,6 +7242,28 @@
       this._save();
     }
 
+    // Alles, was dieses Gerät gewonnen, aber HA noch nicht bestätigt hat (ungesendet + unterwegs)
+    _sentGain() {
+      const g = { ...this._gain };
+      for (const e of this._sent) {
+        g.s += e.gain.s;
+        g.g += e.gain.g;
+        g.c ||= e.gain.c;
+      }
+      return g;
+    }
+
+    // Ein Schreiben ging verloren (Fehler, keine Bestätigung): seinen Gewinn zurücknehmen und neu senden
+    _sentLost(e) {
+      const i = this._sent.indexOf(e);
+      if (i < 0) return;
+      this._sent.splice(i, 1);
+      this._gain.s += e.gain.s;
+      this._gain.g += e.gain.g;
+      this._gain.c ||= e.gain.c;
+      this._save();
+    }
+
     _save() {
       this._pendingWrite = true;
       clearTimeout(this._saveT);
@@ -7119,10 +7272,25 @@
         if (this._cfg.entity && !this._noEntity) {
           // Stand aus HA noch nicht da (Start, unavailable): warten, beim Eintreffen wird zusammengeführt
           if (!this._synced || !this._hass) return;
-          this._lastEntityState = v;
-          this._hass
-            .callService('input_text', 'set_value', { entity_id: this._cfg.entity, value: v })
-            .catch((e) => console.warn('pika-pet-card: Speichern fehlgeschlagen', e));
+          const id = this._cfg.entity;
+          // Derselbe Wert ändert in HA nichts (es käme kein Echo): nicht senden
+          if (this._hass.states[id]?.state !== v) {
+            const e = { v, gain: this._gain, at: Date.now() };
+            this._sent.push(e);
+            if (this._sent.length > 8) this._sent.shift();
+            this._hass
+              .callService('input_text', 'set_value', { entity_id: id, value: v })
+              .catch((err) => {
+                console.warn('pika-pet-card: Speichern fehlgeschlagen, neuer Versuch', err);
+                setTimeout(() => this._sentLost(e), 5000);
+              });
+            // Kein Echo nach 15 s: steht der Wert doch in HA, gilt er als angekommen, sonst neu senden
+            setTimeout(() => {
+              if (!this._sent.includes(e)) return;
+              if (this._hass?.states[id]?.state === v) this._sent.splice(this._sent.indexOf(e), 1);
+              else this._sentLost(e);
+            }, 15000);
+          }
         } else {
           try {
             localStorage.setItem(this._lsKey(), v);
@@ -7515,7 +7683,11 @@
       const prev = el._pos;
       if (prev && Math.abs(prev.x - x) < 0.05 && Math.abs(prev.y - y) < 0.05) return;
       el._pos = { x, y };
-      if (!prev) el.style.transition = 'none';
+      // Kleine Schritte (der Mond wandert alle 30 s ein Stückchen) ohne Gleiten: ein 90-s-Übergang, der ständig neu
+      // startet, ließe Layout und Malen in jedem Bild laufen. Nur Sprünge (Sonnenuntergang, Neuladen) gleiten.
+      const now = Date.now();
+      if (prev && Math.hypot(prev.x - x, prev.y - y) > 1) el._glide = now + 90000;
+      el.style.transition = !prev ? 'none' : now < (el._glide || 0) ? '' : 'opacity 2.5s, background 2.5s';
       el.style.left = `${x.toFixed(2)}%`;
       el.style.top = `${y.toFixed(2)}%`;
       if (!prev) {
@@ -7548,7 +7720,7 @@
     _attachSky() {
       this._ffKey = null;
       this._skyState();
-      if (!document.hidden) this._meteorPlan();
+      if (!this._away()) this._meteorPlan();
     }
 
     _detachSky() {
@@ -7838,19 +8010,23 @@
       const now = Date.now();
       // Uhr von HA und Gerät können auseinandergehen: Versatz aus den Meldungen schätzen (die frischeste kommt
       // praktisch sofort an, der größte Wert passt also am besten). Sonst verschwänden alle Flieger, wenn die
-      // Geräteuhr mehr als 75 s vorgeht. Die erste Meldung gilt als frisch.
+      // Geräteuhr mehr als 75 s vorgeht. Die erste Meldung gilt als frisch. Der Wert sinkt langsam (5 % der Zeit),
+      // damit eine später gestellte Geräteuhr (NTP) nicht für immer als nachgehend gilt.
       const lu = Date.parse(st?.last_updated);
       if (Number.isFinite(lu) && st !== this._flSeen) {
         this._flSeen = st;
-        this._clockOff = Math.max(this._clockOff ?? -Infinity, lu - now);
+        const prev = this._clockOff;
+        this._clockOff = prev == null ? lu - now : Math.max(lu - now, prev - (now - this._clockAt) * 0.05);
+        this._clockAt = now;
       }
       const t0 = Number.isFinite(lu) ? Math.min(now, lu - this._clockOff) : now;
       // Getrennt oder unsichtbar: keine Elemente anlegen, die Meldung liegt in _lastFlights und wird beim
       // Wiederkommen gelesen
-      if (!this._attached || document.hidden) return;
+      if (!this._attached || this._away()) return;
       const kx = 111.32 * Math.cos(cfg.latitude * RAD);
       const list = [];
       for (const f of Array.isArray(st?.attributes?.flights) ? st.attributes.flights : []) {
+        if (!f || typeof f !== 'object') continue;
         const alt = Number(f.altitude);
         const gs = Number(f.ground_speed);
         const lat = Number(f.latitude);
@@ -7863,7 +8039,7 @@
       }
       list.sort((a, b) => a.slant - b.slant);
       const max = Math.max(0, Math.round(Number(this._cfg.max_flights) || 0));
-      const idOf = (f) => String(f.id || f.callsign || f.flight_number);
+      const idOf = (f) => String(f.id || f.callsign || f.flight_number || f.aircraft_registration || `${f.latitude},${f.longitude}`);
       // Wer schon am Himmel steht, behält seinen Platz, solange er gemeldet wird. Sonst tauschen zwei fast gleich
       // weite Flieger bei jeder Meldung die Plätze, und einer verschwindet mitten am Himmel. Neue füllen freie
       // Plätze; ein deutlich näherer darf als einer mehr dazukommen, die anderen fliegen dann normal aus dem Bild.
@@ -7999,7 +8175,7 @@
         this._planeT = null;
         return;
       }
-      if (document.hidden || !this._g) return;
+      if (this._away() || !this._g) return;
       const now = Date.now();
       const W = this._W;
       const H = this._H;
@@ -8379,7 +8555,14 @@
       if (key) {
         cfg.forEach((c, i) => {
           const type = BOTE_TYPE[String(c?.type || '').toLowerCase().replace(/[\s_-]/g, '')];
-          if (!type || !c.state) return;
+          if (!type || !c.state) {
+            const m = !type ? `unbekannter Gerätetyp "${c?.type}" (washer, dryer, dishwasher)` : `Gerät ${i + 1} ohne state`;
+            if (!BOTE_WARNED.has(m)) {
+              BOTE_WARNED.add(m);
+              console.warn(`pika-pet-card Haus-Bote: ${m}`);
+            }
+            return;
+          }
           list.push({ idx: i, type, cfg: c, name: String(c.name || BOTE_NAME[type]), phase: null, view: null, nudgeAt: 0, objs: [] });
         });
         // Zwei Geräte gleichen Typs ohne eigenen Namen: durchnummerieren, damit die Fähnchen eindeutig sind
@@ -8415,11 +8598,16 @@
     _boteRead(a, [st, pr, en, dr], now) {
       const norm = (v) => String(v ?? '').split('.').pop().toLowerCase().replace(/[\s_-]/g, '');
       const lc = (o) => Math.min(now, Date.parse(o?.last_changed) || Date.parse(o?.last_updated) || now);
-      const first = !a.seen;
-      a.seen = true;
       const raw = norm(st?.state);
-      const s = BOTE_ALIAS[raw] || raw;
+      let s = BOTE_ALIAS[raw] || raw;
       const dead = BOTE_DEAD.has(s);
+      // Lange nicht erreichbar (> 15 Min): wie nach dem Neuladen lesen, sonst käme das Aufräumen zur falschen Zeit
+      const longDead = !dead && a.deadAt != null && now - a.deadAt > 15 * 60000;
+      a.deadAt = dead ? a.deadAt ?? now : null;
+      const first = !a.seen || longDead;
+      a.seen = true;
+      // Trockner im Knitterschutz: Tür auf meldet manchmal "pause" – er bleibt fertig
+      if (a.st === 'finished' && s === 'pause' && !first) s = 'finished';
       this._boteWarn(a, st, s, dead, [pr, en, dr]);
       const pct = this._botePct(pr);
       const end = this._boteEnd(en, now);
@@ -8444,6 +8632,13 @@
       else if (stChanged) {
         a.finAt = a.changed;
         a.opened = false;
+      }
+      // Programmlauf merken: seit wann, und die letzten gültigen Werte (gehen am Ende oft vor dem Zustand auf
+      // unavailable). Daran erkennt "läuft → aus", ob es ein Programmende oder ein Abbruch war.
+      if (BOTE_RUN.has(cur)) {
+        if (!BOTE_RUN.has(prevSt) || first) a.run = { at: first ? a.changed : now, pct: null, end: null };
+        if (pct != null) a.run.pct = pct;
+        if (end != null) a.run.end = end;
       }
       // Frist für "ausgeräumt" (emptyUntil): 0 = keine, null = läuft/fertig
       const idle = BOTE_IDLE.has(cur);
@@ -8470,10 +8665,18 @@
           a.opened = true;
           a.emptyUntil = now + BOTE_EMPTY_MS;
           live = true;
+        } else if (!door && prevDoor && !doorDead && !a.opened && now - a.finAt > BOTE_AUTOOPEN_MS) {
+          // AutoOpen hatte die Tür schon geöffnet, jetzt ist sie nach dem Ausräumen wieder zu
+          a.opened = true;
+          a.emptyUntil = now + BOTE_EMPTY_MS;
+          live = true;
         }
       } else if (stChanged) {
-        const ended = (prevPct == null && prevEnd == null) || (prevPct != null && prevPct >= 95)
-          || (prevEnd != null && Math.abs(prevEnd - a.changed) < 10 * 60000);
+        // Programmende oder Abbruch? Nach den letzten gültigen Werten des Laufs; ohne Werte erst ab 10 Minuten
+        // Laufzeit (ein Abbruch gleich nach dem Start, bevor Fortschritt oder Endzeit kamen, zählt nicht)
+        const R = a.run || {};
+        const ended = R.pct == null && R.end == null ? a.changed - (R.at ?? a.changed) >= 10 * 60000
+          : (R.pct != null && R.pct >= 95) || (R.end != null && Math.abs(R.end - a.changed) < 10 * 60000);
         if (idle && prevSt === 'finished') {
           // schon beim Türöffnen gewertet: die Frist läuft weiter
           if (!prevOpened) {
@@ -8501,6 +8704,8 @@
     }
 
     _botePhase(a, now) {
+      // Seit über 30 Minuten nicht erreichbar: lieber nichts zeigen als ewig "fertig"
+      if (a.deadAt != null && now - a.deadAt > 30 * 60000) return null;
       if (BOTE_RUN.has(a.st)) return 'run';
       if (a.st === 'finished' && !a.opened) return 'done';
       return a.emptyUntil && now < a.emptyUntil ? 'empty' : null;
@@ -8564,13 +8769,15 @@
 
     // Gerade live ausgeräumt: Der Pika räumt sichtbar auf, wenn man zuschaut und er wach ist
     _boteLive(a) {
-      if (!this._g || !this._attached || document.hidden || this._asleep) return;
+      if (!this._g || !this._attached || this._away() || this._asleep) return;
       const B = this._bote;
       a.live = true;
       a.liveAt = Date.now();
       if (!B.queue.includes(a)) B.queue.push(a);
-      if (this._running && !this._wx.shelter && !this._next
-        && !['eatFood', 'goSleep', 'wakeUp', 'poop', 'boteEmpty'].includes(this._action)) this._interrupt();
+      // Eine Beschäftigung aus dem Tagesplan macht er fertig (sie finge sonst von vorn an), aufgeräumt wird danach
+      const slot = this._slot && this._action === this._slot.act;
+      if (this._running && !this._wx.shelter && !this._next && !slot
+        && !['eatFood', 'goSleep', 'wakeUp', 'poop', 'boteEmpty', 'coffee'].includes(this._action)) this._interrupt();
     }
 
     _boteText(a) {
@@ -8677,7 +8884,9 @@
       cl.toggle('hb-pause', halt);
       cl.toggle('hb-alert', view === 'run' && (a.st === 'error' || a.st === 'actionrequired'));
       // Ruhe, solange der Pika schläft, und nachts außer bei laufenden Geräten (schwaches Tablet)
-      const still = !!this._asleep || (view !== 'run' && this._el.scene.classList.contains('night'));
+      // Seit über einer Stunde fertig: auch ruhig (der Pika erinnert ja weiter daran)
+      const still = !!this._asleep || (view !== 'run' && this._el.scene.classList.contains('night'))
+        || (view === 'done' && Date.now() - (a.finAt || 0) > 60 * 60000);
       cl.toggle('hb-still', still);
       // Wind: Richtung aus dem Wetter, Stärke macht das Wehen weiter und schneller
       const wind = this._wind || 0;
@@ -9276,7 +9485,7 @@
       this._cofA = a;
       this._cofN = n;
       this._cofS = sel;
-      const C = (this._cof ??= { brew: null, pend: null, done: [] });
+      const C = (this._cof ??= { brew: null, pend: null, next: null, done: [] });
       const prog = String(a?.state || '').toLowerCase();
       const now = Date.now();
       if (COFFEE_PROG.test(prog)) {
@@ -9290,16 +9499,20 @@
         }
         return;
       }
+      // Kurz nicht erreichbar: der laufende Bezug bleibt gemerkt
+      if (!a || a.state === 'unavailable') return;
       const brew = C.brew;
       C.brew = null;
-      if (!a || a.state === 'unavailable') return;
       const end = Date.parse(a.last_changed) || now;
       let key = null;
-      const t0 = n && Date.parse(n.last_changed);
-      if (t0) {
-        if (end - t0 >= 15000 && end - t0 < 15 * 60000) key = n.last_changed;
-      } else if (brew && end - brew.at >= 15000) key = `live ${brew.at}`; // ohne Zähler nur, was die Karte sah
-      if (!key || C.done.includes(key) || C.pend?.key === key) return;
+      const t0 = n && n.state !== 'unavailable' && n.state !== 'unknown' && Date.parse(n.last_changed);
+      const used = (k) => C.done.includes(k) || C.pend?.key === k || C.next?.key === k;
+      // Live gesehen zählt auch, wenn der Zähler spät noch einmal hochging (zwei Tassen)
+      if (t0 && end - t0 < 15 * 60000 && (end - t0 >= 15000 || (brew && end - brew.at >= 15000))) key = n.last_changed;
+      // Zählte der Zähler diesen Bezug nicht (Heißwasser/Tee, eigener Zähler: sein Stand ist alt oder schon
+      // getrunken), gilt, was die Karte live sah. brew.at ist die Zeit von HA, auf allen zusehenden Geräten gleich.
+      if ((!key || used(key)) && brew && end - brew.at >= 15000 && end - brew.at < 15 * 60000) key = `live ${brew.at}`;
+      if (!key || used(key)) return;
       const p = brew?.prog || String(sel?.state || '').toLowerCase();
       const kind = coffeeKind(p);
       const r = (i) => seedRnd('coffee', key, i);
@@ -9308,7 +9521,15 @@
         key, kind, name: coffeeName(p, kind), t0: end, sip, end: end + COFFEE_FETCH + COFFEE_SIPS[kind] * sip,
         rockR: r(1), faceR: r(2), stage: 'fetch', lv: 1, j: 0,
       };
-      if (now > P.end - 3000) return; // auf den anderen Geräten längst ausgetrunken
+      // Auf den anderen Geräten längst ausgetrunken. Gemerkt, damit ein späteres Zucken des Programms (WLAN weg,
+      // unavailable → unknown) denselben Bezug nicht noch einmal auslöst.
+      if (now > P.end - 3000) return this._coffeeMark(key);
+      // Trinkt er noch den vorigen (oder holt ihn gerade): dieser kommt gleich danach dran
+      if (C.pend) {
+        if (C.next) this._coffeeMark(C.next.key);
+        C.next = P;
+        return;
+      }
       C.pend = P;
       // Sofort holen, auch mitten in einer Beschäftigung (die geht danach an ihrer Stelle im Plan weiter);
       // im Schlaf weckt ihn der Duft
@@ -9320,7 +9541,14 @@
       if (!C) return;
       const now = Date.now();
       // Nicht abgeholt (Sturm, Karte war versteckt): verfällt. Hängt ein Bezug ewig, nicht mehr schnuppern.
-      if (C.pend?.stage === 'fetch' && now > C.pend.end - 3000) C.pend = null;
+      if (C.pend?.stage === 'fetch' && now > C.pend.end - 3000) {
+        this._coffeeMark(C.pend.key);
+        C.pend = null;
+      }
+      if (!C.pend && C.next) {
+        C.pend = C.next;
+        C.next = null;
+      }
       if (C.brew && now - C.brew.at > 10 * 60000) C.brew.sniffed = true;
     }
 
@@ -9478,7 +9706,11 @@
         p.classList.remove('lick', 'foam');
         await this._wait(400);
       }
-      this._cof.pend = null;
+      // Kam inzwischen ein zweiter Bezug, ist der als Nächstes dran (nicht einfach löschen)
+      if (this._cof.pend === P) {
+        this._cof.pend = this._cof.next;
+        this._cof.next = null;
+      }
       // Koffein! Tagsüber ein paar Freudensprünge, nachts ein Gähnen (er schläft gleich weiter)
       if (!night && P.kind !== 'tea' && P.kind !== 'milk' && Math.random() < 0.7) {
         if (P.rock) {
@@ -9514,7 +9746,7 @@
       if (st === this._screenSt) return;
       const was = this._screenSt;
       this._screenSt = st;
-      if (was === 'off' && st === 'on' && !document.hidden) {
+      if (was === 'off' && st === 'on' && !this._away()) {
         // Bei dunklem Bildschirm hat keiner zugesehen: wie nach dem Neuladen gleich mitten in der Beschäftigung
         this._loopAt = Date.now();
         this._showReq();
@@ -9523,7 +9755,7 @@
 
     // Schaut jemand hin? Unsichtbar läuft die Schleife ohnehin nicht; mit screen_entity zählt auch der Bildschirm.
     _watched() {
-      return !document.hidden && this._screenSt !== 'off';
+      return !this._away() && this._screenSt !== 'off';
     }
 
     // Die Karte wird sichtbar (Bildschirm an, App geöffnet, Ansicht gewechselt): Begrüßung anmelden. Schläft er,
@@ -9593,7 +9825,7 @@
     // Läuft jetzt eine Beschäftigung aus dem Plan, die dieses Gerät noch nicht gezeigt hat? Groß vor klein.
     _slotNow() {
       // Mit Helfer erst, wenn sein Stand da ist: sonst wählte ein frisch geladenes Gerät ohne den Verlauf
-      if (!this._g || this._asleep || !this._watched() || !this._plan || !this._planOk) return null;
+      if (!this._g || this._asleep || !this._watched() || !this._plan || !this._planOk || this._planStale) return null;
       this._slotsDone ??= new Set();
       const now = this._planNow();
       for (const S of [this._bigAt(now), this._miniAt(now)]) {
@@ -9637,8 +9869,10 @@
       const recent = rec.filter((e) => e[0] < k).slice(0, ACT_RECENT).map((e) => e[1]);
       const tf = this._tagesform(start);
       const w = this._bigW(new Date(start).getHours());
-      const list = ACT_BIG.filter((a) => a !== 'sport' && w[a] > 0 && !recent.includes(a))
-        .map((a) => [w[a] * (tf.fav.includes(a) ? 2 : tf.meh === a ? 0.2 : 1), a]);
+      const ok = ACT_BIG.filter((a) => a !== 'sport' && w[a] > 0);
+      // Bleibt nach der Sperre nichts übrig (Regen: nur Fernsehen), dann doch eine der letzten statt gar keiner
+      const fresh = ok.filter((a) => !recent.includes(a));
+      const list = (fresh.length ? fresh : ok).map((a) => [w[a] * (tf.fav.includes(a) ? 2 : tf.meh === a ? 0.2 : 1), a]);
       return weightedR(list, seedRnd('big', k, 99));
     }
 
@@ -9768,7 +10002,7 @@
       clearTimeout(this._planT);
       clearTimeout(this._planFreshT);
       this._planOps = [];
-      this._planSt = undefined;
+      this._planSt = null; // nicht undefined: sonst bliebe ein fehlender Helfer unbemerkt und _planOk für immer falsch
       this._planOk = !this._cfg.plan_entity; // mit Helfer erst schreiben, wenn sein Stand da ist
       this._planBase = this._planLocal();
       this._plan = this._planBase;
@@ -9853,14 +10087,18 @@
       this._planT = setTimeout(() => {
         const id = this._cfg.plan_entity;
         const ent = id && this._hass?.states[id];
-        const P = this._plan;
+        let P = this._plan;
         let v = planSer(P);
         if (ent) {
           // Stand aus HA noch nicht da (Start): beim Eintreffen wird zusammengeführt und geschrieben
           if (!this._planOk) return;
-          // Zu lang für den Helfer (max. Länge zu klein eingestellt): ältere Einträge des Verlaufs weglassen
+          // Zu lang für den Helfer (max. Länge zu klein eingestellt): ältere Einträge des Verlaufs weglassen, auch
+          // hier, damit dieses Gerät mit demselben Verlauf weiterplant wie die anderen
           const max = Number(ent.attributes?.max) || 255;
-          for (let n = P.rec.length - 1; v.length > max && n >= 0; n--) v = planSer({ ...P, rec: P.rec.slice(0, n) });
+          for (let n = P.rec.length - 1; v.length > max && n >= 0; n--) {
+            P = { ...P, rec: P.rec.slice(0, n) };
+            v = planSer(P);
+          }
           if (v !== this._planSt) {
             this._planSt = v;
             this._hass.callService('input_text', 'set_value', { entity_id: id, value: v })
