@@ -47,12 +47,13 @@ Ein paarmal am Tag kommt **Pino** zu Besuch, ein Freund-Pika: etwas kleiner, ing
 
 ## Beschäftigungen
 
-Große Beschäftigungen (1–3 Minuten) gibt es alle 10–15 Minuten, solange jemand hinschaut, sonst alle 30–40 (die erste nach 2–6 Minuten). Dazwischen kommen alle 3–5 Minuten kleine (15–30 Sekunden): Seilspringen und Gewichtheben.
+Große Beschäftigungen (1–2,5 Minuten) gibt es alle 9–19 Minuten. Dazwischen kommen alle paar Minuten kleine (10–30 Sekunden): Seilspringen, Gewichtheben und eine Blüte für den Vorrat holen.
 
-- **Abwechslung**: Die letzten drei großen Beschäftigungen kommen nicht gleich wieder dran (je Gerät gemerkt, auch über Neuladen).
-- **Tagesform**: Jeden Tag hat er zwei Lieblingsbeschäftigungen (doppelt so oft) und eine, auf die er keine Lust hat (selten). Sie werden aus dem Datum gewürfelt und sind auf allen Geräten gleich. Welche Beschäftigung gerade läuft, entscheidet jedes Gerät selbst.
+- **Tagesplan**: Wann was drankommt, wird aus der Uhrzeit berechnet. Darum zeigen alle Geräte zur selben Zeit dieselbe Beschäftigung, mit demselben Platz, demselben Bild an der Staffelei, denselben Gameboy-Runden und Übungen. Wird die Seite neu geladen (oder geht der Bildschirm an), steht der Pika gleich mitten in der laufenden Beschäftigung, so weit wie auf den anderen Geräten. Nur Kleinigkeiten dazwischen (umschauen, herumhoppeln, putzen) und das Spielen mit Pino würfelt jedes Gerät selbst. Die kleinen Beschäftigungen beginnen nur, wer zu Beginn dabei ist.
+- **Abwechslung**: Die letzten drei großen Beschäftigungen kommen nicht gleich wieder dran. Der Verlauf steht im Helfer `plan_entity` (siehe Installation): Wer eine Beschäftigung zuerst beginnt, trägt sie dort ein, die anderen Geräte übernehmen sie, auch wenn sich das Wetter inzwischen änderte. Ohne Helfer merkt sich jedes Gerät den Verlauf selbst.
+- **Tagesform**: Jeden Tag hat er zwei Lieblingsbeschäftigungen (doppelt so oft) und eine, auf die er keine Lust hat (selten). Sie werden aus dem Datum gewürfelt und sind auf allen Geräten gleich.
 - **Tageszeit**: Nachmittags liest er lieber, abends macht er lieber Musik, mittags malt er lieber.
-- **Begrüßung**: Wird die Karte sichtbar (Bildschirm geht an, App oder Dashboard wird geöffnet), winkt er „Hallo!“ und führt danach zur Hälfte gleich eine große Beschäftigung vor. Ist er gerade beschäftigt, ruft er nur „Huhu!“; schläft er, blinzelt er mit einem Auge. Höchstens alle 5 Minuten. Mit `screen_entity` (z. B. dem Bildschirm-Schalter von Fully Kiosk) zählt auch das Einschalten des Bildschirms, und bei ausgeschaltetem Bildschirm gilt der langsame Takt.
+- **Begrüßung**: Wird die Karte sichtbar (Bildschirm geht an, App oder Dashboard wird geöffnet), winkt er „Hallo!“. Ist er gerade beschäftigt, ruft er nur „Huhu!“; schläft er, blinzelt er mit einem Auge. Höchstens alle 5 Minuten. Mit `screen_entity` (z. B. dem Bildschirm-Schalter von Fully Kiosk) zählt auch das Einschalten des Bildschirms. Bei ausgeschaltetem Bildschirm lässt das Gerät die Beschäftigungen aus und steigt ein, sobald er angeht.
 
 Die großen:
 
@@ -64,12 +65,13 @@ Die großen:
 - **Musik**: Ukulele, er wiegt sich, Noten steigen auf. Manchmal singt er mit („la-la-la ♪“) oder verspielt sich („plonk!“). Sitzt ein Vögelchen da, zwitschert es mit. Zum Schluss Verbeugung.
 - **Malen** an der Staffelei, trocken und hell: Das Bild entsteht Schicht für Schicht (Himmel in der Farbe der Tageszeit, Sonne, Hügel, Motiv, Kleinkram). Motive: Blume, Selbstbildnis, Bau, Regenbogen, Pino oder ein Flugzeug, wenn gerade eins fliegt. Zwischendurch betrachtet er es, am Ende ist er stolz (oder nicht ganz zufrieden).
 - **Seifenblasen**, trocken, hell, Wind unter 30 km/h: Die Blasen treiben mit dem Wind, schillern und platzen. Ab und zu springt er einer hinterher („plopp!“). Antippen bringt eine Blase zum Platzen.
-- **Frühsport** einmal am Morgen (10–180 Minuten nach dem Aufwachen): Stirnband, Hampelmann, Kniebeugen, Laufen auf der Stelle, Strecken; er zählt mit und schwitzt.
+- **Frühsport** einmal am Morgen (10–180 Minuten nach dem Aufwachen, die erste trockene Gelegenheit): Stirnband, Hampelmann, Kniebeugen, Laufen auf der Stelle, Strecken; er zählt mit und schwitzt. Mit `plan_entity` turnt er auf allen Geräten nur einmal, auch nach dem Neuladen.
 
 Die kleinen:
 
 - **Seilspringen**: Er zählt mit, wird manchmal schneller oder springt doppelt durch. Verheddert er sich, ist Schluss („hoppla!“).
 - **Gewichtheben** mit der Pusteblumen-Hantel: in die Hocke, „hnnngh!“, über den Kopf. Manchmal plumpst sie herunter, oben fliegen gern ein paar Schirmchen davon.
+- **Blüte sammeln**: Er pflückt eine Blume von der Wiese und wirft sie auf den Heuhaufen bzw. in die Nische (höchstens 12, jeden Tag fallen 2 weg). Mit `plan_entity` ist der Vorrat auf allen Geräten derselbe, mit denselben Blütenfarben; zeigen mehrere Geräte dasselbe Sammeln, zählt es nur einmal.
 
 ## Haus-Bote
 
@@ -116,8 +118,9 @@ Machst du dir am Kaffeevollautomaten (Home Connect) ein Getränk, trinkt der Pik
 
 - **Während des Bezugs** hebt er die Nase, schnuppert und denkt an eine Tasse Kaffee (Denkblase). Dann setzt er sich erwartungsvoll neben den Bau. Schläft er, zuckt er nur kurz.
 - **Ist der Bezug fertig**, holt er sich aus dem Bau dasselbe Getränk und trinkt es Schluck für Schluck, oben auf dem Aussichtsstein oder neben dem Bau. Beim Schluck macht er die Augen zu, der Füllstand sinkt, solange es heiß ist, dampft es. Gefäße: Latte Macchiato und Caffè Latte im hohen Glas mit Löffel, Cappuccino, Flat White & Co. in der Tasse mit Schaumherz, Espresso und Ristretto im Tässchen, Kaffee und Caffè Crema im gepunkteten Becher, Heißwasser als Tee mit Teebeutel, warme Milch und Milchschaum im Glas. Bei Milchgetränken bekommt er ein Milchschaum-Bärtchen und leckt es am Ende ab. Danach macht der Koffein ein paar Freudensprünge, dann bringt er das leere Gefäß zurück in den Bau.
-- **Schläft er**, weckt ihn der Duft: Er trinkt verschlafen vor der Tür und schläft danach weiter. Bei Sturm bleibt er im Bau, der Kaffee verfällt nach 10 Minuten.
-- Spülen beim Ein- und Ausschalten und Reinigungsprogramme zählen nicht. Fertig ist ein Bezug, wenn das Programm mindestens 15 s nach dem Hochzählen des Tassenzählers endet. Deshalb erkennt jedes Gerät denselben Bezug, auch nach dem Neuladen (bis 10 Minuten danach). Ein Neustart von Home Assistant zählt nicht. Welche Bezüge schon getrunken sind, merkt sich jedes Gerät im Browser.
+- **Schläft er**, weckt ihn der Duft: Er trinkt verschlafen vor der Tür und schläft danach weiter. Bei Sturm bleibt er im Bau, der Kaffee verfällt.
+- Spülen beim Ein- und Ausschalten und Reinigungsprogramme zählen nicht. Fertig ist ein Bezug, wenn das Programm mindestens 15 s nach dem Hochzählen des Tassenzählers endet. Ein Neustart von Home Assistant zählt nicht.
+- Holen und Trinken folgen einer festen Zeitleiste ab dem Ende des Bezugs (ein Schluck alle 4–7 Sekunden). Darum trinken alle Geräte im selben Takt. Lädt man die Seite neu, steht er gleich mit dem passend leeren Gefäß da; ist es auf den anderen Geräten schon ausgetrunken, kommt nichts mehr. Gemerkt werden muss dafür nichts.
 
 ```yaml
 coffee:
@@ -202,6 +205,7 @@ In `preview.html` stellen die Festtage-Knöpfe die Uhr der Karte auf den jeweili
 2. *Pika Pet Card* herunterladen; die Ressource wird automatisch eingetragen
 3. Optional einen Text-Helfer anlegen, damit der Pika auf allen Geräten denselben Zustand hat:
    *Einstellungen → Geräte & Dienste → Helfer → Text*, z. B. `input_text.pika_status` (max. Länge 100). Ein neuer Helfer bekommt nach etwa 20 s Startwerte, ein leerer sofort; ist er `unavailable`, wird nichts überschrieben. Fehlt die Entity, spielt die Karte lokal weiter (Hinweis in der Browser-Konsole).
+4. Optional einen zweiten Text-Helfer für den Tagesplan (Vorrat, Frühsport, Verlauf der Beschäftigungen), z. B. `input_text.pika_plan` mit **max. Länge 255**, als `plan_entity` eintragen. Ohne ihn laufen die Beschäftigungen trotzdem auf allen Geräten gleichzeitig, nur Vorrat, Frühsport und Abwechslung merkt sich jedes Gerät selbst. Der Vorrat, den ein Gerät bis 0.15 gesammelt hat, wird beim ersten Mal übernommen.
 
 ## Konfiguration
 
@@ -209,6 +213,7 @@ In `preview.html` stellen die Festtage-Knöpfe die Uhr der Karte auf den jeweili
 type: custom:pika-pet-card
 name: Pika                       # Name in der Statusanzeige
 entity: input_text.pika_status   # optional, sonst nur lokal im Browser gespeichert
+plan_entity: input_text.pika_plan   # optional: Tagesplan für alle Geräte (max. Länge 255)
 sleep_start: sunset              # Schlafenszeit (Standard: Sonnenuntergang)
 sleep_end: sunrise               # Aufwachzeit (Standard: Sonnenaufgang)
 sun_entity: sun.sun              # Sonnenstand
@@ -233,10 +238,10 @@ screen_entity: switch.tablet_bildschirm   # optional: Bildschirm-Schalter (Fully
 
 Für `sleep_start` und `sleep_end` gehen feste Uhrzeiten (`"21:00"`) oder `sunset`/`sunrise` aus `sun.sun`, auch mit Versatz: `"sunset+01:00"` (eine Stunde nach Sonnenuntergang), `"sunrise-30"` (30 Minuten vor Sonnenaufgang). Ohne `sun.sun` gilt 21:00 bis 07:00, der Himmel richtet sich dann nach der Schlafenszeit. Uhrzeiten am besten in Anführungszeichen; `21:00` ohne geht aber auch (YAML macht 1260 daraus, reine Zahlen gelten als Minuten nach Mitternacht). Unverständliche Angaben wie `sunset+1h` fallen auf 21:00/07:00 zurück, mit Hinweis in der Konsole.
 
-`wind_bearing` des Wetters darf eine Gradzahl oder ein Kürzel sein („SW“, „NNO“). Flugzeuge erscheinen auch, wenn die Uhr des Geräts von der HA-Uhr abweicht. Auf schmalen Karten (z. B. Handy) werden Aussichtsstein und Heuhaufen automatisch kleiner (die Nische des Erdhügels gehört zum Bau und behält ihre Größe), damit alles ins Bild passt. Der Vorrat (Heuhaufen bzw. Nische) wird pro Gerät im Browser gespeichert und nicht geteilt.
+`wind_bearing` des Wetters darf eine Gradzahl oder ein Kürzel sein („SW“, „NNO“). Flugzeuge erscheinen auch, wenn die Uhr des Geräts von der HA-Uhr abweicht. Auf schmalen Karten (z. B. Handy) werden Aussichtsstein und Heuhaufen automatisch kleiner (die Nische des Erdhügels gehört zum Bau und behält ihre Größe), damit alles ins Bild passt. Der Vorrat (Heuhaufen bzw. Nische) steht mit `plan_entity` im Helfer, sonst im Browser des Geräts.
 
 Im Text-Helfer steht der Zustand als `satt,zeit,glück,zeit,großputz,maske,teilputz` (Zeiten in Sekunden). Hunger, Glück und Häufchen werden daraus beim Anzeigen berechnet, deshalb braucht es keine Automation. Ältere Werte mit vier Feldern werden weiter gelesen.
 
 ## Entwicklung
 
-`preview.html` lädt die Karte mit einem simulierten `hass`-Objekt. Die Häufchen-Knöpfe stellen die Uhr der Häufchen vor (nächstes Häufchen, +4 Std., +1 Tag), die Besuch-Knöpfe holen Vögelchen und Maus sofort oder stellen die Besuchsuhr kurz vor den nächsten berechneten Besuch, die Hobby-Knöpfe starten eine Beschäftigung sofort (auch ohne passendes Wetter), die Flieger-Knöpfe schicken Testflüge los (Anflug, Abflug, Reiseflug, Hubschrauber, Kleinflugzeug). Dafür den Ordner über einen lokalen Webserver öffnen, z. B. `node dev/serve.mjs . 8765` (lauscht nur auf localhost). `areale.html` zeigt alle vier Areale nebeneinander. Die Knopfzeilen Himmel-Extras, Festtage, Freund-Pika, Haus-Bote, Kaffee und Aktivitäten lösen die jeweiligen Erweiterungen sofort aus (Festtage stellen dafür das Datum der Karte um, Haus-Bote und Kaffee setzen Mock-Zustände der Geräte; ein Kaffeebezug dauert dort 18 s).
+`preview.html` lädt die Karte mit einem simulierten `hass`-Objekt. Die Häufchen-Knöpfe stellen die Uhr der Häufchen vor (nächstes Häufchen, +4 Std., +1 Tag), die Besuch-Knöpfe holen Vögelchen und Maus sofort oder stellen die Besuchsuhr kurz vor den nächsten berechneten Besuch, die Hobby-Knöpfe starten eine Beschäftigung sofort (auch ohne passendes Wetter), die Flieger-Knöpfe schicken Testflüge los (Anflug, Abflug, Reiseflug, Hubschrauber, Kleinflugzeug). Dafür den Ordner über einen lokalen Webserver öffnen, z. B. `node dev/serve.mjs . 8765` (lauscht nur auf localhost). `areale.html` zeigt alle vier Areale nebeneinander. Die Knopfzeilen Himmel-Extras, Festtage, Freund-Pika, Haus-Bote, Kaffee und Aktivitäten lösen die jeweiligen Erweiterungen sofort aus (Festtage stellen dafür das Datum der Karte um, Haus-Bote und Kaffee setzen Mock-Zustände der Geräte; ein Kaffeebezug dauert dort 18 s). Beide Vorschau-Karten teilen sich die Helfer wie zwei Geräte: „Uhr vor“ stellt die Plan-Uhr kurz vor die nächste große oder kleine Beschäftigung, „rechte Karte neu laden“ zeigt den Einstieg mitten in einer laufenden.

@@ -45,11 +45,13 @@
  * werden aus Datum und Standort (hass.config) berechnet.
  */
 (() => {
-  const VERSION = '0.15.0';
+  const VERSION = '0.16.0';
 
   const DEFAULTS = {
     name: 'Pika',
     entity: null,
+    // Tagesplan (Vorrat, Frühsport, Verlauf der Beschäftigungen) für alle Geräte gemeinsam; ohne: je Gerät
+    plan_entity: null,
     sleep_start: 'sunset',
     sleep_end: 'sunrise',
     sun_entity: 'sun.sun',
@@ -421,6 +423,78 @@
   };
   // Dasselbe mit Texten als Schlüssel (Besuche: seedRnd('bird', fenster, n)) → Zahl in [0, 1)
   const seedRnd = (...keys) => seeded(...keys.flatMap((k) => (typeof k === 'string' ? [...k].map((c) => c.charCodeAt(0)) : [k])));
+  // weighted mit fester Zahl u in [0, 1) statt Math.random; leere Liste oder nur Nullen → null
+  const weightedR = (list, u) => {
+    const total = list.reduce((t, [w]) => t + w, 0);
+    if (!(total > 0)) return null;
+    let r = u * total;
+    for (const [w, v] of list) if (w > 0 && (r -= w) < 0) return v;
+    return list.filter(([w]) => w > 0).pop()[1];
+  };
+
+  // ---------- Tagesplan (Helfer plan_entity) ----------
+  // Was alle Geräte gemeinsam wissen müssen, ohne es aus der Uhr rechnen zu können:
+  // - hay: Vorrat (n Bündel, t letzte Änderung, c Blütenfarben als Ziffern der Areal-Palette, m letztes Sammel-Fenster)
+  // - sport: Frühsport heute schon (d Kalendertag, k Fenster)
+  // - rec: die letzten großen Beschäftigungen [Fenster, Name, Variante] (neueste zuerst)
+  // Text: "p1|n.t.c.m|d.k|k:name:v,…" (Zahlen zur Basis 36), passt mit Abstand in die 255 Zeichen eines input_text.
+  const HAY_MAX = 12;
+  const PLAN_REC = 4;
+  const planBlank = () => ({ hay: { n: 3, t: Date.now(), c: '', m: 0 }, sport: null, rec: [] });
+  const planSer = (P) => {
+    const h = P.hay;
+    return ['p1', [h.n, Math.round(h.t / 1000).toString(36), h.c || '-', h.m.toString(36)].join('.'),
+      P.sport ? `${P.sport.d.toString(36)}.${P.sport.k.toString(36)}` : '-',
+      P.rec.map(([k, a, v]) => (v ? `${k.toString(36)}:${a}:${v}` : `${k.toString(36)}:${a}`)).join(',') || '-'].join('|');
+  };
+  const planParse = (str) => {
+    const p = String(str ?? '').split('|');
+    if (p.length !== 4 || p[0] !== 'p1') return null;
+    const h = p[1].split('.');
+    const n = Number(h[0]);
+    const t = parseInt(h[1], 36) * 1000;
+    const m = parseInt(h[3], 36);
+    if (h.length !== 4 || !Number.isFinite(n) || !Number.isFinite(t) || !Number.isFinite(m)) return null;
+    const P = { hay: { n: clamp(n, 1, HAY_MAX), t, c: h[2] === '-' ? '' : h[2].replace(/\D/g, ''), m }, sport: null, rec: [] };
+    const s = p[2].split('.').map((x) => parseInt(x, 36));
+    if (s.length === 2 && s.every(Number.isFinite)) P.sport = { d: s[0], k: s[1] };
+    if (p[3] !== '-') {
+      for (const e of p[3].split(',')) {
+        const [k, a, v] = e.split(':');
+        if (Number.isFinite(parseInt(k, 36)) && a) P.rec.push([parseInt(k, 36), a, v || '']);
+      }
+    }
+    return P;
+  };
+  // Vorrat jetzt: 2 Bündel weniger je Tag seit der letzten Änderung, die ältesten Blüten fallen zuerst weg
+  const hayNow = (h, now) => {
+    const n = clamp(h.n - Math.floor(Math.max(0, now - h.t) / 864e5) * 2, 1, HAY_MAX);
+    return { n, c: h.c.slice(-n) };
+  };
+  // Änderung op auf den Plan P anwenden. Alle Änderungen sind wiederholbar (gleiches Ergebnis beim zweiten Mal), so
+  // dürfen sie auf jeden neu eintreffenden Stand eines anderen Geräts noch einmal gelegt werden.
+  const planApply = (P, op, now) => {
+    const out = { hay: { ...P.hay }, sport: P.sport, rec: P.rec.map((e) => [...e]) };
+    if (op.t === 'rec') {
+      const e = out.rec.find((x) => x[0] === op.k);
+      if (e) {
+        if (op.v && !e[2]) e[2] = op.v;
+      } else {
+        out.rec.push([op.k, op.a, op.v || '']);
+        out.rec.sort((a, b) => b[0] - a[0]);
+        out.rec.length = Math.min(out.rec.length, PLAN_REC);
+      }
+    } else if (op.t === 'sport') {
+      if (out.sport?.d !== op.d) out.sport = { d: op.d, k: op.k };
+    } else if (op.t === 'gather') {
+      // Dasselbe Sammel-Fenster zählt nur einmal, egal wie viele Geräte es gezeigt haben
+      if (op.m != null && out.hay.m >= op.m) return out;
+      const { n, c } = hayNow(out.hay, now);
+      if (n >= HAY_MAX) return out;
+      out.hay = { n: n + 1, t: now, c: (c + op.c).slice(-(n + 1)), m: op.m ?? out.hay.m };
+    }
+    return out;
+  };
 
   // ---------- Grafiken ----------
 
@@ -1955,9 +2029,12 @@
   const COFFEE_FOAM = new Set(['latte', 'milk', 'capp']);
   const coffeeName = (prog, kind) => (/cappuccino/.test(prog) ? 'Cappuccino!' : /flat_white/.test(prog) ? 'Flat White!'
     : { latte: 'Latte!', milk: 'Milch!', esp: 'Espresso!', tea: 'Tee!' }[kind] || 'Kaffee!');
-  const COFFEE_FRESH = 10 * 60000; // so lange nach dem Bezug holt er sich noch einen
+  // Zeitleiste ab Bezugsende (auf allen Geräten dieselbe): so lange dauert das Holen, danach ein Schluck alle
+  // COFFEE_SIP ms (fest je Bezug). Wer später einsteigt (Neuladen), steht gleich mit dem halb leeren Gefäß da;
+  // ist es auf den anderen Geräten schon ausgetrunken, gibt es nichts mehr.
+  const COFFEE_FETCH = 13000;
+  const COFFEE_SIP = [4200, 6600];
   const COFFEE_CLS = [...new Set([...Object.values(COFFEE_CUP), ...Object.keys(COFFEE_CUP)])].map((k) => `ck-${k}`);
-  const COFFEE_STORE = 'pika-pet-coffee'; // zuletzt getrunkene Bezüge (pro Gerät), damit Neuladen nichts wiederholt
   // Denkblase beim Schnuppern: Tasse mit Dampf
   const COFFEE_THINK = `<svg viewBox="0 0 24 24" aria-hidden="true">
     <path d="M8 8 q-1.4 -2 0 -4 q1.4 -2 0 -4 M12.5 8 q-1.4 -2 0 -4 q1.4 -2 0 -4" fill="none" stroke="#b9a48c" stroke-width="1.3" stroke-linecap="round" transform="translate(0 2)"/>
@@ -2001,23 +2078,91 @@
   // ==================== Ende Kaffee ====================
 
   // ==================== Aktivitäten: Konstanten, Grafiken und Stil ====================
-  // Große Beschäftigungen (Lesen, Gameboy, Tablet, Drachen, TV, Musik, Malen, Seifenblasen, Frühsport; 1–3 Min):
-  // alle 10–15 Min, solange jemand hinschaut (Bildschirm an), sonst alle 30–40; die erste nach 2–6 Min.
-  // Kleine (Seilspringen, Gewichtheben; 15–30 s): alle 3–5 Min. Die letzten ACT_RECENT großen kommen nicht gleich
-  // wieder dran. Tagesform: je Kalendertag zwei Lieblinge (× 2) und eine Unlust (× 0,2) aus ACT_MOOD, aus dem Datum
-  // gewürfelt und darum auf allen Geräten gleich. Was gerade läuft, entscheidet jedes Gerät selbst.
-  const ACT_TAKT = { big: [10, 15], away: [30, 40], first: [2, 6], mini: [3, 5] };
+  // Tagesplan: Beschäftigungen kommen aus der Uhrzeit (seedRnd), damit alle Geräte zur selben Zeit dasselbe zeigen
+  // und ein neu geladenes Gerät mitten in die laufende einsteigt.
+  // - Groß (Lesen, Gameboy, Tablet, Drachen, TV, Musik, Malen, Seifenblasen, Frühsport; 1–2,5 Min): die Uhr ist in
+  //   Fenster von ACT_WIN.big geteilt, in jedem beginnt eine in den ersten ACT_WIN.spread. Abstand also 9–19 Min.
+  // - Klein (Seilspringen, Gewichtheben, Blüte für den Vorrat sammeln; 10–30 s): Fenster ACT_WIN.mini, mit
+  //   Wahrscheinlichkeit ACT_WIN.miniP, nie dicht an einer großen.
+  // - Welche es wird, hängt am Wetter (auf allen Geräten dasselbe), an der Tagesform und am Verlauf: Die letzten
+  //   ACT_RECENT großen kommen nicht gleich wieder dran. Der Verlauf liegt im Helfer plan_entity; wer ein Fenster
+  //   zuerst beginnt, trägt es dort ein, die anderen übernehmen die Wahl (auch wenn sich das Wetter inzwischen änderte).
+  // - Tagesform: je Kalendertag zwei Lieblinge (× 2) und eine Unlust (× 0,2) aus ACT_MOOD, aus dem Datum gewürfelt.
+  // - Schaut keiner hin (Bildschirm aus), lässt das Gerät die Beschäftigungen aus; geht er an, steigt es ein.
+  const ACT_WIN = { big: 14 * 6e4, spread: 5 * 6e4, mini: 4 * 6e4, miniP: 0.8, miniRoom: 50000 };
+  // Rund um den Beginn einer großen keine kleine (davor / danach in ms)
+  const ACT_GAP = [45000, 200000];
+  const WEIGHT_REP = 9000; // eine Wiederholung Gewichtheben
+  // Dauer des Hauptteils in ms (ohne Hinlaufen ACT_WALK und Ausklang), aus den festen Zahlen r(1…) des Fensters
+  const ACT_WALK = 5000;
+  const ACT_LEN = {
+    read: (r) => 50000 + r(1) * 50000,
+    game: (r) => 35000 + r(1) * 35000,
+    tablet: (r) => 45000 + r(1) * 45000,
+    kite: (r) => 40000 + r(1) * 40000,
+    tv: (r) => 60000 + r(1) * 70000,
+    music: (r) => 60000 + r(1) * 50000,
+    paint: (r) => 30000 + r(1) * 15000,
+    bubbles: (r) => 45000 + r(1) * 35000,
+    sport: (r) => sportPlan(r).len - ACT_WALK,
+    rope: (r) => 600 + ropeJumps(r) * (620 + r(4) * 100),
+    weights: (r) => 600 + (1 + Math.floor(r(1) * 3)) * WEIGHT_REP,
+    gather: () => 9000,
+  };
+  const ropeJumps = (r) => 12 + Math.floor(r(5) * 18);
+  // Einsteigen nach Neuladen oder Bildschirm an: bis so viele ms vor dem Ende des Hauptteils. Die kleinen nur gleich
+  // zu Beginn (sie sind schnell vorbei).
+  const ACT_JOIN_END = 4000;
+  const ACT_NOJOIN = new Set(['gather', 'rope', 'weights']);
+  // Beginn der großen im Fenster k bzw. der kleinen im Fenster m (Planzeit, ms)
+  const bigStart = (k) => k * ACT_WIN.big + Math.floor(seedRnd('big', k, 0) * ACT_WIN.spread);
+  const miniStart = (m) => m * ACT_WIN.mini + Math.floor(seedRnd('mini', m, 1) * (ACT_WIN.mini - ACT_WIN.miniRoom));
+  const miniHas = (m) => seedRnd('mini', m, 0) < ACT_WIN.miniP;
+  // Kalendertag (Ortszeit) als Zahl
+  const localDay = (t) => Math.floor((t - new Date(t).getTimezoneOffset() * 6e4) / 864e5);
+  // Kleinigkeiten, die der Beginn einer Beschäftigung aus dem Plan sofort abbricht
+  const ACT_SMALL = ['idle', 'look', 'wander', 'groom', 'squeak', 'sniff', 'binky', 'hungry', 'lookout', 'burrow', 'nibble',
+    'haySnack', 'hideout', 'watchBird', 'watchMouse', 'watchPlane'];
   const ACT_BIG = ['read', 'game', 'tablet', 'kite', 'tv', 'music', 'paint', 'bubbles', 'sport'];
   const ACT_MOOD = ['read', 'game', 'tablet', 'music', 'paint', 'bubbles'];
   const ACT_RECENT = 3;
   // Wird die Karte sichtbar (Bildschirm an, App geöffnet, Ansicht gewechselt), winkt er; höchstens alle 5 Minuten.
-  // Danach startet er zur Hälfte gleich eine große Beschäftigung.
   const ACT_SHOW_COOL = 5 * 6e4;
   const ACT_GREET = ['Hallo!', 'Hi!', 'Da bist du ja!', 'iiep!', 'Hallöchen!', 'Huhu!'];
   const ACT_CLS = ['waving', 'music', 'sing', 'painting', 'dab', 'mix', 'blowing', 'blow', 'sport', 'jjack', 'knee',
     'roping', 'rope-hold', 'rdbl', 'lifting', 'lift-gnd', 'lift-lo', 'lift-hi', 'strain'];
-  // Frühsport nur morgens: 10–180 Minuten nach dem Aufwachen, einmal am Tag (je Gerät)
+  // Frühsport nur morgens: 10–180 Minuten nach dem Aufwachen, einmal am Tag (im Helfer plan_entity vermerkt)
   const SPORT_WIN = [10, 180];
+  const SPORT_INTRO = 1700;
+  const SPORT_PAUSE = 1700; // nach jeder Übung: verschnaufen, schwitzen
+  // Ablauf des Frühsports aus den festen Zahlen des Fensters: 3 oder 4 Übungen mit Beginn t (ms ab Fensterbeginn),
+  // Dauer und Wiederholungen. len reicht vom Beginn des Fensters (mit Hinlaufen) bis zum Ende der letzten Übung.
+  const sportPlan = (r) => {
+    const all = ['jjack', 'knee', 'jog', 'stretch'];
+    for (let i = all.length - 1; i > 0; i--) {
+      const j = Math.floor(r(20 + i) * (i + 1));
+      [all[i], all[j]] = [all[j], all[i]];
+    }
+    const segs = all.slice(0, r(30) < 0.4 ? 4 : 3).map((ex, i) => {
+      if (ex === 'jjack') {
+        const rep = (0.62 + r(40 + i) * 0.18) * 1000;
+        const reps = 10 + Math.floor(r(50 + i) * 7);
+        return { ex, rep, reps, len: rep * reps };
+      }
+      if (ex === 'knee') {
+        const reps = 6 + Math.floor(r(50 + i) * 5);
+        return { ex, rep: 1400, reps, len: 1400 * reps };
+      }
+      if (ex === 'jog') return { ex, len: 8000 + r(50 + i) * 4000 };
+      return { ex, len: 3200 };
+    });
+    let t = ACT_WALK + SPORT_INTRO;
+    for (const s of segs) {
+      s.t = t;
+      t += s.len + SPORT_PAUSE;
+    }
+    return { segs, len: t };
+  };
 
   // Staffelei (viewBox 60 × 80): Leinwand x 9–51, y 7–51. Das Bild entsteht in fünf Schichten (Himmel, Sonne oder
   // Mond, Hügel, Motiv, Kleinkram); der Himmel folgt der Tageszeit der Szene. Motiv: [Pinselfarbe, Grafik]
@@ -3008,6 +3153,11 @@
         this._stats = null;
         if (!ent) this._loadLocal();
       }
+      const pk = `${this._cfg.plan_entity || ''}|${this._cfg.name}`;
+      if (pk !== this._planKey) {
+        this._planKey = pk;
+        this._planReset();
+      }
       this._renderStats();
       if (this.isConnected) this._attach();
     }
@@ -3083,6 +3233,7 @@
       this._hassFriend(hass);
       this._hassBote(hass);
       this._hassCoffee(hass);
+      this._hassPlan(hass);
       this._hassAct(hass);
       this._updateSky();
     }
@@ -3249,7 +3400,8 @@
       this._el.pika.addEventListener('click', (e) => (e.stopPropagation(), this._onPet()));
       this._el.feed.addEventListener('click', (e) => (e.stopPropagation(), this._onFeed()));
       this._el.scene.addEventListener('click', (e) => this._onLookAt(e));
-      this._loadHay();
+      this._hay = 3;
+      this._blooms = []; // Blüten im Vorrat: { color, sx, sy }, kommen aus dem Tagesplan (_hayFromPlan)
     }
 
     _areal() {
@@ -3269,7 +3421,7 @@
       const svg = (body) => (body ? `<svg viewBox="0 0 100 ${A.vh}" aria-hidden="true">${body}</svg>` : '');
       this._el.burrow.innerHTML = svg(A.svg);
       this._el.lights.innerHTML = svg(A.lights);
-      if (this._blooms) this._renderHay();
+      if (this._plan) this._hayFromPlan();
       if (this._g) {
         this._stop();
         this._g = null;
@@ -3394,7 +3546,7 @@
         this._placePiles();
         // Besucher sitzen an festen Pixeln: bei Größenänderung lieber neu kommen lassen
         if (this._bird || this._mouse) this._restartCritters();
-        // Die Staffelei steht an festen Pixeln: Malen abbrechen (räumt sie weg), er malt ein andermal
+        // Die Staffelei steht an festen Pixeln: Malen abbrechen (räumt sie weg), er steigt gleich wieder ein
         if (this._easelEl) this._interrupt();
       }
     }
@@ -3420,6 +3572,8 @@
     _start() {
       if (this._running || !this.isConnected || document.hidden || !this._g) return;
       this._running = true;
+      this._loopAt = Date.now(); // frisch gestartet: in eine laufende Beschäftigung ohne Hinlaufen einsteigen
+      this._slotArm();
       const run = ++this._runId;
       (async () => {
         while (run === this._runId) {
@@ -3441,6 +3595,8 @@
 
     _stop() {
       this._running = false;
+      clearTimeout(this._slotT);
+      this._slotT = null;
       this._runId++;
       this._ac?.abort();
       if (this._el) this._cleanup();
@@ -3489,14 +3645,25 @@
       }
       if (!sleepy && this._asleep) return this._run('wakeUp');
       if (this._asleep) return this._wait(60000);
+      const food = this._foods.find((f) => f.landed);
+      const next = this._next;
+      this._slot = null;
+      this._slotArm();
+      // Beschäftigung aus dem Tagesplan: läuft gerade eine, macht er mit (Futter und Vorschau-Knöpfe gehen vor)
+      const S = next || food ? null : this._slotNow();
+      if (S) {
+        if (this._greetDue) {
+          this._greetDue = false;
+          if (Date.now() - this._showAt < 30000) setTimeout(() => this._action === S.act && this._say(pick(ACT_GREET), 1500), 900);
+        }
+        return this._runSlot(S);
+      }
       if (this._greetDue) {
         this._greetDue = false;
         if (Date.now() - this._showAt < 30000) return this._run('greet');
       }
 
-      const food = this._foods.find((f) => f.landed);
       const wx = this._wx;
-      const next = this._next;
       const stayIn = next ? next === 'burrow' || next === 'tv' : wx.shelter && !food;
       if (this._inside && !stayIn) return this._run('comeOut');
       if (next) {
@@ -3506,11 +3673,8 @@
       }
       this._forced = false;
       if (food) return this._run('eatFood', food);
-      // Bei Starkregen und Gewitter im Bau bleiben und ab und zu herausschauen – oder fernsehen
-      if (wx.shelter) {
-        if (this._inside && this._hobbyOk(true) && Math.random() < 0.5) return this._run('tv');
-        return this._run(this._inside ? 'hideout' : 'shelter');
-      }
+      // Bei Starkregen und Gewitter im Bau bleiben und ab und zu herausschauen (fernsehen kommt aus dem Tagesplan)
+      if (wx.shelter) return this._run(this._inside ? 'hideout' : 'shelter');
 
       const s = this._get('s');
       const g = this._get('g');
@@ -3518,21 +3682,17 @@
       this._el.pika.classList.toggle('sad', g < 25 || s < 15 || clean < 30);
       // Unter Schnee gibt es keine Blumen, bei Regen bleibt das Heu trocken (kein Sammeln)
       const hasFlowers = this._flowers.length > 0 && !wx.snowcover;
-      // Beschäftigungen höchstens alle 12–20 Minuten; Fernsehen bei Regen oder in der Dämmerung
-      const hob = this._hobbyOk(wx.wet);
       const elev = this._dbgElev ?? this._elev;
-      const dry = hob && !wx.wet;
-      // Zusatz-Aktionen der Erweiterungen (Himmel, Festtage, Freund, Haus-Bote) bekommen dieselbe Lage
-      const ctx = { s, g, wx, hob, dry, elev, piles, clean, hasFlowers };
+      // Zusatz-Aktionen der Erweiterungen (Himmel, Festtage, Freund, Haus-Bote) bekommen dieselbe Lage.
+      // Beschäftigungen und das Sammeln für den Vorrat kommen nur aus dem Tagesplan (oben).
+      const ctx = { s, g, wx, elev, piles, clean, hasFlowers };
       const act = weighted([
-        ...this._actActs(ctx),
         [3, 'idle'],
         [3, 'look'],
         [3, 'wander'],
         [wx.wet ? 2 : 1, 'burrow'],
         [wx.wet ? 0.4 : 1.6, 'lookout'],
         [hasFlowers ? (s < 50 ? 3 : 1.2) : 0, 'nibble'],
-        [hasFlowers && !wx.wet && this._hay < 12 ? 1.4 : 0, 'gather'],
         [wx.snowcover || wx.wet ? 1.2 : 0, 'haySnack'],
         [wx.wet ? 0 : 1.4, 'groom'], // eine Pfote hält bei Regen das Blatt
         [0.8, 'squeak'],
@@ -3819,29 +3979,48 @@
       await this._wait(rnd(300, 900));
     }
 
+    // Eine Blüte für den Vorrat holen (kleine Beschäftigung aus dem Tagesplan). Die Farbe steht mit dem Fenster
+    // fest, damit alle Geräte dieselbe Blüte in die Nische legen; hat dieses Gerät keine Blume der Farbe auf der
+    // Wiese, nimmt er die nächste und sie bekommt die Farbe.
     async _gather() {
-      const f = pick(this._flowers);
-      await this._approach(f.xf * this._W);
-      this._pickFlower(f);
-      this._mouth(f.color);
+      const S = this._slotFor('gather');
+      const pal = this._areal().flowers || FLOWER_COLORS;
+      const ci = Math.floor(S.r(2) * pal.length);
+      const color = pal[ci];
+      if (this._inside) await this._comeOut();
+      let f = this._flowers.filter((o) => o.color === color)
+        .sort((a, b) => Math.abs(a.xf * this._W - this._x) - Math.abs(b.xf * this._W - this._x))[0];
+      if (!f) {
+        f = this._nearestFlower();
+        if (f) {
+          f.color = color;
+          f.el.innerHTML = FLOWER_SVG(color);
+        }
+      }
+      if (f) {
+        await this._approach(f.xf * this._W);
+        this._pickFlower(f);
+      }
+      this._mouth(color);
       this._el.pika.classList.add('carry');
       await this._walkTo(this._g.stand);
       this._face(-1);
       await this._wait(350);
       // Blüte im Bogen auf den Haufen bzw. in die Nische werfen, dort bleibt sie liegen
       this._el.pika.classList.remove('carry');
-      const spot = this._haySpot();
-      this._toss(f.color, spot);
+      this._mouth(null);
+      this._toss(color, this._haySpot(Math.min(this._blooms.length, HAY_MAX - 1)));
       await this._wait(460);
-      this._addHay(f.color, spot);
+      this._planOp({ t: 'gather', m: S.k >= 0 ? S.k : null, c: String(ci) });
       await this._wait(900);
     }
 
-    // Zufällige Stelle auf der Oberfläche des Heuhaufens (Koordinaten der Heu-Grafik, 60 × 40)
-    _haySpot() {
-      const sx = rnd(15, 45);
+    // Stelle i auf der Oberfläche des Heuhaufens (Koordinaten der Heu-Grafik, 60 × 40), fest je Platz
+    _haySpot(i) {
+      const sx = 15 + seedRnd('hay', i, 0) * 30;
       const top = 10 + ((sx - 30) / 28) ** 2 * 26;
-      return { sx: +sx.toFixed(1), sy: +rnd(top + 3, Math.min(35, top + 11)).toFixed(1) };
+      const lo = top + 3;
+      return { sx: +sx.toFixed(1), sy: +(lo + seedRnd('hay', i, 1) * (Math.min(35, top + 11) - lo)).toFixed(1) };
     }
 
     // Liegeplätze der Blüten in der Nische (Bau-Einheiten): Reihen von unten nach oben, abwechselnd 6 und 5
@@ -4029,22 +4208,44 @@
 
     // ---------- Beschäftigungen ----------
 
-    // Takt siehe ACT_TAKT: die erste nach 2–6 Minuten, dann alle 10–15 (schaut keiner hin: 30–40). Bei Regen
-    // (Fernsehen) 5 Minuten früher.
-    _hobbyOk(wet) {
-      const now = Date.now();
-      this._hobbyNext ??= now + rnd(...ACT_TAKT.first) * 60000;
-      return now >= this._hobbyNext - (wet ? 5 * 60000 : 0);
+    // Zeitplan, Einstieg und die Beschäftigungen von 0.15 stehen im Abschnitt "Aktivitäten". Alle Beschäftigungen
+    // holen sich ihr Fenster mit _slotFor(name): { k, start, end, r(n) }. end ist das Ende des Hauptteils (Planzeit,
+    // _planNow), r(n) sind feste Zahlen des Fensters, auf allen Geräten gleich.
+
+    // Zum Platz der Beschäftigung: frisch gestartet (Neuladen, Seite wieder sichtbar) und schon spät dran steht er
+    // gleich dort, sonst läuft er hin. Aus dem Bau kommt er vorher heraus.
+    async _goSpot(S, x, speed = 0.8) {
+      if (this._jumpIn(S)) {
+        this._inside = false;
+        this._lift = 0;
+        this._pose('out', 0);
+        this._setX(x, true);
+        await this._wait(60);
+        return;
+      }
+      if (this._inside) await this._comeOut();
+      await this._walkTo(x, speed);
     }
 
-    _hobbyDone() {
-      this._hobbyNext = Date.now() + rnd(...(this._watched() ? ACT_TAKT.big : ACT_TAKT.away)) * 60000;
-      this._actRemember(this._action);
+    // Steigt er in ein schon laufendes Fenster ein, ohne dass man ihn vorher sah?
+    _jumpIn(S) {
+      return S.k >= 0 && this._planNow() - S.start > 6000 && Date.now() - (this._loopAt || 0) < 5000;
     }
 
-    _hobbySpot() {
+    // Bis zur Planzeit t warten (gleich weiter, wenn sie vorbei ist)
+    _at(t) {
+      return this._wait(Math.max(0, t - this._planNow()));
+    }
+
+    // Höchstens ms warten, aber nicht über die Planzeit t hinaus
+    _waitMax(ms, t) {
+      return this._wait(clamp(t - this._planNow(), 0, ms));
+    }
+
+    // Platz auf der Wiese zwischen Heu und Stein aus der festen Zahl u: relativ zur Breite überall dieselbe Stelle
+    _hobbySpot(u) {
       const { fMin, fMax } = this._g;
-      return rnd(fMin, fMax) * this._W;
+      return (fMin + u * (fMax - fMin)) * this._W;
     }
 
     // Drachenwetter: mäßiger bis frischer Wind, trocken, hell
@@ -4075,27 +4276,26 @@
     }
 
     // Lesen am Heuhaufen bzw. neben der Nische oder vor der Tür: Kopf wandert die Zeilen entlang, blättert um,
-    // kichert. Nachmittags nickt er manchmal ein (Streicheln weckt ihn).
+    // kichert. Nachmittags nickt er manchmal ein (fest im Fenster, 40 s vor dem Ende; Streicheln weckt ihn).
     async _read() {
+      const S = this._slotFor('read');
       const { stand, home, pW } = this._g;
-      await this._walkTo(Math.random() < 0.6 ? stand + pW * 0.16 : home + pW * 0.7, 0.8);
+      await this._goSpot(S, S.r(2) < 0.6 ? stand + pW * 0.16 : home + pW * 0.7);
       this._face(1);
       const p = this._el.pika;
       p.classList.add('reading');
-      this._hobbyDone();
-      const h = new Date().getHours();
-      const dozeNow = !!this._dbgDoze;
+      const h = new Date(S.start).getHours();
+      const now0 = this._planNow();
+      const doze = this._dbgDoze ? [now0 + 2500, now0 + 14000]
+        : h >= 13 && h < 17 && S.r(3) < 0.35 ? [S.end - 40000, S.end - 30000 + S.r(4) * 8000] : null;
       this._dbgDoze = false;
-      const sleepy = dozeNow || (h >= 13 && h < 17 && Math.random() < 0.35);
-      const until = Date.now() + rnd(50000, 100000);
       let dozed = false;
-      while (Date.now() < until) {
-        await this._wait(rnd(2500, 5000));
-        if (sleepy && !dozed && (dozeNow || Date.now() > until - 40000)) {
+      while (this._planNow() < S.end) {
+        const now = this._planNow();
+        if (doze && !dozed && now >= doze[0] && now < doze[1]) {
           dozed = true;
           p.classList.add('doze');
-          const end = Date.now() + rnd(10000, 18000);
-          while (Date.now() < end && p.classList.contains('doze')) await this._wait(500);
+          while (this._planNow() < doze[1] && p.classList.contains('doze')) await this._wait(500);
           if (p.classList.contains('doze')) {
             p.classList.remove('doze');
             this._jump('hop1');
@@ -4104,6 +4304,9 @@
           await this._wait(1200);
           continue;
         }
+        const ev = doze && !dozed && doze[0] > now ? doze[0] : S.end;
+        await this._waitMax(rnd(2500, 5000), ev);
+        if (this._planNow() >= ev) continue;
         const r = Math.random();
         if (r < 0.5) this._pageFlip();
         else if (r < 0.65) this._say(pick(['hihi', 'hihi!', 'oh!', 'hm…']), 1100);
@@ -4113,20 +4316,23 @@
     }
 
     // Gameboy: Daumen tippen, Piepser steigen auf; nach jeder Runde Freudensprung oder hängende Ohren
+    // (Rundenzahl und Ausgang stehen mit dem Fenster fest)
     async _game() {
-      await this._walkTo(this._hobbySpot(), 0.8);
-      this._face(pick([-1, 1]));
+      const S = this._slotFor('game');
+      await this._goSpot(S, this._hobbySpot(S.r(2)));
+      this._face(S.r(3) < 0.5 ? -1 : 1);
       const p = this._el.pika;
       p.classList.add('gaming');
-      this._hobbyDone();
-      const rounds = 2 + Math.floor(rnd(0, 3));
-      for (let i = 0; i < rounds; i++) {
-        const end = Date.now() + rnd(8000, 18000);
-        while (Date.now() < end) {
-          await this._wait(rnd(900, 2600));
-          this._note(pick(['♪', '♫', 'pi', 'pu', 'piu']));
+      const t0 = S.start + ACT_WALK;
+      const rounds = 2 + Math.floor(S.r(4) * 3);
+      const L = (S.end - t0) / rounds;
+      for (let i = clamp(Math.floor((this._planNow() - t0) / L), 0, rounds); i < rounds; i++) {
+        const end = t0 + (i + 1) * L - 2800;
+        while (this._planNow() < end) {
+          await this._waitMax(rnd(900, 2600), end);
+          if (this._planNow() < end) this._note(pick(['♪', '♫', 'pi', 'pu', 'piu']));
         }
-        if (Math.random() < 0.55) {
+        if (S.r(10 + i) < 0.55) {
           this._jump('binky');
           this._say(pick(['Juhu!', 'Jaaa!']), 1200);
         } else {
@@ -4135,7 +4341,7 @@
           await this._wait(1600);
           p.classList.remove('meh');
         }
-        await this._wait(1200);
+        await this._at(t0 + (i + 1) * L);
       }
       await this._wait(400);
     }
@@ -4143,18 +4349,17 @@
     // Auf dem Bauch mit dem Tablet: wischt, kichert. Fliegt gerade ein echtes Flugzeug vorbei,
     // zeigt das Tablet die Flugkarte, und er schaut zum Himmel.
     async _tablet() {
-      await this._walkTo(this._hobbySpot(), 0.8);
-      this._face(pick([-1, 1]));
+      const S = this._slotFor('tablet');
+      await this._goSpot(S, this._hobbySpot(S.r(2)));
+      this._face(S.r(3) < 0.5 ? -1 : 1);
       const p = this._el.pika;
       p.classList.add('lying');
       await this._wait(400);
       p.classList.add('tablet');
-      this._hobbyDone();
-      const until = Date.now() + rnd(45000, 90000);
-      while (Date.now() < until) {
+      while (this._planNow() < S.end) {
         const plane = [...this._planes.values()].find((pl) => pl.show && !pl.gone);
         p.classList.toggle('tplane', !!plane);
-        await this._wait(rnd(1800, 4000));
+        await this._waitMax(rnd(1800, 4000), S.end);
         const r = Math.random();
         if (plane && plane.show && r < 0.35) {
           this._face(plane.x >= this._x ? 1 : -1);
@@ -4178,21 +4383,21 @@
 
     // Drachen steigen lassen: der Drache steht im Wind (Windrichtung aus dem Wetter), schwankt und zerrt
     async _kite() {
+      const S = this._slotFor('kite');
       const { pW, pH, gy, fMin, fMax } = this._g;
       const W = this._W;
       const H = this._H;
       const kd = this._windDir || -1;
-      await this._walkTo(clamp(W * (kd < 0 ? 0.64 : 0.38), fMin * W, fMax * W), 0.9);
+      await this._goSpot(S, clamp(W * (kd < 0 ? 0.64 : 0.38), fMin * W, fMax * W), 0.9);
       this._face(kd);
       const p = this._el.pika;
       p.classList.add('kiting');
-      this._hobbyDone();
       // Pfote (viewBox 105/50) in px; der Drache steht schräg oben im Wind
       const px = this._x + kd * pW * (105 / 120 - 0.5);
       const py = gy - pH * 0.945 + pH * 0.5 - this._lift;
       const K = H * 0.12;
-      const kx = clamp(px + kd * W * rnd(0.26, 0.38), K, W - K) - px;
-      const ky = H * rnd(0.1, 0.17) - py;
+      const kx = clamp(px + kd * W * (0.26 + S.r(2) * 0.12), K, W - K) - px;
+      const ky = H * (0.1 + S.r(3) * 0.07) - py;
       const el = document.createElement('div');
       el.className = 'kite';
       el.style.left = `${px.toFixed(1)}px`;
@@ -4206,9 +4411,8 @@
       void el.offsetWidth;
       el.classList.add('up');
       this._say(pick(['wuiii!', 'hoch!']), 1200);
-      const until = Date.now() + rnd(40000, 80000);
-      while (Date.now() < until && (this._forced || this._kiteWind())) {
-        await this._wait(rnd(3000, 6000));
+      while (this._planNow() < S.end && (this._forced || this._kiteWind())) {
+        await this._waitMax(rnd(3000, 6000), S.end);
         const r = Math.random();
         if (r < 0.3) {
           el.classList.remove('tug');
@@ -4236,17 +4440,21 @@
 
     // Fernsehen im Bau: sitzt mit dem Rücken zu uns im Eingang, das Licht vom Fernseher flackert bunt
     async _tv() {
+      const S = this._slotFor('tv');
       const p = this._el.pika;
-      if (!this._inside) await this._enterBurrow(this._wx.shelter ? 1.4 : 1);
+      if (this._jumpIn(S)) {
+        this._lift = 0;
+        this._setX(this._g.home, true);
+        this._inside = true;
+        this._pose('hidden', 0);
+      } else if (!this._inside) await this._enterBurrow(this._wx.shelter ? 1.4 : 1);
       else if (this._poseName !== 'hidden') await this._to('hidden', 400);
-      this._hobbyDone();
       this._tvOn(true);
       await this._wait(700);
       p.classList.add('tv');
       await this._to('tv', 700);
-      const until = Date.now() + (this._wx.wet ? rnd(80000, 160000) : rnd(45000, 90000));
-      while (Date.now() < until) {
-        await this._wait(rnd(2500, 6000));
+      while (this._planNow() < S.end) {
+        await this._waitMax(rnd(2500, 6000), S.end);
         // nach dem Streicheln wieder zum Fernseher drehen
         if (!p.classList.contains('tv')) {
           await this._wait(1200);
@@ -4623,27 +4831,18 @@
       setTimeout(() => food.el.remove(), 350);
     }
 
-    _loadHay() {
-      this._hay = 3;
-      this._blooms = []; // eingesammelte Blüten auf dem Haufen: { color, sx, sy }
-      try {
-        const h = JSON.parse(localStorage.getItem('pika-pet-card-hay') || 'null');
-        if (h) {
-          const days = Math.floor((Date.now() - h.t) / 864e5);
-          this._hay = clamp(h.n - days * 2, 1, 12);
-          if (Array.isArray(h.b)) this._blooms = h.b.slice(-Math.min(this._hay, STASH_MAX));
-        }
-      } catch (e) { /* kein Speicher – egal */ }
-      this._renderHay();
-    }
-
-    _addHay(color, spot) {
-      this._hay = Math.min(12, this._hay + 1);
-      if (color && spot) this._blooms = [...this._blooms, { color, ...spot }].slice(-STASH_MAX);
-      this._renderHay(true);
-      try {
-        localStorage.setItem('pika-pet-card-hay', JSON.stringify({ n: this._hay, t: Date.now(), b: this._blooms }));
-      } catch (e) { /* egal */ }
+    // Vorrat aus dem Tagesplan zeigen; wippt, wenn ein Bündel dazukam
+    _hayFromPlan() {
+      if (!this._el) return;
+      const { n, c } = hayNow(this._plan.hay, Date.now());
+      const pal = this._areal().flowers || FLOWER_COLORS;
+      const key = `${n}|${c}|${this._arealKey}`;
+      if (key === this._hayKey) return;
+      const more = this._hayKey != null && n > this._hay;
+      this._hayKey = key;
+      this._hay = n;
+      this._blooms = [...c].slice(-STASH_MAX).map((d, i) => ({ color: pal[Number(d) % pal.length], ...this._haySpot(i) }));
+      this._renderHay(more);
     }
 
     _renderHay(bounce) {
@@ -9038,7 +9237,9 @@
     //   läuft und das Programm mindestens 15 s nach dem Zählerstand endete. So erkennt jedes Gerät denselben
     //   Bezug, auch nach dem Neuladen. Ein Neustart von HA ändert alles zugleich und zählt deshalb nicht.
     // - selected: ausgewähltes Programm. Daraus kommt die Getränkeart, wenn die Karte den Bezug nicht live sah.
-    // Bis 10 Minuten danach holt er sich dasselbe Getränk aus dem Bau und trinkt es (Schlaf unterbricht er dafür).
+    // Gleich danach holt er sich dasselbe Getränk aus dem Bau und trinkt es (Schlaf unterbricht er dafür), nach einer
+    // festen Zeitleiste ab Bezugsende (COFFEE_FETCH, COFFEE_SIP): Alle Geräte trinken im selben Takt, ein neu
+    // geladenes steigt mit dem passend leeren Gefäß ein. Gemerkt wird dafür nichts.
 
     _hassCoffee(hass) {
       const c = this._cfg?.coffee;
@@ -9051,7 +9252,7 @@
       this._cofA = a;
       this._cofN = n;
       this._cofS = sel;
-      const C = (this._cof ??= { brew: null, pend: null, done: this._coffeeLoad() });
+      const C = (this._cof ??= { brew: null, pend: null, done: [] });
       const prog = String(a?.state || '').toLowerCase();
       const now = Date.now();
       if (COFFEE_PROG.test(prog)) {
@@ -9074,14 +9275,20 @@
       if (t0) {
         if (end - t0 >= 15000 && end - t0 < 15 * 60000) key = n.last_changed;
       } else if (brew && end - brew.at >= 15000) key = `live ${brew.at}`; // ohne Zähler nur, was die Karte sah
-      if (!key || now - end > COFFEE_FRESH || C.done.includes(key) || C.pend?.key === key) return;
+      if (!key || C.done.includes(key) || C.pend?.key === key) return;
       const p = brew?.prog || String(sel?.state || '').toLowerCase();
       const kind = coffeeKind(p);
-      C.pend = { key, kind, name: coffeeName(p, kind), until: end + COFFEE_FRESH, stage: 'fetch', lv: 1 };
-      // Gleich holen statt die laufende Kleinigkeit zu Ende zu machen; im Schlaf weckt ihn der Duft
-      if (this._asleep ? !this._action : ['idle', 'look', 'wander', 'groom', 'squeak', 'binky', 'coffeeSniff'].includes(this._action)) {
-        this._interrupt();
-      }
+      const r = (i) => seedRnd('coffee', key, i);
+      const sip = COFFEE_SIP[0] + r(0) * (COFFEE_SIP[1] - COFFEE_SIP[0]);
+      const P = {
+        key, kind, name: coffeeName(p, kind), t0: end, sip, end: end + COFFEE_FETCH + COFFEE_SIPS[kind] * sip,
+        rockR: r(1), faceR: r(2), stage: 'fetch', lv: 1, j: 0,
+      };
+      if (now > P.end - 3000) return; // auf den anderen Geräten längst ausgetrunken
+      C.pend = P;
+      // Sofort holen, auch mitten in einer Beschäftigung (die geht danach an ihrer Stelle im Plan weiter);
+      // im Schlaf weckt ihn der Duft
+      if (!['eatFood', 'coffee', 'goSleep', 'wakeUp'].includes(this._action)) this._interrupt();
     }
 
     _tickCoffee() {
@@ -9089,13 +9296,13 @@
       if (!C) return;
       const now = Date.now();
       // Nicht abgeholt (Sturm, Karte war versteckt): verfällt. Hängt ein Bezug ewig, nicht mehr schnuppern.
-      if (C.pend?.stage === 'fetch' && now > C.pend.until) C.pend = null;
+      if (C.pend?.stage === 'fetch' && now > C.pend.end - 3000) C.pend = null;
       if (C.brew && now - C.brew.at > 10 * 60000) C.brew.sniffed = true;
     }
 
     _coffeeDue() {
       const P = this._cof?.pend;
-      return !!P && !this._next && !this._wx.shelter && (P.stage !== 'fetch' || Date.now() <= P.until);
+      return !!P && !this._next && !this._wx.shelter && (P.stage !== 'fetch' || Date.now() <= P.end - 3000);
     }
 
     _coffeeActs() {
@@ -9103,23 +9310,9 @@
       return B && !B.sniffed ? [[60, 'coffeeSniff']] : [];
     }
 
-    _coffeeLoad() {
-      try {
-        const v = JSON.parse(localStorage.getItem(COFFEE_STORE) || '[]');
-        return Array.isArray(v) ? v.slice(-6) : [];
-      } catch {
-        return [];
-      }
-    }
-
     _coffeeMark(key) {
       const C = this._cof;
       C.done = [...C.done.filter((k) => k !== key), key].slice(-6);
-      try {
-        localStorage.setItem(COFFEE_STORE, JSON.stringify(C.done));
-      } catch {
-        // privater Modus o. Ä.: dann eben nur bis zum Neuladen gemerkt
-      }
     }
 
     // Kaffeeduft: Nase hoch, schnuppern, an Kaffee denken, dann erwartungsvoll zum Bau
@@ -9163,8 +9356,29 @@
         p.style.setProperty('--lv', P.lv.toFixed(2));
         p.classList.toggle('hot', P.lv > 0.45);
       };
+      const sips = COFFEE_SIPS[P.kind];
       if (P.stage === 'fetch') {
         this._coffeeMark(P.key);
+        P.rock = !night && !this._wx.wet && P.rockR < 0.5;
+      }
+      // Neu geladen, während die anderen Geräte schon trinken: gleich am Trinkplatz, das Gefäß so leer wie dort
+      if (P.stage === 'fetch' && Date.now() - P.t0 > 4000 && Date.now() - (this._loopAt || 0) < 5000) {
+        P.j = clamp(Math.floor((Date.now() - P.t0 - COFFEE_FETCH) / P.sip) + 1, 0, sips - 1);
+        P.lv = 1 - P.j / sips;
+        P.foam = P.j > 0 && COFFEE_FOAM.has(P.kind);
+        this._inside = false;
+        this._pose('out', 0);
+        if (P.rock) {
+          this._lift = rock.lift;
+          this._setX(rock.cx, true);
+        } else {
+          this._lift = 0;
+          this._setX(stand + pW * 0.16, true);
+        }
+        this._face(P.rock ? (P.faceR < 0.5 ? -1 : 1) : 1);
+        P.stage = 'drink';
+      }
+      if (P.stage === 'fetch') {
         if (!this._inside) {
           this._say(night ? '*gähn*' : P.name, 1200);
           await this._wait(500);
@@ -9176,7 +9390,7 @@
           }
           await this._to('hidden', 400);
         }
-        await this._wait(rnd(1800, 2800)); // drinnen klappert es
+        await this._wait(clamp(P.t0 + 4500 - Date.now(), 800, 2800)); // drinnen klappert es
         P.stage = 'out';
       }
       p.classList.add('coffee', `ck-${COFFEE_CUP[P.kind]}`, `ck-${P.kind}`);
@@ -9191,8 +9405,7 @@
           await this._comeOut();
         }
         if (!night) this._say(P.name, 1300);
-        // Tagsüber und trocken gern oben auf dem Aussichtsstein, sonst vor der Tür
-        P.rock = !night && !this._wx.wet && Math.random() < 0.5;
+        // Tagsüber und trocken gern oben auf dem Aussichtsstein (fest je Bezug), sonst vor der Tür
         if (P.rock) {
           await this._walkTo((this._x > rock.cx && this._footX(1)) || this._footX(-1), 0.7);
           if (this._bird?.perch === 'rock') {
@@ -9202,17 +9415,18 @@
           await this._hopTo(rock.cx, rock.lift);
           this._puff(rock.cx, this._g.gy - rock.lift, 2);
         } else await this._walkTo(stand + pW * 0.16, 0.7); // wie beim Lesen: die Nische bleibt frei
-        this._face(P.rock ? pick([-1, 1]) : 1);
+        this._face(P.rock ? (P.faceR < 0.5 ? -1 : 1) : 1);
         P.stage = 'drink';
         await this._wait(800);
       }
-      const sips = COFFEE_SIPS[P.kind];
+      // Schluck j zur festen Zeit t0 + COFFEE_FETCH + j · sip; wer hinterherhängt, holt mit kurzen Pausen auf
       while (P.lv > 0.01) {
-        await this._wait(rnd(2800, 5500));
+        await this._wait(Math.max(300, P.t0 + COFFEE_FETCH + P.j * P.sip - Date.now()));
         p.classList.add('sip');
-        await this._wait(rnd(1100, 1700));
-        const first = P.lv === 1;
-        P.lv = Math.max(0, P.lv - 1 / sips);
+        await this._wait(1400);
+        const first = P.j === 0;
+        P.j++;
+        P.lv = Math.max(0, 1 - P.j / sips);
         p.classList.remove('sip');
         setLv();
         if (COFFEE_FOAM.has(P.kind)) {
@@ -9265,8 +9479,8 @@
     // ==================== Ende Kaffee ====================
 
     // ==================== Aktivitäten: Methoden ====================
-    // Takt, Abwechslung und Tagesform der Beschäftigungen (ACT_TAKT), Begrüßung, wenn die Karte sichtbar wird, und
-    // die Beschäftigungen Musik, Malen, Seifenblasen, Frühsport (groß) sowie Seilspringen und Gewichtheben (klein).
+    // Tagesplan der Beschäftigungen (ACT_WIN, Helfer plan_entity), Tagesform, Begrüßung, wenn die Karte sichtbar
+    // wird, und die Beschäftigungen Musik, Malen, Seifenblasen, Frühsport (groß) sowie Seilspringen und Gewichtheben.
 
     // screen_entity (z. B. der Bildschirm-Schalter von Fully Kiosk): geht er an, ist das wie Sichtbarwerden. Fully
     // meldet das mit etwas Verzug; kam die Sichtbarkeit schon, verhindert die Sperre eine zweite Begrüßung.
@@ -9276,7 +9490,11 @@
       if (st === this._screenSt) return;
       const was = this._screenSt;
       this._screenSt = st;
-      if (was === 'off' && st === 'on' && !document.hidden) this._showReq();
+      if (was === 'off' && st === 'on' && !document.hidden) {
+        // Bei dunklem Bildschirm hat keiner zugesehen: wie nach dem Neuladen gleich mitten in der Beschäftigung
+        this._loopAt = Date.now();
+        this._showReq();
+      }
     }
 
     // Schaut jemand hin? Unsichtbar läuft die Schleife ohnehin nicht; mit screen_entity zählt auch der Bildschirm.
@@ -9314,7 +9532,7 @@
       }, 700);
     }
 
-    // Winkt mit einer Pfote; zur Hälfte führt er danach gleich etwas vor (_showBoost: große Beschäftigung × 8)
+    // Winkt mit einer Pfote. Eine Beschäftigung startet er danach nicht: die kommen nur aus dem Tagesplan.
     async _greet() {
       const p = this._el.pika;
       if (this._inside) {
@@ -9331,51 +9549,163 @@
       if (Math.random() < 0.5) this._jump('binky');
       else this._happy(1000);
       await this._wait(1000);
-      if (Math.random() < 0.5) {
-        this._showBoost = Date.now();
-        this._hobbyNext = 0;
-      }
     }
 
-    // ---------- Auswahl ----------
+    // ---------- Tagesplan: Auswahl ----------
 
-    // Gewichte der großen und kleinen Beschäftigungen für den Würfel in _step
-    _actActs({ wx, hob, elev }) {
-      const out = [];
+    // Uhr des Tagesplans (Vorschau: um _dbgPlanMs vorgestellt)
+    _planNow() {
+      return Date.now() + (this._dbgPlanMs || 0);
+    }
+
+    // Fenster der Beschäftigung name, die gerade aus dem Plan läuft. Aus der Vorschau erzwungen: eins ab jetzt.
+    _slotFor(name) {
+      if (this._slot?.act === name) return this._slot;
+      const start = this._planNow();
+      const r = (n) => seedRnd('frei', start, n);
+      return { id: null, kind: 'frei', k: -1, act: name, start, end: start + ACT_WALK + ACT_LEN[name](r), r };
+    }
+
+    // Läuft jetzt eine Beschäftigung aus dem Plan, die dieses Gerät noch nicht gezeigt hat? Groß vor klein.
+    _slotNow() {
+      // Mit Helfer erst, wenn sein Stand da ist: sonst wählte ein frisch geladenes Gerät ohne den Verlauf
+      if (!this._g || this._asleep || !this._watched() || !this._plan || !this._planOk) return null;
+      this._slotsDone ??= new Set();
+      const now = this._planNow();
+      for (const S of [this._bigAt(now), this._miniAt(now)]) {
+        if (!S || this._slotsDone.has(S.id)) continue;
+        if (now > S.end - ACT_JOIN_END || (ACT_NOJOIN.has(S.act) && now - S.start > 4000)) continue;
+        if (!this._actOk(S.act)) continue;
+        return S;
+      }
+      return null;
+    }
+
+    _runSlot(S) {
+      this._slot = S;
+      if (S.kind === 'big') {
+        this._planOp({ t: 'rec', k: S.k, a: S.act });
+        if (S.act === 'sport') this._planOp({ t: 'sport', d: localDay(S.start), k: S.k });
+      }
+      return this._run(S.act).then(() => {
+        this._slotsDone.add(S.id);
+        if (this._slotsDone.size > 20) this._slotsDone.delete(this._slotsDone.values().next().value);
+      });
+    }
+
+    // Große Beschäftigung, die im Fenster von now begonnen hat (oder null)
+    _bigAt(now) {
+      const k = Math.floor(now / ACT_WIN.big);
+      const start = bigStart(k);
+      if (now < start) return null;
+      const act = this._bigAct(k, start);
+      if (!act) return null;
+      const r = (n) => seedRnd('big', k, n);
+      return { id: `b${k}`, kind: 'big', k, act, start, end: start + ACT_WALK + ACT_LEN[act](r), r };
+    }
+
+    // Welche große im Fenster k? Steht sie schon im Plan (ein Gerät hat sie begonnen), die; sonst ausgewürfelt.
+    _bigAct(k, start) {
+      const rec = this._plan.rec;
+      const own = rec.find((e) => e[0] === k);
+      if (own) return ACT_LEN[own[1]] ? own[1] : null;
+      if (this._sportSlot(k, start)) return 'sport';
+      const recent = rec.filter((e) => e[0] < k).slice(0, ACT_RECENT).map((e) => e[1]);
+      const tf = this._tagesform(start);
+      const w = this._bigW(new Date(start).getHours());
+      const list = ACT_BIG.filter((a) => a !== 'sport' && w[a] > 0 && !recent.includes(a))
+        .map((a) => [w[a] * (tf.fav.includes(a) ? 2 : tf.meh === a ? 0.2 : 1), a]);
+      return weightedR(list, seedRnd('big', k, 99));
+    }
+
+    // Gewichte der großen nach Wetter, Licht und Stunde h (des Fensterbeginns)
+    _bigW(h) {
+      const wx = this._wx;
+      const elev = this._dbgElev ?? this._elev;
       const dry = !wx.wet && !wx.storm && !wx.shelter;
       const light = elev == null ? !this._asleep : elev > 3;
-      const h = new Date().getHours();
-      if (hob) {
-        const w = {
-          read: dry ? 1.2 * (h >= 13 && h < 17 ? 1.5 : 1) : 0,
-          game: dry ? 1 : 0,
-          tablet: dry && !wx.snowcover ? 0.9 : 0,
-          kite: this._kiteWind() ? 3 : 0,
-          tv: wx.wet ? 3 : elev != null && elev < 4 ? 1 : 0,
-          music: dry ? 1.1 * (h >= 17 ? 1.5 : 1) : 0,
-          paint: dry && light ? 1.1 * (h >= 10 && h < 16 ? 1.4 : 1) : 0,
-          bubbles: dry && light && !wx.snowcover && (this._wind || 0) < 30 ? 1 : 0,
-          sport: dry && this._sportDue() ? 6 : 0,
-        };
-        const tf = this._tagesform();
-        const recent = this._actRecent();
-        const boost = Date.now() - (this._showBoost || 0) < 60000 ? 8 : 1;
-        for (const [k, v] of Object.entries(w)) {
-          if (!v || recent.includes(k)) continue;
-          out.push([v * (tf.fav.includes(k) ? 2 : tf.meh === k ? 0.2 : 1) * boost, k]);
-        }
+      return {
+        read: dry ? 1.2 * (h >= 13 && h < 17 ? 1.5 : 1) : 0,
+        game: dry ? 1 : 0,
+        tablet: dry && !wx.snowcover ? 0.9 : 0,
+        kite: this._kiteWind() ? 3 : 0,
+        tv: wx.wet ? 3 : elev != null && elev < 4 ? 1 : 0,
+        music: dry ? 1.1 * (h >= 17 ? 1.5 : 1) : 0,
+        paint: dry && light ? 1.1 * (h >= 10 && h < 16 ? 1.4 : 1) : 0,
+        bubbles: dry && light && !wx.snowcover && (this._wind || 0) < 30 ? 1 : 0,
+      };
+    }
+
+    // Geht die Beschäftigung bei diesem Wetter? Großzügiger als die Auswahl, damit ein später einsteigendes Gerät
+    // nicht wegen eines Grads Sonnenhöhe etwas anderes macht: nur Regen, Sturm, Wind und Schnee zählen.
+    _actOk(act) {
+      const wx = this._wx;
+      if (act === 'tv') return true;
+      if (wx.shelter || (wx.wet && act !== 'gather')) return false;
+      const dry = !wx.wet && !wx.storm;
+      if (act === 'kite') return this._kiteWind();
+      if (act === 'bubbles') return (this._wind || 0) < 40 && !wx.snowcover;
+      if (act === 'rope') return dry && !wx.snowcover;
+      if (act === 'weights') return dry;
+      if (act === 'gather') return !wx.wet && !wx.snowcover && this._hay < HAY_MAX;
+      return dry;
+    }
+
+    // Kleine Beschäftigung im Fenster von now (oder null): nicht in jedem Fenster und nie dicht an einer großen
+    _miniAt(now) {
+      const m = Math.floor(now / ACT_WIN.mini);
+      if (!miniHas(m)) return null;
+      const start = miniStart(m);
+      if (now < start || this._nearBig(start)) return null;
+      const act = this._miniAct(m);
+      if (!act) return null;
+      const r = (n) => seedRnd('mini', m, 10 + n);
+      return { id: `m${m}`, kind: 'mini', k: m, act, start, end: start + ACT_WALK + ACT_LEN[act](r), r };
+    }
+
+    _nearBig(t) {
+      const k = Math.floor(t / ACT_WIN.big);
+      return [k - 1, k, k + 1].some((j) => t > bigStart(j) - ACT_GAP[0] && t < bigStart(j) + ACT_GAP[1]);
+    }
+
+    // Seilspringen, Gewichtheben oder eine Blüte für den Vorrat; nicht zweimal dieselbe hintereinander. Die Kette
+    // beginnt ein paar Fenster vorher, damit jedes Fenster seinen Vorgänger so sieht wie der Nachfolger ihn.
+    _miniAct(m) {
+      const wx = this._wx;
+      const dry = !wx.wet && !wx.storm && !wx.shelter;
+      let act = null;
+      for (let j = m - 4; j <= m; j++) {
+        const prev = act;
+        act = miniHas(j) && !this._nearBig(miniStart(j)) ? weightedR([
+          [dry && !wx.snowcover && prev !== 'rope' ? 1.6 : 0, 'rope'],
+          [dry && prev !== 'weights' ? 1.4 : 0, 'weights'],
+          [!wx.wet && !wx.snowcover && this._hay < HAY_MAX && prev !== 'gather' ? 1.4 : 0, 'gather'],
+        ], seedRnd('mini', j, 2)) : null;
       }
-      if (this._miniOk()) {
-        out.push([dry && !wx.snowcover && this._miniLast !== 'rope' ? 1.6 : 0, 'rope']);
-        out.push([dry && this._miniLast !== 'weights' ? 1.4 : 0, 'weights']);
-      }
-      return out;
+      return act;
+    }
+
+    // Beim Beginn der nächsten Beschäftigung (groß oder klein) die laufende Kleinigkeit abbrechen, damit alle
+    // Geräte gleichzeitig anfangen
+    _slotArm() {
+      const now = this._planNow();
+      const kb = Math.floor(now / ACT_WIN.big);
+      const km = Math.floor(now / ACT_WIN.mini);
+      const next = Math.min(...[bigStart(kb), bigStart(kb + 1), ...[km, km + 1].filter(miniHas).map(miniStart)]
+        .filter((t) => t > now));
+      if (next === this._slotNext && this._slotT) return;
+      this._slotNext = next;
+      clearTimeout(this._slotT);
+      this._slotT = setTimeout(() => {
+        this._slotT = null;
+        if (this._running && ACT_SMALL.includes(this._action) && this._slotNow()) this._interrupt();
+        if (this._running) this._slotArm();
+      }, clamp(next - now + 50, 50, 2 ** 31 - 1));
     }
 
     // Tagesform: aus dem Kalendertag gewürfelt, auf allen Geräten gleich
-    _tagesform() {
-      const d = new Date();
-      const day = Math.floor((d.getTime() - d.getTimezoneOffset() * 6e4) / 864e5);
+    _tagesform(t = Date.now()) {
+      const day = localDay(t);
       if (this._tf?.day === day) return this._tf;
       const pool = [...ACT_MOOD];
       const take = (n) => pool.splice(Math.floor(seedRnd('tag', day, n) * pool.length), 1)[0];
@@ -9383,58 +9713,144 @@
       return this._tf;
     }
 
-    // Die letzten großen Beschäftigungen (neueste zuerst), über Neuladen hinweg je Gerät
-    _actRecent() {
-      if (!this._recent) {
-        try {
-          this._recent = JSON.parse(localStorage.getItem('pika-pet-recent') || '[]');
-        } catch (e) {
-          this._recent = [];
+    // Frühsport im Fenster k (Beginn start)? 10–180 Minuten nach dem Aufwachen, trocken, heute noch nicht – oder
+    // genau in diesem Fenster begonnen. Der Tag steht im Tagesplan, so turnt er auch nach dem Neuladen nur einmal.
+    _sportSlot(k, start) {
+      const sp = this._plan.sport;
+      if (sp && sp.d === localDay(start)) return sp.k === k;
+      const wx = this._wx;
+      if (wx.wet || wx.storm || wx.shelter) return false;
+      const t = new Date(start);
+      const since = (t.getHours() * 60 + t.getMinutes() - this._sleepMinutes(this._cfg.sleep_end, 7 * 60) + 1440) % 1440;
+      return since >= SPORT_WIN[0] && since <= SPORT_WIN[1];
+    }
+
+    // Die nächsten Beschäftigungen aus dem Plan (Vorschau): [{ start, act, kind }]
+    _planPeek(n = 6) {
+      const out = [];
+      let t = this._planNow();
+      for (let i = 0; out.length < n && i < 400; i++, t += 30000) {
+        for (const S of [this._bigAt(t), this._miniAt(t)]) {
+          if (S && !out.some((o) => o.id === S.id) && S.end > this._planNow()) out.push(S);
         }
-        if (!Array.isArray(this._recent)) this._recent = [];
       }
-      return this._recent;
+      return out.sort((a, b) => a.start - b.start);
     }
 
-    _actRemember(name) {
-      this._showBoost = 0;
-      if (!ACT_BIG.includes(name)) return;
-      this._recent = [name, ...this._actRecent().filter((n) => n !== name)].slice(0, ACT_RECENT);
+    // ---------- Tagesplan: Speicher ----------
+
+    // Anderer Helfer oder Name: von vorn. Ohne plan_entity bleibt der Plan im Browser (je Gerät).
+    _planReset() {
+      clearTimeout(this._planT);
+      clearTimeout(this._planFreshT);
+      this._planOps = [];
+      this._planSt = undefined;
+      this._planOk = !this._cfg.plan_entity; // mit Helfer erst schreiben, wenn sein Stand da ist
+      this._planBase = this._planLocal();
+      this._plan = this._planBase;
+      this._hayKey = null;
+      this._hayFromPlan();
+    }
+
+    _planLsKey() {
+      return `pika-pet-plan:${this._cfg.name}`;
+    }
+
+    // Plan aus diesem Browser; beim ersten Mal der Vorrat von früher (bis 0.15 je Gerät gespeichert)
+    _planLocal() {
       try {
-        localStorage.setItem('pika-pet-recent', JSON.stringify(this._recent));
-      } catch (e) { /* privat/gesperrt: dann nur im Speicher */ }
+        const P = planParse(localStorage.getItem(this._planLsKey()));
+        if (P) return P;
+        const h = JSON.parse(localStorage.getItem('pika-pet-card-hay') || 'null');
+        if (h && Number.isFinite(h.n) && Number.isFinite(h.t)) {
+          const pal = this._areal().flowers || FLOWER_COLORS;
+          const c = (Array.isArray(h.b) ? h.b : []).map((b) => Math.max(0, pal.indexOf(b?.color))).join('');
+          return { ...planBlank(), hay: { n: clamp(h.n, 1, HAY_MAX), t: h.t, c, m: 0 } };
+        }
+      } catch (e) { /* kein Speicher: frisch anfangen */ }
+      return planBlank();
     }
 
-    _miniOk() {
+    _hassPlan(hass) {
+      const id = this._cfg.plan_entity;
+      if (!id) return;
+      const st = hass.states[id]?.state;
+      if (st === this._planSt) return;
+      this._planSt = st;
+      const P = planParse(st);
+      if (P) this._planBase = P;
+      if (st === undefined && !this._planWarned) {
+        this._planWarned = true;
+        console.warn(`pika-pet-card: ${id} gibt es nicht, der Tagesplan bleibt auf diesem Gerät`);
+      } else if (!P && st && st !== 'unknown' && st !== 'unavailable') {
+        console.warn(`pika-pet-card: ${id} enthält "${st}", der Tagesplan fängt neu an`);
+      }
+      // unknown/unavailable (Start von HA): abwarten, sonst wäre der gespeicherte Plan überschrieben. Ein neu
+      // angelegter Helfer bleibt aber "unknown": nach 20 s gilt er als leer.
+      clearTimeout(this._planFreshT);
+      if (st !== 'unknown' && st !== 'unavailable') this._planReady();
+      else if (st === 'unknown' && !this._planOk) {
+        this._planFreshT = setTimeout(() => this._planSt === 'unknown' && this._planReady(), 20000);
+      }
+      this._planCompose(true);
+    }
+
+    _planReady() {
+      if (this._planOk) return;
+      this._planOk = true;
+      this._planCompose(true);
+      // Jetzt ist klar, was gerade läuft: gleich einsteigen statt die Kleinigkeit zu Ende zu machen
+      if (this._running && ACT_SMALL.includes(this._action) && this._slotNow()) this._interrupt();
+    }
+
+    // Plan = letzter bekannter Stand + eigene Änderungen der letzten 15 s. Die kommen auch auf einen fremden Stand
+    // noch einmal obendrauf: Schrieben zwei Geräte fast gleichzeitig, geht so keine verloren.
+    _planCompose(incoming) {
       const now = Date.now();
-      this._miniNext ??= now + rnd(1, 3) * 60000;
-      return now >= this._miniNext;
+      this._planOps = this._planOps.filter((o) => now - o.at < 15000);
+      let P = this._planBase;
+      for (const o of this._planOps) P = planApply(P, o, o.at);
+      const changed = planSer(P) !== planSer(this._plan);
+      this._plan = P;
+      this._hayFromPlan();
+      // Fehlt dem fremden Stand etwas von hier: noch einmal schreiben
+      if (incoming && this._planOps.length && planSer(P) !== planSer(this._planBase)) this._planSave();
+      return changed;
     }
 
-    _miniDone() {
-      this._miniNext = Date.now() + rnd(...ACT_TAKT.mini) * 60000;
-      this._miniLast = this._action;
+    _planOp(op) {
+      op.at = Date.now();
+      this._planOps.push(op);
+      if (this._planCompose(false)) this._planSave();
     }
 
-    // Frühsport: 10–180 Minuten nach dem Aufwachen und heute noch nicht
-    _sportDue() {
-      if (this._sleepTime()) return false;
-      const now = new Date();
-      const m = now.getHours() * 60 + now.getMinutes();
-      const since = (m - this._sleepMinutes(this._cfg.sleep_end, 7 * 60) + 1440) % 1440;
-      if (since < SPORT_WIN[0] || since > SPORT_WIN[1]) return false;
-      let last = this._sportDay;
-      try {
-        last = localStorage.getItem('pika-pet-sport') ?? last;
-      } catch (e) { /* nur im Speicher */ }
-      return last !== now.toDateString();
-    }
-
-    _sportMark() {
-      this._sportDay = new Date().toDateString();
-      try {
-        localStorage.setItem('pika-pet-sport', this._sportDay);
-      } catch (e) { /* nur im Speicher */ }
+    _planSave() {
+      clearTimeout(this._planT);
+      this._planT = setTimeout(() => {
+        const id = this._cfg.plan_entity;
+        const ent = id && this._hass?.states[id];
+        const P = this._plan;
+        let v = planSer(P);
+        if (ent) {
+          // Stand aus HA noch nicht da (Start): beim Eintreffen wird zusammengeführt und geschrieben
+          if (!this._planOk) return;
+          // Zu lang für den Helfer (max. Länge zu klein eingestellt): ältere Einträge des Verlaufs weglassen
+          const max = Number(ent.attributes?.max) || 255;
+          for (let n = P.rec.length - 1; v.length > max && n >= 0; n--) v = planSer({ ...P, rec: P.rec.slice(0, n) });
+          if (v !== this._planSt) {
+            this._planSt = v;
+            this._hass.callService('input_text', 'set_value', { entity_id: id, value: v })
+              .catch((e) => console.warn('pika-pet-card: Tagesplan speichern fehlgeschlagen', e));
+          }
+        } else {
+          try {
+            localStorage.setItem(this._planLsKey(), v);
+          } catch (e) { /* privat/gesperrt: dann nur bis zum Neuladen */ }
+        }
+        this._planBase = P;
+        // Sammeln aus der Vorschau (ohne Fenster) lässt sich nicht wiederholen, ohne doppelt zu zählen
+        this._planOps = this._planOps.filter((o) => !(o.t === 'gather' && o.m == null));
+      }, 400);
     }
 
     // Punkt der Pika-Grafik (viewBox 120 × 100) in Szenen-Pixeln, ohne Atmen und Hüpfer
@@ -9448,15 +9864,14 @@
     // Ukulele: wiegt sich, schlägt die Saiten, Noten steigen auf. Singt manchmal mit, verspielt sich, und sitzt ein
     // Vögelchen da, zwitschert es mit. Am Ende eine Verbeugung.
     async _music() {
+      const S = this._slotFor('music');
       const { home, pW } = this._g;
-      await this._walkTo(Math.random() < 0.55 ? this._hobbySpot() : home + pW * 0.75, 0.8);
+      await this._goSpot(S, S.r(2) < 0.55 ? this._hobbySpot(S.r(3)) : home + pW * 0.75);
       this._face(this._x < this._W * 0.5 ? 1 : -1);
       const p = this._el.pika;
       p.classList.add('music');
-      this._hobbyDone();
-      const until = Date.now() + rnd(60000, 110000);
-      while (Date.now() < until) {
-        await this._wait(rnd(700, 1500));
+      while (this._planNow() < S.end) {
+        await this._waitMax(rnd(700, 1500), S.end);
         this._note(pick(['♪', '♫', '♪', '♬']));
         const r = Math.random();
         if (r < 0.13) {
@@ -9487,7 +9902,10 @@
 
     // Staffelei neben sich, das Bild entsteht Schicht für Schicht: Farbe von der Palette holen, tupfen, ab und zu
     // betrachten. Am Ende tritt er zurück und ist stolz (oder nicht ganz zufrieden); das Bild bleibt kurz stehen.
+    // Jede Schicht hat ihr festes Stück des Fensters: Wer später einsteigt, sieht das Bild so weit wie die anderen.
     async _paint() {
+      const S = this._slotFor('paint');
+      const late = this._jumpIn(S);
       const { pW, pH, gy } = this._g;
       const W = this._W;
       const EH = pH;
@@ -9496,14 +9914,17 @@
       // Staffelei auf der Seite mit Platz, nicht über dem Futterknopf (unten rechts)
       const maxR = W - 56 - EW * 0.83 - tip;
       const minL = 4 + tip + EW * 0.83;
-      let x = this._hobbySpot();
-      let dir = Math.random() < 0.5 ? 1 : -1;
+      let x = this._hobbySpot(S.r(2));
+      let dir = S.r(3) < 0.5 ? 1 : -1;
       if (dir > 0 && x > maxR) dir = x >= minL ? -1 : 1;
       if (dir < 0 && x < minL) dir = x <= maxR ? 1 : -1;
       x = dir > 0 ? Math.min(x, maxR) : Math.max(x, minL);
-      await this._walkTo(x, 0.8);
+      await this._goSpot(S, x);
       this._face(dir);
-      const motif = this._paintMotif();
+      // Motiv: Wer das Fenster zuerst malt, trägt es in den Plan ein, die anderen malen dasselbe
+      const own = S.k >= 0 && this._plan.rec.find((e) => e[0] === S.k);
+      const motif = own && EASEL_MOTIF[own[2]] ? own[2] : this._paintMotif(S.r(4), S.r(5));
+      if (S.k >= 0) this._planOp({ t: 'rec', k: S.k, a: 'paint', v: motif });
       const el = document.createElement('div');
       el.className = 'easel';
       const left = dir > 0 ? this._x + tip - EW * 0.17 : this._x - tip - EW * 0.83;
@@ -9518,32 +9939,49 @@
       el.classList.add('on');
       const p = this._el.pika;
       p.classList.add('painting');
-      this._hobbyDone();
-      this._say(pick(['Malzeit!', 'hmm …', 'Ein Bild!']), 1300);
-      await this._wait(900);
+      if (!late) {
+        this._say(pick(['Malzeit!', 'hmm …', 'Ein Bild!']), 1300);
+        await this._wait(900);
+      }
       const layers = [...el.querySelectorAll('.cvl')];
       const fill = (sel) => getComputedStyle(el.querySelector(sel)).fill;
       const colors = [fill('.cv-sky'), fill('.cv-sun'), '#86c46b', EASEL_MOTIF[motif][0], '#ffffff'];
+      const t0 = S.start + ACT_WALK + 1500;
+      const L = (S.end - t0) / layers.length;
       for (let i = 0; i < layers.length; i++) {
+        const lEnd = t0 + (i + 1) * L;
+        if (this._planNow() >= lEnd - 600) {
+          layers[i].style.opacity = '1'; // schon gemalt
+          continue;
+        }
         p.classList.add('mix');
         p.style.setProperty('--pc', colors[i]);
-        await this._wait(rnd(700, 1200));
+        await this._wait(900);
         p.classList.remove('mix');
-        const n = 3 + Math.floor(rnd(0, 4));
+        const n = 3 + Math.floor(S.r(10 + i) * 4);
+        const look = i < layers.length - 1 && S.r(20 + i) < 0.45;
+        const d0 = t0 + i * L + 900;
+        const d1 = lEnd - (look ? 2600 : 300);
         for (let k = 1; k <= n; k++) {
-          await this._wait(rnd(350, 800));
+          const tk = d0 + ((d1 - d0) * k) / n - 220;
+          if (this._planNow() > tk + 800) {
+            layers[i].style.opacity = (k / n).toFixed(2);
+            continue;
+          }
+          await this._at(tk);
           p.classList.add('dab');
           await this._wait(220);
           p.classList.remove('dab');
           layers[i].style.opacity = (k / n).toFixed(2);
         }
-        if (i < layers.length - 1 && Math.random() < 0.45) {
+        if (look) {
           await this._wait(400);
           p.classList.add('look-f');
-          if (Math.random() < 0.5) this._say(pick(['hmm …', 'schön!', 'noch etwas …']), 1200);
-          await this._wait(rnd(1200, 2200));
+          if (S.r(30 + i) < 0.5) this._say(pick(['hmm …', 'schön!', 'noch etwas …']), 1200);
+          await this._at(lEnd);
           p.classList.remove('look-f');
         }
+        await this._at(lEnd);
       }
       p.classList.remove('painting');
       // zurücktreten und anschauen
@@ -9551,7 +9989,7 @@
       this._face(dir);
       p.classList.add('look-f');
       await this._wait(900);
-      if (Math.random() < 0.75) {
+      if (S.r(6) < 0.75) {
         this._happy(1400);
         this._say(pick(['Fertig!', 'Kunst!', 'Meisterwerk!', '♥']), 1500);
         this._jump('hop1');
@@ -9561,18 +9999,19 @@
         await this._wait(1500);
         p.classList.remove('meh');
       }
-      await this._wait(rnd(5000, 9000));
+      await this._wait(5000 + S.r(7) * 4000);
       p.classList.remove('look-f');
       this._easelAway();
       await this._wait(600);
     }
 
-    // Motiv: Blume, Selbstbildnis, Bau, Regenbogen; Pino, wenn er da ist (sonst selten); Flieger, wenn einer fliegt
-    _paintMotif() {
+    // Motiv aus festen Zahlen u, u2: Blume, Selbstbildnis, Bau, Regenbogen; Pino, wenn er da ist (sonst selten);
+    // Flieger, wenn einer fliegt
+    _paintMotif(u, u2) {
       const m = ['blume', 'pika', 'bau', 'regenbogen'];
-      if (this._fr || Math.random() < 0.15) m.push('pino');
+      if (this._fr || u2 < 0.15) m.push('pino');
       if ([...this._planes.values()].some((pl) => pl.show && !pl.gone)) m.push('flieger', 'flieger');
-      return pick(m);
+      return m[Math.floor(u * m.length)];
     }
 
     _easelAway() {
@@ -9588,14 +10027,13 @@
     // Pustet durch den Ring, die Blasen treiben mit dem Wind, schillern und platzen. Ab und zu springt er einer
     // hinterher. Antippen bringt eine Blase zum Platzen.
     async _bubbles() {
-      await this._walkTo(this._hobbySpot(), 0.8);
-      this._face(this._windDir || pick([-1, 1]));
+      const S = this._slotFor('bubbles');
+      await this._goSpot(S, this._hobbySpot(S.r(2)));
+      this._face(this._windDir || (S.r(3) < 0.5 ? -1 : 1));
       const p = this._el.pika;
       p.classList.add('blowing');
-      this._hobbyDone();
-      const until = Date.now() + rnd(45000, 80000);
-      while (Date.now() < until && (this._forced || (!this._wx.wet && (this._wind || 0) < 40))) {
-        await this._wait(rnd(1200, 2600));
+      while (this._planNow() < S.end && (this._forced || (!this._wx.wet && (this._wind || 0) < 40))) {
+        await this._waitMax(rnd(1200, 2600), S.end);
         p.classList.add('blow');
         await this._wait(450);
         const n = 1 + Math.floor(rnd(0, 4));
@@ -9669,61 +10107,51 @@
     // ---------- Frühsport ----------
 
     // Mit Stirnband: drei oder vier Übungen (Hampelmann, Kniebeugen, Laufen auf der Stelle, Strecken), er zählt mit,
-    // schwitzt und ist am Ende stolz. Einmal am Morgen.
+    // schwitzt und ist am Ende stolz. Einmal am Morgen. Ablauf und Takt aus sportPlan: Alle Geräte zählen gleich.
     async _sport() {
-      await this._walkTo(this._hobbySpot(), 0.9);
-      this._face(pick([-1, 1]));
+      const S = this._slotFor('sport');
+      const plan = sportPlan(S.r);
+      const late = this._jumpIn(S);
+      await this._goSpot(S, this._hobbySpot(S.r(2)), 0.9);
+      this._face(S.r(3) < 0.5 ? -1 : 1);
       const p = this._el.pika;
       p.classList.add('sport');
-      this._hobbyDone();
-      this._sportMark();
-      this._say(pick(['Frühsport!', 'Auf geht’s!', 'Fit bleiben!']), 1500);
-      await this._wait(1700);
-      const all = ['jjack', 'knee', 'jog', 'stretch'];
-      for (let i = all.length - 1; i > 0; i--) {
-        const j = Math.floor(Math.random() * (i + 1));
-        [all[i], all[j]] = [all[j], all[i]];
-      }
-      for (const ex of all.slice(0, Math.random() < 0.4 ? 4 : 3)) {
-        if (ex === 'jjack') {
-          const jj = rnd(0.62, 0.8);
-          p.style.setProperty('--jj', `${jj.toFixed(2)}s`);
-          p.classList.add('jjack');
-          const reps = 10 + Math.floor(rnd(0, 7));
-          for (let i = 1; i <= reps; i++) {
-            await this._wait(jj * 1000);
-            this._say(`${i}!`, jj * 800);
+      if (!late) this._say(pick(['Frühsport!', 'Auf geht’s!', 'Fit bleiben!']), 1500);
+      await this._at(S.start + ACT_WALK + SPORT_INTRO);
+      for (const seg of plan.segs) {
+        const t0 = S.start + seg.t;
+        const t1 = t0 + seg.len;
+        if (this._planNow() >= t1 + SPORT_PAUSE - 500) continue; // diese Übung ist schon vorbei
+        if (this._planNow() < t1) {
+          if (seg.ex === 'jjack' || seg.ex === 'knee') {
+            if (seg.ex === 'jjack') p.style.setProperty('--jj', `${(seg.rep / 1000).toFixed(2)}s`);
+            p.classList.add(seg.ex);
+            for (let i = Math.max(1, Math.ceil((this._planNow() - t0) / seg.rep)); i <= seg.reps; i++) {
+              await this._at(t0 + i * seg.rep);
+              this._say(`${i}!`, seg.ex === 'jjack' ? seg.rep * 0.8 : 800);
+            }
+            p.classList.remove(seg.ex);
+          } else if (seg.ex === 'jog') {
+            p.classList.add('walking');
+            while (this._planNow() < t1) {
+              await this._waitMax(rnd(1200, 2000), t1);
+              if (Math.random() < 0.5) this._face(-this._dir);
+            }
+            p.classList.remove('walking');
+          } else {
+            for (let i = 0; i < 2; i++) {
+              p.classList.add('stretch');
+              await this._wait(1300);
+              p.classList.remove('stretch');
+              await this._wait(300);
+            }
+            this._say('aaah!', 1000);
           }
-          p.classList.remove('jjack');
-        } else if (ex === 'knee') {
-          p.classList.add('knee');
-          const reps = 6 + Math.floor(rnd(0, 5));
-          for (let i = 1; i <= reps; i++) {
-            await this._wait(1400);
-            this._say(`${i}!`, 800);
-          }
-          p.classList.remove('knee');
-        } else if (ex === 'jog') {
-          p.classList.add('walking');
-          const end = Date.now() + rnd(8000, 12000);
-          while (Date.now() < end) {
-            await this._wait(rnd(1200, 2000));
-            if (Math.random() < 0.5) this._face(-this._dir);
-          }
-          p.classList.remove('walking');
-        } else {
-          for (let i = 0; i < 2; i++) {
-            p.classList.add('stretch');
-            await this._wait(1300);
-            p.classList.remove('stretch');
-            await this._wait(300);
-          }
-          this._say('aaah!', 1000);
         }
         await this._wait(500);
         this._sweat();
         if (Math.random() < 0.6) this._say(pick(['puh!', 'uff', 'weiter!', 'hechel']), 900);
-        await this._wait(rnd(900, 1600));
+        await this._at(t1 + SPORT_PAUSE);
       }
       // Schweiß abwischen, stolz
       p.classList.add('groom');
@@ -9756,12 +10184,13 @@
 
     // Zählt mit, wird manchmal schneller oder springt doppelt durch; verheddert er sich, ist Schluss. Seil und
     // Sprung laufen über dieselbe Dauer --rp; bei jedem Wechsel starten beide neu (das Seil ist dann gerade oben).
+    // Wie viele Sprünge, ob schneller, doppelt oder verheddert, steht mit dem Fenster fest.
     async _rope() {
-      await this._walkTo(this._hobbySpot(), 0.9);
-      this._face(pick([-1, 1]));
-      this._miniDone();
+      const S = this._slotFor('rope');
+      await this._goSpot(S, this._hobbySpot(S.r(2)), 0.9);
+      this._face(S.r(3) < 0.5 ? -1 : 1);
       const p = this._el.pika;
-      let rp = rnd(0.62, 0.72);
+      let rp = 0.62 + S.r(4) * 0.1;
       const go = (dbl) => {
         p.classList.remove('roping', 'rdbl');
         p.style.setProperty('--rp', `${rp.toFixed(3)}s`);
@@ -9772,19 +10201,19 @@
       p.classList.add('rope-hold');
       await this._wait(600);
       go(false);
-      const total = 12 + Math.floor(rnd(0, 18));
-      const trip = Math.random() < 0.3 ? 6 + Math.floor(rnd(0, total - 6)) : -1;
+      const total = ropeJumps(S.r);
+      const trip = S.r(6) < 0.3 ? 6 + Math.floor(S.r(7) * (total - 6)) : -1;
       let i = 0;
       while (i < total) {
         await this._wait(rp * 1000);
         i++;
         if (i === trip) break;
         if (i % 2 === 0 || i > total - 3) this._say(`${i}!`, Math.min(900, rp * 1600));
-        if (i === 8 && Math.random() < 0.5) {
+        if (i === 8 && S.r(8) < 0.5) {
           rp *= 0.8;
           go(false);
           this._say('schneller!', 900);
-        } else if (i === 14 && Math.random() < 0.45) {
+        } else if (i === 14 && S.r(9) < 0.45) {
           go(true);
           this._say('doppelt!', 1000);
           await this._wait(rp * 2000);
@@ -9800,7 +10229,7 @@
         p.classList.remove('meh');
       } else {
         this._happy(1200);
-        this._say(Math.random() < 0.3 ? 'Rekord!' : `${i}! ♥`, 1400);
+        this._say(S.r(11) < 0.3 ? 'Rekord!' : `${i}! ♥`, 1400);
         await this._wait(1300);
       }
       p.classList.remove('rope-hold');
@@ -9810,15 +10239,15 @@
     // ---------- Gewichtheben ----------
 
     // Pusteblumen-Hantel: in die Hocke, „hnnngh!“, über den Kopf, zittern. Meist klappt es (stolz), manchmal
-    // plumpst sie herunter. Oben fliegen gern ein paar Schirmchen davon.
+    // plumpst sie herunter. Oben fliegen gern ein paar Schirmchen davon. Wiederholungen und Ausgang stehen fest.
     async _weights() {
-      await this._walkTo(this._hobbySpot(), 0.9);
-      this._face(pick([-1, 1]));
-      this._miniDone();
+      const S = this._slotFor('weights');
+      await this._goSpot(S, this._hobbySpot(S.r(2)), 0.9);
+      this._face(S.r(3) < 0.5 ? -1 : 1);
       const p = this._el.pika;
       p.classList.add('lifting', 'lift-gnd');
       await this._wait(600);
-      const reps = 1 + Math.floor(rnd(0, 3));
+      const reps = 1 + Math.floor(S.r(1) * 3);
       for (let r = 0; r < reps; r++) {
         p.classList.add('crouch');
         this._say(pick(['hnnn …', 'konzentrieren …', 'auf drei …']), 1100);
@@ -9830,7 +10259,7 @@
         this._say('hnnngh!', 1200);
         await this._wait(rnd(500, 1000));
         p.classList.add('lift-hi');
-        if (Math.random() < 0.22) {
+        if (S.r(10 + r) < 0.22) {
           // zu schwer: plumps
           await this._wait(450);
           p.classList.remove('lift-hi', 'strain');
@@ -9842,7 +10271,7 @@
           continue;
         }
         await this._wait(900);
-        if (Math.random() < 0.5) this._seeds();
+        if (S.r(20 + r) < 0.5) this._seeds();
         await this._wait(rnd(1200, 2200));
         p.classList.remove('strain');
         this._say(pick(['Ta-da!', 'Stark!', 'Muskeln!']), 1300);

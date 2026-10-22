@@ -174,7 +174,7 @@
   <button data-cf="hot_water">Heißwasser (Tee)</button>
   <button data-cf="warm_milk">warme Milch</button>
   <button id="cf-fast">Bezug sofort fertig</button>
-  <button id="cf-reload">Neuladen: vor 3 Min fertig</button>
+  <button id="cf-reload">Neuladen: vor 30 s fertig</button>
   <button id="cf-restart">HA-Neustart (kein Bezug)</button>
 </div>
 <!-- ==================== Ende Kaffee ==================== -->
@@ -188,7 +188,10 @@
   <button data-act="rope">Seilspringen</button>
   <button data-act="weights">Gewichtheben</button>
   <button id="act-show">Bildschirm an (Begrüßung)</button>
-  <button id="act-mood">Tagesform + Takt anzeigen</button>
+  <button id="act-mood">Tagesform + Plan anzeigen</button>
+  <button id="act-big">Uhr vor: nächste große</button>
+  <button id="act-mini">Uhr vor: nächste kleine</button>
+  <button id="act-reload">rechte Karte neu laden</button>
 </div>
 <!-- ==================== Ende Aktivitäten ==================== -->
 
@@ -213,13 +216,15 @@
     },
     // leer wie ein frisch angelegter Helfer (bei "unknown" wartet die Karte 20 s, ob es nur der Start von HA ist)
     'input_text.pika_status': { state: '', attributes: {} },
+    // Tagesplan (Vorrat, Frühsport, Verlauf der Beschäftigungen), beide Karten teilen ihn wie zwei Geräte
+    'input_text.pika_plan': { state: '', attributes: { max: 255 } },
   };
   const cards = [document.getElementById('a'), document.getElementById('b')];
   const hass = {
     states,
     config: { latitude: 50.06, longitude: 8.69 },
     callService(domain, service, data) {
-      states[data.entity_id] = { state: data.value, attributes: {} };
+      states[data.entity_id] = { state: data.value, attributes: states[data.entity_id]?.attributes || {} };
       log(`${domain}.${service} → ${data.value}`);
       setTimeout(push, 50);
       return Promise.resolve();
@@ -229,7 +234,7 @@
     hass.states = { ...states };
     cards.forEach((c) => (c.hass = hass));
   }
-  cards.forEach((c) => c.setConfig({ name: 'Pika', entity: 'input_text.pika_status' }));
+  cards.forEach((c) => c.setConfig({ name: 'Pika', entity: 'input_text.pika_status', plan_entity: 'input_text.pika_plan' }));
   push();
 
   document.querySelectorAll('[data-sun]').forEach((b) =>
@@ -468,7 +473,7 @@
             c._dbgSleep = sleep;
           }
           if (k === 'geburtstag') {
-            c.setConfig({ name: 'Pika', entity: 'input_text.pika_status', appliances: c._cfg?.appliances, coffee: c._cfg?.coffee, birthdays: [{ name: 'Mia', date: `${pad(today.getMonth() + 1)}-${pad(today.getDate())}` }] });
+            c.setConfig({ name: 'Pika', entity: 'input_text.pika_status', plan_entity: 'input_text.pika_plan', appliances: c._cfg?.appliances, coffee: c._cfg?.coffee, birthdays: [{ name: 'Mia', date: `${pad(today.getMonth() + 1)}-${pad(today.getDate())}` }] });
           }
           if (k === 'mitternacht') c._festMidY = null; // Finale und Aufwachen bei jedem Klick
           c._tick(); // ruft auch c._tickFest()
@@ -530,7 +535,7 @@
     hbSet(d.end, 'unavailable', {}, 180);
     if (d.door) hbSet(d.door, 'closed', {}, 180);
   }
-  cards.forEach((c) => c.setConfig({ name: 'Pika', entity: 'input_text.pika_status', appliances: Object.values(HB) }));
+  cards.forEach((c) => c.setConfig({ name: 'Pika', entity: 'input_text.pika_status', plan_entity: 'input_text.pika_plan', appliances: Object.values(HB) }));
   push();
   const HB_ACT = { washer: 'boteStir', dryer: 'boteWatchDrum', dishwasher: 'boteDip' };
   const hbIdle = (d, st) => {
@@ -611,11 +616,11 @@
   hbSet(CF.active, 'unknown', {}, 300);
   hbSet(CF.counter, String(cfCups), { unit_of_measurement: 'cups' }, 300);
   hbSet(CF.selected, CF_P('latte_macchiato'), {}, 300);
-  cards.forEach((c) => c.setConfig({ name: 'Pika', entity: 'input_text.pika_status', appliances: c._cfg?.appliances, coffee: CF }));
+  cards.forEach((c) => c.setConfig({ name: 'Pika', entity: 'input_text.pika_status', plan_entity: 'input_text.pika_plan', appliances: c._cfg?.appliances, coffee: CF }));
   push();
+  // wie frisch geladen: Kaffee vergessen, Schleife gilt als eben gestartet (Einstieg ohne Hinlaufen)
   const cfReset = () => {
-    try { localStorage.removeItem('pika-pet-coffee'); } catch {}
-    cards.forEach((c) => { c._cof = null; c._cofA = c._cofN = c._cofS = undefined; });
+    cards.forEach((c) => { c._cof = null; c._cofA = c._cofN = c._cofS = undefined; c._loopAt = Date.now(); });
   };
   const cfStart = (drink, agoMin = 0) => {
     clearTimeout(cfT);
@@ -641,13 +646,13 @@
     push();
     log('Kaffee: fertig');
   });
-  // Karte neu geladen: Bezug lief vor 5 Min., fertig vor 3 Min.; was schon getrunken ist, vergessen
+  // Karte neu geladen: Bezug lief vor 2 Min., fertig vor 30 s – er steigt mitten im Trinken ein
   document.getElementById('cf-reload').addEventListener('click', () => {
     cfReset();
-    cfStart(cfDrink(), 5);
-    cfEnd(3);
+    cfStart(cfDrink(), 2);
+    cfEnd(0.5);
     push();
-    log('Kaffee: Neuladen, Bezug vor 3 Min fertig');
+    log('Kaffee: Neuladen, Bezug vor 30 s fertig');
   });
   // Neustart: alle last_changed gleichzeitig jetzt – darf nicht als Bezug zählen
   document.getElementById('cf-restart').addEventListener('click', () => {
@@ -664,12 +669,38 @@
     b.addEventListener('click', () => cards.forEach((c) => { c._next = b.dataset.act; c._interrupt(); }))
   );
   document.getElementById('act-show').addEventListener('click', () => cards.forEach((c) => { c._showAt = 0; c._showReq(); }));
-  document.getElementById('act-mood').addEventListener('click', () => {
+  const planLog = () => {
     const c = cards[0];
-    const tf = c._tagesform();
-    const min = (t) => (t == null ? '–' : t <= Date.now() ? 'jetzt' : `in ${Math.round((t - Date.now()) / 6e4)} Min`);
-    log(`Tagesform: Lieblinge ${tf.fav.join(', ')}, keine Lust auf ${tf.meh} · zuletzt ${c._actRecent().join(', ') || '–'} · `
-      + `groß ${min(c._hobbyNext)}, klein ${min(c._miniNext)} · Frühsport fällig: ${c._sportDue() ? 'ja' : 'nein'}`);
+    const tf = c._tagesform(c._planNow());
+    const now = c._planNow();
+    const when = (S) => (S.start <= now ? 'läuft' : `in ${Math.round((S.start - now) / 1000)} s`);
+    log(`Tagesform: Lieblinge ${tf.fav.join(', ')}, keine Lust auf ${tf.meh} · Plan: `
+      + c._planPeek(5).map((S) => `${S.act} (${S.kind}, ${when(S)})`).join(', ')
+      + ` · Helfer: ${states['input_text.pika_plan'].state || '–'}`);
+  };
+  document.getElementById('act-mood').addEventListener('click', planLog);
+  // Plan-Uhr beider Karten 3 s vor den Beginn der nächsten großen bzw. kleinen Beschäftigung stellen
+  const planJump = (kind) => {
+    const c = cards[0];
+    const S = c._planPeek(12).find((o) => o.kind === kind && o.start > c._planNow());
+    if (!S) return log(`keine ${kind === 'big' ? 'große' : 'kleine'} in Sicht (Wetter?)`);
+    const d = S.start - 3000 - c._planNow();
+    cards.forEach((k) => { k._dbgPlanMs = (k._dbgPlanMs || 0) + d; k._slotNext = null; k._slotArm(); });
+    planLog();
+  };
+  document.getElementById('act-big').addEventListener('click', () => planJump('big'));
+  document.getElementById('act-mini').addEventListener('click', () => planJump('mini'));
+  // Wie ein Neuladen der Seite auf dem zweiten Gerät: neue Karte, gleicher Helfer, gleiche Plan-Uhr
+  document.getElementById('act-reload').addEventListener('click', () => {
+    const old = cards[1];
+    const nb = document.createElement('pika-pet-card');
+    nb.id = 'b';
+    nb.setConfig(old._cfg);
+    for (const k of ['_dbgPlanMs', '_dbgShiftMs', '_dbgShift', '_dbgSleep', '_dbgElev', '_dbgAz', '_dbgDate']) nb[k] = old[k];
+    old.replaceWith(nb);
+    cards[1] = nb;
+    nb.hass = hass;
+    log('rechte Karte neu geladen');
   });
   // ==================== Ende Aktivitäten ====================
 </script>
