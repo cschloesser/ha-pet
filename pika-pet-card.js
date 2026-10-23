@@ -47,7 +47,7 @@
  * werden aus Datum und Standort (hass.config) berechnet.
  */
 (() => {
-  const VERSION = '0.17.0';
+  const VERSION = '0.17.1';
 
   const DEFAULTS = {
     name: 'Pika',
@@ -2042,11 +2042,12 @@
   const COFFEE_FOAM = new Set(['latte', 'milk', 'capp']);
   const coffeeName = (prog, kind) => (/cappuccino/.test(prog) ? 'Cappuccino!' : /flat_white/.test(prog) ? 'Flat White!'
     : { latte: 'Latte!', milk: 'Milch!', esp: 'Espresso!', tea: 'Tee!' }[kind] || 'Kaffee!');
-  // Zeitleiste ab Bezugsende (auf allen Geräten dieselbe): so lange dauert das Holen, danach ein Schluck alle
-  // COFFEE_SIP ms (fest je Bezug). Wer später einsteigt (Neuladen), steht gleich mit dem halb leeren Gefäß da;
-  // ist es auf den anderen Geräten schon ausgetrunken, gibt es nichts mehr.
+  // Zeitleiste ab Bezugsende (auf allen Geräten dieselbe): so lange dauert das Holen, danach genießt er das Getränk
+  // COFFEE_DRINK ms lang (× 0,85–1,15 fest je Bezug), die Schlucke gleichmäßig verteilt. So lange, damit man ihn
+  // noch trinken sieht, wenn man mit der Tasse vom Automaten zum Tablet kommt. Wer später einsteigt (Neuladen,
+  // Bildschirm an), steht gleich mit dem passend leeren Gefäß da; ist es überall ausgetrunken, gibt es nichts mehr.
   const COFFEE_FETCH = 13000;
-  const COFFEE_SIP = [4200, 6600];
+  const COFFEE_DRINK = { latte: 240000, milk: 180000, capp: 210000, esp: 120000, mug: 210000, tea: 240000 };
   const COFFEE_CLS = [...new Set([...Object.values(COFFEE_CUP), ...Object.keys(COFFEE_CUP)])].map((k) => `ck-${k}`);
   // Denkblase beim Schnuppern: Tasse mit Dampf
   const COFFEE_THINK = `<svg viewBox="0 0 24 24" aria-hidden="true">
@@ -7449,7 +7450,7 @@
     // Kann er das neue Häufchen live machen? Nur wenn er draußen ist und nichts Wichtigeres tut.
     _canPoopLive() {
       return this._running && !this._asleep && !this._inside && !this._wx.shelter && !this._next
-        && !['eatFood', 'goSleep', 'wakeUp', 'poop'].includes(this._action);
+        && !['eatFood', 'goSleep', 'wakeUp', 'poop', 'coffee'].includes(this._action);
     }
 
     // Häufchen-Elemente an den berechneten Zustand angleichen
@@ -9471,7 +9472,7 @@
     //   Bezug, auch nach dem Neuladen. Ein Neustart von HA ändert alles zugleich und zählt deshalb nicht.
     // - selected: ausgewähltes Programm. Daraus kommt die Getränkeart, wenn die Karte den Bezug nicht live sah.
     // Gleich danach holt er sich dasselbe Getränk aus dem Bau und trinkt es (Schlaf unterbricht er dafür), nach einer
-    // festen Zeitleiste ab Bezugsende (COFFEE_FETCH, COFFEE_SIP): Alle Geräte trinken im selben Takt, ein neu
+    // festen Zeitleiste ab Bezugsende (COFFEE_FETCH, COFFEE_DRINK): Alle Geräte trinken im selben Takt, ein neu
     // geladenes steigt mit dem passend leeren Gefäß ein. Gemerkt wird dafür nichts.
 
     _hassCoffee(hass) {
@@ -9516,7 +9517,7 @@
       const p = brew?.prog || String(sel?.state || '').toLowerCase();
       const kind = coffeeKind(p);
       const r = (i) => seedRnd('coffee', key, i);
-      const sip = COFFEE_SIP[0] + r(0) * (COFFEE_SIP[1] - COFFEE_SIP[0]);
+      const sip = (COFFEE_DRINK[kind] * (0.85 + r(0) * 0.3)) / COFFEE_SIPS[kind];
       const P = {
         key, kind, name: coffeeName(p, kind), t0: end, sip, end: end + COFFEE_FETCH + COFFEE_SIPS[kind] * sip,
         rockR: r(1), faceR: r(2), stage: 'fetch', lv: 1, j: 0,
@@ -9671,9 +9672,27 @@
         P.stage = 'drink';
         await this._wait(800);
       }
-      // Schluck j zur festen Zeit t0 + COFFEE_FETCH + j · sip; wer hinterherhängt, holt mit kurzen Pausen auf
+      // Schluck j zur festen Zeit t0 + COFFEE_FETCH + j · sip. Hängt er mehr als einen Schluck hinterher (aufgewacht,
+      // Bildschirm erst später an), ist das Gefäß gleich so leer wie auf den anderen Geräten, statt hastig aufzuholen.
+      const sipAt = () => P.t0 + COFFEE_FETCH + P.j * P.sip;
       while (P.lv > 0.01) {
-        await this._wait(Math.max(300, P.t0 + COFFEE_FETCH + P.j * P.sip - Date.now()));
+        const due = Math.floor((Date.now() - P.t0 - COFFEE_FETCH) / P.sip) + 1; // nächster Schluck nach Plan
+        if (due > P.j + 1) {
+          P.j = Math.min(due, sips - 1);
+          P.lv = 1 - P.j / sips;
+          P.foam = COFFEE_FOAM.has(P.kind);
+          p.classList.toggle('foam', P.foam);
+          setLv();
+        }
+        // Zwischen den Schlucken: Gefäß in den Pfoten, genießen, umschauen
+        while (sipAt() - Date.now() > 9000) {
+          await this._wait(rnd(5000, 8000));
+          const r = Math.random();
+          if (r < 0.3) this._twitch();
+          else if (r < 0.5 && !night) this._face(-this._dir);
+          else if (r < 0.62) this._say(night ? pick(['*gähn*', 'mmh…']) : P.lv > 0.45 ? pick(['pust…', 'mmh…']) : pick(['mmh…', 'ahh…', '♥']), 1100);
+        }
+        await this._wait(Math.max(300, sipAt() - Date.now()));
         p.classList.add('sip');
         await this._wait(1400);
         const first = P.j === 0;
