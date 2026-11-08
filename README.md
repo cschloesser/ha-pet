@@ -2,13 +2,46 @@
 
 Ein kleiner Pika (Pfeifhase) wohnt in deinem Home-Assistant-Dashboard.
 
-- **Antippen** → streicheln: Herzchen, Freudensprung, Glück steigt
-- **Löwenzahn-Knopf** → füttern: Futter fällt herunter, er hoppelt hin und frisst
+- **Antippen** → streicheln: Herzchen, rote Bäckchen, Glück steigt. Je nach Stelle reagiert er anders (siehe [Streicheln](#streicheln))
+- **Löwenzahn-Knopf** → füttern: Futter fällt herunter, er bekommt Sternchenaugen, hoppelt hin, frisst und leckt sich das Mäulchen
 - **Tagsüber** schaut er sich um, hoppelt herum, knabbert Blumen, trägt Blüten zu seinem Vorrat (beim Erdhügel in eine Nische im Hügel, sonst auf den Heuhaufen), putzt sich und piepst ab und zu
 - **Bau**: Ab und zu verschwindet er in seinem Bau und schaut ein paarmal heraus, bevor er wieder rauskommt
 - **Aussichtsstein**: Wie echte Pikas springt er auf den Stein mit Geröll, richtet sich auf und pfeift
 - **Nachts** (Standard: Sonnenuntergang bis Sonnenaufgang) schläft er mit Zipfelmütze im Eingang seines Baus
 - **Hunger und Glück** sinken langsam. Hat er Hunger, denkt er an Löwenzahn und lässt die Ohren hängen
+
+## Streicheln
+
+Tippt man ihn an, während er nur herumsitzt, hoppelt oder sich umschaut, reagiert er auf die Stelle. Ist er gerade beschäftigt (Buch, Musik, Futter …), gibt es Herzchen und einen Hüpfer, ohne dass er aufhört.
+
+- **Kopf**: Er lehnt sich in die Hand, Augen zu, Ohren angelegt, zufriedenes ω-Mäulchen.
+- **Nase**: *boop!* Er schielt auf seine Nase, manchmal muss er niesen.
+- **Ohr**: Das Ohr flappt nach, er kichert.
+- **Bauch**: Er kichert und kippt manchmal kurz auf den Rücken.
+- **Rücken und Po**: Freudensprung wie gehabt.
+- **Mehrmals hintereinander** (innerhalb von 6 Sekunden): beim 5. Mal eine Pirouette mit Funkeln, ab dem 8. Mal schmilzt er zum runden Fellknäuel. Beim 11. Mal ist es ihm zu viel: „hmpf!“, er dreht sich mit Grummelwolke weg, linst dann doch zurück („…na gut“).
+- **Lang drücken** = kraulen: Augen zu, Ohren angelegt, „prrr…“, ein Hinterbein klopft. Solange der Finger liegt (höchstens 20 s), gibt es Herzchen und Glück.
+- **Waagerecht über ihn wischen** = übers Fell streichen: Es plustert sich auf und legt sich wieder.
+- **Anhänglich**: Wurde er heute schon zehnmal gestreichelt (mit `plan_entity` auf allen Geräten zusammengezählt, sonst je Gerät; der Tag wechselt um 4 Uhr nachts), hoppelt er oft hin, wenn man auf die Wiese tippt, und legt den Kopf schief.
+- **Geschenk**: Ab und zu (höchstens alle 90 Minuten, wenn er glücklich ist) pflückt er eine Blume und legt sie mit Schleife vorn ins Gras: „für dich!“. Antippen nimmt sie an (Herzchen, Glück steigt). Nimmt sie keiner, welkt sie nach 12 Minuten.
+
+## Mimik und kleine Momente
+
+Zwischen den Beschäftigungen hat er kleine Eigenheiten. Jedes Gerät würfelt sie selbst, wie das Umschauen und Herumhoppeln.
+
+- **Mimik**: Die Nase wackelt ab und zu, die Schnurrhaare zittern mit. Beim Streicheln werden die Bäckchen rot, ist er glücklich, sitzt er manchmal mit ω-Mäulchen da. Satt, glücklich und sauber atmet er ruhiger, nach dem Herumflitzen schneller.
+- **Kopf schief** mit Fragezeichen, manchmal erst links, dann rechts. Auch wenn ein Vögelchen zurückzwitschert, die Maus schnuppert, ein Flugzeug brummt oder man auf die Wiese tippt.
+- **Gähnen** mit großem Mäulchen, danach Schmatzen. Mittags und abends öfter.
+- **Niesen**: „ha… haa… hatschi!“, danach schüttelt er die Ohren. Im Frühling öfter (Blütenstaub tanzt vor der Nase), bei Kälte auch.
+- **Ohr putzen**: Er zieht das vordere Ohr mit beiden Pfoten übers Gesicht und putzt es.
+- **Kratzen** mit der Hinterpfote hinterm Ohr.
+- **Schluckauf** nach hastigem Fressen: „hicks!“ mit Hüpfer, bis er „…weg!“ ist.
+- **Einnicken** am Nachmittag: Der Kopf sinkt, er schreckt hoch, schaut sich ertappt um („hab nicht geschlafen!“). Streicheln weckt ihn.
+- **Schmetterling** (April bis September, trocken, hell, wenig Wind): Er flattert heran und landet auf der Nase. Der Pika schielt und hält still, dann niest er ihn weg oder hopst ihm hinterher.
+- **Zoomies**: Ist er sehr glücklich, flitzt er ein paarmal mit großen Hopsern quer über die Wiese und hechelt danach.
+- **Gangart**: Kurze Wege trippelt er, eilig macht er große Hopser. Beim Landen wippt er nach, die Ohren schwingen nach. Selten stolpert er beim Herumhoppeln („hoppla!“).
+- **Wiedersehen**: War die Karte über 3 Stunden nicht zu sehen (Tab im Hintergrund, Bildschirm aus), hoppelt er nach vorn, winkt mit Sternchenaugen („Du warst lange weg!“) und macht Freudensprünge.
+- **Träume**: Im Schlaf erscheint ab und zu eine bläuliche Traumblase. Was er am Tag erlebt hat, träumt er öfter: Pino, Kaffee, ein Flugzeug, ein Vögelchen, Musik, der Schmetterling, Löwenzahn oder Klee vom Füttern, ein Herz, wenn er viel gestreichelt wurde. Dazu zuckt er im Schlaf, schmatzt oder murmelt („mip…“, „Pino…“). Was er erlebt hat, steht mit `plan_entity` im Helfer: Kam Pino, während der Bildschirm aus war, träumt das Tablet trotzdem von ihm, sobald ein anderes Gerät den Besuch gezeigt hat. Ohne Helfer merkt sich jedes Gerät nur, was es selbst gezeigt hat. Wann und was er träumt, würfelt jedes Gerät selbst.
 
 ## Häufchen und Sauberkeit
 
@@ -206,7 +239,7 @@ In `preview.html` stellen die Festtage-Knöpfe die Uhr der Karte auf den jeweili
 2. *Pika Pet Card* herunterladen; die Ressource wird automatisch eingetragen
 3. Optional einen Text-Helfer anlegen, damit der Pika auf allen Geräten denselben Zustand hat:
    *Einstellungen → Geräte & Dienste → Helfer → Text*, z. B. `input_text.pika_status` (max. Länge 100). Ein neuer Helfer bekommt nach etwa 20 s Startwerte, ein leerer sofort; ist er `unavailable`, wird nichts überschrieben. Fehlt die Entity, spielt die Karte lokal weiter (Hinweis in der Browser-Konsole).
-4. Optional einen zweiten Text-Helfer für den Tagesplan (Vorrat, Frühsport, Verlauf der Beschäftigungen), z. B. `input_text.pika_plan` mit **max. Länge 255**, als `plan_entity` eintragen. Ohne ihn laufen die Beschäftigungen trotzdem auf allen Geräten gleichzeitig, nur Vorrat, Frühsport und Abwechslung merkt sich jedes Gerät selbst. Der Vorrat, den ein Gerät bis 0.15 gesammelt hat, wird beim ersten Mal übernommen.
+4. Optional einen zweiten Text-Helfer für den Tagesplan (Vorrat, Frühsport, Verlauf der Beschäftigungen, wie oft er heute gestreichelt wurde und was er erlebt hat), z. B. `input_text.pika_plan` mit **max. Länge 255**, als `plan_entity` eintragen. Ohne ihn laufen die Beschäftigungen trotzdem auf allen Geräten gleichzeitig, nur Vorrat, Frühsport, Abwechslung, Anhänglichkeit und Träume merkt sich jedes Gerät selbst. Der Vorrat, den ein Gerät bis 0.15 gesammelt hat, wird beim ersten Mal übernommen.
 
 ## Konfiguration
 
@@ -243,10 +276,10 @@ Für `sleep_start` und `sleep_end` gehen feste Uhrzeiten (`"21:00"`) oder `sunse
 
 `wind_bearing` des Wetters darf eine Gradzahl oder ein Kürzel sein („SW“, „NNO“). Flugzeuge erscheinen auch, wenn die Uhr des Geräts von der HA-Uhr abweicht. Auf schmalen Karten (z. B. Handy) werden Aussichtsstein und Heuhaufen automatisch kleiner (die Nische des Erdhügels gehört zum Bau und behält ihre Größe), damit alles ins Bild passt. Der Vorrat (Heuhaufen bzw. Nische) steht mit `plan_entity` im Helfer, sonst im Browser des Geräts.
 
-Im Text-Helfer steht der Zustand als `satt,zeit,glück,zeit,großputz,maske,teilputz` (Zeiten in Sekunden). Hunger, Glück und Häufchen werden daraus beim Anzeigen berechnet, deshalb braucht es keine Automation. Ältere Werte mit vier Feldern werden weiter gelesen. Jedes Schreiben wartet auf die Bestätigung von HA: Geht es verloren (Verbindung weg, Fehler), sendet die Karte erneut, und schrieben zwei Geräte gleichzeitig, werden beide Änderungen zusammengeführt. `entity` und `plan_entity` müssen zwei verschiedene `input_text`-Helfer sein, sonst zeigt die Karte eine Fehlermeldung.
+Im Text-Helfer steht der Zustand als `satt,zeit,glück,zeit,großputz,maske,teilputz` (Zeiten in Sekunden). Hunger, Glück und Häufchen werden daraus beim Anzeigen berechnet, deshalb braucht es keine Automation. Ältere Werte mit vier Feldern werden weiter gelesen. Jedes Schreiben wartet auf die Bestätigung von HA: Geht es verloren (Verbindung weg, Fehler), sendet die Karte erneut, und schrieben zwei Geräte gleichzeitig, werden beide Änderungen zusammengeführt. `entity` und `plan_entity` müssen zwei verschiedene `input_text`-Helfer sein, sonst zeigt die Karte eine Fehlermeldung. Läuft auf einem Gerät noch eine Version bis 0.17, schreibt es den Tagesplan ohne Streichel-Zähler und Erlebnisse zurück; nach dem Neuladen aller Geräte ist das vorbei.
 
 Die Karte schont das Gerät: Ist sie nicht zu sehen (Tab im Hintergrund, Bildschirm aus, aus dem Bild gescrollt), ruhen Schleife, Besuche und alle Animationen. Nach längerer Pause wählt sie die nächste Beschäftigung erst mit frischem Stand aus HA. Nachts ohne Wind stehen die Blumen still, Kerzen, Lichterkette und Regenschirm bewegen sich in Stufen. Mit der Systemeinstellung „Bewegung reduzieren“ ruhen Wolken, Sterne, Blumen, Rauch, Niederschlag und Blinklichter.
 
 ## Entwicklung
 
-`preview.html` lädt die Karte mit einem simulierten `hass`-Objekt. Die Häufchen-Knöpfe stellen die Uhr der Häufchen vor (nächstes Häufchen, +4 Std., +1 Tag), die Besuch-Knöpfe holen Vögelchen und Maus sofort oder stellen die Besuchsuhr kurz vor den nächsten berechneten Besuch, die Hobby-Knöpfe starten eine Beschäftigung sofort (auch ohne passendes Wetter), die Flieger-Knöpfe schicken Testflüge los (Anflug, Abflug, Reiseflug, Hubschrauber, Kleinflugzeug). Dafür den Ordner über einen lokalen Webserver öffnen, z. B. `node dev/serve.mjs . 8765` (lauscht nur auf localhost). `areale.html` zeigt alle vier Areale nebeneinander. Die Knopfzeilen Himmel-Extras, Festtage, Freund-Pika, Haus-Bote, Kaffee und Aktivitäten lösen die jeweiligen Erweiterungen sofort aus (Festtage stellen dafür das Datum der Karte um, Haus-Bote und Kaffee setzen Mock-Zustände der Geräte; ein Kaffeebezug dauert dort 18 s). Beide Vorschau-Karten teilen sich die Helfer wie zwei Geräte: „Uhr vor“ stellt die Plan-Uhr kurz vor die nächste große oder kleine Beschäftigung, „rechte Karte neu laden“ zeigt den Einstieg mitten in einer laufenden.
+`preview.html` lädt die Karte mit einem simulierten `hass`-Objekt. Die Häufchen-Knöpfe stellen die Uhr der Häufchen vor (nächstes Häufchen, +4 Std., +1 Tag), die Besuch-Knöpfe holen Vögelchen und Maus sofort oder stellen die Besuchsuhr kurz vor den nächsten berechneten Besuch, die Hobby-Knöpfe starten eine Beschäftigung sofort (auch ohne passendes Wetter), die Flieger-Knöpfe schicken Testflüge los (Anflug, Abflug, Reiseflug, Hubschrauber, Kleinflugzeug). Dafür den Ordner über einen lokalen Webserver öffnen, z. B. `node dev/serve.mjs . 8765` (lauscht nur auf localhost). `areale.html` zeigt alle vier Areale nebeneinander. Die Knopfzeilen Himmel-Extras, Festtage, Freund-Pika, Haus-Bote, Kaffee und Aktivitäten lösen die jeweiligen Erweiterungen sofort aus (Festtage stellen dafür das Datum der Karte um, Haus-Bote und Kaffee setzen Mock-Zustände der Geräte; ein Kaffeebezug dauert dort 18 s). Beide Vorschau-Karten teilen sich die Helfer wie zwei Geräte: „Uhr vor“ stellt die Plan-Uhr kurz vor die nächste große oder kleine Beschäftigung, „rechte Karte neu laden“ zeigt den Einstieg mitten in einer laufenden. Die Zeile Süßes startet die kleinen Momente sofort, spielt Streichel-Zonen und Combos ohne genaues Zielen ab, krault 4 s, wischt übers Fell, stellt „heute oft gestreichelt“ ein, holt das Wiedersehen nach 4 Stunden und zeigt nachts sofort einen Traum.

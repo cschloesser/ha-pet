@@ -47,7 +47,7 @@
  * werden aus Datum und Standort (hass.config) berechnet.
  */
 (() => {
-  const VERSION = '0.17.1';
+  const VERSION = '0.18.0';
 
   const DEFAULTS = {
     name: 'Pika',
@@ -446,25 +446,36 @@
   // - hay: Vorrat (n Bündel, t letzte Änderung, c Blütenfarben als Ziffern der Areal-Palette, m letztes Sammel-Fenster)
   // - sport: Frühsport heute schon (d Kalendertag, k Fenster)
   // - rec: die letzten großen Beschäftigungen [Fenster, Name, Variante] (neueste zuerst)
-  // Text: "p1|n.t.c.m|d.k|k:name:v,…" (Zahlen zur Basis 36), passt mit Abstand in die 255 Zeichen eines input_text.
+  // - cute: Pika-Tag d, wie oft er an dem Tag gestreichelt wurde (n, bis PET_CAP) und was er erlebt hat (m, ein Bit je
+  //   Eintrag in MEM_BITS, für die Träume). Stände bis 0.17 haben das Feld nicht und werden weiter gelesen.
+  // Text: "p1|n.t.c.m|d.k|k:name:v,…|d.n.m" (Zahlen zur Basis 36), passt mit Abstand in die 255 Zeichen eines input_text.
   const HAY_MAX = 12;
   const PLAN_REC = 4;
-  const planBlank = () => ({ hay: { n: 3, t: Date.now(), c: '', m: 0 }, sport: null, rec: [] });
+  const planBlank = () => ({ hay: { n: 3, t: Date.now(), c: '', m: 0 }, sport: null, rec: [], cute: null });
+  // Streicheln zählt bis 10: ab da ist er anhänglich, mehr muss keiner wissen (und es wird nicht mehr geschrieben)
+  const PET_CAP = 10;
+  // Erlebnisse für die Träume, je ein Bit
+  const MEM_BITS = ['lz', 'klee', 'coffee', 'heart', 'pino', 'plane', 'bird', 'note', 'bfly'];
+  // Pika-Tag: wechselt um 4 Uhr nachts, so träumt er nach Mitternacht noch vom Vortag
+  const pikaDay = (t) => Math.floor((t - new Date(t).getTimezoneOffset() * 6e4 - 4 * 36e5) / 864e5);
   const planSer = (P) => {
     const h = P.hay;
     return ['p1', [h.n, Math.round(h.t / 1000).toString(36), h.c || '-', h.m.toString(36)].join('.'),
       P.sport ? `${P.sport.d.toString(36)}.${P.sport.k.toString(36)}` : '-',
-      P.rec.map(([k, a, v]) => (v ? `${k.toString(36)}:${a}:${v}` : `${k.toString(36)}:${a}`)).join(',') || '-'].join('|');
+      P.rec.map(([k, a, v]) => (v ? `${k.toString(36)}:${a}:${v}` : `${k.toString(36)}:${a}`)).join(',') || '-',
+      P.cute ? [P.cute.d, P.cute.n, P.cute.m].map((x) => x.toString(36)).join('.') : '-'].join('|');
   };
   const planParse = (str) => {
     const p = String(str ?? '').split('|');
-    if (p.length !== 4 || p[0] !== 'p1') return null;
+    if ((p.length !== 4 && p.length !== 5) || p[0] !== 'p1') return null;
     const h = p[1].split('.');
     const n = Number(h[0]);
     const t = parseInt(h[1], 36) * 1000;
     const m = parseInt(h[3], 36);
     if (h.length !== 4 || !Number.isFinite(n) || !Number.isFinite(t) || !Number.isFinite(m)) return null;
-    const P = { hay: { n: clamp(n, 1, HAY_MAX), t, c: h[2] === '-' ? '' : h[2].replace(/\D/g, ''), m }, sport: null, rec: [] };
+    const P = { hay: { n: clamp(n, 1, HAY_MAX), t, c: h[2] === '-' ? '' : h[2].replace(/\D/g, ''), m }, sport: null, rec: [], cute: null };
+    const q = (p[4] || '-').split('.').map((x) => parseInt(x, 36));
+    if (q.length === 3 && q.every(Number.isFinite)) P.cute = { d: q[0], n: clamp(q[1], 0, PET_CAP), m: q[2] };
     const s = p[2].split('.').map((x) => parseInt(x, 36));
     if (s.length === 2 && s.every(Number.isFinite)) P.sport = { d: s[0], k: s[1] };
     if (p[3] !== '-') {
@@ -483,7 +494,7 @@
   // Änderung op auf den Plan P anwenden. Alle Änderungen sind wiederholbar (gleiches Ergebnis beim zweiten Mal), so
   // dürfen sie auf jeden neu eintreffenden Stand eines anderen Geräts noch einmal gelegt werden.
   const planApply = (P, op, now) => {
-    const out = { hay: { ...P.hay }, sport: P.sport, rec: P.rec.map((e) => [...e]) };
+    const out = { hay: { ...P.hay }, sport: P.sport, rec: P.rec.map((e) => [...e]), cute: P.cute };
     if (op.t === 'rec') {
       const e = out.rec.find((x) => x[0] === op.k);
       if (e) {
@@ -501,6 +512,12 @@
       const { n, c } = hayNow(out.hay, now);
       if (n >= HAY_MAX) return out;
       out.hay = { n: n + 1, t: now, c: (c + op.c).slice(-(n + 1)), m: op.m ?? out.hay.m };
+    } else if (op.t === 'pet' || op.t === 'mem') {
+      // Ein neuer Pika-Tag fängt bei null an. Der höchste Zähler gewinnt, Erlebnisse werden zusammengelegt.
+      const c = out.cute;
+      if (c && c.d > op.d) return out;
+      const b = c?.d === op.d ? c : { d: op.d, n: 0, m: 0 };
+      out.cute = op.t === 'pet' ? { ...b, n: Math.max(b.n, Math.min(op.n, PET_CAP)) } : { ...b, m: b.m | op.b };
     }
     return out;
   };
@@ -533,8 +550,9 @@
   const EYE = (cx, side) => `
     <g class="eye eye-${side}">
       <ellipse cx="${cx}" cy="46" rx="3.9" ry="4.6" fill="#2a1a12"/>
-      <circle cx="${cx + 1.4}" cy="44.2" r="1.5" fill="#fff"/>
+      <circle class="hl1" cx="${cx + 1.4}" cy="44.2" r="1.5" fill="#fff"/>
       <circle cx="${cx - 0.9}" cy="47.9" r=".7" fill="#fff"/>
+      <path class="estar" d="M${cx + 1.2} 41.6 Q${cx + 1.6} 43.8 ${cx + 3.6} 44.2 Q${cx + 1.6} 44.6 ${cx + 1.2} 46.8 Q${cx + 0.8} 44.6 ${cx - 1.2} 44.2 Q${cx + 0.8} 43.8 ${cx + 1.2} 41.6Z" fill="#fff"/>
     </g>
     <path class="seye seye-${side}" d="M${cx - 3.8} 46.6 q3.8 3.2 7.6 0"/>
     <path class="heye" d="M${cx - 3.8} 47.6 q3.8 -3.8 7.6 0"/>`;
@@ -683,7 +701,7 @@
     </defs>
     <g class="all">
       ${ACT_BACK}
-      ${EAR(75, 26, 'l')}${EAR(101, 27, 'r')}
+      <g class="hd">${EAR(75, 26, 'l')}${EAR(101, 27, 'r')}</g>
       <g class="body">
         <path d="${BODY}" fill="url(#fur)" stroke="${OUT}" stroke-width="2.6" stroke-linejoin="round"/>
         <g clip-path="url(#bodyclip)">
@@ -691,28 +709,38 @@
         </g>
       </g>
       <g class="feet" fill="${PK('paw')}" stroke="${OUT}" stroke-width="1.6">
-        <ellipse cx="33" cy="90.5" rx="9" ry="3.6"/>
+        <ellipse class="bfoot" cx="33" cy="90.5" rx="9" ry="3.6"/>
         <ellipse cx="82" cy="91" rx="6" ry="3.4"/>
         <ellipse cx="97" cy="90.5" rx="6" ry="3.4"/>
       </g>
-      <g class="face">
-        <ellipse cx="77.5" cy="55" rx="4.2" ry="2.5" fill="#f2998c" opacity=".55"/>
-        <ellipse cx="104" cy="54.5" rx="3.8" ry="2.4" fill="#f2998c" opacity=".55"/>
+      <g class="sleg"><ellipse cx="64" cy="50" rx="5.2" ry="7.4" transform="rotate(-38 64 50)" fill="${PK('paw')}" stroke="${OUT}" stroke-width="1.5"/></g>
+      <g class="hd"><g class="face">
+        <ellipse class="chk" cx="77.5" cy="55" rx="4.2" ry="2.5" fill="#f2998c" opacity=".55"/>
+        <ellipse class="chk" cx="104" cy="54.5" rx="3.8" ry="2.4" fill="#f2998c" opacity=".55"/>
+        <path class="blines" d="M75.2 55.4 l1.1 -1.8 M77.4 55.6 l1.1 -1.8 M79.6 55.8 l1.1 -1.8 M101.8 55 l1.1 -1.8 M104 55.2 l1.1 -1.8"
+              stroke="#e06a5e" stroke-width=".7" stroke-linecap="round"/>
         ${EYE(82, 'l')}${EYE(99, 'r')}
-        <path d="M84 56 L70 53.5 M84 57.6 L70 59.8 M98 56 L113 53.5 M98 57.6 L113 59.8"
+        <path class="wsk" d="M84 56 L70 53.5 M84 57.6 L70 59.8 M98 56 L113 53.5 M98 57.6 L113 59.8"
               stroke="${OUT}" stroke-width=".7" opacity=".45" stroke-linecap="round"/>
         <g class="mouth-g">
           <ellipse cx="91" cy="55" rx="7.5" ry="5.2" fill="${PK('mou')}"/>
-          <path d="M88.7 51.6 q2.3 -1.1 4.6 0 q-.6 1.9 -2.3 2.5 q-1.7 -.6 -2.3 -2.5z" fill="#7a4438"/>
-          <path d="M91 54.1 v1.5 M91 55.6 q-1.5 1.7 -3 .4 M91 55.6 q1.5 1.7 3 .4"
+          <g class="yawnm">
+            <ellipse cx="91" cy="58.6" rx="3" ry="3.9" fill="#7a3a30" stroke="${OUT}" stroke-width=".7"/>
+            <ellipse cx="91" cy="61" rx="1.9" ry="1.1" fill="#e8838b"/>
+          </g>
+          <path class="nose" d="M88.7 51.6 q2.3 -1.1 4.6 0 q-.6 1.9 -2.3 2.5 q-1.7 -.6 -2.3 -2.5z" fill="#7a4438"/>
+          <path class="mth" d="M91 54.1 v1.5 M91 55.6 q-1.5 1.7 -3 .4 M91 55.6 q1.5 1.7 3 .4"
                 stroke="${OUT}" stroke-width="1" fill="none" stroke-linecap="round"/>
+          <path class="wmouth" d="M91 54.1 v1.2 M87.6 55.2 q1.7 2.6 3.4 .1 q1.7 2.5 3.4 -.1"
+                stroke="${OUT}" stroke-width="1" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+          <ellipse class="tongue" cx="91" cy="57.5" rx="1.35" ry="1.8" fill="#ee7f88" stroke="${OUT}" stroke-width=".5"/>
           <ellipse class="omouth" cx="91" cy="57.6" rx="1.8" ry="2.2" fill="#7a3a30" stroke="${OUT}" stroke-width=".6"/>
         </g>
         ${CUP_FOAM}
         <g class="callfx" fill="none" stroke="#fff" stroke-width="1.8" stroke-linecap="round">
           <path d="M113 51 q4 5 0 10"/><path d="M118 47.5 q6 8.5 0 17"/><path d="M123 44 q8 12 0 24"/>
         </g>
-      </g>
+      </g></g>
       <g class="mfood">
         <path d="M92 58 Q100 58 106 61" stroke="#4f8a3a" stroke-width="1.6" fill="none" stroke-linecap="round"/>
         <ellipse cx="99" cy="61" rx="4.2" ry="1.7" fill="#6bab4c" transform="rotate(22 99 61)"/>
@@ -722,6 +750,11 @@
       <g class="paws" fill="${PK('paw')}" stroke="${OUT}" stroke-width="1.4">
         <ellipse cx="84" cy="61" rx="4" ry="5"/>
         <ellipse cx="98" cy="61" rx="4" ry="5"/>
+      </g>
+      <g class="hd fear">${EAR(101, 27, 'f')}</g>
+      <g class="epaws" fill="${PK('paw')}" stroke="${OUT}" stroke-width="1.4">
+        <ellipse cx="103.5" cy="44" rx="3.8" ry="4.8" transform="rotate(-20 103.5 44)"/>
+        <ellipse cx="110.5" cy="40" rx="3.8" ry="4.8" transform="rotate(-20 110.5 40)"/>
       </g>
       <g class="book">
         <path d="M91 62.5 L79.5 59.4 L79.5 57.8 L91 61Z M91 62.5 L102.5 58.6 L102.5 57 L91 61Z" fill="#fffaf0" stroke="${OUT}" stroke-width=".6" stroke-linejoin="round"/>
@@ -766,7 +799,7 @@
         </g>
       </g>
       <ellipse class="kpaw" cx="105" cy="50" rx="3.8" ry="4.8" fill="${PK('paw')}" stroke="${OUT}" stroke-width="1.4"/>
-      <g class="cap">
+      <g class="hd"><g class="cap">
         <path d="M77 28 Q80 12 62 9 Q91 0 103 27 Z" fill="${PK('cap')}" stroke="${OUT}" stroke-width="1.4" stroke-linejoin="round"/>
         <circle cx="79" cy="17" r="1.3" fill="#fff" opacity=".8"/>
         <circle cx="88" cy="13" r="1.3" fill="#fff" opacity=".8"/>
@@ -796,7 +829,7 @@
           <g fill="#f28fb1"><circle cx="86" cy="20.8" r="1.1"/><circle cx="92.8" cy="19.8" r="1.1"/><circle cx="90.4" cy="12.8" r="1"/></g>
           <circle cx="92.5" cy="1.5" r="3.2" fill="#e8584e" stroke="${OUT}" stroke-width="1"/>
         </g>
-      </g>
+      </g></g>
       <g class="scarf">
         <path d="M68 63 Q87 73 107 63" stroke="#d9534f" stroke-width="6.5" fill="none" stroke-linecap="round"/>
         <path d="M70 64 Q87 73.5 105 64.6" stroke="#f6f1ea" stroke-width="1.6" fill="none" stroke-dasharray="3 4"/>
@@ -2056,6 +2089,79 @@
     <path d="M3 11 H18 Q18 21.5 10.5 21.5 Q3 21.5 3 11Z" fill="#f6f1ea" stroke="#6b4428" stroke-width="1.2"/>
     <ellipse cx="10.5" cy="11" rx="7.5" ry="1.6" fill="#b07a4c"/></svg>`;
 
+  // ---------- Mimik, Streicheln, kleine Momente, Träume, Geschenk ----------
+  // Zeichen über dem Kopf (_emote)
+  const EMOTE = {
+    q: '?',
+    ex: '!',
+    drop: `<svg viewBox="0 0 10 14"><path d="M5 .5 C7 4.2 9.5 6.8 9.5 9.4 A4.5 4.5 0 0 1 .5 9.4 C.5 6.8 3 4.2 5 .5Z" fill="#a8dcff" stroke="#4f86b8" stroke-width="1"/>
+      <path d="M3.2 9 q0 1.8 1.6 2.4" stroke="#fff" stroke-width="1" fill="none" stroke-linecap="round"/></svg>`,
+    spark: `<svg viewBox="0 0 24 24" fill="#fff6b0" stroke="#e0a032" stroke-width=".8" stroke-linejoin="round">
+      <path d="M8 2 Q9 7 14 8 Q9 9 8 14 Q7 9 2 8 Q7 7 8 2Z"/><path d="M18 10 Q18.6 13.4 22 14 Q18.6 14.6 18 18 Q17.4 14.6 14 14 Q17.4 13.4 18 10Z"/>
+      <path d="M7 16 Q7.4 18.6 10 19 Q7.4 19.4 7 22 Q6.6 19.4 4 19 Q6.6 18.6 7 16Z"/></svg>`,
+    grump: `<svg viewBox="0 0 28 18"><path d="M7 16 Q1 16 1.5 11 Q2 7 6.5 7.5 Q7.5 2 13 2.5 Q18.5 2 20 6.5 Q26.5 6 26.5 11.5 Q26.5 16 21 16Z"
+      fill="#c9ced8" stroke="#6f7686" stroke-width="1.2"/><path d="M9.5 10.5 l2.4 1.4 M18.5 10.5 l-2.4 1.4 M11.5 13.6 q2.5 -1.4 5 0" stroke="#5c6272" stroke-width="1.2" fill="none" stroke-linecap="round"/></svg>`,
+  };
+  // Schmetterling von vorn (viewBox 20 × 16, Körper bei x 10), Flügel schlagen um die Mitte
+  const BFLY_COLORS = [['#ffb347', '#e07b1a'], ['#8fc4ff', '#4f86c6'], ['#f6a5c8', '#d4669a'], ['#fff2a0', '#d9b640'], ['#c7b2ff', '#8a6fd9']];
+  const BFLY_SVG = ([c, d]) => `<svg viewBox="0 0 20 16" aria-hidden="true">
+    <g class="bwl"><path d="M10 7.5 C6.5 .5 .8 .6 1 5 C1.2 7.6 4.4 8.6 7 8.4 C3.2 9.6 2.6 14.6 6.4 14.4 C8.6 14.2 9.8 11.4 10 9Z" fill="${c}" stroke="${d}" stroke-width=".8"/>
+      <circle cx="4.6" cy="4.8" r="1.3" fill="${d}" opacity=".6"/></g>
+    <g class="bwr"><path d="M10 7.5 C13.5 .5 19.2 .6 19 5 C18.8 7.6 15.6 8.6 13 8.4 C16.8 9.6 17.4 14.6 13.6 14.4 C11.4 14.2 10.2 11.4 10 9Z" fill="${c}" stroke="${d}" stroke-width=".8"/>
+      <circle cx="15.4" cy="4.8" r="1.3" fill="${d}" opacity=".6"/></g>
+    <ellipse cx="10" cy="8.6" rx="1" ry="4" fill="#4a3628"/>
+    <path d="M9.6 4.8 Q8.6 2.4 7.4 1.8 M10.4 4.8 Q11.4 2.4 12.6 1.8" stroke="#4a3628" stroke-width=".55" fill="none" stroke-linecap="round"/></svg>`;
+  // Geschenk: liegende Blüte mit rosa Schleife (viewBox 34 × 16)
+  const GIFT_SVG = (c) => `<svg viewBox="0 0 34 16" aria-hidden="true">
+    <path d="M2 13 Q13 11.6 24 8.6" stroke="#4f8a3a" stroke-width="1.6" fill="none" stroke-linecap="round"/>
+    <ellipse cx="9" cy="10.4" rx="3.6" ry="1.5" fill="#6bab4c" transform="rotate(-24 9 10.4)"/>
+    <g fill="${c}" stroke="rgba(0,0,0,.15)" stroke-width=".5">
+      ${[0, 72, 144, 216, 288].map((a) => {
+        const r = (a * Math.PI) / 180;
+        return `<circle cx="${(27 + Math.sin(r) * 3.6).toFixed(2)}" cy="${(7.6 - Math.cos(r) * 3.6).toFixed(2)}" r="3.2"/>`;
+      }).join('')}
+    </g>
+    <circle cx="27" cy="7.6" r="1.7" fill="#e0a032"/>
+    <g fill="#f28fb1" stroke="#c9577f" stroke-width=".6" stroke-linejoin="round">
+      <path d="M15 11 L10.8 7.6 L11.4 12.6Z"/><path d="M15 11 L19.4 8.4 L18.6 13.2Z"/>
+      <path d="M15 11 L13.2 15.4 M15 11 L16.6 15.2" fill="none" stroke-linecap="round"/>
+      <circle cx="15" cy="11" r="1.2"/></g></svg>`;
+  // Traummotive (Denkblase im Schlaf). Was er am Tag erlebt hat, träumt er öfter (_memo).
+  const DREAM = {
+    lz: FOOD.lz.svg,
+    klee: FOOD.klee.svg,
+    coffee: COFFEE_THINK,
+    heart: ICON_HEART,
+    pino: `<svg viewBox="0 0 24 24" stroke="#5a4030" stroke-width="1">
+      <circle cx="6.6" cy="6.4" r="4" fill="#f2b36e"/><circle cx="17.4" cy="6.4" r="4" fill="#f2b36e"/>
+      <circle cx="6.6" cy="6.8" r="2.1" fill="#f0a184" stroke="none"/><circle cx="17.4" cy="6.8" r="2.1" fill="#f0a184" stroke="none"/>
+      <ellipse cx="12" cy="13.2" rx="9" ry="7.4" fill="#f2b36e"/>
+      <ellipse cx="12" cy="8.8" rx="2.2" ry="1.4" fill="#fbf0e2" stroke="none"/>
+      <circle cx="8.4" cy="12.4" r="1.3" fill="#2a1a12" stroke="none"/><circle cx="15.6" cy="12.4" r="1.3" fill="#2a1a12" stroke="none"/>
+      <ellipse cx="12" cy="15.8" rx="3" ry="2.2" fill="#fbe7cb" stroke="none"/>
+      <path d="M11 14.6 h2 l-1 1z" fill="#7a4438" stroke="none"/>
+      <path d="M5.2 19 Q12 23.4 18.8 19 L12 23.6Z" fill="#3fb6a8"/></svg>`,
+    plane: `<svg viewBox="0 0 24 24" stroke="#5a6a7a" stroke-width=".8" stroke-linejoin="round">
+      <path d="M2.6 13.6 L20.4 10.6 Q23 10.4 22 12.4 L5 15.6Z" fill="#eef3f8"/>
+      <path d="M10.4 12.4 L13.4 5.8 H15.4 L14.4 11.8Z" fill="#dfe7ef"/><path d="M11 14.6 L14.6 19.4 H16.6 L14.8 14Z" fill="#dfe7ef"/>
+      <path d="M3.2 13.4 L1.8 8.6 H3.6 L6.4 13Z" fill="#d9473b"/></svg>`,
+    bird: `<svg viewBox="0 0 24 24" stroke="#5a4030" stroke-width=".9">
+      <circle cx="11.5" cy="13" r="7.6" fill="#8a6a50"/><circle cx="13.4" cy="15" r="4.8" fill="#e8743b" stroke="none"/>
+      <path d="M6 14.6 Q8.6 12 11.4 15.4" fill="#6f523d"/><circle cx="14.6" cy="10.4" r="1.1" fill="#2a1a12" stroke="none"/>
+      <path d="M18.6 10.4 L22 11.6 L18.8 12.8Z" fill="#f2b53c"/></svg>`,
+    note: `<svg viewBox="0 0 24 24"><path d="M9 18 V6.2 L19 4 V15.6" stroke="#5a4030" stroke-width="1.7" fill="none" stroke-linejoin="round"/>
+      <ellipse cx="6.8" cy="18" rx="2.8" ry="2.1" fill="#5a4030"/><ellipse cx="16.8" cy="15.8" rx="2.8" ry="2.1" fill="#5a4030"/></svg>`,
+    bfly: BFLY_SVG(BFLY_COLORS[0]),
+  };
+  // Neue kleine Momente. Leicht genug, dass der Beginn einer Beschäftigung aus dem Tagesplan sie abbricht.
+  const CUTE_SMALL = ['curious', 'yawn', 'sneeze', 'earClean', 'scratch', 'hiccup', 'nod', 'butterfly', 'zoomies', 'gift', 'comeHere'];
+  // Dabei darf Streicheln eine eigene Reaktion starten (sonst nur Herzchen und Hüpfer obendrauf)
+  const PET_FREE = new Set(['idle', 'look', 'wander', 'groom', 'squeak', 'sniff', 'binky', 'hungry', 'watchBird', 'watchMouse',
+    'watchPlane', 'curious', 'yawn', 'earClean', 'scratch', 'nod', 'hiccup', 'comeHere', 'petReact', 'stroke', 'gift']);
+  // Zustandsklassen der neuen Momente, die _cleanup zurücksetzt (zeitgesteuerte wie blush, mlem, lnd gehen von selbst)
+  const CUTE_CLS = ['tilt', 'tilt-b', 'content', 'squint', 'flat', 'crosseye', 'lean', 'tickle', 'roll', 'melt', 'thump',
+    'yawning', 'presneeze', 'sneezing', 'earwash', 'scratching', 'nodding', 'stumble', 'pant', 'trip', 'bighop'];
+
   const STYLE_COFFEE = `
   .cup, .cfoam, .cup > g > g, .cup .ttag, .cup .cst { display: none; }
   .coffee .cup { display: inline; }
@@ -2136,7 +2242,7 @@
   const localDay = (t) => Math.floor((t - new Date(t).getTimezoneOffset() * 6e4) / 864e5);
   // Kleinigkeiten, die der Beginn einer Beschäftigung aus dem Plan sofort abbricht
   const ACT_SMALL = ['idle', 'look', 'wander', 'groom', 'squeak', 'sniff', 'binky', 'hungry', 'lookout', 'burrow', 'nibble',
-    'haySnack', 'hideout', 'watchBird', 'watchMouse', 'watchPlane'];
+    'haySnack', 'hideout', 'watchBird', 'watchMouse', 'watchPlane', ...CUTE_SMALL];
   const ACT_BIG = ['read', 'game', 'tablet', 'kite', 'tv', 'music', 'paint', 'bubbles', 'sport'];
   const ACT_MOOD = ['read', 'game', 'tablet', 'music', 'paint', 'bubbles'];
   const ACT_RECENT = 3;
@@ -2646,7 +2752,7 @@
   /* ---- Pika ---- */
   .pika {
     position: absolute; left: 0; top: calc(var(--gy) - var(--ph) * .945); width: var(--pw); height: var(--ph);
-    z-index: 3; cursor: pointer; will-change: transform;
+    z-index: 3; cursor: pointer; will-change: transform; touch-action: pan-y; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none;
     transform-origin: 50% 94.5%; /* Füße: auf dem Stein ist er etwas kleiner (weiter hinten) */
   }
   .shadow {
@@ -2792,6 +2898,172 @@
   .groom .paws { display: inline; transform-box: fill-box; animation: rub .3s ease-in-out infinite alternate; }
   @keyframes rub { from { transform: translateY(1px); } to { transform: translateY(-6px); } }
   .sleeping .cap { display: inline; }
+
+  /* ---- Mimik, Streicheln, kleine Momente ----
+     Fast alles läuft einmal über eine Zustandsklasse ab (keine Dauerschleifen), so bleibt es auf schwachen Tablets leicht.
+     Kopf (Ohren, Gesicht, Mützen) dreht um die Kopfmitte, der Körperumriss bleibt: das reicht zum Schiefhalten. */
+  .hd { transform-box: view-box; transform-origin: 90px 50px; transition: transform .4s cubic-bezier(.3, 1.5, .5, 1); }
+  .tilt .hd { transform: rotate(11deg); }
+  .tilt-b .hd { transform: rotate(-9deg); }
+  /* Bäckchen werden rot, bei viel Streicheln mit Strichelchen */
+  .chk { transform-box: fill-box; transform-origin: 50% 50%; transition: opacity .5s, transform .5s; }
+  .blush .chk { opacity: .95; transform: scale(1.35, 1.3); }
+  .blines { display: none; }
+  .blush .blines { display: inline; }
+  /* Nase wackelt, Schnurrhaare zittern mit */
+  .nose { transform-box: fill-box; transform-origin: 50% 80%; }
+  .wsk { transform-box: fill-box; transform-origin: 50% 50%; }
+  .nosey .nose { animation: nwig .13s ease-in-out 6 alternate; }
+  .nosey .wsk { animation: wskj .13s ease-in-out 6 alternate; }
+  .sniff .nose, .presneeze .nose { animation: nwig .11s ease-in-out infinite alternate; }
+  @keyframes nwig { to { transform: translateY(-.6px) scale(1.14, .84); } }
+  @keyframes wskj { to { transform: translateY(-.6px); } }
+  /* Münder: zufrieden (ω), Zungenspitze (mlem), Hecheln, Gähnen */
+  .wmouth, .tongue, .yawnm, .estar, .sleg, .epaws { display: none; }
+  .content .mth { display: none; }
+  .content .wmouth { display: inline; }
+  .tongue { transform-box: fill-box; transform-origin: 50% 0%; }
+  .mlem .tongue { display: inline; animation: mlem .9s ease-in-out forwards; }
+  @keyframes mlem { 0% { transform: scaleY(0); } 25%, 65% { transform: scaleY(1); } 45% { transform: translateX(.7px) scaleY(.75); } 100% { transform: scaleY(0); } }
+  .pant .tongue { display: inline; animation: pant .28s ease-in-out infinite alternate; }
+  @keyframes pant { from { transform: scaleY(.65); } }
+  .yawnm { transform-box: fill-box; transform-origin: 50% 8%; }
+  .yawning .yawnm { display: inline; animation: yawnm 2.2s ease-in-out forwards; }
+  .yawning .mth, .yawning .wmouth { display: none; }
+  @keyframes yawnm { 0% { transform: scale(.3, .1); } 30%, 72% { transform: scale(1); } 100% { transform: scale(.3, .05); } }
+  .yawning .face { transform: translate(1px, -2.5px); }
+  .yawning .ear-l { transform: rotate(-12deg); }
+  .yawning .ear-r { transform: rotate(12deg); }
+  .yawning .hop { animation: yawnb 2.2s ease-in-out; }
+  @keyframes yawnb { 30%, 72% { transform: scale(.95, 1.07); } }
+  /* Augen: zu und genießen, Glanzsterne, schielen */
+  .squint .eye, .yawning .eye, .earwash .eye, .nodding .eye, .sneezing .eye { display: none; }
+  .squint .seye, .yawning .seye, .earwash .seye, .nodding .seye, .sneezing .seye { display: inline; }
+  .happy.squint .seye { display: none; }
+  .estar { transform-box: fill-box; transform-origin: 50% 50%; }
+  .sparkle .estar { display: inline; animation: estar .7s ease-in-out infinite alternate; }
+  .sparkle .hl1 { display: none; }
+  .sparkle:not(.blink) .eye { transform: scale(1.14); }
+  @keyframes estar { from { transform: scale(.7) rotate(-12deg); } to { transform: scale(1.15) rotate(12deg); } }
+  .crosseye .eye-l { transform: translate(2.2px, 1px) scale(.82); }
+  .crosseye .eye-r { transform: translate(-2.4px, 1px) scale(.82); }
+  .presneeze .eye { transform: scaleY(.4); }
+  /* Ohren: flach angelegt, Nachschwingen, angetippt flappen */
+  .flat .ear-l { transform: rotate(-36deg); }
+  .flat .ear-r { transform: rotate(32deg); }
+  .eflap-l .ear-l, .eflap-r .ear-r { animation: eflap .9s ease-out; }
+  @keyframes eflap { 12% { transform: rotate(-28deg); } 30% { transform: rotate(20deg); } 48% { transform: rotate(-12deg); } 66% { transform: rotate(7deg); } 84% { transform: rotate(-3deg); } }
+  .lnd:not(.walking) .ear-l { animation: eswing .55s ease-out; }
+  .lnd:not(.walking) .ear-r { animation: eswing .55s .06s ease-out; }
+  @keyframes eswing { 25% { transform: rotate(10deg); } 55% { transform: rotate(-5deg); } 80% { transform: rotate(2deg); } }
+  /* Im Schlaf zucken (Ohren bleiben dabei angelegt) */
+  .sleeping.stw .hop { animation: stw .45s ease-out; }
+  @keyframes stw { 30% { transform: scale(1.03, .96) translateY(1%); } }
+  .sleeping.stw .ear-l { animation: stwear .5s ease-out; }
+  @keyframes stwear { 0%, 100% { transform: rotate(-30deg); } 35% { transform: rotate(-40deg); } 70% { transform: rotate(-25deg); } }
+  /* Bewegung: Landen mit Nachwippen, Trippeln, große Hopser, Stolpern */
+  .lnd:not(.walking) .hop { animation: lnd .36s ease-out; }
+  @keyframes lnd { 25% { transform: scale(1.07, .93); } 60% { transform: scale(.98, 1.02); } }
+  .walking.trip .hop { animation: hops .24s linear infinite; }
+  @keyframes hops {
+    0%, 100% { transform: translateY(0) scale(1.03, .97); animation-timing-function: ease-out; }
+    50% { transform: translateY(-4.5%) scale(.99, 1.01); animation-timing-function: ease-in; }
+  }
+  .walking.bighop .hop { animation: hopb .42s linear infinite; }
+  @keyframes hopb {
+    0%, 100% { transform: translateY(0) scale(1.08, .92); animation-timing-function: ease-out; }
+    12% { transform: translateY(-2%) scale(.96, 1.05); animation-timing-function: cubic-bezier(.3, .6, .5, 1); }
+    50% { transform: translateY(-17%) scale(.97, 1.03); animation-timing-function: cubic-bezier(.5, 0, .7, .4); }
+    88% { transform: translateY(0) scale(1, 1); animation-timing-function: ease-out; }
+  }
+  .walking.bighop .ear-l, .walking.bighop .ear-r { animation-duration: .21s; }
+  .stumble .hop { animation: stumble .75s ease-out; }
+  @keyframes stumble { 18% { transform: rotate(17deg) translateY(2%) scale(1.06, .9); } 45% { transform: rotate(-6deg); } 70% { transform: rotate(3deg); } }
+  /* Streicheln: reinlehnen, kichern, auf den Rücken kippen, dahinschmelzen, Fell plustern, Klopfbein */
+  .hop { transition: transform .35s ease-out; }
+  .lean .hop { transform: rotate(4deg) scale(1.02, .98); }
+  .tickle .hop { animation: tickle .15s ease-in-out 6 alternate; }
+  @keyframes tickle { from { transform: rotate(-3.5deg); } to { transform: rotate(3.5deg) scale(1.02, .98); } }
+  .roll .hop { transform: rotate(-26deg) translateY(-3%); }
+  .melt .hop { transform: scale(1.16, .8); transition: transform .7s ease-out; }
+  .body { transform-box: fill-box; transform-origin: 50% 100%; }
+  .fluffy .body { animation: fluffy .8s ease-out; }
+  @keyframes fluffy { 30% { transform: scale(1.07, 1.06); } 55% { transform: scale(1.04, 1.03) skewX(-2deg); } }
+  .bfoot { transform-box: fill-box; transform-origin: 20% 50%; }
+  .thump .bfoot { animation: thump .13s ease-in-out infinite alternate; }
+  @keyframes thump { to { transform: translateY(-3.5px) rotate(-14deg); } }
+  /* Hinterpfote kratzt am Ohr */
+  .scratching .sleg { display: inline; animation: scr .12s ease-in-out infinite alternate; }
+  @keyframes scr { from { transform: translate(-1px, 2px); } to { transform: translate(1.5px, -2.5px); } }
+  .scratching .hd { transform: rotate(-12deg); }
+  .scratching .hop { transform: rotate(-5deg); }
+  .scratching .ear-l { animation: twitch .3s infinite; }
+  /* Ohr putzen: das vordere Ohr mit beiden Pfoten herunterziehen */
+  .fear { display: none; }
+  .earwash .fear { display: inline; }
+  .earwash .ear-r { opacity: 0; }
+  .earwash .ear-f { transform: rotate(68deg); }
+  .earwash .epaws { display: inline; transform-box: fill-box; animation: rub .32s ease-in-out infinite alternate; }
+  .earwash .hd { transform: rotate(8deg); }
+  /* Schluckauf, Einnicken, Niesen */
+  .hic .hop { animation: hic .34s ease-out; }
+  @keyframes hic { 30% { transform: translateY(-6%) scale(.95, 1.06); } }
+  .nodding .hd { transform: translateY(3px) rotate(13deg); transition: transform 1.8s ease-in; }
+  .nodding .zzz { display: block; }
+  .presneeze .hd { transform: rotate(-11deg) translateY(-1px); transition: transform .5s; }
+  .sneezing .hop { animation: sneeze .45s ease-out; }
+  @keyframes sneeze { 20% { transform: rotate(9deg) scale(1.06, .92); } 55% { transform: rotate(-2deg); } }
+  /* Atmen nach Stimmung: aufgeregt schneller, satt und zufrieden ruhiger */
+  .excited .br { animation-duration: 1.5s; }
+  .calm:not(.excited):not(.sleeping) .br { animation: breathe-calm 4.8s ease-in-out infinite; }
+  @keyframes breathe-calm { 50% { transform: scale(1.016, 1.03); } }
+  .sleeping .br { animation: breathe-deep 4.6s ease-in-out infinite; }
+
+  /* Kleine Zeichen über dem Kopf: ?, !, Schweißtropfen, Funkeln, Grummelwolke */
+  .emo {
+    position: absolute; left: 0; bottom: 0; pointer-events: none; font-weight: 900; color: #fff; line-height: 1;
+    font-size: calc(var(--ph) * .22); text-shadow: 0 1px 3px rgba(0, 0, 0, .5);
+    animation: emo var(--emt, 1.4s) ease-out forwards;
+  }
+  .emo svg { display: block; width: calc(var(--ph) * .17); height: auto; overflow: visible; filter: drop-shadow(0 1px 1.5px rgba(0, 0, 0, .35)); }
+  .emo-drop { left: calc(var(--ph) * -.2); bottom: calc(var(--ph) * -.1); }
+  .emo-drop svg { width: calc(var(--ph) * .09); }
+  .emo-grump svg { width: calc(var(--ph) * .22); }
+  @keyframes emo {
+    0% { transform: translate(-50%, 0) scale(.2); opacity: 0; }
+    15% { transform: translate(-50%, -30%) scale(1.15); opacity: 1; }
+    25% { transform: translate(-50%, -25%) scale(1); }
+    80% { opacity: 1; }
+    100% { transform: translate(-50%, -45%) scale(1); opacity: 0; }
+  }
+  .emo-drop { animation-name: emodrop; }
+  @keyframes emodrop { 0% { transform: translateY(-20%) scale(.3); opacity: 0; } 20% { transform: none; opacity: 1; } 80% { opacity: 1; } 100% { transform: translateY(60%); opacity: 0; } }
+  /* Traumblase: etwas bläulicher als die Denkblase */
+  .think.dream, .think.dream::before, .think.dream::after { background: #e9ecff; }
+  /* Nieser, Pollen */
+  .snz, .pol { position: absolute; border-radius: 50%; pointer-events: none; }
+  .snz { width: calc(var(--ph) * .035); height: calc(var(--ph) * .035); background: rgba(255, 255, 255, .9); animation: snz .55s ease-out forwards; }
+  @keyframes snz { from { transform: scale(.4); opacity: 1; } to { transform: translate(var(--px), var(--py)) scale(1); opacity: 0; } }
+  .pol { width: calc(var(--ph) * .025); height: calc(var(--ph) * .025); background: #ffe066; box-shadow: 0 0 3px #fff3a6; animation: pol 1.6s ease-in-out forwards; }
+  @keyframes pol { 0% { opacity: 0; } 25%, 70% { opacity: 1; } 100% { transform: translate(var(--px), var(--py)); opacity: 0; } }
+  /* Schmetterling (fliegt per Web Animations, die Flügel schlagen per CSS) */
+  .bfly { position: absolute; left: 0; top: 0; width: calc(var(--ph) * .14); margin: calc(var(--ph) * -.1) 0 0 calc(var(--ph) * -.07); pointer-events: none; }
+  .bfly svg { display: block; width: 100%; height: auto; overflow: visible; }
+  .bfly .bwl, .bfly .bwr { transform-box: view-box; transform-origin: 10px 8px; animation: bfw .15s ease-in-out infinite alternate; }
+  .bfly.rest .bwl, .bfly.rest .bwr { animation-duration: 1.3s; }
+  @keyframes bfw { to { transform: scaleX(.2); } }
+  /* Geschenk: eine Blüte mit Schleife vorn im Gras, antippen nimmt sie an */
+  .pgift {
+    position: absolute; width: calc(var(--ph) * .5); margin-left: calc(var(--ph) * -.25); pointer-events: auto; cursor: pointer;
+    filter: drop-shadow(0 0 1.5px rgba(255, 255, 255, .95)) drop-shadow(0 1px 1.5px rgba(0, 0, 0, .3));
+    transform-origin: 50% 100%; animation: giftin .5s ease-out;
+  }
+  .pgift svg { display: block; width: 100%; height: auto; overflow: visible; }
+  .pgift.take { animation: gifttake .9s ease-in forwards; pointer-events: none; }
+  .pgift.wilt { transition: opacity 4s; opacity: 0; pointer-events: none; }
+  .night .pgift { filter: brightness(.55) saturate(.6); }
+  @keyframes giftin { from { transform: translateY(-50%) rotate(-25deg); opacity: 0; } }
+  @keyframes gifttake { 30% { transform: translateY(-20%) scale(1.15); } to { transform: translateY(-160%) scale(1.3) rotate(12deg); opacity: 0; } }
 
   /* Beschäftigungen: Buch, Gameboy, Tablet (auf dem Bauch), Drachenschnur, Fernsehen (Rückansicht im Bau) */
   .book, .gb, .tab, .kpaw, .bk { display: none; }
@@ -3330,6 +3602,7 @@
       this._io.observe(this._el.scene);
       this._loop(() => this._blink(), 2200, 6000);
       this._loop(() => this._twitch(), 5000, 13000);
+      this._loop(() => this._noseWiggle(), 4000, 10000);
       this._loop(() => this._lightning(), 6000, 16000);
       this._timers.push(setInterval(() => this._tick(), 20000));
       this._timers.push(setInterval(() => this._regrow(), 150000));
@@ -3466,7 +3739,12 @@
         meteors: $('.meteors'), ff: $('.ff'), festB: $('.fest-b'), festF: $('.fest-f'), props: $('.props'), friends: $('.friends'),
         acts: $('.acts'),
       };
-      this._el.pika.addEventListener('click', (e) => (e.stopPropagation(), this._onPet()));
+      this._el.anchor = this._el.pika.querySelector('.anchor');
+      this._el.pika.addEventListener('click', (e) => (e.stopPropagation(), this._onPet(e)));
+      // Lang drücken = kraulen, waagerecht über ihn wischen = übers Fell streichen
+      this._el.pika.addEventListener('pointerdown', (e) => this._pressStart(e));
+      this._el.pika.addEventListener('pointermove', (e) => this._pressMove(e));
+      for (const t of ['pointerup', 'pointercancel', 'pointerleave']) this._el.pika.addEventListener(t, () => this._pressEnd());
       this._el.feed.addEventListener('click', (e) => (e.stopPropagation(), this._onFeed()));
       this._el.scene.addEventListener('click', (e) => this._onLookAt(e));
       this._hay = 3;
@@ -3651,6 +3929,7 @@
       this._el.scene.classList.toggle('paused', away);
       if (away) {
         this._hidAt = document.hidden ? Date.now() : null;
+        this._goneAt ??= Date.now(); // für das Wiedersehen
         this._stop();
         this._stopCritters();
         this._hiddenFeatures(true);
@@ -3738,7 +4017,7 @@
       if (p.classList.contains('walking')) this._freeze();
       p.classList.remove('walking', 'eating', 'groom', 'carry', 'look-f', 'look-b', 'look-up', 'happy', 'calling', 'crouch', 'squat', 'sniff',
         'reading', 'doze', 'gaming', 'meh', 'lying', 'tablet', 'tplane', 'swipe', 'kiting', 'tv',
-        'coffee', 'sip', 'hot', 'foam', 'lick', ...COFFEE_CLS, ...ACT_CLS);
+        'coffee', 'sip', 'hot', 'foam', 'lick', ...COFFEE_CLS, ...ACT_CLS, ...CUTE_CLS);
       this._tvOn(false);
       this._kiteAway();
       this._easelAway();
@@ -3762,7 +4041,7 @@
         return this._run('goSleep');
       }
       if (!sleepy && this._asleep) return this._run('wakeUp');
-      if (this._asleep) return this._wait(60000);
+      if (this._asleep) return this._run('dream');
       const food = this._foods.find((f) => f.landed);
       const next = this._next;
       this._slot = null;
@@ -3774,6 +4053,7 @@
       if (S) {
         if (this._greetDue) {
           this._greetDue = false;
+          this._reunion = false;
           if (Date.now() - this._showAt < 30000) setTimeout(() => this._action === S.act && this._say(pick(ACT_GREET), 1500), 900);
         }
         return this._runSlot(S);
@@ -3800,6 +4080,8 @@
       const g = this._get('g');
       const { piles, clean } = this._poops();
       this._el.pika.classList.toggle('sad', g < 25 || s < 15 || clean < 30);
+      // satt und zufrieden: ruhiger atmen
+      this._el.pika.classList.toggle('calm', s > 70 && g > 75 && clean > 60);
       // Unter Schnee gibt es keine Blumen, bei Regen bleibt das Heu trocken (kein Sammeln)
       const hasFlowers = this._flowers.length > 0 && !wx.snowcover;
       const elev = this._dbgElev ?? this._elev;
@@ -3822,6 +4104,7 @@
         [this._bird?.sitting ? 2.5 : 0, 'watchBird'],
         [this._mouse?.out ? 2.5 : 0, 'watchMouse'],
         [this._planeToWatch() ? 2.5 : 0, 'watchPlane'],
+        ...this._cuteActs(ctx),
         ...this._skyActs(ctx),
         ...this._festActs(ctx),
         ...this._friendActs(ctx),
@@ -3839,6 +4122,8 @@
     // ---------- Aktionen ----------
 
     async _idle() {
+      // Glücklich: mit zufriedenem ω-Mund dasitzen
+      if (this._get('g') > 75 && Math.random() < 0.35) this._el.pika.classList.add('content');
       await this._wait(rnd(2000, 5000));
     }
 
@@ -3943,6 +4228,7 @@
       x = clamp(x, pW * 0.45, this._W - pW * 0.45); // wie beim Laufen im Bild bleiben
       if (Math.abs(x - this._x) > 2) this._face(x > this._x ? 1 : -1);
       const p = this._el.pika;
+      p.classList.remove('lnd'); // das Nachwippen der Landung verdeckte sonst den Anlauf
       if (crouch) {
         p.classList.add('crouch');
         await this._wait(180);
@@ -4098,6 +4384,7 @@
       this._pickFlower(f);
       await this._eat(f.color, rnd(2500, 4000));
       this._selfFed(SELF.flower);
+      if (Math.random() < 0.4) this._cls('mlem', 950, true);
       await this._wait(rnd(300, 900));
     }
 
@@ -4288,6 +4575,12 @@
         p.classList.remove('calling');
         setTimeout(() => this._bird === b && this._tweet(b), 400);
       }
+      this._memo('bird');
+      // Es zwitschert zurück: Kopf schief
+      if (Math.random() < 0.6) {
+        p.classList.add('tilt');
+        if (Math.random() < 0.4) this._emote('q', 1400);
+      }
       await this._wait(rnd(1200, 2500));
     }
 
@@ -4298,6 +4591,7 @@
       const p = this._el.pika;
       this._face(m.x >= this._x ? 1 : -1);
       p.classList.add('look-f');
+      if (Math.random() < 0.4) p.classList.add('tilt');
       await this._wait(rnd(900, 1600));
       if (m.out && Math.random() < 0.5) {
         p.classList.remove('look-f');
@@ -4313,6 +4607,7 @@
       const pl = this._planeToWatch();
       if (!pl) return;
       pl.watched = (pl.watched || 0) + 1;
+      this._memo('plane');
       const p = this._el.pika;
       this._face(pl.x >= this._x ? 1 : -1);
       if (pl.slant < 3) {
@@ -4321,6 +4616,7 @@
         await this._wait(700);
       }
       p.classList.add('look-up');
+      if (Math.random() < 0.4) p.classList.add('tilt-b');
       await this._wait(rnd(1500, 2500));
       // dreht sich mit, wenn es schon vorbei ist
       this._face(pl.x >= this._x ? 1 : -1);
@@ -4630,6 +4926,11 @@
       if (!this._foods.includes(food)) return;
       this._removeFood(food);
       await this._eat(FOOD[food.kind].color, 3800);
+      this._memo(food.kind);
+      this._cls('mlem', 950, true); // Zungenspitze: lecker
+      // Zu hastig gefressen: gleich Schluckauf
+      if (Math.random() < 0.25) this._hicDue = true;
+      await this._wait(500);
       this._happy();
       this._jump('hop1');
       await this._wait(1300);
@@ -4665,7 +4966,7 @@
 
     // ---------- Bausteine ----------
 
-    async _walkTo(x, speed = 1) {
+    async _walkTo(x, speed = 1, steady = false) {
       const { pW } = this._g;
       x = clamp(x, pW * 0.45, this._W - pW * 0.45);
       const dx = x - this._x;
@@ -4673,11 +4974,34 @@
       this._face(dx > 0 ? 1 : -1);
       const dur = Math.abs(dx) / (pW * 0.85 * speed);
       const p = this._el.pika;
+      // Gangart: kurze Wege trippelt er, eilig macht er große Hopser
+      const gait = Math.abs(dx) < pW * 0.8 && speed <= 1.2 ? 'trip' : speed >= 1.8 ? 'bighop' : null;
+      // Beim Herumhoppeln stolpert er selten über die eigenen Füße
+      const stumble = !steady && this._action === 'wander' && Math.abs(dx) > pW * 1.5 && Math.random() < 0.05;
       p.style.transition = `transform ${dur.toFixed(2)}s linear`;
       this._setX(x);
       p.classList.add('walking');
-      await this._wait(dur * 1000);
+      if (gait) p.classList.add(gait);
+      try {
+        if (stumble) {
+          await this._wait(dur * 550);
+          this._freeze();
+          p.classList.remove('walking');
+          p.classList.add('stumble');
+          this._emote('drop', 1400);
+          await this._wait(750);
+          p.classList.remove('stumble');
+          this._say('hoppla!', 900);
+          this._blush(1500);
+          await this._wait(500);
+          return await this._walkTo(x, speed, true);
+        }
+        await this._wait(dur * 1000);
+      } finally {
+        if (gait) p.classList.remove(gait);
+      }
       p.classList.remove('walking');
+      this._cls('lnd', 600, true);
     }
 
     async _approach(x, speed) {
@@ -4840,15 +5164,31 @@
 
     // ---------- Interaktion ----------
 
-    _onPet() {
+    _onPet(e) {
+      // Nach dem Kraulen oder Wischen kommt beim Loslassen noch ein Klick: der zählt nicht extra
+      if (Date.now() < (this._noClickUntil || 0)) return;
       this._add('g', GAIN.pet);
       this._petFriend();
+      this._petCount();
       const p = this._el.pika;
       if (this._asleep) {
         p.classList.add('peek');
         clearTimeout(this._peekT);
         this._peekT = setTimeout(() => p.classList.remove('peek'), 1300);
         this._hearts(1);
+        return;
+      }
+      // Mehrmals hintereinander: Combo (innerhalb von 6 s)
+      const now = Date.now();
+      this._combo = (this._combo || []).filter((t) => now - t < 6000);
+      this._combo.push(now);
+      const n = this._combo.length;
+      this._blush(1600 + n * 250);
+      if (this._petFree()) {
+        this._petReq = { zone: this._petZone(e), n, from: this._action };
+        if (n >= 11) this._combo = [];
+        this._next = 'petReact';
+        this._interrupt();
         return;
       }
       this._happy();
@@ -4862,6 +5202,721 @@
       if (this._inside) return this._pose('peek', 300);
       if (!p.classList.contains('walking')) this._jump(Math.random() < 0.25 ? 'binky' : 'hop1');
       if (Math.random() < 0.35) this._say(pick(['iiep!', 'mip!', '♥']));
+    }
+
+    // ---------- Streicheln: Zonen, Combo, Kraulen, Wischen ----------
+
+    // Darf Streicheln eine eigene Reaktion starten? Nur bei Kleinigkeiten, draußen auf der Wiese.
+    _petFree() {
+      return this._running && !!this._g && !this._inside && !(this._lift > 0) && !this._asleep
+        && (this._action == null || PET_FREE.has(this._action));
+    }
+
+    // Wo wurde er angetippt? In Koordinaten der Pika-Grafik (120 × 100, Blick nach rechts)
+    _petZone(e) {
+      const svg = this._el.pika.querySelector('.pk');
+      const r = svg?.getBoundingClientRect();
+      if (!e || !r?.width) return 'body';
+      let x = ((e.clientX - r.left) / r.width) * 120;
+      const y = ((e.clientY - r.top) / r.height) * 100;
+      if (this._dir < 0) x = 120 - x;
+      const d = (ax, ay) => Math.hypot(x - ax, y - ay);
+      if (d(91, 53) < 9) return 'nose';
+      if (d(75, 24) < 11.5) return 'ear-l';
+      if (d(101, 25) < 11.5) return 'ear-r';
+      if (x > 62 && y < 63) return 'head';
+      if (x > 62 && y >= 66) return 'belly';
+      return 'body';
+    }
+
+    async _petReact() {
+      const R = this._petReq;
+      this._petReq = null;
+      if (!R) return;
+      const p = this._el.pika;
+      if (R.from === 'nod') {
+        this._cls('hic', 340, true);
+        this._say('oh!', 900);
+        this._emote('drop', 1400);
+        await this._wait(900);
+      }
+      if (R.n >= 11) return this._petPout();
+      if (R.n >= 8) return this._petMelt();
+      if (R.n === 5) {
+        this._jump('binky');
+        this._emote('spark', 1500);
+        p.classList.add('happy');
+        this._hearts(3);
+        await this._wait(1200);
+        return;
+      }
+      if (R.zone === 'nose') return this._petNose();
+      if (R.zone === 'ear-l' || R.zone === 'ear-r') return this._petEar(R.zone.slice(-1));
+      if (R.zone === 'belly') return this._petBelly();
+      if (R.zone === 'head') return this._petHead();
+      // Rücken und Po: Freudensprung wie bisher
+      this._happy();
+      this._jump(Math.random() < 0.25 ? 'binky' : 'hop1');
+      if (Math.random() < 0.35) this._say(pick(['iiep!', 'mip!', '♥']));
+      await this._wait(1200);
+    }
+
+    // Kopf: in die Hand lehnen, Augen zu, Ohren angelegt
+    async _petHead() {
+      this._el.pika.classList.add('lean', 'tilt', 'squint', 'content', 'flat');
+      this._hearts(2);
+      if (Math.random() < 0.4) this._say(pick(['mmh…', '♥', 'mip…']), 1200);
+      await this._wait(rnd(1500, 2100));
+    }
+
+    // Nase: boop! Er schielt auf die Nase, manchmal muss er niesen
+    async _petNose() {
+      const p = this._el.pika;
+      this._say('boop!', 900);
+      p.classList.add('crosseye');
+      this._noseWiggle();
+      await this._wait(1000);
+      p.classList.remove('crosseye');
+      if (Math.random() < 0.45) return this._sneeze(false);
+      this._blink();
+      this._hearts(1);
+      await this._wait(400);
+      if (Math.random() < 0.5) this._say(pick(['hihi', 'nochmal!', 'mip!']), 1000);
+      await this._wait(900);
+    }
+
+    // Ohr: flappt nach
+    async _petEar(side) {
+      const p = this._el.pika;
+      this._cls(`eflap-${side}`, 950, true);
+      this._blink();
+      await this._wait(350);
+      p.classList.add('happy');
+      if (Math.random() < 0.5) this._say(pick(['hihi', 'iiep!', '!']), 900);
+      this._hearts(1);
+      await this._wait(1000);
+    }
+
+    // Bauch: kichern, manchmal kurz auf den Rücken kippen
+    async _petBelly() {
+      const p = this._el.pika;
+      this._say(pick(['hihi!', 'hihihi!', 'kicher!']), 1300);
+      p.classList.add('happy', 'tickle');
+      await this._wait(1000);
+      p.classList.remove('tickle');
+      if (Math.random() < 0.6) {
+        p.classList.add('roll');
+        await this._wait(rnd(1100, 1600));
+        p.classList.remove('roll');
+        await this._wait(400);
+      }
+      this._hearts(2);
+      await this._wait(600);
+    }
+
+    // Achtmal: schmilzt zum runden Fellknäuel
+    async _petMelt() {
+      this._el.pika.classList.add('melt', 'squint', 'content', 'flat');
+      this._say('♥♥♥', 1800);
+      this._hearts(4);
+      this._blush(4500);
+      await this._wait(3400);
+    }
+
+    // Elfmal: genug! Er dreht sich beleidigt weg und linst dann doch zurück
+    async _petPout() {
+      const p = this._el.pika;
+      this._face(-this._dir);
+      this._emote('grump', 2400);
+      this._say('hmpf!', 1300);
+      p.classList.add('look-up', 'squint');
+      await this._wait(2500);
+      p.classList.remove('look-up', 'squint');
+      p.classList.add('look-b');
+      await this._wait(900);
+      p.classList.remove('look-b');
+      this._face(-this._dir);
+      this._say(pick(['…na gut', '…na schön', 'hihi']), 1300);
+      this._blush(2200);
+      this._hearts(1);
+      await this._wait(1300);
+    }
+
+    _pressStart(e) {
+      if (e.button > 0 || !this._g) return;
+      this._press = { x: e.clientX, y: e.clientY };
+      try {
+        this._el.pika.setPointerCapture(e.pointerId); // beim Wischen nicht vom Pika abrutschen
+      } catch (err) { /* nicht unterstützt */ }
+      clearTimeout(this._pressT);
+      this._pressT = setTimeout(() => {
+        const P = this._press;
+        if (!P || P.swiped || !this._petFree()) return;
+        P.kraul = true;
+        this._kraulOn = true;
+        this._petFriend();
+        this._next = 'kraul';
+        this._interrupt();
+      }, 550);
+    }
+
+    _pressMove(e) {
+      const P = this._press;
+      if (!P || P.kraul || P.swiped || !this._g) return;
+      const dx = Math.abs(e.clientX - P.x);
+      const dy = Math.abs(e.clientY - P.y);
+      if (dx > this._g.pW * 0.35 && dx > dy * 1.5) {
+        P.swiped = true;
+        clearTimeout(this._pressT);
+        this._onStroke();
+      } else if (Math.hypot(dx, dy) > 12) clearTimeout(this._pressT); // bewegt: kein Kraulen
+    }
+
+    _pressEnd() {
+      clearTimeout(this._pressT);
+      const P = this._press;
+      this._press = null;
+      if (!P) return;
+      if (P.kraul || P.swiped) this._noClickUntil = Date.now() + 450;
+      if (P.kraul) this._kraulOn = false;
+    }
+
+    // Über das Fell gestrichen: es plustert sich auf und legt sich wieder
+    _onStroke() {
+      if (this._asleep) return;
+      this._add('g', GAIN.pet);
+      this._petCount();
+      this._blush(2000);
+      if (this._petFree()) {
+        this._next = 'stroke';
+        this._interrupt();
+      } else this._cls('fluffy', 850, true);
+    }
+
+    async _stroke() {
+      const p = this._el.pika;
+      this._cls('fluffy', 850, true);
+      this._blink();
+      await this._wait(500);
+      p.classList.add('squint', 'content');
+      this._hearts(1);
+      await this._wait(1000);
+      this._noseWiggle();
+      await this._wait(600);
+    }
+
+    // Kraulen, solange der Finger liegt (höchstens 20 s): Augen zu, Klopfbein, prrr
+    async _kraul() {
+      const p = this._el.pika;
+      p.classList.add('squint', 'content', 'flat', 'tilt');
+      this._say('prrr…', 1500);
+      this._add('g', GAIN.pet);
+      this._petCount();
+      const t0 = Date.now();
+      try {
+        for (let i = 0; this._kraulOn && Date.now() - t0 < 20000; i++) {
+          if (i === 1) p.classList.add('thump');
+          this._blush(2500);
+          if (i % 2) this._hearts(1);
+          if (i % 3 === 2) this._add('g', GAIN.pet / 2);
+          if (i === 4) this._say(pick(['prrrr…', 'mmmh…', '♥']), 1500);
+          await this._wait(900);
+        }
+      } finally {
+        this._kraulOn = false;
+      }
+      p.classList.remove('thump');
+      await this._wait(500);
+      p.classList.remove('squint');
+      this._hearts(1);
+      await this._wait(700);
+    }
+
+    // Stand des heutigen Pika-Tags aus dem Tagesplan (mit plan_entity auf allen Geräten gleich): n gestreichelt, m Erlebnisse
+    _cuteToday() {
+      const d = pikaDay(Date.now());
+      const c = this._plan?.cute;
+      return c?.d === d ? c : { d, n: 0, m: 0 };
+    }
+
+    // Wie oft er heute gestreichelt wurde, auf allen Geräten zusammen: ab 10 kommt er auch mal angehoppelt
+    _petCount() {
+      const c = this._cuteToday();
+      if (c.n >= PET_CAP) return; // mehr muss keiner wissen, der Helfer wird nicht mehr geschrieben
+      this._planOp({ t: 'pet', d: c.d, n: c.n + 1 });
+      if (c.n + 1 === 8) this._memo('heart');
+    }
+
+    _clingy() {
+      return this._cuteToday().n >= PET_CAP;
+    }
+
+    async _comeHere() {
+      const x = this._comeX;
+      this._comeX = null;
+      if (x == null) return;
+      const p = this._el.pika;
+      this._noseWiggle();
+      await this._walkTo(x - Math.sign(x - this._x) * this._g.pW * 0.3, 1.3);
+      p.classList.add('tilt');
+      if (Math.random() < 0.5) this._emote('q', 1400);
+      else this._hearts(1);
+      await this._wait(rnd(1200, 1800));
+    }
+
+    // ---------- Mimik ----------
+
+    // Zustandsklasse c für ms Millisekunden (eigener Zeitgeber je Klasse; restart spielt die Animation neu ab)
+    _cls(c, ms, restart) {
+      const p = this._el.pika;
+      if (restart && p.classList.contains(c)) {
+        p.classList.remove(c);
+        void p.offsetWidth;
+      }
+      p.classList.add(c);
+      const T = (this._clsT ??= {});
+      clearTimeout(T[c]);
+      T[c] = setTimeout(() => p.classList.remove(c), ms);
+    }
+
+    _blush(ms = 1800) {
+      if (!this._asleep) this._cls('blush', ms);
+    }
+
+    _noseWiggle() {
+      if (this._asleep || this._action === 'eatFood' || this._action === 'nod') return;
+      this._cls('nosey', 850, true);
+    }
+
+    // Kleines Zeichen über dem Kopf: ? ! Schweißtropfen, Funkeln, Grummelwolke
+    _emote(kind, ms = 1500) {
+      const a = this._el.anchor;
+      if (!a) return;
+      const el = document.createElement('span');
+      el.className = `emo emo-${kind}`;
+      el.innerHTML = EMOTE[kind] ?? kind;
+      el.style.setProperty('--emt', `${ms}ms`);
+      a.appendChild(el);
+      setTimeout(() => el.remove(), ms + 60);
+    }
+
+    // Wo die Nase gerade ist (Szene-Pixel). Auf dem Stein steht er um 0,9 verkleinert (Ursprung: Füße).
+    _nosePos() {
+      const { pW, pH, gy } = this._g;
+      const lift = this._liveLift();
+      const s = lift > 0 ? 0.9 : 1;
+      return { x: this._liveX() + this._dir * pW * 0.258 * s, y: gy - lift - pH * 0.43 * s };
+    }
+
+    // ---------- Kleine Momente ----------
+
+    _cuteActs({ s, g, wx, elev, hasFlowers }) {
+      const d = new Date(this._dbgDate ?? Date.now());
+      const h = d.getHours();
+      const south = (this._hass?.config?.latitude ?? 50) < 0;
+      const mo = (d.getMonth() + (south ? 6 : 0)) % 12;
+      const dry = !wx.wet && !wx.snowcover;
+      this._pollenSeason = dry && mo >= 2 && mo <= 5;
+      const sleepyH = (h >= 13 && h < 15) || h >= 19 || (elev != null && elev < 6 && h >= 12);
+      const bfly = mo >= 3 && mo <= 8 && dry && !wx.cold && (this._wind || 0) < 30 && (elev == null || elev > 8) && !this._bfly;
+      const gift = hasFlowers && !wx.wet && g > 60 && !this._giftEl && Date.now() - (this._giftAt || 0) > 90 * 6e4;
+      return [
+        [dry ? 0.5 : 0.25, 'curious'],
+        [sleepyH ? 0.35 : 0.12, 'yawn'],
+        [0.06 + (this._pollenSeason ? 0.14 : 0) + (wx.cold ? 0.08 : 0), 'sneeze'],
+        [wx.wet ? 0 : 0.22, 'earClean'], // bei Regen hält eine Pfote das Blatt
+        [wx.wet ? 0 : 0.16, 'scratch'],
+        [this._hicDue ? 8 : 0, 'hiccup'],
+        [wx.wet ? 0 : h >= 13 && h < 16 ? 0.08 : 0.02, 'nod'],
+        [bfly ? 0.14 : 0, 'butterfly'],
+        [dry && g > 85 && s > 40 && !this._fr ? 0.08 : 0, 'zoomies'],
+        [gift ? 0.15 : 0, 'gift'],
+      ];
+    }
+
+    // Kopf schief, manchmal mit Fragezeichen, manchmal erst links, dann rechts
+    async _curious() {
+      const p = this._el.pika;
+      const a = Math.random() < 0.7 ? 'tilt' : 'tilt-b';
+      p.classList.add(a);
+      if (Math.random() < 0.6) this._emote('q', 1500);
+      await this._wait(rnd(1100, 1800));
+      p.classList.remove(a);
+      if (Math.random() < 0.4) {
+        await this._wait(250);
+        const b = a === 'tilt' ? 'tilt-b' : 'tilt';
+        p.classList.add(b);
+        await this._wait(rnd(900, 1400));
+        p.classList.remove(b);
+      }
+      await this._wait(rnd(300, 700));
+    }
+
+    async _yawn() {
+      const p = this._el.pika;
+      if (Math.random() < 0.35) this._say('*gähn*', 1400);
+      p.classList.add('yawning');
+      await this._wait(2300);
+      p.classList.remove('yawning');
+      this._cls('mlem', 950, true); // schmatzen
+      await this._wait(600);
+      this._blink();
+      await this._wait(rnd(600, 1200));
+    }
+
+    // Niesen: Nase kribbelt, Kopf zurück, hatschi! onBurst läuft im Moment des Niesers (Schmetterling fliegt auf).
+    async _sneeze(pollen = this._pollenSeason, onBurst) {
+      const p = this._el.pika;
+      if (pollen) this._pollen();
+      p.classList.add('presneeze');
+      this._say('ha…', 750);
+      await this._wait(750);
+      this._say('haa…', 700);
+      await this._wait(600);
+      p.classList.remove('presneeze');
+      p.classList.add('sneezing');
+      this._say(pick(['hatschi!', 'hatschii!', 'tschi!']), 1100);
+      this._snzFx();
+      onBurst?.();
+      await this._wait(450);
+      p.classList.remove('sneezing');
+      this._cls('eflap-l', 950, true);
+      this._cls('eflap-r', 950, true);
+      await this._wait(800);
+      if (Math.random() < 0.5) {
+        this._blush(1500);
+        this._say(pick(['hihi', 'pardon!', '…']), 1000);
+      }
+      await this._wait(800);
+    }
+
+    _snzFx() {
+      const { pH } = this._g;
+      const n = this._nosePos();
+      for (let i = 0; i < 4; i++) {
+        const el = document.createElement('span');
+        el.className = 'snz';
+        el.style.left = `${n.x}px`;
+        el.style.top = `${n.y}px`;
+        el.style.setProperty('--px', `${this._dir * rnd(0.08, 0.22) * pH}px`);
+        el.style.setProperty('--py', `${rnd(-0.12, 0.06) * pH}px`);
+        this._el.fx.appendChild(el);
+        setTimeout(() => el.remove(), 600);
+      }
+    }
+
+    // Blütenstaub tanzt vor der Nase
+    _pollen() {
+      const { pH } = this._g;
+      const n = this._nosePos();
+      for (let i = 0; i < 6; i++) {
+        const el = document.createElement('span');
+        el.className = 'pol';
+        el.style.left = `${n.x + this._dir * rnd(0.02, 0.16) * pH}px`;
+        el.style.top = `${n.y + rnd(-0.12, 0.04) * pH}px`;
+        el.style.setProperty('--px', `${rnd(-0.08, 0.08) * pH}px`);
+        el.style.setProperty('--py', `${rnd(-0.14, -0.02) * pH}px`);
+        el.style.animationDelay = `${i * 120}ms`;
+        this._el.fx.appendChild(el);
+        setTimeout(() => el.remove(), 1700 + i * 120);
+      }
+    }
+
+    // Ohr putzen: das vordere Ohr mit beiden Pfoten herunterziehen, danach Ohren schütteln
+    async _earClean() {
+      const p = this._el.pika;
+      p.classList.add('earwash');
+      await this._wait(rnd(2200, 3600));
+      p.classList.remove('earwash');
+      await this._wait(350);
+      this._cls('eflap-r', 950, true);
+      this._cls('eflap-l', 950, true);
+      await this._wait(rnd(700, 1200));
+    }
+
+    // Mit der Hinterpfote hinterm Ohr kratzen
+    async _scratch() {
+      const p = this._el.pika;
+      p.classList.add('scratching', 'squint');
+      await this._wait(rnd(1400, 2400));
+      p.classList.remove('scratching', 'squint');
+      this._cls('eflap-l', 950, true);
+      await this._wait(rnd(500, 900));
+    }
+
+    // Schluckauf nach hastigem Fressen
+    async _hiccup() {
+      this._hicDue = false;
+      const n = 3 + Math.floor(rnd(0, 3));
+      for (let i = 0; i < n; i++) {
+        this._cls('hic', 340, true);
+        this._say(pick(['hicks!', 'hick!']), 700);
+        if (i === 1) this._emote('drop', 1300);
+        await this._wait(rnd(1100, 1900));
+      }
+      this._blink();
+      await this._wait(500);
+      this._say(pick(['…weg!', 'puh!']), 1100);
+      await this._wait(1100);
+    }
+
+    // Einnicken am Nachmittag: der Kopf sinkt, er schreckt hoch und tut, als wäre nichts gewesen
+    async _nod() {
+      const p = this._el.pika;
+      const n = 2 + (Math.random() < 0.5 ? 1 : 0);
+      for (let i = 0; i < n; i++) {
+        p.classList.add('nodding');
+        await this._wait(rnd(1700, 2600));
+        p.classList.remove('nodding');
+        if (i < n - 1) {
+          this._blink();
+          await this._wait(rnd(500, 900));
+        }
+      }
+      this._cls('hic', 340, true);
+      this._emote('ex', 1100);
+      this._cls('eflap-l', 950, true);
+      await this._wait(500);
+      p.classList.add('look-b');
+      await this._wait(500);
+      p.classList.replace('look-b', 'look-f');
+      await this._wait(500);
+      p.classList.remove('look-f');
+      this._emote('drop', 1500);
+      this._blush(1800);
+      if (Math.random() < 0.5) this._say(pick(['war nix!', 'hab nicht geschlafen!', 'hm?']), 1500);
+      await this._wait(1500);
+    }
+
+    // Ein Schmetterling landet auf der Nase: schielen, stillhalten, dann niesen oder hinterherhopsen
+    async _butterfly() {
+      const { pW, pH, gy } = this._g;
+      const p = this._el.pika;
+      if (this._x < pW || this._x > this._W - pW) await this._walkTo(clamp(this._x, pW * 1.2, this._W - pW * 1.2));
+      const el = document.createElement('div');
+      el.className = 'bfly';
+      el.innerHTML = BFLY_SVG(pick(BFLY_COLORS));
+      this._el.fx.appendChild(el);
+      this._bfly = el;
+      this._memo('bfly');
+      const at = (x, y) => ({ transform: `translate(${x.toFixed(1)}px, ${y.toFixed(1)}px)` });
+      const flyOff = () => {
+        if (this._bfly !== el) return;
+        this._bfly = null;
+        const m = new DOMMatrixReadOnly(getComputedStyle(el).transform);
+        el.classList.remove('rest');
+        const dx = (Math.random() < 0.5 ? -1 : 1) * this._W * rnd(0.4, 0.7);
+        const kf = [];
+        for (let i = 0; i <= 8; i++) {
+          const t = i / 8;
+          kf.push(at(m.m41 + dx * t, m.m42 - this._H * 0.75 * t + Math.sin(t * Math.PI * 4) * pH * 0.12));
+        }
+        el.animate(kf, { duration: 3200, easing: 'ease-in', fill: 'forwards' });
+        setTimeout(() => el.remove(), 3300);
+      };
+      try {
+        const n = this._nosePos();
+        const tx = n.x;
+        const ty = n.y - pH * 0.04;
+        // von vorn heran, damit er ihn kommen sieht
+        const sx = this._dir > 0 ? this._W + pH * 0.2 : -pH * 0.2;
+        const sy = gy - this._H * rnd(0.45, 0.65);
+        const kf = [];
+        for (let i = 0; i <= 10; i++) {
+          const t = i / 10;
+          kf.push(at(sx + (tx - sx) * t, sy + (ty - sy) * t + Math.sin(t * Math.PI * 3) * pH * 0.2 * (1 - t)));
+        }
+        const dur = 4200;
+        el.animate(kf, { duration: dur, easing: 'ease-out', fill: 'forwards' });
+        await this._wait(dur * 0.5);
+        p.classList.add('look-up');
+        this._cls('sparkle', 2200);
+        await this._wait(dur * 0.5);
+        el.classList.add('rest');
+        p.classList.remove('look-up');
+        p.classList.add('crosseye');
+        await this._wait(rnd(2200, 3400));
+        p.classList.remove('crosseye');
+        if (Math.random() < 0.5) {
+          await this._sneeze(false, flyOff);
+        } else {
+          this._blink();
+          await this._wait(400);
+          flyOff();
+          p.classList.add('look-up');
+          await this._wait(500);
+          this._jump('binky');
+          this._say(pick(['oh!', 'tschüss!', 'wiii!']), 1100);
+          await this._wait(1600);
+        }
+      } finally {
+        flyOff();
+      }
+    }
+
+    // Vor Freude wild über die Wiese flitzen, danach hecheln
+    async _zoomies() {
+      const { pW, home } = this._g;
+      const p = this._el.pika;
+      this._say(pick(['wiii!', 'juhuu!', 'iiiiiep!']), 1200);
+      this._jump('binky');
+      await this._wait(900);
+      const lo = Math.max(home, pW * 0.5);
+      const hi = this._W - pW * 0.5;
+      const legs = 3 + Math.floor(rnd(0, 2));
+      for (let i = 0; i < legs; i++) {
+        const mid = (lo + hi) / 2;
+        const x = this._x < mid ? rnd(mid + (hi - mid) * 0.4, hi) : rnd(lo, mid - (mid - lo) * 0.4);
+        await this._walkTo(x, 2.4, true);
+        this._puff(this._x, this._g.gy, 3);
+        this._jump(Math.random() < 0.6 ? 'binky' : 'hop1');
+        await this._wait(700);
+      }
+      this._cls('excited', 25000);
+      p.classList.add('pant', 'happy');
+      this._say(pick(['puh!', 'hechel…', 'hihi!']), 1300);
+      await this._wait(2600);
+    }
+
+    // Eine Blüte als Geschenk vorn ins Gras legen. Antippen nimmt sie an.
+    async _gift() {
+      const f = this._nearestFlower();
+      if (!f || this._giftEl) return;
+      this._giftAt = Date.now();
+      const p = this._el.pika;
+      const { pW, pH, gy } = this._g;
+      await this._approach(f.xf * this._W);
+      this._pickFlower(f);
+      this._mouth(f.color);
+      p.classList.add('carry');
+      await this._walkTo(clamp(this._W * rnd(0.4, 0.6), pW, this._W - pW));
+      p.classList.remove('carry');
+      this._mouth(null);
+      const el = document.createElement('div');
+      el.className = 'pgift';
+      el.innerHTML = GIFT_SVG(f.color);
+      el.style.left = `${this._x + this._dir * pW * 0.45}px`;
+      el.style.top = `${gy - pH * 0.17}px`;
+      el.addEventListener('click', (e) => (e.stopPropagation(), this._takeGift()));
+      this._el.fx.appendChild(el);
+      this._giftEl = el;
+      clearTimeout(this._giftT);
+      // Nimmt sie keiner, welkt sie nach 12 Minuten
+      this._giftT = setTimeout(() => {
+        if (this._giftEl !== el) return;
+        this._giftEl = null;
+        el.classList.add('wilt');
+        setTimeout(() => el.remove(), 4200);
+      }, 12 * 6e4);
+      this._say(pick(['für dich!', 'für dich ♥', 'hier!']), 1800);
+      this._blush(3000);
+      p.classList.add('happy');
+      this._jump('hop1');
+      await this._wait(1500);
+      p.classList.remove('happy');
+      p.classList.add('tilt');
+      await this._wait(1600);
+    }
+
+    _takeGift() {
+      const el = this._giftEl;
+      if (!el) return;
+      this._giftEl = null;
+      clearTimeout(this._giftT);
+      const r = el.getBoundingClientRect();
+      const s = this._el.scene.getBoundingClientRect();
+      for (let i = 0; i < 3; i++) {
+        const h = document.createElement('span');
+        h.className = 'heart';
+        h.innerHTML = ICON_HEART;
+        h.style.left = `${r.left - s.left + r.width * rnd(0.3, 0.8)}px`;
+        h.style.top = `${r.top - s.top}px`;
+        h.style.setProperty('--dx', `${rnd(-0.3, 0.3) * this._g.pW}px`);
+        h.style.animationDelay = `${i * 110}ms`;
+        this._el.fx.appendChild(h);
+        setTimeout(() => h.remove(), 1700 + i * 110);
+      }
+      el.classList.add('take');
+      setTimeout(() => el.remove(), 950);
+      this._add('g', GAIN.pet);
+      if (this._asleep) return;
+      this._blush(2500);
+      this._happy(1400);
+      if (!this._el.pika.classList.contains('walking')) this._jump('binky');
+      this._say(pick(['♥', 'hihi ♥', 'gern!']), 1300);
+    }
+
+    // Langes Wiedersehen (über 3 Stunden nicht zu sehen): er hoppelt nach vorn und freut sich riesig
+    async _reunite() {
+      const p = this._el.pika;
+      if (this._inside) await this._comeOut();
+      this._cls('sparkle', 6000);
+      this._emote('ex', 1000);
+      await this._wait(600);
+      await this._walkTo(this._W * 0.5, 1.8);
+      p.classList.add('waving');
+      this._say(pick(['Da bist du ja endlich!', 'Du warst lange weg!', 'Juhuu, du bist da!']), 2200);
+      this._blush(4500);
+      await this._wait(1800);
+      p.classList.remove('waving');
+      this._jump('binky');
+      this._hearts(4);
+      await this._wait(1000);
+      this._jump('binky');
+      await this._wait(1100);
+    }
+
+    // ---------- Träume ----------
+
+    // Tagesgedächtnis im Tagesplan: was der Pika heute erlebt hat (Pino, Kaffee, Flieger …), egal auf welchem Gerät
+    // es zu sehen war. Geschrieben wird nur beim ersten Mal je Art und Tag.
+    _memo(kind) {
+      const b = 1 << MEM_BITS.indexOf(kind);
+      if (b < 1) return;
+      const c = this._cuteToday();
+      if (!(c.m & b)) this._planOp({ t: 'mem', d: c.d, b });
+    }
+
+    // Was er an diesem Pika-Tag erlebt hat, träumt er dreimal so oft. Schläft er schon vor 4 Uhr ein, ist es heute;
+    // wacht er nach 4 Uhr noch nicht gleich auf, gilt noch der Vortag.
+    _dreamSvg() {
+      const opts = [[1, 'lz'], [1, 'heart'], [0.6, 'klee']];
+      const c = this._plan?.cute;
+      if (c && c.d >= pikaDay(Date.now()) - 1) MEM_BITS.forEach((k, i) => c.m & (1 << i) && opts.push([3, k]));
+      return DREAM[weighted(opts)];
+    }
+
+    // Im Schlaf: ab und zu ein Traum, Zucken, Schmatzen oder Murmeln
+    async _dream() {
+      const dbg = this._dbgDream; // Vorschau: gleich träumen
+      this._dbgDream = false;
+      await this._wait(dbg ? 300 : rnd(25000, 55000));
+      if (!this._asleep) return;
+      const p = this._el.pika;
+      const r = dbg ? 0 : Math.random();
+      if (r < 0.4) {
+        const think = this._el.think;
+        think.innerHTML = this._dreamSvg();
+        think.classList.add('dream');
+        try {
+          this._bubble(think, true);
+          p.classList.add('content');
+          await this._wait(rnd(4000, 6500));
+          if (Math.random() < 0.5) this._cls('mlem', 950, true);
+          await this._wait(1200);
+          this._bubble(think, false);
+          await this._wait(400);
+        } finally {
+          think.innerHTML = FOOD.lz.svg;
+          think.classList.remove('dream');
+        }
+      } else if (r < 0.6) {
+        this._cls('stw', 550, true);
+      } else if (r < 0.75) {
+        this._say(pick(['mip…', 'mmh…', 'zzz… Löwenzahn…', `${this._frName()}…`, 'hihi…']), 1800);
+      } else if (r < 0.85) {
+        this._cls('mlem', 950, true);
+      }
     }
 
     _onFeed() {
@@ -4886,6 +5941,8 @@
       this._el.foods.appendChild(el);
       const food = { xf, kind, el, landed: false };
       this._foods.push(food);
+      // Sternchenaugen, wenn Futter kommt
+      if (!this._asleep) this._cls('sparkle', 2600);
       setTimeout(() => {
         food.landed = true;
         el.classList.remove('drop');
@@ -4901,13 +5958,24 @@
 
     _onLookAt(e) {
       if (this._asleep || !this._g || this._action === 'eatFood') return;
-      const x = e.clientX - this._el.scene.getBoundingClientRect().left;
+      const sr = this._el.scene.getBoundingClientRect();
+      const x = e.clientX - sr.left;
       const c = Math.sign(x - this._liveX()) === this._dir ? 'look-f' : 'look-b';
       const p = this._el.pika;
       p.classList.remove('look-f', 'look-b', 'look-up');
       p.classList.add(c);
       clearTimeout(this._lookT);
       this._lookT = setTimeout(() => p.classList.remove(c), 1500);
+      // Heute oft gestreichelt: auf die Wiese getippt, hoppelt er gern hin. Sonst legt er manchmal den Kopf schief.
+      const meadow = e.clientY - sr.top > this._g.gy - this._H * 0.3;
+      if (meadow && this._clingy() && this._petFree() && Math.random() < 0.6) {
+        this._comeX = clamp(x, this._g.pW * 0.5, this._W - this._g.pW * 0.5);
+        this._next = 'comeHere';
+        this._interrupt();
+      } else if (!this._inside && Math.random() < 0.35) {
+        this._cls('tilt', 1400);
+        if (Math.random() < 0.5) this._emote('q', 1400);
+      }
     }
 
     // ---------- Wiese ----------
@@ -6867,6 +7935,7 @@
 
     // Begrüßung: hinschauen, "Pino!", hinhoppeln, Nasenstupsen
     async _greetFriend() {
+      this._memo('pino');
       await this._withFriend(async (fr, w) => {
         const P = this._el.pika.classList;
         this._face(fr.x >= this._x ? 1 : -1);
@@ -9601,6 +10670,7 @@
     // Im Bau eine Tasse holen, mit ihr herauskommen und trinken: auf dem Stein oder vor der Tür, Schluck für Schluck.
     // Unterbrochen (Futter, Größenänderung) geht es an derselben Stelle im Ablauf weiter.
     async _coffee() {
+      this._memo('coffee');
       const P = this._cof.pend;
       const p = this._el.pika;
       const { stand, pW, rock } = this._g;
@@ -9765,6 +10835,7 @@
       if (st === this._screenSt) return;
       const was = this._screenSt;
       this._screenSt = st;
+      if (was === 'on' && st === 'off') this._goneAt ??= Date.now(); // für das Wiedersehen
       if (was === 'off' && st === 'on' && !this._away()) {
         // Bei dunklem Bildschirm hat keiner zugesehen: wie nach dem Neuladen gleich mitten in der Beschäftigung
         this._loopAt = Date.now();
@@ -9784,15 +10855,21 @@
       const now = Date.now();
       if (now - (this._showAt || 0) < ACT_SHOW_COOL) return;
       this._showAt = now;
+      // Über 3 Stunden nicht zu sehen (Tab im Hintergrund, Bildschirm aus): großes Wiedersehen
+      this._reunion = !!this._goneAt && now - this._goneAt > 3 * 36e5;
+      this._goneAt = null;
       if (this._asleep) return this._sleepyHello();
       this._greetDue = true;
       const a = this._action;
       if (!this._running || !a) return; // die Schleife startet gleich und begrüßt zuerst
-      if (['idle', 'look', 'wander', 'groom', 'squeak', 'sniff', 'binky', 'hungry', 'lookout', 'burrow', 'shelter', 'hideout'].includes(a)) {
+      if (['idle', 'look', 'wander', 'groom', 'squeak', 'sniff', 'binky', 'hungry', 'lookout', 'burrow', 'shelter', 'hideout',
+        'curious', 'yawn', 'earClean', 'scratch', 'nod'].includes(a)) {
         this._interrupt();
       } else {
         this._greetDue = false;
-        setTimeout(() => this._action && !this._asleep && (this._say(pick(ACT_GREET), 1500), this._hearts(1)), 500);
+        const big = this._reunion;
+        this._reunion = false;
+        setTimeout(() => this._action && !this._asleep && (this._say(pick(ACT_GREET), 1500), this._hearts(big ? 3 : 1)), 500);
       }
     }
 
@@ -9810,6 +10887,10 @@
     // Winkt mit einer Pfote. Eine Beschäftigung startet er danach nicht: die kommen nur aus dem Tagesplan.
     async _greet() {
       const p = this._el.pika;
+      if (this._reunion) {
+        this._reunion = false;
+        return this._reunite();
+      }
       if (this._inside) {
         this._pose('peek', 400);
         await this._wait(500);
@@ -10145,6 +11226,7 @@
     // Ukulele: wiegt sich, schlägt die Saiten, Noten steigen auf. Singt manchmal mit, verspielt sich, und sitzt ein
     // Vögelchen da, zwitschert es mit. Am Ende eine Verbeugung.
     async _music() {
+      this._memo('note');
       const S = this._slotFor('music');
       const { home, pW } = this._g;
       await this._goSpot(S, S.r(2) < 0.55 ? this._hobbySpot(S.r(3)) : home + pW * 0.75);

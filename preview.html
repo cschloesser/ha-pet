@@ -200,6 +200,34 @@
 </div>
 <!-- ==================== Ende Aktivitäten ==================== -->
 
+<!-- ==================== Vorschau-Knöpfe Süßes (Mimik, Streicheln, kleine Momente) ==================== -->
+<div class="bar" id="bar-cute"><b>Süßes</b>
+  <button data-cute="curious">Kopf schief</button>
+  <button data-cute="yawn">Gähnen</button>
+  <button data-cute="sneeze">Niesen</button>
+  <button data-cute="earClean">Ohr putzen</button>
+  <button data-cute="scratch">Kratzen</button>
+  <button data-cute="hiccup">Schluckauf</button>
+  <button data-cute="nod">Einnicken</button>
+  <button data-cute="butterfly">Schmetterling</button>
+  <button data-cute="zoomies">Zoomies</button>
+  <button data-cute="gift">Geschenk</button>
+  <i style="flex-basis:100%"></i><b></b>
+  <button data-pet="nose">Nase (boop)</button>
+  <button data-pet="ear-r">Ohr</button>
+  <button data-pet="head">Kopf</button>
+  <button data-pet="belly">Bauch</button>
+  <button data-pet="5">Combo ×5</button>
+  <button data-pet="8">Combo ×8 (schmelzen)</button>
+  <button data-pet="11">Combo ×11 (beleidigt)</button>
+  <button id="cute-kraul">Kraulen 4 s</button>
+  <button id="cute-stroke">Übers Fell wischen</button>
+  <button id="cute-cling">heute oft gestreichelt</button>
+  <button id="cute-reunion">Wiedersehen nach 4 Std.</button>
+  <button id="cute-dream">Traum jetzt (nachts)</button>
+</div>
+<!-- ==================== Ende Süßes ==================== -->
+
 <div class="wrap">
   <div class="slot" style="width:600px;height:248px"><pika-pet-card id="a"></pika-pet-card></div>
   <div class="slot" style="width:380px;height:184px"><pika-pet-card id="b"></pika-pet-card></div>
@@ -718,6 +746,43 @@
     log('rechte Karte neu geladen');
   });
   // ==================== Ende Aktivitäten ====================
+
+  // ==================== Süßes ====================
+  const cuteGo = (c, act) => { c._next = act; c._interrupt(); };
+  document.querySelectorAll('[data-cute]').forEach((b) =>
+    b.addEventListener('click', () => cards.forEach((c) => cuteGo(c, b.dataset.cute)))
+  );
+  // Streicheln ohne genaues Zielen: Zone bzw. Combo-Zahl direkt vorgeben
+  document.querySelectorAll('[data-pet]').forEach((b) => b.addEventListener('click', () => cards.forEach((c) => {
+    const v = b.dataset.pet;
+    const n = Number(v);
+    c._petReq = n ? { zone: 'body', n } : { zone: v, n: 1 };
+    c._blush(2000);
+    cuteGo(c, 'petReact');
+  })));
+  document.getElementById('cute-kraul').addEventListener('click', () => cards.forEach((c) => {
+    c._kraulOn = true;
+    cuteGo(c, 'kraul');
+    setTimeout(() => { c._kraulOn = false; }, 4000);
+  }));
+  document.getElementById('cute-stroke').addEventListener('click', () => cards.forEach((c) => c._onStroke()));
+  // Nur links gezählt: rechts kommt es über den Helfer plan_entity an wie auf einem zweiten Gerät
+  document.getElementById('cute-cling').addEventListener('click', () => {
+    const c = cards[0];
+    c._planOp({ t: 'pet', d: c._cuteToday().d, n: 10 });
+    setTimeout(() => log(`heute 10× gestreichelt (links), rechts: ${cards[1]._cuteToday().n}× · auf die Wiese tippen, er hoppelt oft hin`), 1200);
+  });
+  document.getElementById('cute-reunion').addEventListener('click', () => cards.forEach((c) => {
+    c._showAt = 0;
+    c._goneAt = Date.now() - 4 * 36e5;
+    c._showReq();
+  }));
+  document.getElementById('cute-dream').addEventListener('click', () => cards.forEach((c) => {
+    if (!c._asleep) return log('erst „Nacht (schläft)“ wählen');
+    c._dbgDream = true;
+    c._interrupt();
+  }));
+  // ==================== Ende Süßes ====================
 </script>
 </body>
 </html>
