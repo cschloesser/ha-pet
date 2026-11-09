@@ -51,7 +51,7 @@
  * werden aus Datum und Standort (hass.config) berechnet.
  */
 (() => {
-  const VERSION = '0.20.0';
+  const VERSION = '0.20.1';
 
   const DEFAULTS = {
     name: 'Pika',
@@ -249,6 +249,8 @@
     'lightning-rainy': { cover: 95, rain: 70, flash: true, storm: true },
     snowy: { cover: 90, snow: 55 }, 'snowy-rainy': { cover: 90, rain: 25, snow: 25 },
   };
+  // So lange gilt das letzte Wetter weiter, wenn die Wetter-Entität unavailable/unknown ist
+  const WX_HOLD = 30 * 60000;
 
   // ---------- Flugzeuge ----------
 
@@ -2938,7 +2940,9 @@
   :host { display: block; height: 100%; }
   ha-card { display: block; height: 100%; overflow: hidden; background: none; border-radius: var(--ha-card-border-radius, 12px); }
   .scene {
-    position: relative; height: 100%; overflow: hidden; border-radius: inherit;
+    /* clip statt hidden, wo es das gibt: hidden bleibt per Skript scrollbar (Fokus, scrollIntoView auf ein Element, das
+       über den Rand ragt), die ganze Szene stünde dann verschoben und käme nie zurück */
+    position: relative; height: 100%; overflow: hidden; overflow: clip; border-radius: inherit;
     /* Größe kommt von außen, nichts ragt hinaus: Stil, Layout und Malen bleiben auf die Karte begrenzt */
     contain: strict;
     user-select: none; -webkit-user-select: none; -webkit-tap-highlight-color: transparent;
@@ -3149,9 +3153,11 @@
     width: var(--fw); transform-origin: 50% 100%; animation: sway 3.6s ease-in-out infinite alternate;
   }
   .flower.grow { animation: grow 1.4s ease-out, sway 3.6s 1.4s ease-in-out infinite alternate; }
-  .flower.picked { animation: picked .35s forwards; }
   @keyframes sway { from { transform: rotate(-4deg); } to { transform: rotate(4deg); } }
   .windy .flower { animation: sway-wind 1.1s ease-in-out infinite alternate; }
+  /* Nach der Wind-Regel (gleiche Spezifität, die spätere gewinnt): Auch bei Wind wächst eine Blume und wird gepflückt */
+  .windy .flower.grow { animation: grow 1.4s ease-out, sway-wind 1.1s 1.4s ease-in-out infinite alternate; }
+  .flower.picked, .windy .flower.picked { animation: picked .35s forwards; }
   @keyframes sway-wind { from { transform: rotate(var(--sw1, -2deg)); } to { transform: rotate(var(--sw2, 14deg)); } }
 
   /* Regen, Schnee, Nebel, Blitz */
@@ -3299,7 +3305,9 @@
   .seye, .heye { display: none; fill: none; stroke: #2a1a12; stroke-width: 1.8; stroke-linecap: round; }
   .sleeping .eye, .groom .eye, .happy .eye { display: none; }
   .sleeping .seye, .groom .seye { display: inline; }
-  .happy .seye { display: none; }
+  /* .happy doppelt: schlägt die späteren Regeln, die .seye einblenden (.squat, .doze, .sip, .strain, .yawning …).
+     Sonst lägen beim Streicheln in der Hocke, beim Kaffee oder Gewichtheben beide Augenpaare übereinander. */
+  .happy.happy .seye { display: none; }
   .happy .heye { display: inline; }
   .sleeping.peek .eye-r { display: inline; }
   .sleeping.peek .seye-r { display: none; }
@@ -3858,12 +3866,16 @@
      eine nachwachsende wächst trotzdem fertig */
   .scene.night:not(.windy) .flower { animation-play-state: paused; }
   .scene.night:not(.windy) .flower.grow { animation-play-state: running, paused; }
+  .scene.night:not(.windy) .flower.picked { animation-play-state: running; }
   /* Weniger Bewegung gewünscht (Systemeinstellung): Wolken, Sterne, Blumen, Rauch, Niederschlag und Blinklichter ruhen */
   @media (prefers-reduced-motion: reduce) {
-    .cloud, .stars b, .flower, .smoke circle, .precip .pl, .precip .pw, .fog i, .lt.flk, .br, .brolly,
+    .stars b, .flower, .smoke circle, .precip .pl, .precip .pw, .fog i, .lt.flk, .br, .brolly,
     .plane .bcn, .plane .strobe, .fbl, .flm, .fflk, .lsw, .hb-i, .hb-tw, .hb-heat > g, .hb-steam > g {
       animation: none !important;
     }
+    /* Wolken stehen still, bleiben aber am Himmel: Ohne Animation lägen alle links außerhalb des Bildes (sie kommen
+       nur über drift herein), angehalten stehen sie dank des negativen Versatzes --dl verteilt */
+    .cloud { animation-play-state: paused !important; }
     .precip { opacity: .6; }
     /* Blitz: nur ein sanftes, einmaliges Aufhellen statt Flackern über die ganze Karte */
     .flash.go { animation: flash-soft 1.2s ease-out; }
@@ -3983,6 +3995,7 @@
       }
       if (cfg.entity && cfg.entity === cfg.plan_entity) throw new Error('pika-pet-card: entity und plan_entity brauchen zwei verschiedene Helfer');
       if (cfg.areal && !AREALE[cfg.areal]) console.warn(`pika-pet-card: areal "${cfg.areal}" gibt es nicht (${Object.keys(AREALE).join(', ')}), nehme huegel`);
+      this._lsRename(this._cfg?.name, cfg.name);
       this._cfg = cfg;
       if (!this._el) this._build();
       this._applyAreal();
@@ -4063,11 +4076,10 @@
             this._gainSub(late.gain);
             this._saveFail = 0;
           } else if (parsed) {
-            const was = this._synced;
             this._synced = true;
-            // Erst den eigenen Stand bewerten: Lag hier etwas unter GIFT.min, steht es so fest. Sonst überdeckte ein
-            // Füttern auf einem anderen Gerät, dass es eine Weile darunter lag.
-            if (was && this._stats) this._careEval();
+            // Den eigenen, jetzt veralteten Stand hier nicht mehr bewerten: Wer gepflegt hat, hat das vor seiner Änderung
+            // selbst getan (_add, _cleanPile) und schon entwarnt. Eine Warnung von hier käme danach und bliebe stehen,
+            // die Serie risse trotz Füttern.
             const gain = this._sentGain();
             if (this._stats && (this._pendingWrite || gain.s || gain.g || gain.c)) {
               // Eigene Änderung ungesendet oder noch unbestätigt: zusammenführen statt den fremden Stand zu
@@ -4554,8 +4566,17 @@
       }
       // Länger versteckt: Der Stand aus HA (Tagesplan, Wetter) ist wohl veraltet, die Verbindung baut sich gerade neu
       // auf. Beschäftigungen erst wählen, wenn ein frischer Stand da ist, sonst zeigte dieses Gerät eine andere.
-      if (this._hidAt && Date.now() - this._hidAt > 30000) this._planStaleArm();
+      const long = !!this._hidAt && Date.now() - this._hidAt > 30000;
+      if (long) this._planStaleArm();
       this._hidAt = null;
+      // Über die Pause wurde es Schlafenszeit (Bildschirm abends aus, nachts an): Er liegt längst im Bett, statt jetzt erst
+      // hinzulaufen. Das Aufwachen am Morgen spielt dagegen die Schleife (_wakeUp), danach begrüßt er (_showReq).
+      if (long && this._g && !this._asleep && this._sleepTime()) {
+        if (this._next === 'poop') this._next = null;
+        this._revealPending();
+        this._sleepNow(true);
+        this._updateSky();
+      }
       this._showReq();
       this._start();
       this._startCritters();
@@ -5842,6 +5863,7 @@
       if (this._sleepTime() !== this._asleep && !['goSleep', 'wakeUp', 'coffee'].includes(this._action)) {
         this._interrupt();
       }
+      if (this._wxDeadAt > 0 && Date.now() - this._wxDeadAt >= WX_HOLD) this._readWeather(this._lastWeather, this._lastPrecip);
       this._updateSky();
       this._tickSky();
       this._tickFest();
@@ -5872,6 +5894,9 @@
       this._petCount();
       const p = this._el.pika;
       if (this._asleep) return this._sleepTouch('tap');
+      // Er schmollt gerade („hmpf!“): Das Streicheln zählt fürs Glück, aber er lässt sich nicht stören, und die
+      // nächste Combo beginnt erst danach
+      if (this._pout) return this._blush(1600);
       // Mehrmals hintereinander: Combo (innerhalb von 6 s)
       const now = Date.now();
       this._combo = (this._combo || []).filter((t) => now - t < 6000);
@@ -5902,7 +5927,7 @@
     // Darf Streicheln eine eigene Reaktion starten? Nur bei Kleinigkeiten, draußen auf der Wiese, und nicht, wenn
     // schon etwas anderes ansteht (Häufchen, Vorschau-Knopf): das bliebe sonst liegen
     _petFree() {
-      return this._running && !!this._g && !this._inside && !(this._lift > 0) && !this._asleep && !this._giftCarry
+      return this._running && !!this._g && !this._inside && !(this._lift > 0) && !this._asleep && !this._giftCarry && !this._pout
         && (this._action == null || PET_FREE.has(this._action)) && (!this._next || TOUCH_NEXT.has(this._next));
     }
 
@@ -6054,20 +6079,27 @@
     // Elfmal: genug! Er dreht sich beleidigt weg und linst dann doch zurück
     async _petPout() {
       const p = this._el.pika;
-      this._face(-this._dir);
-      this._emote('grump', 2400);
-      this._say('hmpf!', 1300);
-      p.classList.add('look-up', 'squint');
-      await this._wait(2500);
-      p.classList.remove('look-up', 'squint');
-      p.classList.add('look-b');
-      await this._wait(900);
-      p.classList.remove('look-b');
-      this._face(-this._dir);
-      this._say(pick(['…na gut', '…na schön', 'hihi']), 1300);
-      this._blush(2200);
-      this._hearts(1);
-      await this._wait(1300);
+      const dir = this._dir;
+      // Solange er schmollt, bricht weiteres Tippen das nicht ab (_petFree, _onPet): Wer elfmal tippt, tippt meist weiter
+      this._pout = true;
+      try {
+        this._face(-dir);
+        this._emote('grump', 2400);
+        this._say('hmpf!', 1300);
+        p.classList.add('look-up', 'squint');
+        await this._wait(2500);
+        p.classList.remove('look-up', 'squint');
+        p.classList.add('look-b');
+        await this._wait(900);
+        p.classList.remove('look-b');
+        this._face(dir);
+        this._say(pick(['…na gut', '…na schön', 'hihi']), 1300);
+        this._blush(2200);
+        this._hearts(1);
+        await this._wait(1300);
+      } finally {
+        this._pout = false;
+      }
     }
 
     // el: wer den Finger festhält (sonst der Pika; die Tippfläche eines tiefen Fliegers reicht ihn durch)
@@ -6973,6 +7005,15 @@
       this._festT.add(t);
     }
 
+    // Beginn eines Abendfensters (Minuten nach Mitternacht): zur Uhrzeit at, bei früher Schlafenszeit (Standard:
+    // Sonnenuntergang, im November gegen halb fünf) aber schon lead Minuten davor. Sonst verschliefe er Laternenumzug
+    // und leeren Stiefel. Geht er erst nach Mitternacht schlafen, bleibt es bei at.
+    _festEve(now, at, lead) {
+      if (!this._cfg) return at;
+      const bed = (this._wakeDay(now)[1] - new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime()) / 60000;
+      return Math.min(at, bed - lead);
+    }
+
     // Aktive Feste am (Orts-)Datum. festive: false lässt nur die Geburtstage übrig.
     _festToday() {
       const now = new Date(this._festNow());
@@ -6987,11 +7028,11 @@
       if (this._cfg?.festive !== false) {
         if (md >= 1024 && md <= 1031) f.halloween = true;
         if (md === 1031) f.witch = true;
-        if (md === 1111) f.martin = { walk: h >= 16 };
+        if (md === 1111) f.martin = { walk: hm >= this._festEve(now, 16 * 60, 90) };
         const adv = festAdvent1(y);
         if (day >= adv && md <= 1224) f.advent = { candles: Math.min(4, 1 + Math.floor((day - adv) / 7)) };
         if (day >= adv || md <= 106) f.lights = true; // Lichterkette vom 1. Advent bis Heilige Drei Könige
-        if ((md === 1205 && h >= 18) || md === 1206) f.boot = { full: md === 1206 };
+        if ((md === 1205 && hm >= this._festEve(now, 18 * 60, 120)) || md === 1206) f.boot = { full: md === 1206 };
         if (md >= 1224 && md <= 1226) f.xmas = true;
         if ((md === 1231 && hm >= 23 * 60 + 55) || (md === 101 && h < 1)) f.fireworks = true;
         if (md === 101 && h >= 1) f.sticks = true;
@@ -8537,7 +8578,8 @@
     _frRange() {
       const { pW, home, hay, stash } = this._g;
       const lo = Math.max(home + pW * 0.8, stash ? 0 : hay + this._H * 0.13 + pW * FRIEND_SCALE * 0.3);
-      return [lo, Math.max(lo, this._W - pW * FRIEND_SCALE * 0.45)];
+      // Rechts wie beim Pika (xR) vor der Knopfspalte bleiben: Dahinter wäre er kaum zu sehen, und ein Tipp auf ihn fütterte
+      return [lo, Math.max(lo, this._W - 56 - pW * FRIEND_SCALE * 0.4)];
     }
 
     // free: ohne Begrenzung auf die Wiese (herein- und hinaushoppeln)
@@ -8727,7 +8769,8 @@
       const gap = pW * 0.5;
       const d = fr.x >= this._x ? 1 : -1; // Pino liegt in Richtung d
       const min = pW * 0.45;
-      const max = this._W - pW * 0.45;
+      // Der Pika kommt nur bis xR (_walkTo klemmt dort), und Pino soll auch beim Stupsen nicht hinter den Knöpfen stehen
+      const max = Math.max(min, d > 0 ? Math.min(this._g.xR, this._frRange()[1] - gap) : this._g.xR);
       const tx = fr.x - d * gap;
       if (tx < min || tx > max) {
         const cx = clamp(tx, min, max);
@@ -9261,6 +9304,25 @@
 
     _lsKey() {
       return `pika-pet-card:${this._cfg.name}`;
+    }
+
+    // Im Editor umbenannt: Der Name steckt in den Schlüsseln, unter denen ohne Helfer Zustand, Tagesplan (Vorrat, Serie,
+    // Album) und „Päckchen-Knopf schon gesehen“ im Browser liegen. Den Stand unter den neuen Namen mitnehmen, sonst
+    // finge er von vorn an. Kopiert, nicht verschoben: Bricht man das Bearbeiten ab, gilt der alte Name weiter. Der
+    // Editor ruft setConfig bei jedem Tastendruck, Zwischenstände („Pik“, „Pi“ …) werden darum wieder entfernt.
+    _lsRename(from, to) {
+      if (from == null || to == null || from === to) return;
+      try {
+        const mine = (this._lsCopies ??= new Set());
+        for (const p of ['pika-pet-card', 'pika-pet-plan', 'pika-pet-gift']) {
+          const v = localStorage.getItem(`${p}:${from}`);
+          if (v != null && localStorage.getItem(`${p}:${to}`) == null) {
+            localStorage.setItem(`${p}:${to}`, v);
+            mine.add(`${p}:${to}`);
+          }
+          if (mine.delete(`${p}:${from}`)) localStorage.removeItem(`${p}:${from}`);
+        }
+      } catch (e) { /* kein Speicher: dann gibt es auch nichts mitzunehmen */ }
     }
 
     _loadLocal() {
@@ -10397,6 +10459,15 @@
     // ---------- Wetter ----------
 
     _readWeather(w, pr) {
+      // Wetter kurz nicht erreichbar (Aussetzer des Dienstes, Integration lädt neu): Das letzte gilt bis zu WX_HOLD
+      // weiter. Sonst wäre für die Dauer des Aussetzers Schönwetter, und er käme mitten im Gewitter heraus.
+      const dead = !!w && (w.state === 'unavailable' || w.state === 'unknown');
+      if (!dead) this._wxDeadAt = 0;
+      else if (this._wxRaw && this._wxDeadAt !== -1) {
+        this._wxDeadAt ||= Date.now();
+        if (Date.now() - this._wxDeadAt < WX_HOLD) return;
+        this._wxDeadAt = -1; // Frist um (_tick): ab jetzt ist das Wetter unbekannt
+      }
       if (w) {
         const a = w.attributes || {};
         let wind = Number(a.wind_speed);
@@ -11947,7 +12018,9 @@
         }
         low.push(hi - sh);
       }
-      if (low.length) this._planOp({ t: 'gbad', k: G.k, b: sec(clamp(Math.min(...low), G.k, now)) });
+      // Nicht gleich nach der Entwarnung eines anderen Geräts (_hassPlan): Dessen Zustand ist noch unterwegs, der eigene
+      // bis dahin veraltet. Liegt wirklich noch etwas darunter, steht es beim nächsten Tick fest.
+      if (low.length && Date.now() >= (this._careHold || 0)) this._planOp({ t: 'gbad', k: G.k, b: sec(clamp(Math.min(...low), G.k, now)) });
       G = this._plan.gift;
       const over = G.b != null && this._awakeMs(G.b, now) > GIFT.grace;
       // Verdient bis jetzt bzw. bis die Serie riss. Gezählt wird ab p (bis dahin sind die a verdient), nicht jedes Mal
@@ -12363,7 +12436,9 @@
         ie?.remove();
         this._giftHide = null;
         if (this._gb === B) this._gb = null;
-        this._giftScene();
+        // Nicht nur die Schätze nachziehen: Wurde während des Auspackens schon das nächste Päckchen verschenkt, stand
+        // dieses hier dem neuen Ballon im Weg (_giftFromPlan legt nur einen an, wenn keiner da ist). Jetzt kommt er.
+        this._giftFromPlan();
       }
     }
 
@@ -12792,12 +12867,18 @@
     _showReq() {
       if (!this._el) return;
       const now = Date.now();
-      if (now - (this._showAt || 0) < ACT_SHOW_COOL) return;
+      if (now - (this._showAt || 0) < ACT_SHOW_COOL) {
+        // Er ist wieder zu sehen: Die Abwesenheit endet auch ohne Gruß, sonst zählte sie beim nächsten Mal mit
+        this._goneAt = null;
+        return;
+      }
       this._showAt = now;
       // Über 3 Stunden nicht zu sehen (Tab im Hintergrund, Bildschirm aus): großes Wiedersehen
       this._reunion = !!this._goneAt && now - this._goneAt > 3 * 36e5;
       this._goneAt = null;
-      if (this._asleep) return this._sleepyHello();
+      // Es zählt, ob jetzt Schlafenszeit ist: _asleep ist nach einer Pause veraltet (Bildschirm nachts aus, morgens an).
+      // Dann wacht er gleich auf (_step), und die Begrüßung bzw. das Wiedersehen kommt danach.
+      if (this._g ? this._sleepTime() : this._asleep) return this._asleep ? this._sleepyHello() : undefined;
       this._greetDue = true;
       const a = this._action;
       if (!this._running || !a) return; // die Schleife startet gleich und begrüßt zuerst
@@ -13088,6 +13169,13 @@
       // Album und Vorrat bei jedem Neuladen zurück). Der Plan bleibt im Browser, siehe _planSave.
       const P = this._planMax() < PLAN_MIN ? null : planParse(st);
       if (P) {
+        // Ein anderes Gerät hat entwarnt (dort wurde gepflegt): Die eigene Warnung von eben nicht noch einmal obendrauf
+        // legen und 10 s keine neue aussprechen, bis sein Zustand (kommt nach dem Plan) auch hier ist. Sonst schrieben
+        // beide gegeneinander an, und die Warnung bliebe trotz Pflege stehen.
+        if (sent < 0 && P.gift && P.gift.b == null && this._plan?.gift?.b != null) {
+          this._planOps = this._planOps.filter((o) => o.t !== 'gbad');
+          this._careHold = Date.now() + 10000;
+        }
         this._planBase = P;
         // Ein anderes Gerät hat alle eigenen Änderungen schon mitgeschrieben (zusammengeführt): auch das ist bestätigt
         const last = this._planOps.at(-1);
