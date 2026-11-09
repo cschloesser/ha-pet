@@ -9,6 +9,7 @@ Ein kleiner Pika (Pfeifhase) wohnt in deinem Home-Assistant-Dashboard.
 - **Aussichtsstein**: Wie echte Pikas springt er auf den Stein mit Geröll, richtet sich auf und pfeift
 - **Nachts** (Standard: Sonnenuntergang bis Sonnenaufgang) schläft er mit Zipfelmütze im Eingang seines Baus
 - **Hunger und Glück** sinken langsam. Hat er Hunger, denkt er an Löwenzahn und lässt die Ohren hängen
+- **Päckchen**: Wer sich gut kümmert, verdient Päckchen. Sie schweben an einem Ballon herein, er schießt sie mit der Zwille vom Himmel (siehe [Päckchen](#päckchen))
 
 ## Streicheln
 
@@ -42,6 +43,55 @@ Zwischen den Beschäftigungen hat er kleine Eigenheiten. Jedes Gerät würfelt s
 - **Gangart**: Kurze Wege trippelt er, eilig macht er große Hopser. Beim Landen wippt er nach, die Ohren schwingen nach. Selten stolpert er beim Herumhoppeln („hoppla!“).
 - **Wiedersehen**: War die Karte über 3 Stunden nicht zu sehen (Tab im Hintergrund, Bildschirm aus), hoppelt er nach vorn, winkt mit Sternchenaugen („Du warst lange weg!“) und macht Freudensprünge.
 - **Träume**: Im Schlaf erscheint ab und zu eine bläuliche Traumblase. Was er am Tag erlebt hat, träumt er öfter: Pino, Kaffee, ein Flugzeug, ein Vögelchen, Musik, der Schmetterling, Löwenzahn oder Klee vom Füttern, ein Herz, wenn er viel gestreichelt wurde. Dazu zuckt er im Schlaf, schmatzt oder murmelt („mip…“, „Pino…“). Was er erlebt hat, steht mit `plan_entity` im Helfer: Kam Pino, während der Bildschirm aus war, träumt das Tablet trotzdem von ihm, sobald ein anderes Gerät den Besuch gezeigt hat. Ohne Helfer merkt sich jedes Gerät nur, was es selbst gezeigt hat. Wann und was er träumt, würfelt jedes Gerät selbst.
+
+## Päckchen
+
+Wer sich gut um ihn kümmert, verdient Päckchen, die man ihm schenken kann. Darin sind Leckerli oder Schätze für sein Album.
+
+**Verdienen**
+
+- Bleiben Satt, Glück und Sauber auf mindestens 50 %, läuft eine **Pflege-Serie**. Alle **6 Stunden Wachzeit** ohne Unterbrechung gibt es ein Päckchen, je nach Jahreszeit 1–2 am Tag. Höchstens **3** liegen auf Vorrat.
+- **Toleranz**: Rutscht ein Wert unter 50 %, hat man **60 Minuten Wachzeit**, um ihn wieder hochzubringen (füttern, streicheln, putzen). Erst danach reißt die Serie. Was er selbst knabbert, zählt dafür nicht.
+- **Nacht**: Schlaf zählt weder für den Fortschritt noch gegen die Serie. Die 60 Minuten laufen ab dem Aufwachen, morgens also bald Frühstück geben.
+- **Reißt die Serie**, ist nur der Fortschritt zum nächsten Päckchen weg, Vorrat und Album bleiben. Die neue Serie beginnt, sobald alles wieder über 50 % ist.
+- **Goldenes Päckchen**: Nach 7 Tagen am Stück (und nach jeder weiteren Woche) kommt eins dazu. Darin ist immer ein Schatz, solange das Album nicht voll ist.
+- Niemand muss dafür zuschauen: Zwischen zwei Aktionen sinken die Werte nur. Wann einer unter 50 % fiel, rechnet die Karte beim nächsten Füttern, Streicheln oder Putzen aus dem gespeicherten Stand nach, auch wenn der Bildschirm die ganze Nacht aus war.
+
+**Knopf**
+
+- Der Päckchen-Knopf sitzt über dem Löwenzahn. Bis zum ersten Päckchen gibt es ihn nicht; dann ploppt er mit Funkeln herein.
+- Ein **Ring** zeigt den Fortschritt zum nächsten Päckchen, eine Zahl den Vorrat. Ist nichts da, ist er blass, bei vollem Vorrat wackelt er ab und zu.
+- Liegt ein Wert unter 50 % und die 60 Minuten laufen, **pulsiert der Ring orange**. Ist die Serie gerissen, ist er grau.
+- **Lang drücken** öffnet das Album: alle 8 Schätze (fehlende als Schatten), die Serie in Tagen und wann das nächste Päckchen kommt.
+
+**Schenken**
+
+- Antippen: Ein Ballon mit dem Päckchen schwebt von der Seite herein, aus der der Wind kommt, und bleibt zwischen Heu und Stein in der Luft, wo er im Wind schaukelt.
+- Der Pika entdeckt ihn („oh!“), springt auf den Aussichtsstein, zielt mit der Zwille (ein Auge zu) und schießt. Manchmal geht der erste Schuss knapp daneben. Der Ballon platzt mit Konfetti, das Päckchen fällt auf die Wiese und hüpft einmal auf.
+- Er hoppelt hin, schnuppert, zupft die Schleife auf, der Deckel springt ab, und er hält den Inhalt hoch.
+- **Schläft er**, schwebt der Ballon, bis er aufwacht. Bei einer großen Beschäftigung holt er ihn danach, bei Gewitter, wenn er wieder herauskommt.
+- Es ist immer nur ein Ballon in der Luft. Tippt man noch einmal, schüttelt der Knopf „nein“.
+- Alle Geräte zeigen denselben Ballon mit demselben Inhalt. Ausgepackt ist er, sobald ein Gerät es gezeigt hat; auf den anderen verschwindet er dann.
+
+**Inhalt**
+
+- **Leckerli** (meistens): Erdbeere (Mai bis Juli), Himbeeren (Juli bis September), Apfelschnitz (September bis November) oder ein Blumensträußchen. Satt +15 und Glück +15, er frisst es gleich.
+- **Schätze**: Das erste Päckchen und etwa jedes dritte enthält einen Schatz, der noch fehlt. Jedes Päckchen bringt Glück +15.
+
+| Schatz | Wo | Was er damit macht |
+|---|---|---|
+| Wollknäuel | auf der Wiese | stupst es an, es kullert, er hinterher |
+| Windrad | neben Heu bzw. Nische | dreht sich mit dem echten Wind, bei Flaute ganz langsam |
+| Plüsch-Pino | im Bau | liegt nachts vor ihm, er kuschelt im Schlaf damit |
+| Sonnenbrille | trägt er | bei Sonne ab 24 °C |
+| Fernrohr | trägt er | schaut damit vom Stein, am liebsten echten Flugzeugen nach |
+| Hängematte | auf der Wiese | Nickerchen, vor allem nachmittags |
+| Gießkanne | links am Bau | gießt die Blumen, danach wachsen zwei neue |
+| Glöckchen | an der Tür | bimmelt, wenn er herauskommt und wenn Pino kommt |
+
+- Von Wollknäuel, Hängematte und Gießkanne stehen höchstens zwei zugleich auf der Wiese. Welche, wechselt jeden Tag (auf allen Geräten gleich), der neueste ist immer dabei.
+- Ist das Album voll, gibt es nur noch Leckerli.
+- Mit `plan_entity` stehen Serie, Vorrat und Album im Helfer und gelten auf allen Geräten, sonst je Gerät. Mit `gifts: false` gibt es keine Päckchen.
 
 ## Häufchen und Sauberkeit
 
@@ -239,7 +289,7 @@ In `preview.html` stellen die Festtage-Knöpfe die Uhr der Karte auf den jeweili
 2. *Pika Pet Card* herunterladen; die Ressource wird automatisch eingetragen
 3. Optional einen Text-Helfer anlegen, damit der Pika auf allen Geräten denselben Zustand hat:
    *Einstellungen → Geräte & Dienste → Helfer → Text*, z. B. `input_text.pika_status` (max. Länge 100). Ein neuer Helfer bekommt nach etwa 20 s Startwerte, ein leerer sofort; ist er `unavailable`, wird nichts überschrieben. Fehlt die Entity, spielt die Karte lokal weiter (Hinweis in der Browser-Konsole).
-4. Optional einen zweiten Text-Helfer für den Tagesplan (Vorrat, Frühsport, Verlauf der Beschäftigungen, wie oft er heute gestreichelt wurde und was er erlebt hat), z. B. `input_text.pika_plan` mit **max. Länge 255**, als `plan_entity` eintragen. Ohne ihn laufen die Beschäftigungen trotzdem auf allen Geräten gleichzeitig, nur Vorrat, Frühsport, Abwechslung, Anhänglichkeit und Träume merkt sich jedes Gerät selbst. Der Vorrat, den ein Gerät bis 0.15 gesammelt hat, wird beim ersten Mal übernommen.
+4. Optional einen zweiten Text-Helfer für den Tagesplan (Vorrat, Frühsport, Verlauf der Beschäftigungen, wie oft er heute gestreichelt wurde, was er erlebt hat, Päckchen), z. B. `input_text.pika_plan` mit **max. Länge 255**, als `plan_entity` eintragen. Ohne ihn laufen die Beschäftigungen trotzdem auf allen Geräten gleichzeitig, nur Vorrat, Frühsport, Abwechslung, Anhänglichkeit, Träume und Päckchen merkt sich jedes Gerät selbst. Der Vorrat, den ein Gerät bis 0.15 gesammelt hat, wird beim ersten Mal übernommen.
 
 ## Konfiguration
 
@@ -264,6 +314,7 @@ festive: true                    # Festtage-Deko im Jahreslauf (false = nur Gebu
 birthdays:                       # Geburtstage: Kuchen, Girlande, „Alles Gute, Mia!“ (Datum MM-TT)
   - { name: Mia, date: "03-14" }
 show_stats: true                 # Satt-/Glück-/Sauber-Balken
+gifts: true                      # Päckchen für gute Pflege (false = keine)
 friend: true                     # Freund-Pika kommt zu Besuch (false = nie)
 friend_name: Pino                # Name des Freund-Pikas
 height: 180                      # Mindesthöhe in px (im Abschnitts-Layout zählt die Zeilenhöhe)
@@ -276,10 +327,10 @@ Für `sleep_start` und `sleep_end` gehen feste Uhrzeiten (`"21:00"`) oder `sunse
 
 `wind_bearing` des Wetters darf eine Gradzahl oder ein Kürzel sein („SW“, „NNO“). Flugzeuge erscheinen auch, wenn die Uhr des Geräts von der HA-Uhr abweicht. Auf schmalen Karten (z. B. Handy) werden Aussichtsstein und Heuhaufen automatisch kleiner (die Nische des Erdhügels gehört zum Bau und behält ihre Größe), damit alles ins Bild passt. Der Vorrat (Heuhaufen bzw. Nische) steht mit `plan_entity` im Helfer, sonst im Browser des Geräts.
 
-Im Text-Helfer steht der Zustand als `satt,zeit,glück,zeit,großputz,maske,teilputz` (Zeiten in Sekunden). Hunger, Glück und Häufchen werden daraus beim Anzeigen berechnet, deshalb braucht es keine Automation. Ältere Werte mit vier Feldern werden weiter gelesen. Jedes Schreiben wartet auf die Bestätigung von HA: Geht es verloren (Verbindung weg, Fehler), sendet die Karte erneut, und schrieben zwei Geräte gleichzeitig, werden beide Änderungen zusammengeführt. `entity` und `plan_entity` müssen zwei verschiedene `input_text`-Helfer sein, sonst zeigt die Karte eine Fehlermeldung. Läuft auf einem Gerät noch eine Version bis 0.17, schreibt es den Tagesplan ohne Streichel-Zähler und Erlebnisse zurück; nach dem Neuladen aller Geräte ist das vorbei.
+Im Text-Helfer steht der Zustand als `satt,zeit,glück,zeit,großputz,maske,teilputz` (Zeiten in Sekunden). Hunger, Glück und Häufchen werden daraus beim Anzeigen berechnet, deshalb braucht es keine Automation. Ältere Werte mit vier Feldern werden weiter gelesen. Jedes Schreiben wartet auf die Bestätigung von HA: Geht es verloren (Verbindung weg, Fehler), sendet die Karte erneut, und schrieben zwei Geräte gleichzeitig, werden beide Änderungen zusammengeführt. `entity` und `plan_entity` müssen zwei verschiedene `input_text`-Helfer sein, sonst zeigt die Karte eine Fehlermeldung. Läuft auf einem Gerät noch eine Version bis 0.17, schreibt es den Tagesplan ohne Streichel-Zähler und Erlebnisse zurück; nach dem Neuladen aller Geräte ist das vorbei. Geräte bis 0.18 kennen die Päckchen nicht und schreiben den Plan ohne sie zurück. Neuere Geräte merken sich den letzten Päckchen-Stand und tragen ihn wieder ein, solange sie offen sind; trotzdem am besten alle Geräte neu laden.
 
 Die Karte schont das Gerät: Ist sie nicht zu sehen (Tab im Hintergrund, Bildschirm aus, aus dem Bild gescrollt), ruhen Schleife, Besuche und alle Animationen. Nach längerer Pause wählt sie die nächste Beschäftigung erst mit frischem Stand aus HA. Nachts ohne Wind stehen die Blumen still, Kerzen, Lichterkette und Regenschirm bewegen sich in Stufen. Mit der Systemeinstellung „Bewegung reduzieren“ ruhen Wolken, Sterne, Blumen, Rauch, Niederschlag und Blinklichter.
 
 ## Entwicklung
 
-`preview.html` lädt die Karte mit einem simulierten `hass`-Objekt. Die Häufchen-Knöpfe stellen die Uhr der Häufchen vor (nächstes Häufchen, +4 Std., +1 Tag), die Besuch-Knöpfe holen Vögelchen und Maus sofort oder stellen die Besuchsuhr kurz vor den nächsten berechneten Besuch, die Hobby-Knöpfe starten eine Beschäftigung sofort (auch ohne passendes Wetter), die Flieger-Knöpfe schicken Testflüge los (Anflug, Abflug, Reiseflug, Hubschrauber, Kleinflugzeug). Dafür den Ordner über einen lokalen Webserver öffnen, z. B. `node dev/serve.mjs . 8765` (lauscht nur auf localhost). `areale.html` zeigt alle vier Areale nebeneinander. Die Knopfzeilen Himmel-Extras, Festtage, Freund-Pika, Haus-Bote, Kaffee und Aktivitäten lösen die jeweiligen Erweiterungen sofort aus (Festtage stellen dafür das Datum der Karte um, Haus-Bote und Kaffee setzen Mock-Zustände der Geräte; ein Kaffeebezug dauert dort 18 s). Beide Vorschau-Karten teilen sich die Helfer wie zwei Geräte: „Uhr vor“ stellt die Plan-Uhr kurz vor die nächste große oder kleine Beschäftigung, „rechte Karte neu laden“ zeigt den Einstieg mitten in einer laufenden. Die Zeile Süßes startet die kleinen Momente sofort, spielt Streichel-Zonen und Combos ohne genaues Zielen ab, krault 4 s, wischt übers Fell, stellt „heute oft gestreichelt“ ein, holt das Wiedersehen nach 4 Stunden und zeigt nachts sofort einen Traum.
+`preview.html` lädt die Karte mit einem simulierten `hass`-Objekt. Die Häufchen-Knöpfe stellen die Uhr der Häufchen vor (nächstes Häufchen, +4 Std., +1 Tag), die Besuch-Knöpfe holen Vögelchen und Maus sofort oder stellen die Besuchsuhr kurz vor den nächsten berechneten Besuch, die Hobby-Knöpfe starten eine Beschäftigung sofort (auch ohne passendes Wetter), die Flieger-Knöpfe schicken Testflüge los (Anflug, Abflug, Reiseflug, Hubschrauber, Kleinflugzeug). Dafür den Ordner über einen lokalen Webserver öffnen, z. B. `node dev/serve.mjs . 8765` (lauscht nur auf localhost). `areale.html` zeigt alle vier Areale nebeneinander. Die Knopfzeilen Himmel-Extras, Festtage, Freund-Pika, Haus-Bote, Kaffee und Aktivitäten lösen die jeweiligen Erweiterungen sofort aus (Festtage stellen dafür das Datum der Karte um, Haus-Bote und Kaffee setzen Mock-Zustände der Geräte; ein Kaffeebezug dauert dort 18 s). Beide Vorschau-Karten teilen sich die Helfer wie zwei Geräte: „Uhr vor“ stellt die Plan-Uhr kurz vor die nächste große oder kleine Beschäftigung, „rechte Karte neu laden“ zeigt den Einstieg mitten in einer laufenden. Die Zeile Süßes startet die kleinen Momente sofort, spielt Streichel-Zonen und Combos ohne genaues Zielen ab, krault 4 s, wischt übers Fell, stellt „heute oft gestreichelt“ ein, holt das Wiedersehen nach 4 Stunden und zeigt nachts sofort einen Traum. Die Zeile Päckchen gibt links ein Päckchen bzw. ein goldenes dazu, verschenkt es, stellt den Beginn der Serie zurück (12 Stunden, 7 Tage), lässt Satt unter 50 % fallen oder tut so, als läge ein Wert schon seit 2 Stunden darunter (der Ring wird grau, Füttern startet eine neue Serie), füllt das Album, setzt alles zurück, zeigt das Album und startet die Schatz-Aktionen sofort.

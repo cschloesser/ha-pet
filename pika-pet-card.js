@@ -18,6 +18,8 @@
  *                         Maibaum, Wimpel, Geburtstagskuchen; dazu passende Hüte
  *   Freund-Pika Pino    → kommt zu Besuch, spielt Fangen, sitzt mit ihm, piepst im Duett
  *   Himmel              → Sternschnuppen in klaren Nächten, Glühwürmchen in Sommernächten
+ *   Päckchen            → wer sich gut kümmert (nichts lange unter 50 %), verdient Päckchen: Sie schweben am Ballon
+ *                         herein, der Pika schießt sie mit der Zwille vom Himmel. Leckerli oder Schätze fürs Album.
  *   Besuche (Vögelchen, Maus, Pino) werden aus der Uhrzeit berechnet und sind auf allen Geräten gleich.
  *
  * Konfiguration:
@@ -41,13 +43,14 @@
  *   festive: true / birthdays: []    # Festtage und Geburtstage
  *   friend: true / friend_name: Pino # Freund-Pika
  *   shooting_stars: true / fireflies: true   # Himmel-Extras
+ *   gifts: true                      # Päckchen für gute Pflege (false = keine)
  *   screen_entity: switch.tablet_bildschirm  # optional: Bildschirm-Schalter (Fully Kiosk); an = Begrüßung wie beim Sichtbarwerden
  *
  * Der Blick geht nach Süden: Osten (Sonnenaufgang) links, Westen rechts. Mondphase und Mondstand
  * werden aus Datum und Standort (hass.config) berechnet.
  */
 (() => {
-  const VERSION = '0.18.0';
+  const VERSION = '0.19.0';
 
   const DEFAULTS = {
     name: 'Pika',
@@ -80,6 +83,8 @@
     // Himmel: Sternschnuppen nachts, Glühwürmchen in Sommernächten
     shooting_stars: true,
     fireflies: true,
+    // Päckchen: für gute Pflege verdient, am Ballon verschenkt (siehe Abschnitt "Päckchen")
+    gifts: true,
   };
 
   const RATE = { s: 5, g: 4 }; // Abnahme pro Stunde (satt, glücklich)
@@ -448,10 +453,16 @@
   // - rec: die letzten großen Beschäftigungen [Fenster, Name, Variante] (neueste zuerst)
   // - cute: Pika-Tag d, wie oft er an dem Tag gestreichelt wurde (n, bis PET_CAP) und was er erlebt hat (m, ein Bit je
   //   Eintrag in MEM_BITS, für die Träume). Stände bis 0.17 haben das Feld nicht und werden weiter gelesen.
-  // Text: "p1|n.t.c.m|d.k|k:name:v,…|d.n.m" (Zahlen zur Basis 36), passt mit Abstand in die 255 Zeichen eines input_text.
+  // - gift: Päckchen (siehe GIFT): k Beginn der Pflege-Serie, a in der Serie schon verdiente, n Vorrat, u Album (ein Bit je
+  //   Schatz), z verschenkte (laufende Nummer), o ausgepackte, b seit wann ein Wert unter GIFT.min liegt (sonst leer),
+  //   x wann das letzte verschenkt wurde (Ballon), y goldenes im Vorrat, d schon belohnte Serien-Wochen, i Inhalt des
+  //   letzten (Index in GIFT_ITEMS, +16 = golden). Stände bis 0.18 haben das Feld nicht.
+  // Text: "p1|n.t.c.m|d.k|k:name:v,…|d.n.m|k.a.n.u.z.o.b.x.y.d.i" (Zahlen zur Basis 36), passt in die 255 Zeichen eines input_text.
   const HAY_MAX = 12;
   const PLAN_REC = 4;
-  const planBlank = () => ({ hay: { n: 3, t: Date.now(), c: '', m: 0 }, sport: null, rec: [], cute: null });
+  const planBlank = () => ({ hay: { n: 3, t: Date.now(), c: '', m: 0 }, sport: null, rec: [], cute: null, gift: null });
+  const GIFT_F = ['k', 'a', 'n', 'u', 'z', 'o', 'b', 'x', 'y', 'd', 'i'];
+  const GIFT_T = new Set(['k', 'b', 'x']); // Zeiten: im Text in Sekunden
   // Streicheln zählt bis 10: ab da ist er anhänglich, mehr muss keiner wissen (und es wird nicht mehr geschrieben)
   const PET_CAP = 10;
   // Erlebnisse für die Träume, je ein Bit
@@ -463,17 +474,25 @@
     return ['p1', [h.n, Math.round(h.t / 1000).toString(36), h.c || '-', h.m.toString(36)].join('.'),
       P.sport ? `${P.sport.d.toString(36)}.${P.sport.k.toString(36)}` : '-',
       P.rec.map(([k, a, v]) => (v ? `${k.toString(36)}:${a}:${v}` : `${k.toString(36)}:${a}`)).join(',') || '-',
-      P.cute ? [P.cute.d, P.cute.n, P.cute.m].map((x) => x.toString(36)).join('.') : '-'].join('|');
+      P.cute ? [P.cute.d, P.cute.n, P.cute.m].map((x) => x.toString(36)).join('.') : '-',
+      ...(P.gift ? [GIFT_F.map((f) => (P.gift[f] == null ? '-' : Math.round(GIFT_T.has(f) ? P.gift[f] / 1000 : P.gift[f]).toString(36))).join('.')] : []),
+    ].join('|');
   };
   const planParse = (str) => {
     const p = String(str ?? '').split('|');
-    if ((p.length !== 4 && p.length !== 5) || p[0] !== 'p1') return null;
+    if (p.length < 4 || p.length > 6 || p[0] !== 'p1') return null;
     const h = p[1].split('.');
     const n = Number(h[0]);
     const t = parseInt(h[1], 36) * 1000;
     const m = parseInt(h[3], 36);
     if (h.length !== 4 || !Number.isFinite(n) || !Number.isFinite(t) || !Number.isFinite(m)) return null;
-    const P = { hay: { n: clamp(n, 1, HAY_MAX), t, c: h[2] === '-' ? '' : h[2].replace(/\D/g, ''), m }, sport: null, rec: [], cute: null };
+    const P = { hay: { n: clamp(n, 1, HAY_MAX), t, c: h[2] === '-' ? '' : h[2].replace(/\D/g, ''), m }, sport: null, rec: [], cute: null, gift: null };
+    const gq = (p[5] || '').split('.');
+    if (gq.length === GIFT_F.length) {
+      const G = {};
+      GIFT_F.forEach((f, i) => (G[f] = gq[i] === '-' ? null : parseInt(gq[i], 36) * (GIFT_T.has(f) ? 1000 : 1)));
+      if (GIFT_F.every((f) => f === 'b' || Number.isFinite(G[f]))) P.gift = G;
+    }
     const q = (p[4] || '-').split('.').map((x) => parseInt(x, 36));
     if (q.length === 3 && q.every(Number.isFinite)) P.cute = { d: q[0], n: clamp(q[1], 0, PET_CAP), m: q[2] };
     const s = p[2].split('.').map((x) => parseInt(x, 36));
@@ -486,6 +505,40 @@
     }
     return P;
   };
+  // Päckchen-Änderung auf den Plan legen (verändert out.gift). Wiederholbar wie alle Plan-Änderungen: jede gilt nur für die
+  // Serie k, in der sie entstand, und nur einmal (Zähler wachsen nur, verschenkt wird mit laufender Nummer z).
+  const GIFT_OPS = new Set(['gstart', 'gbad', 'gok', 'gearn', 'ggold', 'give', 'gopen', 'gdbg']);
+  const giftApply = (out, op) => {
+    const G = out.gift;
+    if (op.t === 'gstart') {
+      if (!G) out.gift = { k: op.k, a: 0, n: 0, u: 0, z: 0, o: 0, b: null, x: 0, y: 0, d: 0, i: 0 };
+      return;
+    }
+    if (!G) return;
+    if (op.t === 'gbad') {
+      if (G.k === op.k && G.b == null) G.b = op.b;
+    } else if (op.t === 'gok') {
+      // Wieder alles über GIFT.min. War es zu lange darunter (brk), beginnt eine neue Serie.
+      if (G.k === op.k && G.b === op.b) Object.assign(G, op.brk ? { k: op.nk, a: 0, b: null, d: 0 } : { b: null });
+    } else if (op.t === 'gearn') {
+      if (G.k === op.k && op.e > G.a) {
+        G.n = Math.min(GIFT.max, G.n + op.e - G.a);
+        G.a = op.e;
+      }
+    } else if (op.t === 'ggold') {
+      if (G.k === op.k && op.w > G.d) Object.assign(G, { y: 1, d: op.w });
+    } else if (op.t === 'give') {
+      if (op.z !== G.z + 1 || G.o < G.z || !(op.gold ? G.y > 0 : G.n > 0)) return;
+      if (op.gold) G.y = 0;
+      else G.n--;
+      Object.assign(G, { z: op.z, x: op.x, i: op.i });
+      if ((op.i & 15) < GIFT_TRE) G.u |= 1 << (op.i & 15);
+    } else if (op.t === 'gopen') {
+      G.o = Math.max(G.o, Math.min(op.z, G.z));
+    } else if (op.t === 'gdbg') {
+      Object.assign(G, op.f); // Vorschau
+    }
+  };
   // Vorrat jetzt: 2 Bündel weniger je Tag seit der letzten Änderung, die ältesten Blüten fallen zuerst weg
   const hayNow = (h, now) => {
     const n = clamp(h.n - Math.floor(Math.max(0, now - h.t) / 864e5) * 2, 1, HAY_MAX);
@@ -494,7 +547,11 @@
   // Änderung op auf den Plan P anwenden. Alle Änderungen sind wiederholbar (gleiches Ergebnis beim zweiten Mal), so
   // dürfen sie auf jeden neu eintreffenden Stand eines anderen Geräts noch einmal gelegt werden.
   const planApply = (P, op, now) => {
-    const out = { hay: { ...P.hay }, sport: P.sport, rec: P.rec.map((e) => [...e]), cute: P.cute };
+    const out = { hay: { ...P.hay }, sport: P.sport, rec: P.rec.map((e) => [...e]), cute: P.cute, gift: P.gift && { ...P.gift } };
+    if (GIFT_OPS.has(op.t)) {
+      giftApply(out, op);
+      return out;
+    }
     if (op.t === 'rec') {
       const e = out.rec.find((x) => x[0] === op.k);
       if (e) {
@@ -689,6 +746,37 @@
       </g></g>
       ${ACT_PAW(107, 40, 'wpaw')}`;
 
+  // Päckchen: Zwille, Fernrohr und Gießkanne in den Pfoten, Sonnenbrille auf der Nase (Stil im Abschnitt "Päckchen")
+  const GIFT_FRONT = `
+      <g class="slg"><g class="slr">
+        <path d="M112 62 L121 37 M121 37 L117 25.5 M121 37 L128.5 27.5" stroke="${OUT}" stroke-width="4.2" stroke-linecap="round" fill="none"/>
+        <path d="M112 62 L121 37 M121 37 L117 25.5 M121 37 L128.5 27.5" stroke="#b07a42" stroke-width="2.6" stroke-linecap="round" fill="none"/>
+        <path class="slb-p" d="M117 26.4 L107.6 43.4 L128.2 28.4" stroke="#d9443a" stroke-width="1.5" fill="none" stroke-linejoin="round"/>
+        <path class="slb-r" d="M117 26.4 Q122.6 29.6 128.2 28.4" stroke="#d9443a" stroke-width="1.5" fill="none"/>
+        <circle class="slp" cx="107.6" cy="43.4" r="2.1" fill="#8e9196" stroke="${OUT}" stroke-width=".6"/>
+        <circle class="slf" cx="122.6" cy="28" r=".4" fill="none"/>
+        ${ACT_PAW(112.6, 58.4)}${ACT_PAW(106.6, 46)}
+      </g></g>
+      <g class="gspy"><g transform="rotate(-24 101 46)">
+        <rect x="100" y="42.6" width="9" height="6.8" rx="1.2" fill="#b8862e" stroke="${OUT}" stroke-width=".9"/>
+        <rect x="108.4" y="41.4" width="9" height="9.2" rx="1.4" fill="#d9a441" stroke="${OUT}" stroke-width=".9"/>
+        <rect x="116.8" y="40.2" width="5" height="11.6" rx="1.4" fill="#8a5a32" stroke="${OUT}" stroke-width=".9"/>
+        <path d="M111.4 41.6 v8.8 M114.4 41.6 v8.8" stroke="#f3cf7a" stroke-width=".9"/>
+      </g>${ACT_PAW(106, 54)}</g>
+      <g class="gcan"><g class="gcr"><g transform="translate(-26.5 -16) scale(1.25)">
+        <path d="M99 57 h13 v11.5 q0 2 -2 2 h-9 q-2 0 -2 -2z" fill="#5fae4a" stroke="${OUT}" stroke-width="1"/>
+        <path d="M112 60.5 L120.5 55 l1.6 1.8 -8.2 7.6" fill="#5fae4a" stroke="${OUT}" stroke-width=".9" stroke-linejoin="round"/>
+        <path d="M101.5 57 q4 -5.6 8 0" stroke="${OUT}" stroke-width="1.4" fill="none"/>
+        <path d="M101 61 h9" stroke="#8fd16f" stroke-width="1.2" stroke-linecap="round"/>
+      </g></g>${ACT_PAW(100, 58)}</g>`;
+  const GIFT_SHADES = `
+        <g class="shades">
+          <path d="M75.5 44.6 H105.5" stroke="#2c2f3a" stroke-width="1.3"/>
+          <path d="M76.4 43.4 h11.2 q0 7.2 -5.6 7.2 q-5.6 0 -5.6 -7.2z M93.4 43.4 h11.2 q0 7.2 -5.6 7.2 q-5.6 0 -5.6 -7.2z"
+                fill="#2c2f3a" stroke="#15171d" stroke-width=".8"/>
+          <path d="M78.8 45 l2.6 2.8 M95.8 45 l2.6 2.8" stroke="#fff" stroke-width=".9" opacity=".55" stroke-linecap="round"/>
+        </g>`;
+
   const PIKA_SVG = `
   <svg class="pk" viewBox="0 0 120 100" aria-hidden="true">
     <defs>
@@ -829,7 +917,7 @@
           <g fill="#f28fb1"><circle cx="86" cy="20.8" r="1.1"/><circle cx="92.8" cy="19.8" r="1.1"/><circle cx="90.4" cy="12.8" r="1"/></g>
           <circle cx="92.5" cy="1.5" r="3.2" fill="#e8584e" stroke="${OUT}" stroke-width="1"/>
         </g>
-      </g></g>
+      </g>${GIFT_SHADES}</g>
       <g class="scarf">
         <path d="M68 63 Q87 73 107 63" stroke="#d9534f" stroke-width="6.5" fill="none" stroke-linecap="round"/>
         <path d="M70 64 Q87 73.5 105 64.6" stroke="#f6f1ea" stroke-width="1.6" fill="none" stroke-dasharray="3 4"/>
@@ -837,6 +925,7 @@
         <path d="M70.5 75 L77.5 75.6" stroke="#f6f1ea" stroke-width="1.4"/>
       </g>
       ${ACT_FRONT}
+      ${GIFT_FRONT}
       ${CUP_SVG}
       <g class="brolly">
         <path d="M105 63 Q115 34 99 3" stroke="#4f8a3a" stroke-width="2.2" fill="none" stroke-linecap="round"/>
@@ -2471,6 +2560,254 @@
   `;
   // ==================== Ende Aktivitäten ====================
 
+  // ==================== Päckchen: Konstanten, Grafiken und Stil ====================
+  // Pflege: Liegt keiner der drei Werte länger als grace (Wachzeit) unter min, läuft die Serie weiter. Je every Wachzeit
+  // ohne Unterbrechung gibt es ein Päckchen (höchstens max im Vorrat), nach gold am Stück ein goldenes. Verschenkt schwebt
+  // es arrive ms lang an einem Ballon herein, der Pika schießt ihn vom Aussichtsstein mit der Zwille herunter und packt aus.
+  // Leckerli bringen treat Satt, jedes Päckchen joy Glück.
+  const GIFT = { min: 50, grace: 60 * 6e4, every: 6 * 36e5, max: 3, gold: 7 * 864e5, arrive: 12000, treat: 15, joy: 15 };
+  const GIFT_TRE = 8; // GIFT_ITEMS 0–7 sind Schätze (Album, ein Bit je Schatz), danach Leckerli
+  const GIFT_ITEMS = [
+    { key: 'yarn', name: 'Wollknäuel', say: 'ein Wollknäuel!', svg: `<svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M18.4 17.6 q3.6 1.6 1.6 4 q-2 1.6 -4.4 .2" stroke="#f28fb1" stroke-width="1.2" fill="none" stroke-linecap="round"/>
+      <circle cx="12" cy="13" r="8" fill="#f28fb1" stroke="${OUT}" stroke-width="1"/>
+      <path d="M5.4 10 q6.6 2.4 12.6 -1.6 M4.8 13.8 q7.4 3 14.4 -1.4 M6.6 17.8 q6 1.6 11 -2.2 M10 5.4 q-3.4 7 .6 15.4 M14.6 5.6 q2.6 6 -.6 15"
+            stroke="#d96a92" stroke-width=".9" fill="none" stroke-linecap="round"/>
+      <path d="M7.6 8.6 q1.6 -1.8 3.6 -2.4" stroke="#fff" stroke-width="1" fill="none" opacity=".6" stroke-linecap="round"/></svg>` },
+    { key: 'wheel', name: 'Windrad', say: 'ein Windrad!', svg: `<svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M12 12 V23" stroke="#b5793e" stroke-width="1.8" stroke-linecap="round"/>
+      <g class="gwhl">${['#e8584e', '#5fb9de', '#f6c945', '#7cc35a'].map((c, i) => `<path transform="rotate(${i * 90} 12 12)"
+        d="M12 12 L12 2.6 Q18 4.4 12 12Z" fill="${c}" stroke="${OUT}" stroke-width=".7" stroke-linejoin="round"/>`).join('')}
+        <circle cx="12" cy="12" r="1.4" fill="#fff" stroke="${OUT}" stroke-width=".7"/></g></svg>` },
+    { key: 'plush', name: 'Plüsch-Pino', say: 'ein Plüsch-Pino!', svg: `<svg viewBox="0 0 24 24" aria-hidden="true">
+      <circle cx="6.8" cy="7.4" r="3.4" fill="#d98a4e" stroke="${OUT}" stroke-width=".9"/><circle cx="6.8" cy="7.6" r="1.6" fill="#efc7a0"/>
+      <circle cx="17.2" cy="7.4" r="3.4" fill="#d98a4e" stroke="${OUT}" stroke-width=".9"/><circle cx="17.2" cy="7.6" r="1.6" fill="#efc7a0"/>
+      <ellipse cx="12" cy="14.2" rx="8.2" ry="7.6" fill="#e09a5c" stroke="${OUT}" stroke-width="1"/>
+      <ellipse cx="12" cy="10.2" rx="1.6" ry="1.1" fill="#f6e3c8"/>
+      <circle cx="9" cy="13.4" r="1.1" fill="#2a1a12"/><circle cx="15" cy="13.4" r="1.1" fill="#2a1a12"/>
+      <path d="M11 15.4 q1 .9 2 0" fill="#7a4438"/><path d="M12 16 v.8 M12 16.8 q-1 1 -1.8 .2 M12 16.8 q1 1 1.8 .2" stroke="${OUT}" stroke-width=".6" fill="none"/>
+      <path d="M5.2 18.8 q6.8 3.2 13.6 0" stroke="#3cb6b0" stroke-width="2.4" fill="none" stroke-linecap="round"/></svg>` },
+    { key: 'shades', name: 'Sonnenbrille', say: 'eine Sonnenbrille!', svg: `<svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M1.6 10.4 H22.4 M1.8 10.4 l-.6 3 M22.2 10.4 l.6 3" stroke="${OUT}" stroke-width="1.2" stroke-linecap="round"/>
+      <path d="M2.8 10 h8 q0 6 -4 6 q-4 0 -4 -6z M13.2 10 h8 q0 6 -4 6 q-4 0 -4 -6z" fill="#2c2f3a" stroke="#15171d" stroke-width=".8"/>
+      <path d="M4.4 11.4 l2.2 2.4 M14.8 11.4 l2.2 2.4" stroke="#fff" stroke-width=".9" opacity=".6" stroke-linecap="round"/></svg>` },
+    { key: 'scope', name: 'Fernrohr', say: 'ein Fernrohr!', svg: `<svg viewBox="0 0 24 24" aria-hidden="true"><g transform="rotate(-30 12 12)">
+      <rect x="1.6" y="9.6" width="9" height="4.8" rx="1" fill="#b8862e" stroke="${OUT}" stroke-width=".8"/>
+      <rect x="10.2" y="8.6" width="8" height="6.8" rx="1.2" fill="#d9a441" stroke="${OUT}" stroke-width=".8"/>
+      <rect x="17.8" y="7.8" width="4" height="8.4" rx="1" fill="#8a5a32" stroke="${OUT}" stroke-width=".8"/>
+      <path d="M12.8 8.6 v6.8 M15.4 8.6 v6.8" stroke="#f3cf7a" stroke-width=".8"/></g></svg>` },
+    { key: 'hammock', name: 'Hängematte', say: 'eine Hängematte!', svg: `<svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M2.6 22 L5 5 L7.4 22 M16.6 22 L19 5 L21.4 22" stroke="#9a6a3c" stroke-width="1.5" fill="none" stroke-linejoin="round"/>
+      <path d="M5 7 Q12 21 19 7" stroke="${OUT}" stroke-width="4.2" fill="none" stroke-linecap="round"/>
+      <path d="M5 7 Q12 21 19 7" stroke="#f6efe0" stroke-width="3" fill="none" stroke-linecap="round"/>
+      <path d="M5 7 Q12 21 19 7" stroke="#e8584e" stroke-width="3" fill="none" stroke-dasharray="1.8 2.2"/></svg>` },
+    { key: 'can', name: 'Gießkanne', say: 'eine Gießkanne!', svg: `<svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M4.4 9.6 h10.4 v9.6 q0 2 -2 2 h-6.4 q-2 0 -2 -2z" fill="#5fae4a" stroke="${OUT}" stroke-width="1"/>
+      <path d="M14.8 13 L21 7.6 l1.4 1.6 -6.2 6.6" fill="#5fae4a" stroke="${OUT}" stroke-width=".9" stroke-linejoin="round"/>
+      <path d="M6.4 9.6 q3.2 -5.4 6.4 0" stroke="${OUT}" stroke-width="1.3" fill="none"/>
+      <path d="M6 13 h7" stroke="#8fd16f" stroke-width="1.2" stroke-linecap="round"/>
+      <path d="M22.6 6.4 l1 -1 M23 9 l1.2 .2" stroke="#7cc4ee" stroke-width="1" stroke-linecap="round"/></svg>` },
+    { key: 'bell', name: 'Glöckchen', say: 'ein Glöckchen!', svg: `<svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M9 4.2 q3 -2.4 6 0 l-3 1.4z" fill="#e8584e" stroke="${OUT}" stroke-width=".6"/>
+      <path d="M12 5 v1.4" stroke="${OUT}" stroke-width="1"/>
+      <path d="M5.8 18 q0 -11.6 6.2 -11.6 q6.2 0 6.2 11.6 l1.6 1.6 h-15.6z" fill="#f2c230" stroke="${OUT}" stroke-width=".9" stroke-linejoin="round"/>
+      <path d="M8.6 10 q1 -2 3 -2.4" stroke="#fff3b0" stroke-width="1" fill="none" stroke-linecap="round"/>
+      <circle cx="12" cy="20.6" r="1.7" fill="#d9a441" stroke="${OUT}" stroke-width=".7"/></svg>` },
+    // Leckerli: mo = Monate (0 = Januar, Südhalbkugel um ein halbes Jahr versetzt), ohne = immer
+    { key: 'straw', name: 'Erdbeere', color: '#e8473f', mo: [4, 5, 6], svg: `<svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M12 21.6 C4.6 17.6 4.2 10 7.4 8 Q12 6.4 16.6 8 C19.8 10 19.4 17.6 12 21.6Z" fill="#e8473f" stroke="${OUT}" stroke-width=".9"/>
+      <g fill="#ffe08a">${[[9, 11], [12, 10.4], [15, 11], [8.6, 14.4], [11.6, 13.6], [14.8, 14.4], [10.4, 17], [13.6, 17]].map(([x, y]) => `<ellipse cx="${x}" cy="${y}" rx=".5" ry=".8"/>`).join('')}</g>
+      <path d="M6.8 8 l2.6 -2.6 l2.6 2 l2 -3 l1.8 3 l2.8 -.8 l-1.8 2.4z" fill="#5fae4a" stroke="${OUT}" stroke-width=".7" stroke-linejoin="round"/></svg>` },
+    { key: 'rasp', name: 'Himbeeren', color: '#d9406a', mo: [6, 7, 8], svg: `<svg viewBox="0 0 24 24" aria-hidden="true">
+      ${[[9, 12], [12.6, 11], [15.6, 13.4], [8.4, 16], [12, 15], [15.2, 17.4], [11, 19.2]].map(([x, y]) => `<circle cx="${x}" cy="${y}" r="2.7" fill="#d9406a" stroke="${OUT}" stroke-width=".7"/>
+      <circle cx="${x - 0.8}" cy="${y - 0.9}" r=".6" fill="#fff" opacity=".5"/>`).join('')}
+      <path d="M11 9 q-3 -4 -6 -3 q2 3 6 3z M12 9 q3 -5 7 -4 q-2 4 -7 4z" fill="#5fae4a" stroke="${OUT}" stroke-width=".7"/></svg>` },
+    { key: 'apple', name: 'Apfelschnitz', color: '#f3e6c4', mo: [8, 9, 10], svg: `<svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M2.6 11 a9.4 9.4 0 0 0 18.8 0z" fill="#f6ecd0" stroke="#d9483b" stroke-width="1.8"/>
+      <path d="M2.6 11 a9.4 9.4 0 0 0 18.8 0z" fill="none" stroke="${OUT}" stroke-width=".6"/>
+      <ellipse cx="10" cy="14" rx=".8" ry="1.3" fill="#5a3a22"/><ellipse cx="14" cy="14" rx=".8" ry="1.3" fill="#5a3a22"/>
+      <path d="M12 11 V7.4 q2.4 -2.4 4.6 -1.6 q-1.2 2.8 -4.6 1.6" fill="#5fae4a" stroke="${OUT}" stroke-width=".7"/></svg>` },
+    { key: 'posy', name: 'Blumensträußchen', color: '#f28fb1', svg: `<svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M12 22 L7 9 M12 22 L12 7 M12 22 L17 9" stroke="#4f8a3a" stroke-width="1.2"/>
+      ${[[7, 8, '#f28fb1'], [12, 6, '#f6c945'], [17, 8, '#b99cf0']].map(([x, y, c]) => `<g transform="translate(${x} ${y})">
+        ${[0, 72, 144, 216, 288].map((a) => `<ellipse rx="1.6" ry="2.4" transform="rotate(${a}) translate(0 -2)" fill="${c}" stroke="${OUT}" stroke-width=".5"/>`).join('')}
+        <circle r="1.3" fill="#e0a032"/></g>`).join('')}
+      <path d="M9.4 16.4 l2.6 1.4 2.6 -1.4 -.6 3 -2 -.8 -2 .8z" fill="#5fb9de" stroke="${OUT}" stroke-width=".6"/></svg>` },
+  ];
+  // Papier und Band der Päckchen (je Nummer), Ballonfarben, golden
+  const GIFT_PAPER = [['#5fb9de', '#f6c945'], ['#f28fb1', '#ffffff'], ['#7cc35a', '#e8584e'], ['#b99cf0', '#f6c945'], ['#ff9f5a', '#5fb9de']];
+  const GIFT_BALLOONS = ['#e8584e', '#5fb9de', '#f6c945', '#b99cf0', '#7cc35a', '#f28fb1'];
+  const GIFT_GOLD = ['#f2c230', '#fff7d6'];
+  const GIFT_PARCEL = `<svg viewBox="0 0 24 24" aria-hidden="true">
+      <g class="gp-box">
+        <rect x="3.6" y="11" width="16.8" height="11" rx="1.2" fill="var(--gpp, #5fb9de)" stroke="${OUT}" stroke-width="1"/>
+        <rect x="10.6" y="11" width="2.8" height="11" fill="var(--gpr, #f6c945)"/>
+        <path d="M5.4 13 v6.6" stroke="#fff" stroke-width="1" opacity=".45" stroke-linecap="round"/>
+      </g>
+      <g class="gp-lid">
+        <rect x="2.6" y="8" width="18.8" height="4" rx="1" fill="var(--gpp, #5fb9de)" stroke="${OUT}" stroke-width="1"/>
+        <rect x="10.6" y="8" width="2.8" height="4" fill="var(--gpr, #f6c945)"/>
+      </g>
+      <g class="gp-bow">
+        <path d="M12 8 C8 2.6 4.2 5.2 7 8Z M12 8 C16 2.6 19.8 5.2 17 8Z" fill="var(--gpr, #f6c945)" stroke="${OUT}" stroke-width=".8" stroke-linejoin="round"/>
+        <circle cx="12" cy="8" r="1.5" fill="var(--gpr, #f6c945)" stroke="${OUT}" stroke-width=".7"/>
+      </g></svg>`;
+  // Ballon mit Päckchen: viewBox 40 × 80, die Mitte des Päckchens liegt bei y 66
+  const GIFT_BALLOON = `<svg viewBox="0 0 40 80" aria-hidden="true">
+      <g class="gb-b">
+        <path d="M20 36 C17 42 23 47 20 52 C18 55 20 58 20 61.6" stroke="#7d6a5a" stroke-width=".8" fill="none"/>
+        <ellipse class="gb-ball" cx="20" cy="19" rx="13.4" ry="15.6" fill="var(--gbc, #e8584e)" stroke="${OUT}" stroke-width="1"/>
+        <path d="M17.6 34.4 L20 37.2 L22.4 34.4Z" fill="var(--gbc, #e8584e)" stroke="${OUT}" stroke-width=".8" stroke-linejoin="round"/>
+        <ellipse cx="14.4" cy="12" rx="3.2" ry="5.4" transform="rotate(24 14.4 12)" fill="#fff" opacity=".45"/>
+        <ellipse cx="13" cy="20.6" rx="1" ry="1.6" fill="#fff" opacity=".35"/>
+      </g>
+      <svg class="gb-p" x="8" y="54" width="24" height="24" viewBox="0 0 24 24" overflow="visible">${GIFT_PARCEL.replace(/^<svg[^>]*>|<\/svg>$/g, '')}</svg>
+    </svg>`;
+  // Hängematte auf der Wiese: viewBox 60 × 20, tiefste Stelle des Netzes bei y 14 (darauf liegt er, GIFT_HAM_LIFT × Breite)
+  const GIFT_HAMMOCK = `<svg viewBox="0 0 60 20" aria-hidden="true">
+      <path d="M1.8 20 L5 2 L8.2 20 M51.8 20 L55 2 L58.2 20" stroke="#9a6a3c" stroke-width="1.5" fill="none" stroke-linejoin="round"/>
+      <path d="M3 13 H7 M53 13 H57" stroke="#9a6a3c" stroke-width="1.1"/>
+      <g class="gnet">
+        <path d="M5 3.4 L10 5 M55 3.4 L50 5" stroke="#cdbb93" stroke-width=".9"/>
+        <path d="M10 5 Q30 23 50 5" stroke="${OUT}" stroke-width="4.4" fill="none" stroke-linecap="round"/>
+        <path d="M10 5 Q30 23 50 5" stroke="#f6efe0" stroke-width="3.2" fill="none" stroke-linecap="round"/>
+        <path d="M10 5 Q30 23 50 5" stroke="#e8584e" stroke-width="3.2" fill="none" stroke-dasharray="2.4 3"/>
+      </g></svg>`;
+  const GIFT_HAM_W = 1.25; // Breite in Pika-Breiten
+  const GIFT_HAM_LIFT = 0.1; // Höhe der Liegefläche in Breiten der Hängematte
+  // Windrad am Bau: viewBox 24 × 44, Nabe bei 12/12
+  const GIFT_WHEEL = `<svg viewBox="0 0 24 44" aria-hidden="true">
+      <path d="M12 12 V44" stroke="#b5793e" stroke-width="1.6" stroke-linecap="round"/>
+      ${GIFT_ITEMS[1].svg.replace(/^<svg[^>]*>|<\/svg>$/g, '').replace(/<path d="M12 12 V23"[^>]*\/>/, '')}</svg>`;
+  const GIFT_CLS = ['sling', 'aim', 'snap', 'spy', 'wcan', 'pour'];
+
+  const STYLE_GIFT = `
+  .gifts { position: absolute; inset: 0; pointer-events: none; transition: filter 2.5s; }
+  .day.overcast .gifts { filter: brightness(.9) saturate(.8); }
+  .dusk .gifts { filter: brightness(.85) saturate(.85); }
+  .night .gifts { filter: brightness(.55) saturate(.6); }
+  .gifts svg { display: block; width: 100%; height: auto; overflow: visible; }
+  .gold svg { filter: drop-shadow(0 0 3px rgba(255, 226, 120, .95)); }
+
+  /* Ballon: .gbal schwebt herein (Web Animation), .gdrift treibt langsam, .gbob schaukelt am Band */
+  .gbal { position: absolute; width: calc(var(--H) * .17); }
+  .gdrift { animation: gdrift 15s ease-in-out infinite alternate; }
+  @keyframes gdrift {
+    0% { transform: translate(calc(var(--H) * -.035), 0); }
+    45% { transform: translate(calc(var(--H) * .015), calc(var(--H) * -.02)); }
+    100% { transform: translate(calc(var(--H) * .035), calc(var(--H) * .012)); }
+  }
+  .gbob { transform-origin: 50% 24%; animation: gbob 3.2s ease-in-out infinite alternate; }
+  @keyframes gbob {
+    from { transform: translateY(calc(var(--H) * -.012)) rotate(calc(var(--gsw, .5) * -8deg)); }
+    to { transform: translateY(calc(var(--H) * .01)) rotate(calc(var(--gsw, .5) * 8deg)); }
+  }
+  .gconf { position: absolute; width: calc(var(--H) * .018); height: calc(var(--H) * .028); margin: calc(var(--H) * -.014);
+    border-radius: 1px; animation: gconf 1s ease-out forwards; }
+  @keyframes gconf { to { transform: translate(var(--dx), var(--dy)) rotate(var(--r)); opacity: 0; } }
+  .gpeb { position: absolute; width: calc(var(--H) * .022); height: calc(var(--H) * .022); margin: calc(var(--H) * -.011);
+    border-radius: 50%; background: #8e9196; box-shadow: inset -1px -1px 0 rgba(0, 0, 0, .25); }
+
+  /* Päckchen am Boden, Auspacken */
+  .gpar { position: absolute; width: calc(var(--H) * .09); margin-left: calc(var(--H) * -.045); bottom: calc(var(--H) - var(--gy) - 3px); transform-origin: 50% 100%; }
+  .gpar .gp-bow, .gpar .gp-lid { transform-box: fill-box; transform-origin: 50% 100%; }
+  .gpar .gp-bow.off { animation: gbowoff .6s ease-out forwards; }
+  .gpar .gp-lid.off { animation: glidoff .7s ease-out forwards; }
+  @keyframes gbowoff { to { transform: translate(-30%, -260%) rotate(-40deg); opacity: 0; } }
+  @keyframes glidoff { 30% { transform: translate(10%, -120%) rotate(18deg); opacity: 1; } to { transform: translate(60%, -260%) rotate(50deg); opacity: 0; } }
+  .gpar.fade { transition: opacity .8s; opacity: 0; }
+  .gitem { position: absolute; width: calc(var(--H) * .11); margin-left: calc(var(--H) * -.055); }
+  .gitem svg { display: block; width: 100%; height: auto; overflow: visible; }
+  .night .gitem { filter: brightness(.7) saturate(.8); }
+  .gitem.rise { animation: grise 1s cubic-bezier(.3, 1.4, .5, 1) forwards; }
+  @keyframes grise { from { transform: translateY(40%) scale(.2); opacity: 0; } to { transform: translateY(-40%) scale(1.25); opacity: 1; } }
+  .gitem.eat { animation: picked .4s forwards; }
+  .gdrop { position: absolute; width: calc(var(--H) * .012); height: calc(var(--H) * .02); margin-left: calc(var(--H) * -.006);
+    border-radius: 50% 50% 50% 50% / 60% 60% 40% 40%; background: #7cc4ee; animation: gdrop .55s ease-in forwards; }
+  @keyframes gdrop { to { transform: translateY(calc(var(--H) * .1)); opacity: .2; } }
+
+  /* Schätze in der Szene */
+  .gt { position: absolute; }
+  .gt.new { animation: grow .7s cubic-bezier(.3, 1.6, .5, 1); transform-origin: 50% 100%; }
+  .gt-wheel { width: calc(var(--H) * .14); bottom: calc(var(--H) - var(--gy) - 2px); margin-left: calc(var(--H) * -.07); }
+  .gt-wheel .gwhl { transform-box: view-box; transform-origin: 12px 12px; animation: gspin var(--gws, 3s) linear infinite; }
+  .wind-w .gt-wheel .gwhl { animation-direction: reverse; }
+  @keyframes gspin { to { transform: rotate(360deg); } }
+  .gt-bell { width: calc(var(--H) * .05); margin-left: calc(var(--H) * -.025); transform-origin: 50% 8%; }
+  .gt-bell.ring { animation: gring .22s ease-in-out 7 alternate; }
+  @keyframes gring { from { transform: rotate(-18deg); } to { transform: rotate(18deg); } }
+  .gt-yarn { width: calc(var(--H) * .075); margin-left: calc(var(--H) * -.0375); bottom: calc(var(--H) - var(--gy) - 3px); }
+  .gt-yarn svg { transition: transform 1.2s ease-out; }
+  .gt-can { width: calc(var(--H) * .085); margin-left: calc(var(--H) * -.0425); bottom: calc(var(--H) - var(--gy) - 3px); transition: opacity .3s; }
+  .gt-can.away { opacity: 0; }
+  .gt-ham { width: calc(var(--pw) * 1.25); margin-left: calc(var(--pw) * -.625); bottom: calc(var(--H) - var(--gy) - 2px); }
+  .gt-ham .gnet { transform-box: view-box; transform-origin: 30px 3px; }
+  .gt-ham.sway .gnet { animation: gham 2.8s ease-in-out infinite alternate; }
+  @keyframes gham { from { transform: rotate(-2.5deg); } to { transform: rotate(2.5deg); } }
+  .gt-plush { width: calc(var(--H) * .085); margin-left: calc(var(--H) * -.0425); transform: rotate(-12deg); }
+  .gt-plush svg { display: block; width: 100%; height: auto; }
+  .night .gt-plush { filter: brightness(.72) saturate(.75); }
+  .scene.night:not(.windy) .gwhl, .scene.night:not(.windy) .gbob, .scene.night:not(.windy) .gdrift { animation-play-state: paused; }
+  @media (prefers-reduced-motion: reduce) { .gwhl, .gbob, .gdrift, .gt-ham .gnet { animation: none !important; } }
+
+  /* Pika: Zwille, Fernrohr, Gießkanne, Sonnenbrille */
+  .slg, .gspy, .gcan, .shades { display: none; }
+  .sling .slg, .spy .gspy, .wcan .gcan, .cool .shades { display: inline; }
+  .pika.sling .brolly, .pika.spy .brolly, .pika.wcan .brolly, .pika.sling .mfood { display: none; }
+  .sleeping .shades, .inside .shades { display: none; }
+  .slr { transform-box: view-box; transform-origin: 112px 62px; transform: rotate(32deg); transition: transform .35s; }
+  .aim .slr { transform: none; }
+  .slb-r { display: none; }
+  .snap .slb-p, .snap .slp { display: none; }
+  .snap .slb-r { display: inline; }
+  .gcr { transform-box: view-box; transform-origin: 106px 62px; transition: transform .45s; }
+  .pour .gcr { transform: rotate(32deg); }
+
+  /* Knopf (über dem Futterknopf) mit Fortschrittsring, Album */
+  .gbtn {
+    position: absolute; right: 10px; bottom: 62px; z-index: 5; width: 44px; height: 44px; padding: 0;
+    border: none; border-radius: 50%; cursor: pointer; background: rgba(255, 255, 255, .75); -webkit-touch-callout: none;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, .18); transition: transform .15s, background 2.5s; user-select: none;
+  }
+  .gbtn[hidden] { display: none; }
+  .gbtn:active { transform: scale(.88); }
+  .night .gbtn { background: rgba(15, 22, 45, .55); }
+  .gbtn .gico { position: absolute; inset: 8px 8px 9px; transition: opacity .4s, filter .4s; }
+  .gbtn .gico svg { display: block; width: 100%; height: 100%; overflow: visible; }
+  .gring { position: absolute; inset: 0; width: 100%; height: 100%; transform: rotate(-90deg); overflow: visible; }
+  .gring circle { fill: none; stroke-width: 3; }
+  .gr0 { stroke: rgba(0, 0, 0, .1); }
+  .night .gr0 { stroke: rgba(255, 255, 255, .15); }
+  .gr1 { stroke: #f2b632; stroke-linecap: round; stroke-dasharray: var(--gp, 0) 100; transition: stroke-dasharray .8s; }
+  .gbtn.warn .gr1 { stroke: #e8892a; animation: gwarn 1.6s ease-in-out infinite; }
+  @keyframes gwarn { 50% { opacity: .3; } }
+  .gbtn.broken .gr1 { stroke: #b8b2a8; }
+  .gbtn.empty .gico { opacity: .45; filter: grayscale(.7); }
+  .gnum { position: absolute; right: -3px; top: -3px; min-width: 16px; height: 16px; padding: 0 3px; box-sizing: border-box;
+    border-radius: 8px; background: #e8584e; color: #fff; font: 700 11px/16px sans-serif; text-align: center; }
+  .gnum:empty { display: none; }
+  .gbtn.gold .gnum { background: #d99a12; }
+  .gbtn.wig { animation: gwig .7s; }
+  @keyframes gwig { 20% { transform: rotate(-12deg); } 40% { transform: rotate(10deg); } 60% { transform: rotate(-6deg); } 80% { transform: rotate(3deg); } }
+  .gbtn.new { animation: gnew .9s cubic-bezier(.3, 1.6, .5, 1); }
+  @keyframes gnew { from { transform: scale(0) rotate(-40deg); } }
+  .gbtn.no { animation: no .4s; }
+  .album {
+    position: absolute; right: 62px; bottom: 10px; z-index: 6; max-width: calc(100% - 84px); box-sizing: border-box;
+    padding: 6px 10px; border-radius: 14px; background: rgba(255, 255, 255, .9); color: #4a3a2c;
+    font-size: 12px; font-weight: 700; box-shadow: 0 2px 8px rgba(0, 0, 0, .2); backdrop-filter: blur(4px);
+  }
+  .album[hidden] { display: none; }
+  .night .album { background: rgba(15, 22, 45, .85); color: #e8e6f5; }
+  .alb-row { display: flex; flex-wrap: wrap; gap: 4px; }
+  .alb-row i { display: block; width: 24px; height: 24px; }
+  .alb-row i svg { display: block; width: 100%; height: 100%; overflow: visible; }
+  .alb-row i.miss svg { filter: brightness(0); opacity: .16; }
+  .night .alb-row i.miss svg { filter: brightness(0) invert(1); opacity: .2; }
+  .alb-t { margin-top: 4px; font-weight: 600; opacity: .85; }
+  `;
+  // ==================== Ende Päckchen ====================
+
   const STYLE = `
   :host { display: block; height: 100%; }
   ha-card { display: block; height: 100%; overflow: hidden; background: none; border-radius: var(--ha-card-border-radius, 12px); }
@@ -3656,7 +3993,7 @@
       ].map(([top, s, d, dl]) => `<div class="cloud" style="top:${top}%;--s:${s};--d:${d}s;--dl:${dl}s"></div>`).join('');
 
       this.shadowRoot.innerHTML = `
-        <style>${STYLE}${STYLE_SKY}${STYLE_FEST}${STYLE_FRIEND}${STYLE_BOTE}${STYLE_COFFEE}${STYLE_ACT}</style>
+        <style>${STYLE}${STYLE_SKY}${STYLE_FEST}${STYLE_FRIEND}${STYLE_BOTE}${STYLE_COFFEE}${STYLE_ACT}${STYLE_GIFT}</style>
         <ha-card>
           <div class="scene day">
             <div class="sky sky-day"></div><div class="sky sky-dusk"></div><div class="sky sky-night"></div>
@@ -3690,6 +4027,7 @@
             <div class="kites"></div>
             <div class="flowers"></div>
             <div class="foods"></div>
+            <div class="gifts"></div>
             <div class="mice-f"></div>
             <div class="props"></div>
             <div class="friends"></div>
@@ -3722,6 +4060,11 @@
               <span class="st st-c" title="Sauber">${ICON_SPARK}<i><b class="bar-c"></b></i></span>
             </div>
             <button class="feed" title="Füttern" aria-label="Füttern">${FOOD.lz.svg}</button>
+            <button class="gbtn" hidden title="Päckchen schenken" aria-label="Päckchen schenken">
+              <svg class="gring" viewBox="0 0 44 44" aria-hidden="true"><circle class="gr0" cx="22" cy="22" r="20"/><circle class="gr1" cx="22" cy="22" r="20" pathLength="100"/></svg>
+              <span class="gico">${GIFT_PARCEL}</span><b class="gnum"></b>
+            </button>
+            <div class="album" hidden></div>
           </div>
         </ha-card>`;
 
@@ -3737,7 +4080,7 @@
         precip: $('.precip'), flash: $('.flash'),
         burrow: $('.burrow'), lights: $('.lights'), clipw: $('.clipw'), depth: $('.depth'), rock: $('.lookout'),
         meteors: $('.meteors'), ff: $('.ff'), festB: $('.fest-b'), festF: $('.fest-f'), props: $('.props'), friends: $('.friends'),
-        acts: $('.acts'),
+        acts: $('.acts'), gifts: $('.gifts'), gbtn: $('.gbtn'), album: $('.album'),
       };
       this._el.anchor = this._el.pika.querySelector('.anchor');
       this._el.pika.addEventListener('click', (e) => (e.stopPropagation(), this._onPet(e)));
@@ -3746,6 +4089,19 @@
       this._el.pika.addEventListener('pointermove', (e) => this._pressMove(e));
       for (const t of ['pointerup', 'pointercancel', 'pointerleave']) this._el.pika.addEventListener(t, () => this._pressEnd());
       this._el.feed.addEventListener('click', (e) => (e.stopPropagation(), this._onFeed()));
+      // Päckchen-Knopf: tippen = verschenken, lang drücken = Album
+      const gb = this._el.gbtn;
+      gb.addEventListener('click', (e) => (e.stopPropagation(), this._onGiftBtn()));
+      gb.addEventListener('contextmenu', (e) => e.preventDefault());
+      gb.addEventListener('pointerdown', () => {
+        clearTimeout(this._albumPT);
+        this._albumPT = setTimeout(() => {
+          this._albumHeld = true;
+          this._album(true);
+        }, 550);
+      });
+      for (const t of ['pointerup', 'pointercancel', 'pointerleave']) gb.addEventListener(t, () => clearTimeout(this._albumPT));
+      this._el.album.addEventListener('click', (e) => (e.stopPropagation(), this._album(false)));
       this._el.scene.addEventListener('click', (e) => this._onLookAt(e));
       this._hay = 3;
       this._blooms = []; // Blüten im Vorrat: { color, sx, sy }, kommen aus dem Tagesplan (_hayFromPlan)
@@ -3875,6 +4231,7 @@
         this._setX(this._g.home, true);
         this._pose(this._poseName, 0);
       } else if (this._lift > 0) {
+        this._onHam = false; // aus der Hängematte auf den Stein: von dort hüpft er herunter
         this._lift = rock.lift;
         this._setX(rock.cx, true);
       } else {
@@ -3888,6 +4245,7 @@
       this._layoutFest(first);
       this._layoutFriend(first);
       this._layoutBote(first);
+      this._layoutGift(first);
       if (!first) {
         this._planeSnap();
         this._placePiles();
@@ -3904,6 +4262,7 @@
       this._asleep = on;
       this._lift = 0;
       p.classList.toggle('sleeping', on);
+      this._giftScene();
       if (on) {
         this._setX(this._g.home, true);
         this._inside = true;
@@ -4017,7 +4376,7 @@
       if (p.classList.contains('walking')) this._freeze();
       p.classList.remove('walking', 'eating', 'groom', 'carry', 'look-f', 'look-b', 'look-up', 'happy', 'calling', 'crouch', 'squat', 'sniff',
         'reading', 'doze', 'gaming', 'meh', 'lying', 'tablet', 'tplane', 'swipe', 'kiting', 'tv',
-        'coffee', 'sip', 'hot', 'foam', 'lick', ...COFFEE_CLS, ...ACT_CLS, ...CUTE_CLS);
+        'coffee', 'sip', 'hot', 'foam', 'lick', ...COFFEE_CLS, ...ACT_CLS, ...CUTE_CLS, ...GIFT_CLS);
       this._tvOn(false);
       this._kiteAway();
       this._easelAway();
@@ -4028,6 +4387,8 @@
 
     async _step() {
       if (!this._g) return this._wait(500);
+      // In der Hängematte unterbrochen: aus ihr heraus (nicht zum Stein)
+      if (this._lift > 0 && this._onHam) return this._run('giftHamDown');
       // Unterbrochen, während er auf dem Stein stand: erst herunter. Trinkt er dort oben Kaffee, trinkt er weiter.
       const cof = this._cof?.pend;
       if (this._lift > 0 && !(cof?.rock && cof.stage === 'drink' && this._coffeeDue())) return this._run('hopDown');
@@ -4073,6 +4434,9 @@
       }
       this._forced = false;
       if (food) return this._run('eatFood', food);
+      // Päckchen am Ballon: herunterschießen, dann auspacken (nach Futter und Beschäftigungen aus dem Plan)
+      const gd = this._giftDue();
+      if (gd) return this._run(gd);
       // Bei Starkregen und Gewitter im Bau bleiben und ab und zu herausschauen (fernsehen kommt aus dem Tagesplan)
       if (wx.shelter) return this._run(this._inside ? 'hideout' : 'shelter');
 
@@ -4110,6 +4474,7 @@
         ...this._friendActs(ctx),
         ...this._boteActs(ctx),
         ...this._coffeeActs(ctx),
+        ...this._giftActs(ctx),
       ]);
       return this._run(act);
     }
@@ -4315,6 +4680,7 @@
       this._inside = false;
       // groß werden und dabei aus der Tür nach vorn hüpfen
       this._face(1);
+      this._giftBell();
       this._pose('out', 450);
       await this._hopTo(this._g.home + this._g.pW * 0.35, 0, false);
       this._puff(this._x, this._g.gy, 2);
@@ -4946,6 +5312,7 @@
       this._pose('sleep', 1400);
       this._asleep = true;
       this._updateSky();
+      this._giftScene();
     }
 
     async _wakeUp() {
@@ -4955,6 +5322,7 @@
       p.classList.remove('sleeping', 'peek');
       p.classList.add('stretch');
       this._updateSky();
+      this._giftScene();
       try {
         await this._wait(1300);
       } finally {
@@ -5152,6 +5520,7 @@
       this._tickFriend();
       this._tickBote();
       this._tickCoffee();
+      this._tickGift();
     }
 
     _hiddenFeatures(hidden) {
@@ -5984,10 +6353,10 @@
       for (let i = 0; i < 5; i++) this._addFlower(false);
     }
 
-    _addFlower(grow = true) {
+    _addFlower(grow = true, at = null) {
       const { fMin, fMax } = this._g;
-      let xf;
-      for (let tries = 0; tries < 12; tries++) {
+      let xf = at == null ? null : clamp(at, fMin, fMax);
+      for (let tries = 0; xf == null || (at == null && tries < 12); tries++) {
         xf = rnd(fMin, fMax);
         if (this._flowers.every((f) => Math.abs(f.xf - xf) * this._W > 26)) break;
       }
@@ -7473,7 +7842,7 @@
       el.setAttribute('aria-label', `${this._frName()} streicheln`);
       el.innerHTML = '<div class="clipw"><div class="shadow"></div><div class="depth"><div class="flip"><div class="jump">'
         + `<div class="hop"><div class="br">${FRIEND_SVG}</div></div></div></div></div></div>`;
-      el.querySelectorAll('.book, .gb, .tab, .kpaw, .bk, .brolly, .cap, .cup, .cfoam, .rope, .band, .arms, .uke, .brush, .wand, .rgrip, .bar, .wpaw').forEach((n) => n.remove());
+      el.querySelectorAll('.book, .gb, .tab, .kpaw, .bk, .brolly, .cap, .cup, .cfoam, .rope, .band, .arms, .uke, .brush, .wand, .rgrip, .bar, .wpaw, .slg, .gspy, .gcan, .shades').forEach((n) => n.remove());
       // Sprechblase in eigener Hülle über dem Pika (z 4); sie läuft mit Pino mit (_frSetX, _frFace)
       const sw = document.createElement('div');
       sw.className = 'frsay';
@@ -7552,6 +7921,7 @@
       await this._friendWalkTo(fr, tx, 0.9, w, true);
       this._frFace(fr, this._x >= fr.x ? 1 : -1);
       fr.arrived = true;
+      this._giftBell();
       this._frCall(fr, pick(['iiep!', 'mip!', 'iiiep!']));
       await w(800);
     }
@@ -8300,16 +8670,19 @@
     // Satt durch selbst Gefressenes, höchstens bis SELF_MAX
     _selfFed(d) {
       const room = SELF_MAX - this._raw('s');
-      if (room > 0) this._add('s', Math.min(d, room));
+      if (room > 0) this._add('s', Math.min(d, room), true);
     }
 
-    _add(k, d) {
+    // self: selbst gefressen. Alles andere kommt von dir (füttern, streicheln, putzen, Päckchen) und zählt für die Pflege.
+    _add(k, d, self = false) {
+      this._careEval(); // vorher: lag schon etwas unter GIFT.min, steht es damit fest
       if (!this._stats) this._stats = freshStats();
       this._stats[k] = clamp(this._raw(k) + d, 0, 100);
       this._stats[k + 't'] = Date.now();
       this._gain[k] += d; // noch nicht gesendet (für das Zusammenführen mit fremden Ständen)
       this._renderStats();
       this._save();
+      if (!self) this._careEval(true);
     }
 
     // Alles, was dieses Gerät gewonnen, aber HA noch nicht bestätigt hat (ungesendet + unterwegs)
@@ -8456,13 +8829,14 @@
     // nach 8 kommt keins mehr dazu. Platz und Höchstzahl zählen einzeln Weggemachtes mit: Wann es weggemacht
     // wurde, steht nicht im Zustand, mit der Maske würde ein späterer Putz rückwirkend verschieben, wo ein schon
     // liegendes Häufchen hinkam. Frei wird alles erst beim Großputz (das letzte Häufchen weg).
-    _poops() {
+    // at: zu einem anderen Zeitpunkt (Uhr der Häufchen) rechnen, ohne den Zwischenspeicher
+    _poops(at) {
       const st = this._stats;
-      const now = this._now();
+      const now = at ?? this._now();
       const key = st && `${st.c},${st.m},${st.l},${Math.floor(now / 1e4)},${this._cfg.sleep_start},${this._cfg.sleep_end}`;
-      if (this._poopCache?.key === key) return this._poopCache;
+      if (at == null && this._poopCache?.key === key) return this._poopCache;
       const res = { key, piles: [], clean: 100 };
-      this._poopCache = res;
+      if (at == null) this._poopCache = res;
       if (!st) return res;
       const cs = st.c / 1000;
       const lying = [];
@@ -8610,6 +8984,7 @@
       setTimeout(() => sc.remove(), 900);
       setTimeout(() => this._sparkle(x, this._g.gy - this._H * 0.03, 3), 450);
 
+      this._careEval();
       const st = this._stats;
       const now = sec(this._now());
       const rest = this._poops().piles.filter((o) => o.k !== p.k);
@@ -8626,6 +9001,7 @@
       if (rest.length) {
         this._renderStats();
         this._save();
+        this._careEval(true);
         if (awake && !this._el.pika.classList.contains('walking')) this._jump('hop1');
         return;
       }
@@ -10823,6 +11199,847 @@
     }
     // ==================== Ende Kaffee ====================
 
+    // ==================== Päckchen: Methoden ====================
+    // Pflege-Serie (Tagesplan-Feld gift), Knopf mit Fortschrittsring und Album, Ballon mit Zwille, Auspacken, Leckerli und
+    // Schätze in der Szene. Was alle Geräte wissen müssen, steht im Plan. Ballon, Zwille und Auspacken zeigt jedes Gerät
+    // selbst: Der Ballon schwebt nach fester Zeitleiste ab dem Verschenken (G.x) herein, ausgepackt ist es, sobald es
+    // ein Gerät gezeigt hat (G.o), danach verschwindet der Ballon auch auf den anderen.
+
+    _giftOn() {
+      return !!this._cfg?.gifts;
+    }
+
+    // Wachfenster [Beginn, Ende] (ms) je Tag, von einem Tag vor t1 bis einen Tag nach t2, gerechnet wie beim Häufchen-Plan
+    _wakeWins(t1, t2) {
+      const key = `${Math.floor(t1 / 864e5)}|${Math.floor(t2 / 864e5)}|${this._cfg.sleep_start}|${this._cfg.sleep_end}|${this._hass?.config?.latitude}`;
+      const C = (this._wwC ??= new Map());
+      if (C.has(key)) return C.get(key);
+      const w = [];
+      const day = new Date(t1);
+      day.setHours(0, 0, 0, 0);
+      day.setDate(day.getDate() - 1);
+      for (let i = 0; i < 800 && day.getTime() <= t2 + 864e5; i++) {
+        const a = this._sleepMinutes(this._cfg.sleep_start, 21 * 60, day);
+        const b = this._sleepMinutes(this._cfg.sleep_end, 7 * 60, day);
+        const [y, mo, d] = [day.getFullYear(), day.getMonth(), day.getDate()];
+        w.push([new Date(y, mo, d, 0, b).getTime(), new Date(y, mo, d + (a > b ? 0 : 1), 0, a).getTime()]);
+        day.setDate(d + 1);
+      }
+      if (C.size > 6) C.clear();
+      C.set(key, w);
+      return w;
+    }
+
+    // Wachzeit (ms) zwischen t1 und t2
+    _awakeMs(t1, t2) {
+      if (!(t2 > t1)) return 0;
+      let ms = 0;
+      for (const [ws, we] of this._wakeWins(t1, t2)) ms += Math.max(0, Math.min(we, t2) - Math.max(ws, t1));
+      return ms;
+    }
+
+    // Wann nach t weitere ms Wachzeit vergangen sind
+    _awakeAdd(t, ms) {
+      for (const [ws, we] of this._wakeWins(t, t + 3 * 864e5)) {
+        if (we <= t) continue;
+        const s = Math.max(ws, t);
+        if (s + ms <= we) return s + ms;
+        ms -= we - s;
+      }
+      return t + 3 * 864e5;
+    }
+
+    // Pflege bewerten. Zwischen zwei Änderungen sinken alle drei Werte nur (satt und glücklich gleichmäßig, sauber nach dem
+    // festen Häufchen-Plan). Seit wann einer unter GIFT.min liegt, lässt sich darum jederzeit ausrechnen, auch wenn keiner
+    // zugeschaut hat. Läuft vor jeder Änderung (dann steht ein Absinken fest, bevor es überdeckt wird), danach mit user (du
+    // hast etwas getan: ist jetzt alles wieder darüber, endet die Lücke) und beim Tick. → { G, frac, left, warn, broken }
+    _careEval(user = false) {
+      if (!this._giftOn() || !this._stats || !this._plan || !this._planOk || this._planStale) return null;
+      if (this._cfg.entity && !this._noEntity && !this._synced) return null;
+      const now = Date.now();
+      if (!this._plan.gift) this._planOp({ t: 'gstart', k: sec(now) });
+      let G = this._plan.gift;
+      if (!G) return null;
+      const min = GIFT.min;
+      const st = this._stats;
+      const lowS = ['s', 'g'].filter((k) => this._raw(k) < min);
+      const lowC = this._poops().clean < min;
+      const bad = lowS.length > 0 || lowC;
+      // Seit wann? Nur nötig, solange es noch nicht feststeht
+      const low = [];
+      if (bad && G.b == null) {
+        for (const k of lowS) low.push(st[k] > min ? st[k + 't'] + ((st[k] - min) / RATE[k]) * 3.6e6 : st[k + 't']);
+      }
+      if (lowC && bad && G.b == null) {
+        // Zeitpunkt eingrenzen (auf der Uhr der Häufchen, die in der Vorschau verstellt sein kann)
+        const sh = this._now() - now;
+        let lo = Math.max(G.k, now - 2 * 864e5) + sh;
+        let hi = now + sh;
+        if (this._poops(lo).clean < min) hi = lo;
+        else {
+          for (let i = 0; i < 16; i++) {
+            const m = (lo + hi) / 2;
+            if (this._poops(m).clean < min) hi = m;
+            else lo = m;
+          }
+        }
+        low.push(hi - sh);
+      }
+      if (low.length) this._planOp({ t: 'gbad', k: G.k, b: sec(clamp(Math.min(...low), G.k, now)) });
+      G = this._plan.gift;
+      const over = G.b != null && this._awakeMs(G.b, now) > GIFT.grace;
+      // Verdient bis jetzt bzw. bis die Serie riss
+      const end = G.b == null ? now : Math.min(now, this._awakeAdd(G.b, GIFT.grace));
+      const awake = this._awakeMs(G.k, end);
+      const e = Math.floor(awake / GIFT.every);
+      if (e > G.a) this._planOp({ t: 'gearn', k: G.k, e });
+      const w = Math.floor((now - G.k) / GIFT.gold);
+      if (!over && w > G.d) this._planOp({ t: 'ggold', k: G.k, w });
+      let res = { frac: (awake % GIFT.every) / GIFT.every, left: GIFT.every - (awake % GIFT.every), warn: G.b != null && !over, broken: over };
+      if (!bad && user && G.b != null) {
+        this._planOp({ t: 'gok', k: G.k, b: G.b, brk: over, nk: sec(now) }); // nicht "at": das setzt _planOp
+        res = over ? { frac: 0, left: GIFT.every, warn: false, broken: false } : { ...res, warn: false };
+      }
+      res.G = this._plan.gift;
+      this._care = res;
+      this._giftRender();
+      return res;
+    }
+
+    // Knopf: erscheint mit dem ersten Päckchen, Ring = Fortschritt zum nächsten, Zahl = Vorrat
+    _giftRender() {
+      const b = this._el?.gbtn;
+      if (!b) return;
+      const G = this._plan?.gift;
+      const on = this._giftOn() && !!G && (G.z > 0 || G.n > 0 || G.y > 0);
+      if (!on) {
+        b.hidden = true;
+        this._el.album.hidden = true;
+        return;
+      }
+      if (b.hidden) {
+        b.hidden = false;
+        // Zum allerersten Mal (je Gerät gemerkt): Der Knopf ploppt herein und funkelt
+        let seen = true;
+        try {
+          const k = `pika-pet-gift:${this._cfg.name}`;
+          seen = !!localStorage.getItem(k);
+          localStorage.setItem(k, '1');
+        } catch (e) { /* egal */ }
+        if (!seen && this._g) {
+          b.classList.add('new');
+          setTimeout(() => b.classList.remove('new'), 1000);
+          for (let i = 0; i < 5; i++) setTimeout(() => this._sparkle(this._W - 32 + rnd(-16, 16), this._H - 84 + rnd(-16, 16), 1), 300 + i * 150);
+          if (!this._asleep && !this._inside && this._running) this._say(pick(['oh!', 'ein Päckchen!']), 1300);
+        }
+      }
+      const c = this._care || {};
+      const n = G.n + G.y;
+      const full = G.n >= GIFT.max;
+      b.style.setProperty('--gp', ((full ? 1 : c.frac || 0) * 100).toFixed(1));
+      b.classList.toggle('warn', !!c.warn);
+      b.classList.toggle('broken', !!c.broken && !full);
+      b.classList.toggle('empty', !n || G.z > G.o);
+      b.classList.toggle('gold', G.y > 0);
+      const [pp, pr] = G.y > 0 ? GIFT_GOLD : GIFT_PAPER[(G.z + 1) % GIFT_PAPER.length];
+      b.style.setProperty('--gpp', pp);
+      b.style.setProperty('--gpr', pr);
+      b.querySelector('.gnum').textContent = n ? String(n) : '';
+      b.title = n ? `Päckchen schenken (${n} da), lang drücken: Album` : 'Päckchen: gerade keins da, lang drücken: Album';
+    }
+
+    _onGiftBtn() {
+      if (this._albumHeld) {
+        this._albumHeld = false;
+        return;
+      }
+      if (!this._el.album.hidden) return this._album(false);
+      const G = this._plan?.gift;
+      const b = this._el.gbtn;
+      const no = () => {
+        b.classList.remove('no');
+        void b.offsetWidth;
+        b.classList.add('no');
+      };
+      // Höchstens ein Ballon zugleich
+      if (!G || !this._g || !this._planOk || G.z > G.o || !(G.n > 0 || G.y > 0)) return no();
+      const gold = G.y > 0;
+      const z = G.z + 1;
+      const i = this._giftPick(G, z, gold) + (gold ? 16 : 0);
+      this._planOp({ t: 'give', z, i, gold, x: sec(Date.now()) });
+      if (this._plan.gift?.z !== z) return no();
+      if ((i & 15) >= GIFT_TRE) this._add('s', GIFT.treat);
+      this._add('g', GIFT.joy);
+    }
+
+    // Inhalt des Päckchens Nummer z, auf allen Geräten gleich: Das erste und eins von je dreien ist ein Schatz, der noch
+    // fehlt (goldene immer), sonst ein Leckerli der Jahreszeit. Ist das Album voll, gibt es nur noch Leckerli.
+    _giftPick(G, z, gold) {
+      const miss = [...Array(GIFT_TRE).keys()].filter((t) => !(G.u & (1 << t)));
+      const tre = miss.length && (gold || z === 1 || (z - 1) % 3 === Math.floor(seedRnd('gblk', Math.floor((z - 1) / 3)) * 3));
+      if (tre) return miss[Math.floor(seedRnd('gtre', z) * miss.length)];
+      const south = (this._hass?.config?.latitude ?? 50) < 0;
+      const mo = (new Date().getMonth() + (south ? 6 : 0)) % 12;
+      const ok = GIFT_ITEMS.map((it, n) => n).filter((n) => n >= GIFT_TRE && (!GIFT_ITEMS[n].mo || GIFT_ITEMS[n].mo.includes(mo)));
+      return ok[Math.floor(seedRnd('gtreat', z) * ok.length)];
+    }
+
+    // Plan geändert: Knopf, Ballon und Schätze nachziehen
+    _giftFromPlan() {
+      if (!this._el) return;
+      const G = this._plan?.gift;
+      if (G) {
+        this._giftKeep = G;
+        this._planKeyGift = this._planKey;
+      }
+      this._giftRender();
+      if (!this._g) return;
+      const pend = this._giftOn() && !!G && G.z > G.o;
+      const B = this._gb;
+      // Auf einem anderen Gerät schon ausgepackt (oder abgeschaltet): Ballon bzw. Päckchen verschwindet hier auch
+      if (B && B.stage !== 'open' && (!pend || B.z !== G.z || B.item !== (G.i & 15))) this._giftDrop();
+      if (pend && !this._gb) this._giftBalloon(G);
+      this._giftScene();
+    }
+
+    _giftDrop() {
+      const B = this._gb;
+      if (!B) return;
+      this._gb = null;
+      clearTimeout(this._giftArrT);
+      B.anim?.cancel();
+      B.el.style.transition = 'opacity .8s';
+      B.el.style.opacity = '0';
+      setTimeout(() => B.el.remove(), 900);
+      if (this._action === 'giftShoot' || this._action === 'giftOpen') this._interrupt();
+    }
+
+    // Wo der Ballon schwebt (Mitte des Päckchens, px): zwischen Heu und Stein, nicht unter der Statusanzeige
+    _giftBalloonX(z) {
+      const { fMin, fMax } = this._g;
+      const w = this._H * 0.17;
+      let lo = fMin * this._W;
+      const hi = Math.max(lo, fMax * this._W - w * 0.3);
+      const st = this._el.stats;
+      if (!st.hidden && st.offsetWidth) lo = Math.min(hi, Math.max(lo, st.offsetLeft + st.offsetWidth + w * 0.6));
+      return lo + seedRnd('gx', z) * (hi - lo);
+    }
+
+    // Ballon anlegen: schwebt in GIFT.arrive ms von der Seite herein, aus der der Wind kommt, dann bleibt er über der
+    // Stelle, wo das Päckchen landen wird, bis der Pika wach ist und ihn herunterholt
+    _giftBalloon(G) {
+      const z = G.z;
+      const gold = G.i >= 16;
+      const H = this._H;
+      const w = H * 0.17;
+      const x = this._giftBalloonX(z);
+      const y = H * 0.34;
+      const [pp, pr] = gold ? GIFT_GOLD : GIFT_PAPER[z % GIFT_PAPER.length];
+      const bc = gold ? '#f2c230' : GIFT_BALLOONS[Math.floor(seedRnd('gbc', z) * GIFT_BALLOONS.length)];
+      const el = document.createElement('div');
+      el.className = `gbal${gold ? ' gold' : ''}`;
+      el.style.cssText = `--gpp:${pp};--gpr:${pr};--gbc:${bc};--gsw:${clamp((this._wind || 0) / 30, 0.35, 1.6).toFixed(2)};`
+        + `left:${(x - w / 2).toFixed(1)}px;top:${(y - w * 2 * (66 / 80)).toFixed(1)}px`;
+      el.innerHTML = `<div class="gdrift"><div class="gbob">${GIFT_BALLOON}</div></div>`;
+      this._el.gifts.appendChild(el);
+      const B = { z, el, x, gold, pp, pr, bc, item: G.i & 15, stage: 'hover' };
+      this._gb = B;
+      const left = G.x + GIFT.arrive - Date.now();
+      const calm = ['idle', 'look', 'wander', 'groom', 'squeak', 'curious', 'nibble'];
+      if (left > 0) {
+        B.stage = 'fly';
+        const dx = this._windDir < 0 ? this._W - x + w : -(x + w);
+        const dy = -H * 0.14;
+        B.anim = el.animate([
+          { transform: `translate(${dx.toFixed(1)}px, ${dy.toFixed(1)}px)` },
+          { transform: `translate(${(dx * 0.4).toFixed(1)}px, ${(-H * 0.06).toFixed(1)}px)`, offset: 0.55 },
+          { transform: `translate(${(dx * 0.08).toFixed(1)}px, ${(H * 0.02).toFixed(1)}px)`, offset: 0.85 },
+          { transform: 'none' },
+        ], { duration: GIFT.arrive, easing: 'ease-out', fill: 'backwards' });
+        B.anim.currentTime = Math.max(0, GIFT.arrive - left);
+        clearTimeout(this._giftArrT);
+        this._giftArrT = setTimeout(() => {
+          if (this._gb !== B) return;
+          // Angekommen (läuft die Animation hinterher, z. B. gedrosselt, steht er jetzt trotzdem an seinem Platz)
+          B.anim?.finish();
+          B.anim = null;
+          B.stage = 'hover';
+          if (calm.includes(this._action)) this._interrupt();
+        }, left);
+        // Er hat ihn schon kommen sehen
+        if (!this._asleep && !this._inside && this._running && calm.includes(this._action)) {
+          setTimeout(() => this._gb === B && this._action !== 'giftShoot' && this._say('oh?', 1000), Math.min(left, 2500));
+        }
+      } else if (!this._asleep && calm.includes(this._action)) this._interrupt();
+    }
+
+    _giftDue() {
+      const B = this._gb;
+      if (!B || this._asleep || this._wx.shelter || this._next || !this._giftOn()) return null;
+      if (B.stage === 'ground') return 'giftOpen';
+      return B.stage === 'hover' ? 'giftShoot' : null;
+    }
+
+    // Vom Aussichtsstein mit der Zwille: zielen (ein Auge zu), schnapp! Manchmal geht der erste daneben.
+    async _giftShoot() {
+      const B = this._gb;
+      if (!B || B.stage !== 'hover') return;
+      B.anim?.finish();
+      B.anim = null;
+      const p = this._el.pika;
+      const { rock } = this._g;
+      this._face(B.x >= this._x ? 1 : -1);
+      p.classList.add('look-up');
+      this._say(pick(['oh!', 'ein Ballon!', 'ein Päckchen!']), 1500);
+      this._cls('sparkle', 1800);
+      await this._wait(1400);
+      p.classList.remove('look-up');
+      await this._walkTo((this._x > rock.cx && this._footX(1)) || this._footX(-1), 1.4);
+      if (this._bird?.perch === 'rock') {
+        this._bird.scare();
+        await this._wait(600);
+      }
+      await this._hopTo(rock.cx, rock.lift);
+      this._puff(rock.cx, this._g.gy - rock.lift, 2);
+      this._face(B.x >= rock.cx ? 1 : -1);
+      await this._wait(500);
+      p.classList.add('sling');
+      await this._wait(600);
+      const miss = seedRnd('gmiss', B.z) < 0.35;
+      for (let shot = 0; shot < (miss ? 2 : 1); shot++) {
+        p.classList.add('aim', 'look-up', 'squint');
+        await this._wait(rnd(1100, 1700));
+        p.classList.add('snap');
+        const hit = !miss || shot === 1;
+        await this._giftPebble(hit);
+        p.classList.remove('squint');
+        if (hit) {
+          this._giftPop();
+          await this._wait(300);
+          p.classList.remove('aim', 'look-up');
+          this._say(pick(['getroffen!', 'juhu!', 'Treffer!']), 1300);
+          this._jump('hop1');
+        } else {
+          this._say(pick(['knapp!', 'hoppla…', 'daneben!']), 1100);
+          await this._wait(500);
+          p.classList.remove('snap', 'aim');
+          this._twitch();
+          await this._wait(900);
+        }
+      }
+      await this._wait(900);
+      p.classList.remove('sling', 'snap');
+      await this._hopDown();
+    }
+
+    // Steinchen aus der Zwille zum Ballon; daneben (hit = false) saust es vorbei
+    async _giftPebble(hit) {
+      const B = this._gb;
+      if (!B || B.stage !== 'hover') return;
+      const sc = this._el.scene.getBoundingClientRect();
+      const f = this._el.pika.querySelector('.slf').getBoundingClientRect();
+      const t = B.el.querySelector('.gb-ball').getBoundingClientRect();
+      const x0 = f.left - sc.left + f.width / 2;
+      const y0 = f.top - sc.top + f.height / 2;
+      let x1 = t.left - sc.left + t.width / 2;
+      let y1 = t.top - sc.top + t.height / 2;
+      if (!hit) {
+        x1 += (x1 > x0 ? 1 : -1) * t.width * 0.9;
+        y1 -= t.height * 0.8;
+        x1 = x0 + (x1 - x0) * 1.7;
+        y1 = y0 + (y1 - y0) * 1.7;
+      }
+      const el = document.createElement('span');
+      el.className = 'gpeb';
+      el.style.left = `${x0.toFixed(1)}px`;
+      el.style.top = `${y0.toFixed(1)}px`;
+      this._el.fx.appendChild(el);
+      const ms = hit ? 300 : 520;
+      el.animate([{ transform: 'none' }, { transform: `translate(${(x1 - x0).toFixed(1)}px, ${(y1 - y0).toFixed(1)}px)`, opacity: hit ? 1 : 0 }],
+        { duration: ms, easing: 'cubic-bezier(.2, .6, .5, 1)', fill: 'forwards' });
+      setTimeout(() => el.remove(), ms + 40);
+      await this._wait(ms);
+    }
+
+    // Plopp: Konfetti, der Ballon ist weg, das Päckchen fällt auf die Wiese und hüpft einmal auf
+    _giftPop() {
+      const B = this._gb;
+      if (!B || B.stage !== 'hover') return;
+      const sc = this._el.scene.getBoundingClientRect();
+      const r = (el) => {
+        const q = el.getBoundingClientRect();
+        return { x: q.left - sc.left + q.width / 2, y: q.top - sc.top + q.height / 2, h: q.height, b: q.bottom - sc.top };
+      };
+      const ball = r(B.el.querySelector('.gb-ball'));
+      const par = r(B.el.querySelector('.gb-p'));
+      const cols = B.gold ? ['#f2c230', '#fff2b0', '#ffffff', '#ffd75a'] : [B.bc, ...GIFT_BALLOONS];
+      for (let i = 0; i < 12; i++) {
+        const c = document.createElement('span');
+        c.className = 'gconf';
+        const a = (i / 12) * Math.PI * 2 + rnd(-0.3, 0.3);
+        const d = this._H * rnd(0.06, 0.14);
+        c.style.cssText = `left:${ball.x.toFixed(1)}px;top:${ball.y.toFixed(1)}px;background:${i % 2 ? B.bc : cols[i % cols.length]};`
+          + `--dx:${(Math.cos(a) * d).toFixed(1)}px;--dy:${(Math.sin(a) * d + this._H * 0.06).toFixed(1)}px;--r:${rnd(-320, 320).toFixed(0)}deg`;
+        this._el.fx.appendChild(c);
+        setTimeout(() => c.remove(), 1050);
+      }
+      this._peep(ball.x, ball.y - ball.h * 0.3, 'plopp!');
+      B.anim?.cancel();
+      B.el.remove();
+      const el = document.createElement('div');
+      el.className = `gpar${B.gold ? ' gold' : ''}`;
+      el.style.cssText = `--gpp:${B.pp};--gpr:${B.pr};left:${par.x.toFixed(1)}px`;
+      el.innerHTML = GIFT_PARCEL;
+      this._el.gifts.appendChild(el);
+      const dy = par.b - (this._g.gy + 3);
+      el.animate([
+        { transform: `translateY(${dy.toFixed(1)}px) rotate(-10deg)` },
+        { transform: 'translateY(0) rotate(5deg) scale(1.12, .84)', offset: 0.72 },
+        { transform: `translateY(${(-this._H * 0.03).toFixed(1)}px) rotate(-2deg)`, offset: 0.86 },
+        { transform: 'none' },
+      ], { duration: 900, easing: 'cubic-bezier(.45, 0, .7, 1)' });
+      Object.assign(B, { el, x: par.x, stage: 'ground', anim: null });
+      setTimeout(() => this._g && this._puff(par.x, this._g.gy, 2), 650);
+    }
+
+    // Hinhoppeln, schnuppern, Schleife aufzupfen, Deckel springt ab: Leckerli frisst er, Schätze kommen an ihren Platz
+    async _giftOpen() {
+      const B = this._gb;
+      if (!B || B.stage !== 'ground') return;
+      const p = this._el.pika;
+      const { gy } = this._g;
+      this._say('!', 900);
+      await this._wait(350);
+      // etwas Abstand, damit man Päckchen und Inhalt sieht
+      const side = B.x >= this._x ? 1 : -1;
+      await this._walkTo(B.x - side * this._g.pW * 0.62, 1.4);
+      this._face(side);
+      p.classList.add('sniff');
+      await this._wait(900);
+      p.classList.remove('sniff');
+      p.classList.add('groom');
+      await this._wait(1000);
+      // Ab hier gilt es als ausgepackt, auch auf den anderen Geräten
+      B.stage = 'open';
+      this._giftHide = B.item < GIFT_TRE ? B.item : null;
+      this._planOp({ t: 'gopen', z: B.z });
+      const it = GIFT_ITEMS[B.item];
+      let ie = null;
+      try {
+        B.el.querySelector('.gp-bow').classList.add('off');
+        await this._wait(450);
+        p.classList.remove('groom');
+        B.el.querySelector('.gp-lid').classList.add('off');
+        this._sparkle(B.x, gy - this._H * 0.1, B.gold ? 8 : 4);
+        ie = document.createElement('div');
+        ie.className = `gitem rise${B.gold ? ' gold' : ''}`;
+        ie.innerHTML = it.svg;
+        ie.style.left = `${B.x.toFixed(1)}px`;
+        ie.style.top = `${(gy - this._H * 0.2).toFixed(1)}px`;
+        this._el.fx.appendChild(ie);
+        this._cls('sparkle', 2600);
+        await this._wait(1000);
+        B.el.classList.add('fade');
+        if (B.item >= GIFT_TRE) {
+          this._say(`${it.name}!`, 1400);
+          await this._wait(1100);
+          ie.classList.add('eat');
+          await this._eat(it.color, 3200);
+          this._cls('mlem', 950, true);
+          this._happy();
+          this._jump('hop1');
+          await this._wait(1300);
+        } else {
+          this._happy(1800);
+          this._jump(B.gold ? 'binky' : 'hop1');
+          this._say(it.key === 'plush' ? `ein Plüsch-${this._frName()}!` : it.say, 1800);
+          await this._wait(1900);
+          await this._giftStow(B.item, ie);
+        }
+      } finally {
+        B.el.classList.add('fade');
+        const el = B.el;
+        setTimeout(() => el.remove(), 900);
+        ie?.remove();
+        this._giftHide = null;
+        if (this._gb === B) this._gb = null;
+        this._giftScene();
+      }
+    }
+
+    // Neuer Schatz an seinen Platz: fliegt hin und ploppt dort auf. Getragene probiert er gleich aus.
+    async _giftStow(t, ie) {
+      const key = GIFT_ITEMS[t].key;
+      const p = this._el.pika;
+      const sc = this._el.scene.getBoundingClientRect();
+      this._giftHide = null;
+      this._giftScene();
+      const tgt = this._gtEls?.get(t);
+      const from = ie.getBoundingClientRect();
+      let to;
+      if (tgt) {
+        tgt.style.opacity = '0';
+        to = tgt.getBoundingClientRect();
+      } else {
+        // Sonnenbrille und Fernrohr zum Pika, Plüsch-Pino in den Bau
+        const { pW, pH, gy, hole } = this._g;
+        const hx = key === 'plush' ? hole.cx : this._x + this._dir * pW * 0.25;
+        const hy = key === 'plush' ? hole.top + (hole.lip - hole.top) * 0.5 : gy - pH * 0.55;
+        to = { left: sc.left + hx - 4, top: sc.top + hy - 4, width: 8, height: 8 };
+      }
+      const k = clamp(to.width / Math.max(1, from.width), 0.1, 3);
+      const cur = getComputedStyle(ie).transform;
+      ie.animate([
+        { transform: cur === 'none' ? 'none' : cur },
+        { transform: `translate(${(to.left + to.width / 2 - from.left - from.width / 2).toFixed(1)}px, ${(to.top + to.height / 2 - from.top - from.height / 2).toFixed(1)}px) scale(${k.toFixed(2)})`, opacity: tgt ? 1 : 0.2 },
+      ], { duration: 750, easing: 'cubic-bezier(.4, 0, .3, 1)', fill: 'forwards' });
+      await this._wait(750);
+      ie.remove();
+      if (tgt) {
+        tgt.style.opacity = '';
+        tgt.classList.add('new');
+        setTimeout(() => tgt.classList.remove('new'), 800);
+        this._sparkle(to.left - sc.left + to.width / 2, to.top - sc.top + to.height * 0.3, 3);
+      }
+      if (key === 'shades') {
+        this._coolUntil = Date.now() + 60000;
+        p.classList.add('cool');
+        this._say('cool!', 1500);
+        await this._wait(2500);
+      } else if (key === 'scope') {
+        p.classList.add('spy', 'look-up');
+        this._say('ahoi!', 1300);
+        await this._wait(2400);
+        p.classList.remove('spy', 'look-up');
+      } else if (key === 'plush') {
+        this._blush(2000);
+        this._say('♥', 1300);
+        await this._wait(1500);
+      } else if (key === 'bell') {
+        this._giftBell();
+        await this._wait(1200);
+      } else if (key === 'wheel') {
+        p.classList.add('look-b');
+        await this._wait(1500);
+        p.classList.remove('look-b');
+      }
+    }
+
+    // Schätze in der Szene: Windrad und Glöckchen am Bau, Plüsch-Pino nachts im Bett, auf der Wiese höchstens zwei
+    // (Wollknäuel, Gießkanne, Hängematte; welche, wechselt jeden Tag, der neueste ist immer dabei)
+    _giftScene() {
+      if (!this._el || !this._g) return;
+      const G = this._plan?.gift;
+      let u = this._giftOn() && G ? G.u : 0;
+      if (G && G.z > G.o && (G.i & 15) < GIFT_TRE) u &= ~(1 << (G.i & 15)); // noch nicht ausgepackt
+      if (this._giftHide != null) u &= ~(1 << this._giftHide);
+      const has = (t) => !!(u & (1 << t));
+      const newest = G && G.o === G.z && (G.i & 15) < GIFT_TRE ? G.i & 15 : -1;
+      const day = pikaDay(Date.now());
+      let meadow = [0, 5, 6].filter(has);
+      if (meadow.length > 2) {
+        const rest = meadow.filter((t) => t !== newest).sort((a, b) => seeded(day, a, 71) - seeded(day, b, 71));
+        meadow = [...(meadow.includes(newest) ? [newest] : []), ...rest].slice(0, 2);
+      }
+      const want = new Set(meadow);
+      if (has(1)) want.add(1);
+      if (has(7)) want.add(7);
+      if (has(2) && this._asleep) want.add(2);
+      const E = (this._gtEls ??= new Map());
+      for (const [t, el] of E) {
+        if (want.has(t)) continue;
+        el.remove();
+        E.delete(t);
+      }
+      for (const t of want) {
+        let el = E.get(t);
+        if (!el) {
+          const key = GIFT_ITEMS[t].key;
+          el = document.createElement('div');
+          el.className = `gt gt-${key === 'hammock' ? 'ham' : key}`;
+          el.innerHTML = key === 'wheel' ? GIFT_WHEEL : key === 'hammock' ? GIFT_HAMMOCK : GIFT_ITEMS[t].svg;
+          // Plüsch-Pino liegt vor ihm im Arm, also vor dem schlafenden Pika
+          (key === 'plush' ? this._el.fx : this._el.gifts).appendChild(el);
+          E.set(t, el);
+        }
+        this._giftPlace(t, el);
+      }
+      // Windrad: dreht sich mit dem Wind, bei Flaute ganz langsam
+      E.get(1)?.style.setProperty('--gws', `${clamp(9 - (this._wind || 0) / 4, 0.35, 9).toFixed(2)}s`);
+    }
+
+    _giftPlace(t, el) {
+      const { hole } = this._g;
+      const H = this._H;
+      const key = GIFT_ITEMS[t].key;
+      let x;
+      let top = null;
+      if (key === 'wheel') x = Math.min(this._g.hayR + H * 0.05, this._g.fMax * this._W);
+      else if (key === 'bell') {
+        x = hole.cx + (hole.r - hole.cx) * 0.62;
+        top = hole.top + (hole.lip - hole.top) * 0.06;
+      } else if (key === 'plush') {
+        x = hole.l + (hole.r - hole.l) * 0.32;
+        top = hole.lip - H * 0.085 * 0.82;
+      } else x = this._giftX(t);
+      el.style.left = `${x.toFixed(1)}px`;
+      if (top != null) el.style.top = `${top.toFixed(1)}px`;
+    }
+
+    // Platz der Wiesen-Schätze (px): fest je Tag. Das Wollknäuel bleibt liegen, wo es hingerollt ist.
+    _giftX(t) {
+      const { fMin, fMax } = this._g;
+      const W = this._W;
+      const key = GIFT_ITEMS[t].key;
+      if (key === 'yarn' && this._yarnXf != null) return clamp(this._yarnXf, fMin, fMax) * W;
+      if (key === 'can') return Math.max(this._H * 0.05, this._g.hole.l - this._H * 0.07);
+      const u = seeded(pikaDay(Date.now()), t, 73);
+      if (key === 'hammock') return (fMin + (0.45 + 0.25 * u) * (fMax - fMin)) * W;
+      return (fMin + u * (fMax - fMin)) * W;
+    }
+
+    // Glöckchen an der Tür bimmelt (er kommt heraus, Pino kommt an)
+    _giftBell() {
+      const el = this._gtEls?.get(7);
+      if (!el || this._away()) return;
+      el.classList.remove('ring');
+      void el.offsetWidth;
+      el.classList.add('ring');
+      clearTimeout(this._bellT);
+      this._bellT = setTimeout(() => el.classList.remove('ring'), 1700);
+      const r = el.getBoundingClientRect();
+      const s = this._el.scene.getBoundingClientRect();
+      this._peep(r.left - s.left + r.width, r.top - s.top, 'bimm!');
+    }
+
+    _layoutGift(first) {
+      const B = this._gb;
+      if (B && B.stage !== 'open' && (first || B.stage !== 'ground')) {
+        // Ballon an festen Pixeln: neu anlegen (die Zeitleiste stimmt weiter)
+        clearTimeout(this._giftArrT);
+        B.anim?.cancel();
+        B.el.remove();
+        this._gb = null;
+        if (this._action === 'giftShoot') this._interrupt();
+      } else if (B?.stage === 'ground') {
+        B.x = this._giftBalloonX(B.z);
+        B.el.style.left = `${B.x.toFixed(1)}px`;
+        if (this._action === 'giftOpen') this._interrupt();
+      }
+      this._giftFromPlan();
+    }
+
+    _tickGift() {
+      if (!this._g) return;
+      this._careEval();
+      this._giftScene();
+      const G = this._plan?.gift;
+      if (!G || !this._giftOn()) return;
+      // Sonnenbrille bei Sonne ab 24 °C (und eine Minute nach dem Auspacken)
+      const raw = { ...(this._wxRaw || {}), ...(this._dbgWeather || {}) };
+      const e = this._dbgElev ?? this._elev;
+      const sunny = ['sunny', 'clear', 'partlycloudy'].includes(raw.cond) && (e == null || e > 15) && (raw.temp ?? 0) >= 24;
+      const cool = !!(G.u & 8) && !this._wx.wet && !this._asleep && (sunny || Date.now() < (this._coolUntil || 0));
+      this._el.pika.classList.toggle('cool', cool);
+      // Voller Vorrat: der Knopf wackelt ab und zu
+      const b = this._el.gbtn;
+      if (G.n >= GIFT.max && !b.hidden && Math.random() < 0.25) {
+        b.classList.remove('wig');
+        void b.offsetWidth;
+        b.classList.add('wig');
+      }
+    }
+
+    _giftActs({ wx }) {
+      const G = this._plan?.gift;
+      if (!this._giftOn() || !G || !G.u || this._gb) return [];
+      const E = this._gtEls || new Map();
+      const dry = !wx.wet && !wx.snowcover;
+      const h = new Date(this._dbgDate ?? Date.now()).getHours();
+      return [
+        [E.has(0) && dry ? 0.5 : 0, 'giftYarn'],
+        [E.has(6) && dry && this._flowers.length < 7 ? 0.35 : 0, 'giftWater'],
+        [E.has(5) && dry ? (h >= 12 && h < 18 ? 0.45 : 0.1) : 0, 'giftHammock'],
+        [G.u & 16 && dry ? (this._planeToWatch() ? 3 : 0.3) : 0, 'giftScope'],
+      ];
+    }
+
+    // Wollknäuel anstupsen, es kullert, er hinterher
+    async _giftYarn() {
+      const el = this._gtEls?.get(0);
+      if (!el) return;
+      const p = this._el.pika;
+      const { pW, fMin, fMax } = this._g;
+      const W = this._W;
+      await this._approach(this._giftX(0), 1.2);
+      const n = Math.random() < 0.5 ? 2 : 1;
+      for (let i = 0; i < n; i++) {
+        p.classList.add('crouch');
+        await this._wait(260);
+        p.classList.remove('crouch');
+        this._jump('hop1');
+        const from = this._giftX(0);
+        const to = clamp(from + this._dir * W * rnd(0.12, 0.28), fMin * W, fMax * W);
+        this._yarnXf = to / W;
+        this._yarnRot = (this._yarnRot || 0) + ((to - from) / (Math.PI * this._H * 0.075)) * 360;
+        el.style.transition = 'left 1.2s cubic-bezier(.2, .7, .4, 1)';
+        el.style.left = `${to.toFixed(1)}px`;
+        el.querySelector('svg').style.transform = `rotate(${this._yarnRot.toFixed(0)}deg)`;
+        this._say(pick(['hihi!', 'kuller!', 'fang!', 'hopp!']), 1000);
+        await this._wait(450);
+        if (Math.abs(to - from) < 4) break;
+        await this._walkTo(to - this._dir * pW * 0.42, 1.9);
+      }
+      el.style.transition = '';
+      this._happy(1000);
+      await this._wait(800);
+    }
+
+    // Gießkanne holen, Blumen gießen, zwei neue wachsen
+    async _giftWater() {
+      const can = this._gtEls?.get(6);
+      if (!can) return;
+      const p = this._el.pika;
+      const { pW, fMin, fMax, gy } = this._g;
+      const W = this._W;
+      const cx = this._giftX(6);
+      await this._approach(cx, 1);
+      can.classList.add('away');
+      p.classList.add('wcan');
+      try {
+        this._say(pick(['gießen!', 'Wasser marsch!', 'plitsch!']), 1200);
+        await this._wait(500);
+        // zu einer Stelle mit wenig Blumen
+        let best = null;
+        for (let i = 0; i < 8; i++) {
+          const xf = rnd(fMin, fMax);
+          const d = Math.min(1, ...this._flowers.map((f) => Math.abs(f.xf - xf)));
+          if (!best || d > best.d) best = { xf, d };
+        }
+        const spot = best.xf * W;
+        const dir = spot >= this._x ? 1 : -1;
+        await this._walkTo(spot - dir * pW * 0.52, 0.9);
+        this._face(dir);
+        await this._wait(300);
+        p.classList.add('pour');
+        await this._wait(400);
+        const sx = this._x + dir * pW * 0.5;
+        for (let i = 0; i < 12; i++) {
+          const d = document.createElement('span');
+          d.className = 'gdrop';
+          d.style.left = `${(sx + rnd(-pW * 0.05, pW * 0.05)).toFixed(1)}px`;
+          d.style.top = `${(gy - this._H * 0.14 + rnd(-2, 2)).toFixed(1)}px`;
+          this._el.fx.appendChild(d);
+          setTimeout(() => d.remove(), 600);
+          await this._wait(160);
+        }
+        p.classList.remove('pour');
+        await this._wait(500);
+        for (let i = 0; i < 2 && this._flowers.length < 8; i++) this._addFlower(true, (sx + (i ? 1 : -1) * rnd(8, 20)) / W);
+        this._say(pick(['wachs!', 'hübsch!', '♥']), 1200);
+        this._happy(1000);
+        await this._wait(1600);
+        await this._approach(cx, 1);
+      } finally {
+        p.classList.remove('wcan', 'pour');
+        can.classList.remove('away');
+      }
+    }
+
+    // Nachmittags ein Nickerchen in der Hängematte
+    async _giftHammock() {
+      const el = this._gtEls?.get(5);
+      if (!el) return;
+      const p = this._el.pika;
+      const { pW } = this._g;
+      const cx = this._giftX(5);
+      await this._walkTo(cx + (this._x < cx ? -1 : 1) * pW * 0.95, 1);
+      this._say(pick(['Nickerchen…', '*gähn*', 'Päuschen!']), 1300);
+      await this._wait(800);
+      this._onHam = true;
+      await this._hopTo(cx, pW * GIFT_HAM_W * GIFT_HAM_LIFT);
+      el.classList.add('sway');
+      p.classList.add('lying');
+      await this._wait(900);
+      p.classList.add('doze');
+      await this._wait(rnd(18000, 32000));
+      await this._giftHamDown();
+    }
+
+    async _giftHamDown() {
+      const p = this._el.pika;
+      const el = this._gtEls?.get(5);
+      p.classList.remove('doze');
+      if (p.classList.contains('lying')) {
+        this._say(pick(['ausgeschlafen!', '*streck*', 'hmm…']), 1200);
+        await this._wait(900);
+      }
+      p.classList.remove('lying');
+      el?.classList.remove('sway');
+      const cx = el ? this._giftX(5) : this._x;
+      await this._hopTo(cx + pick([-1, 1]) * this._g.pW * 0.95, 0);
+      this._onHam = false;
+      this._puff(this._x, this._g.gy, 2);
+    }
+
+    // Mit dem Fernrohr auf dem Stein: Ausschau halten, am liebsten nach Flugzeugen
+    async _giftScope() {
+      const p = this._el.pika;
+      const { rock } = this._g;
+      await this._walkTo((this._x > rock.cx && this._footX(1)) || this._footX(-1));
+      if (this._bird?.perch === 'rock') {
+        this._bird.scare();
+        await this._wait(600);
+      }
+      await this._hopTo(rock.cx, rock.lift);
+      this._puff(rock.cx, this._g.gy - rock.lift, 2);
+      await this._wait(500);
+      p.classList.add('spy');
+      for (let i = 0; i < 3; i++) {
+        const pl = this._planeToWatch();
+        if (pl) this._face(pl.x >= this._x ? 1 : -1);
+        else if (i) this._face(-this._dir);
+        p.classList.toggle('look-up', !!pl || Math.random() < 0.5);
+        if (pl) {
+          this._memo('plane');
+          this._say(pick(['Flugzeug!', 'da oben!', 'brumm!']), 1300);
+        } else if (Math.random() < 0.5) this._say(pick(['Land in Sicht!', 'ahoi!', 'hmm…', 'ich seh dich!']), 1300);
+        await this._wait(rnd(1800, 3000));
+      }
+      p.classList.remove('spy', 'look-up');
+      await this._wait(400);
+      await this._hopDown();
+    }
+
+    // Album (lang drücken): Schätze, Serie, wann das nächste Päckchen kommt
+    _album(on) {
+      const a = this._el.album;
+      clearTimeout(this._albumT);
+      if (!on) {
+        a.hidden = true;
+        return;
+      }
+      const G = this._plan?.gift;
+      if (!G) return;
+      const c = this._careEval() || this._care || {};
+      const have = GIFT_ITEMS.slice(0, GIFT_TRE).filter((it, t) => G.u & (1 << t)).length;
+      const days = c.broken ? 0 : Math.floor((Date.now() - G.k) / 864e5);
+      const fmt = (ms) => {
+        const m = Math.max(1, Math.round(ms / 6e4));
+        return m >= 60 ? `${Math.floor(m / 60)} Std.${m % 60 ? ` ${m % 60} Min.` : ''}` : `${m} Min.`;
+      };
+      const next = G.n >= GIFT.max ? 'Vorrat voll' : c.broken ? 'Serie gerissen'
+        : c.warn ? 'schnell kümmern!' : `nächstes in ${fmt(c.left ?? GIFT.every)} Wachzeit`;
+      a.innerHTML = `<div class="alb-row">${GIFT_ITEMS.slice(0, GIFT_TRE).map((it, t) => {
+        const own = G.u & (1 << t);
+        const nm = it.key === 'plush' ? `Plüsch-${this._frName()}` : it.name;
+        return `<i class="${own ? '' : 'miss'}" title="${own ? esc(nm) : '?'}">${it.svg}</i>`;
+      }).join('')}</div><div class="alb-t">${have}/${GIFT_TRE} Schätze · Serie ${days} ${days === 1 ? 'Tag' : 'Tage'} · ${next}</div>`;
+      a.hidden = false;
+      this._albumT = setTimeout(() => this._album(false), 9000);
+    }
+    // ==================== Ende Päckchen ====================
+
     // ==================== Aktivitäten: Methoden ====================
     // Tagesplan der Beschäftigungen (ACT_WIN, Helfer plan_entity), Tagesform, Begrüßung, wenn die Karte sichtbar
     // wird, und die Beschäftigungen Musik, Malen, Seifenblasen, Frühsport (groß) sowie Seilspringen und Gewichtheben.
@@ -11168,11 +12385,15 @@
       this._planOps = this._planOps.filter((o) => now - o.at < 15000);
       let P = this._planBase;
       for (const o of this._planOps) P = planApply(P, o, o.at);
+      // Ein Gerät bis 0.18 schrieb den Plan ohne Päckchen zurück: den letzten Stand behalten und wieder eintragen
+      const lost = !P.gift && this._giftKeep && this._planKeyGift === this._planKey;
+      if (lost) P = { ...P, gift: { ...this._giftKeep } };
       const changed = planSer(P) !== planSer(this._plan);
       this._plan = P;
       this._hayFromPlan();
+      this._giftFromPlan();
       // Fehlt dem fremden Stand etwas von hier: noch einmal schreiben
-      if (incoming && this._planOps.length && planSer(P) !== planSer(this._planBase)) this._planSave();
+      if (incoming && (this._planOps.length || lost) && planSer(P) !== planSer(this._planBase)) this._planSave();
       return changed;
     }
 

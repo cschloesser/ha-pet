@@ -228,6 +228,29 @@
 </div>
 <!-- ==================== Ende Süßes ==================== -->
 
+<!-- ==================== Vorschau-Knöpfe Päckchen ==================== -->
+<div class="bar" id="bar-gift"><b>Päckchen</b>
+  <button id="gift-earn">+1 Päckchen</button>
+  <button id="gift-gold">goldenes</button>
+  <button id="gift-give">verschenken (links)</button>
+  <button id="gift-half">Serie −12 Std.</button>
+  <button id="gift-week">Serie +7 Tage</button>
+  <button id="gift-low">Hunger unter 50 %</button>
+  <button id="gift-late">… seit 2 Std. (reißt)</button>
+  <button id="gift-full">Album voll</button>
+  <button id="gift-reset">Päckchen zurücksetzen</button>
+  <button id="gift-album">Album zeigen</button>
+  <i style="flex-basis:100%"></i><b></b>
+  <button data-gift="giftYarn">Wollknäuel</button>
+  <button data-gift="giftWater">Gießen</button>
+  <button data-gift="giftHammock">Hängematte</button>
+  <button data-gift="giftScope">Fernrohr</button>
+  <button id="gift-bell">Glöckchen</button>
+  <button id="gift-hot">heiß &amp; sonnig (Sonnenbrille)</button>
+  <button id="gift-state">Stand anzeigen</button>
+</div>
+<!-- ==================== Ende Päckchen ==================== -->
+
 <div class="wrap">
   <div class="slot" style="width:600px;height:248px"><pika-pet-card id="a"></pika-pet-card></div>
   <div class="slot" style="width:380px;height:184px"><pika-pet-card id="b"></pika-pet-card></div>
@@ -783,6 +806,61 @@
     c._interrupt();
   }));
   // ==================== Ende Süßes ====================
+
+  // ==================== Päckchen ====================
+  // Änderungen nur links: rechts kommen sie über den Helfer plan_entity an wie auf einem zweiten Gerät
+  const gift = () => {
+    const c = cards[0];
+    if (!c._plan.gift) c._planOp({ t: 'gstart', k: Math.floor(Date.now() / 1000) * 1000 });
+    return c._plan.gift;
+  };
+  const giftSet = (f) => {
+    gift();
+    cards[0]._planOp({ t: 'gdbg', f });
+    cards.forEach((c) => c._tickGift());
+  };
+  const giftLog = () => {
+    const c = cards[0];
+    const G = c._plan.gift;
+    const r = c._careEval() || {};
+    log(G ? `Vorrat ${G.n}${G.y ? ' + golden' : ''} · Serie seit ${new Date(G.k).toLocaleString()} · Fortschritt ${Math.round((r.frac || 0) * 100)} %`
+      + `${G.b ? ` · unter 50 % seit ${new Date(G.b).toLocaleTimeString()}${r.broken ? ' (gerissen)' : ''}` : ''} · verschenkt ${G.z}, ausgepackt ${G.o}`
+      + ` · Album ${G.u.toString(2).padStart(8, '0')}` : 'noch kein Päckchen-Stand');
+  };
+  document.getElementById('gift-earn').addEventListener('click', () => { giftSet({ n: Math.min(3, gift().n + 1) }); giftLog(); });
+  document.getElementById('gift-gold').addEventListener('click', () => { giftSet({ y: 1 }); giftLog(); });
+  document.getElementById('gift-give').addEventListener('click', () => { cards[0]._onGiftBtn(); setTimeout(giftLog, 200); });
+  document.getElementById('gift-half').addEventListener('click', () => { giftSet({ k: gift().k - 12 * 36e5 }); giftLog(); });
+  document.getElementById('gift-week').addEventListener('click', () => { giftSet({ k: gift().k - 7 * 864e5, d: 0 }); giftLog(); });
+  document.getElementById('gift-low').addEventListener('click', () => {
+    const c = cards[0];
+    c._stats.s = 45;
+    c._stats.st = Date.now();
+    c._save();
+    c._renderStats();
+    setTimeout(() => { c._careEval(); giftLog(); }, 1500);
+  });
+  document.getElementById('gift-late').addEventListener('click', () => {
+    giftSet({ b: Math.floor((Date.now() - 2 * 36e5) / 1000) * 1000 });
+    giftLog();
+  });
+  document.getElementById('gift-full').addEventListener('click', () => { giftSet({ u: 255 }); giftLog(); });
+  document.getElementById('gift-reset').addEventListener('click', () => {
+    giftSet({ k: Math.floor(Date.now() / 1000) * 1000, a: 0, n: 0, u: 0, z: 0, o: 0, b: null, x: 0, y: 0, d: 0, i: 0 });
+    try { localStorage.removeItem('pika-pet-gift:Pika'); } catch (e) { /* egal */ }
+    giftLog();
+  });
+  document.getElementById('gift-album').addEventListener('click', () => cards.forEach((c) => c._album(true)));
+  document.querySelectorAll('[data-gift]').forEach((b) => b.addEventListener('click', () => cards.forEach((c) => cuteGo(c, b.dataset.gift))));
+  document.getElementById('gift-bell').addEventListener('click', () => cards.forEach((c) => c._giftBell()));
+  document.getElementById('gift-hot').addEventListener('click', () => {
+    const w = states['weather.forecast_home'];
+    states['weather.forecast_home'] = { state: 'sunny', attributes: { ...w.attributes, temperature: 28, cloud_coverage: 5 } };
+    push();
+    setTimeout(() => cards.forEach((c) => c._tickGift()), 100);
+  });
+  document.getElementById('gift-state').addEventListener('click', giftLog);
+  // ==================== Ende Päckchen ====================
 </script>
 </body>
 </html>
