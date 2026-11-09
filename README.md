@@ -8,23 +8,24 @@ Ein kleiner Pika (Pfeifhase) wohnt in deinem Home-Assistant-Dashboard.
 - **Bau**: Ab und zu verschwindet er in seinem Bau und schaut ein paarmal heraus, bevor er wieder rauskommt
 - **Aussichtsstein**: Wie echte Pikas springt er auf den Stein mit Geröll, richtet sich auf und pfeift
 - **Nachts** (Standard: Sonnenuntergang bis Sonnenaufgang) schläft er mit Zipfelmütze im Eingang seines Baus
-- **Hunger und Glück** sinken langsam. Hat er Hunger, denkt er an Löwenzahn und lässt die Ohren hängen
+- **Hunger und Glück** sinken langsam, im Schlaf nur halb so schnell. Hat er Hunger (Satt unter 30 %), denkt er an Löwenzahn; unter 15 % lässt er die Ohren hängen
 - **Päckchen**: Wer sich gut kümmert, verdient Päckchen. Sie schweben an einem Ballon herein, er schießt sie mit der Zwille vom Himmel (siehe [Päckchen](#päckchen))
 
 ## Streicheln
 
-Tippt man ihn an, während er nur herumsitzt, hoppelt oder sich umschaut, reagiert er auf die Stelle. Ist er gerade beschäftigt (Buch, Musik, Futter …), gibt es Herzchen und einen Hüpfer, ohne dass er aufhört.
+Tippt man ihn an, während er nur herumsitzt, hoppelt oder sich umschaut, reagiert er auf die Stelle. Ist er gerade beschäftigt (Buch, Musik, Futter …), gibt es Herzchen und einen Hüpfer, ohne dass er aufhört; Lang drücken zählt dann wie Antippen. Mit der Tastatur streichelt Enter oder die Leertaste (der Pika lässt sich mit Tab anwählen).
 
 - **Kopf**: Er lehnt sich in die Hand, Augen zu, Ohren angelegt, zufriedenes ω-Mäulchen.
 - **Nase**: *boop!* Er schielt auf seine Nase, manchmal muss er niesen.
 - **Ohr**: Das Ohr flappt nach, er kichert.
 - **Bauch**: Er kichert und kippt manchmal kurz auf den Rücken.
 - **Rücken und Po**: Freudensprung wie gehabt.
-- **Mehrmals hintereinander** (innerhalb von 6 Sekunden): beim 5. Mal eine Pirouette mit Funkeln, ab dem 8. Mal schmilzt er zum runden Fellknäuel. Beim 11. Mal ist es ihm zu viel: „hmpf!“, er dreht sich mit Grummelwolke weg, linst dann doch zurück („…na gut“).
+- **Mehrmals hintereinander** (innerhalb von 6 Sekunden): beim 5. Mal ein Luftsprung mit Funkeln, ab dem 8. Mal schmilzt er zum runden Fellknäuel. Beim 11. Mal ist es ihm zu viel: „hmpf!“, er dreht sich mit Grummelwolke weg, linst dann doch zurück („…na gut“).
 - **Lang drücken** = kraulen: Augen zu, Ohren angelegt, „prrr…“, ein Hinterbein klopft. Solange der Finger liegt (höchstens 20 s), gibt es Herzchen und Glück.
 - **Waagerecht über ihn wischen** = übers Fell streichen: Es plustert sich auf und legt sich wieder.
+- **Im Schlaf**: Antippen, Kraulen und Wischen wecken ihn nicht. Er öffnet kurz ein Auge, es gibt ein Herzchen und manchmal ein verschlafenes „mmh…“. Viermal in 6 Sekunden: „noch fünf Minuten…“, und er dreht sich auf die andere Seite.
 - **Anhänglich**: Wurde er heute schon zehnmal gestreichelt (mit `plan_entity` auf allen Geräten zusammengezählt, sonst je Gerät; der Tag wechselt um 4 Uhr nachts), hoppelt er oft hin, wenn man auf die Wiese tippt, und legt den Kopf schief.
-- **Geschenk**: Ab und zu (höchstens alle 90 Minuten, wenn er glücklich ist) pflückt er eine Blume und legt sie mit Schleife vorn ins Gras: „für dich!“. Antippen nimmt sie an (Herzchen, Glück steigt). Nimmt sie keiner, welkt sie nach 12 Minuten.
+- **Geschenk**: Ab und zu (höchstens alle 90 Minuten, wenn er glücklich ist) pflückt er eine Blume und legt sie mit Schleife vorn ins Gras: „für dich!“. Antippen nimmt sie an (Herzchen, Glück steigt). Nimmt sie keiner, welkt sie nach 12 Minuten. Streicheln unterwegs bringt ihn nicht davon ab; muss er doch etwas anderes tun (Futter, Schlafenszeit), legt er die Blume gleich dort ab.
 
 ## Mimik und kleine Momente
 
@@ -50,19 +51,19 @@ Wer sich gut um ihn kümmert, verdient Päckchen, die man ihm schenken kann. Dar
 
 **Verdienen**
 
-- Bleiben Satt, Glück und Sauber auf mindestens 50 %, läuft eine **Pflege-Serie**. Alle **6 Stunden Wachzeit** ohne Unterbrechung gibt es ein Päckchen, je nach Jahreszeit 1–2 am Tag. Höchstens **3** liegen auf Vorrat.
-- **Toleranz**: Rutscht ein Wert unter 50 %, hat man **60 Minuten Wachzeit**, um ihn wieder hochzubringen (füttern, streicheln, putzen). Erst danach reißt die Serie. Was er selbst knabbert, zählt dafür nicht.
-- **Nacht**: Schlaf zählt weder für den Fortschritt noch gegen die Serie. Die 60 Minuten laufen ab dem Aufwachen, morgens also bald Frühstück geben.
+- Bleiben Satt, Glück und Sauber auf mindestens 50 %, läuft eine **Pflege-Serie**. Alle **6 Stunden Wachzeit** ohne Unterbrechung gibt es ein Päckchen, mit `sunset`/`sunrise` in Deutschland also gut 1 am Tag im Winter und fast 3 im Hochsommer (rund 2 im Frühjahr und Herbst). Höchstens **3** liegen auf Vorrat. Ändert man die Schlafenszeit, zählt das nur für die Zeit danach.
+- **Toleranz**: Rutscht ein Wert unter 50 %, hat man **60 Minuten Wachzeit**, um ihn wieder hochzubringen (füttern, streicheln, putzen). Erst danach reißt die Serie. Was er selbst knabbert und was in einem Päckchen steckt, zählt dafür nicht: Danach muss noch einmal gefüttert, gestreichelt oder geputzt werden.
+- **Nacht**: Schlaf zählt weder für den Fortschritt noch gegen die Serie. Satt und Glück sinken im Schlaf nur halb so schnell, wer abends füttert und streichelt, findet ihn morgens meist noch über 50 %. Rutscht doch etwas darunter, laufen die 60 Minuten ab dem Aufwachen.
 - **Reißt die Serie**, ist nur der Fortschritt zum nächsten Päckchen weg, Vorrat und Album bleiben. Die neue Serie beginnt, sobald alles wieder über 50 % ist.
-- **Goldenes Päckchen**: Nach 7 Tagen am Stück (und nach jeder weiteren Woche) kommt eins dazu. Darin ist immer ein Schatz, solange das Album nicht voll ist.
+- **Goldenes Päckchen**: Nach 7 Tagen am Stück (und nach jeder weiteren Woche) kommt eins dazu, höchstens zwei liegen auf Vorrat. Darin ist immer ein Schatz, solange das Album nicht voll ist.
 - Niemand muss dafür zuschauen: Zwischen zwei Aktionen sinken die Werte nur. Wann einer unter 50 % fiel, rechnet die Karte beim nächsten Füttern, Streicheln oder Putzen aus dem gespeicherten Stand nach, auch wenn der Bildschirm die ganze Nacht aus war.
 
 **Knopf**
 
 - Der Päckchen-Knopf sitzt über dem Löwenzahn. Bis zum ersten Päckchen gibt es ihn nicht; dann ploppt er mit Funkeln herein.
 - Ein **Ring** zeigt den Fortschritt zum nächsten Päckchen, eine Zahl den Vorrat. Ist nichts da, ist er blass, bei vollem Vorrat wackelt er ab und zu.
-- Liegt ein Wert unter 50 % und die 60 Minuten laufen, **pulsiert der Ring orange**. Ist die Serie gerissen, ist er grau.
-- **Lang drücken** öffnet das Album: alle 8 Schätze (fehlende als Schatten), die Serie in Tagen und wann das nächste Päckchen kommt.
+- Liegt ein Wert unter 50 % und die 60 Minuten laufen, **pulsiert der Ring orange**, ein kleines Zeichen am Knopf zeigt, was fehlt (Blatt = Hunger, Herz = Streicheln, Funkeln = Putzen). Ist schon wieder alles über 50 % (nur selbst geknabbert), leuchtet er ruhig orange, bis du einmal fütterst, streichelst oder putzt. Ist die Serie gerissen, ist er grau.
+- **Lang drücken** öffnet das Album: alle 8 Schätze (fehlende als Schatten), die Serie in Tagen, wann das nächste Päckchen kommt und was gerade fehlt („Hunger!“, „Streicheln!“, „Putzen!“). Ein Schatz erscheint dort erst, wenn er ausgepackt ist.
 
 **Schenken**
 
@@ -76,7 +77,7 @@ Wer sich gut um ihn kümmert, verdient Päckchen, die man ihm schenken kann. Dar
 **Inhalt**
 
 - **Leckerli** (meistens): Erdbeere (Mai bis Juli), Himbeeren (Juli bis September), Apfelschnitz (September bis November) oder ein Blumensträußchen. Satt +15 und Glück +15, er frisst es gleich.
-- **Schätze**: Das erste Päckchen und etwa jedes dritte enthält einen Schatz, der noch fehlt. Jedes Päckchen bringt Glück +15.
+- **Schätze**: Das erste Päckchen und etwa jedes dritte enthält einen Schatz, der noch fehlt. Jedes Päckchen bringt Glück +15 (zählt nicht als Pflege für die Serie). Verschenken zwei Geräte gleichzeitig, gilt nur ein Päckchen, und nur einmal gibt es Leckerli und Glück.
 
 | Schatz | Wo | Was er damit macht |
 |---|---|---|
@@ -95,7 +96,7 @@ Wer sich gut um ihn kümmert, verdient Päckchen, die man ihm schenken kann. Dar
 
 ## Häufchen und Sauberkeit
 
-- Über den Tag macht er kleine Häufchen: etwa alle 80–140 Minuten, solange er wach ist (5–6 am Tag). Das erste kommt 10–30 Minuten nach dem Aufwachen, nachts keins.
+- Über den Tag macht er kleine Häufchen: etwa alle 80–140 Minuten, solange er wach ist (etwa 5–10 am Tag, je nach Tageslänge). Das erste kommt 10–30 Minuten nach dem Aufwachen, nachts keins.
 - Wie echte Pikas geht er dafür in seine **Klo-Ecke** am Aussichtsstein. Liegen dort schon drei, sucht er sich einen Platz auf der Wiese. Seit dem letzten Großputz kommen höchstens 8 (einzeln weggemachte zählen mit), ihre Plätze werden erst wieder frei, wenn alles sauber ist. Ist alles weggemacht, gilt das als Großputz.
 - Schaut man gerade zu, sieht man es live: hinhoppeln, umschauen, Hocke, Po-Wackeln, *plopp*.
 - **Häufchen antippen** → Schaufel, weg, Funkeln. Ist alles sauber, funkelt die Wiese, er macht einen Freudensprung und Glück steigt um 10.
@@ -115,7 +116,7 @@ Wer sich gut um ihn kümmert, verdient Päckchen, die man ihm schenken kann. Dar
 
 Ein paarmal am Tag kommt **Pino** zu Besuch, ein Freund-Pika: etwas kleiner, ingwerfarben, mit türkisem Halstuch und hellem Fleck auf der Stirn.
 
-- **Wann**: Etwa alle 30 Minuten kommt Pino und bleibt 3–6 Minuten. Er kommt nur, wenn der Pika wach ist, es Tag ist und es nicht regnet oder gewittert. Passt es zu Beginn nicht (z. B. kurzer Niesel), kommt er später im selben Zeitfenster.
+- **Wann**: Etwa alle 30 Minuten kommt Pino und bleibt 3–6 Minuten. Er kommt nur, wenn der Pika wach ist, es Tag ist und es nicht regnet oder gewittert. Passt es zu Beginn nicht (z. B. kurzer Niesel), kommt er später im selben Zeitfenster. In den letzten 10 Sekunden des Besuchs fangen die beiden kein neues Spiel mehr an, damit Pino auf allen Geräten gleichzeitig geht.
 - **Ankunft**: Pino hoppelt vom linken oder rechten Rand herein und piepst. Der Pika bemerkt ihn, ruft „Pino!“, hoppelt zu ihm, und die beiden stupsen sich mit den Nasen an (Herzchen).
 - **Zusammen spielen**: Meistens spielen sie miteinander, ab und zu macht der Pika auch etwas allein.
   - **Fangen**: Abwechselnd hoppelt einer davon und der andere hinterher, mit kleinen Staubwölkchen.
@@ -125,7 +126,7 @@ Ein paarmal am Tag kommt **Pino** zu Besuch, ein Freund-Pika: etwas kleiner, ing
   - **Piep-Duett**: Die beiden piepsen abwechselnd, immer schneller, zum Schluss zusammen.
 - **Pinos Eigenleben**: Ist der Pika mit etwas anderem beschäftigt, hoppelt Pino herum, putzt sich, schaut sich um, piepst, blinzelt und zuckt mit den Ohren. Er bleibt auf der Wiese und geht nicht in den Bau.
 - **Antippen** streichelt Pino: Herzchen, ein kleiner Freudensprung und ein Piep. Die Balken des Pikas ändern sich dadurch nicht. Wird der Pika gestreichelt, kommt Pino neugierig näher und schaut zu.
-- **Abschied**: Pino sagt „tschüss!“ und hoppelt zum Rand hinaus. Der Pika schaut ihm nach und lässt kurz die Ohren hängen. Geht der Pika schlafen oder schlägt das Wetter um, geht Pino sofort.
+- **Abschied**: Pino sagt „tschüss!“ und hoppelt zum Rand hinaus. Der Pika schaut ihm nach und lässt kurz die Ohren hängen. Geht der Pika schlafen, schlägt das Wetter um oder dämmert es (Sonne höchstens 3° über dem Horizont), geht Pino sofort.
 - Besuche werden aus der Uhrzeit berechnet, deshalb kommen Vögelchen, Maus und Pino auf allen Geräten gleichzeitig. Mit `friend: false` kommt Pino nicht, mit `friend_name` bekommt er einen anderen Namen.
 
 ## Beschäftigungen
@@ -136,7 +137,7 @@ Große Beschäftigungen (1–2,5 Minuten) gibt es alle 9–19 Minuten. Dazwische
 - **Abwechslung**: Die letzten drei großen Beschäftigungen kommen nicht gleich wieder dran. Der Verlauf steht im Helfer `plan_entity` (siehe Installation): Wer eine Beschäftigung zuerst beginnt, trägt sie dort ein, die anderen Geräte übernehmen sie, auch wenn sich das Wetter inzwischen änderte. Ohne Helfer merkt sich jedes Gerät den Verlauf selbst.
 - **Tagesform**: Jeden Tag hat er zwei Lieblingsbeschäftigungen (doppelt so oft) und eine, auf die er keine Lust hat (selten). Sie werden aus dem Datum gewürfelt und sind auf allen Geräten gleich.
 - **Tageszeit**: Nachmittags liest er lieber, abends macht er lieber Musik, mittags malt er lieber.
-- **Begrüßung**: Wird die Karte sichtbar (Bildschirm geht an, App oder Dashboard wird geöffnet), winkt er „Hallo!“. Ist er gerade beschäftigt, ruft er nur „Huhu!“; schläft er, blinzelt er mit einem Auge. Höchstens alle 5 Minuten. Mit `screen_entity` (z. B. dem Bildschirm-Schalter von Fully Kiosk) zählt auch das Einschalten des Bildschirms. Bei ausgeschaltetem Bildschirm lässt das Gerät die Beschäftigungen aus und steigt ein, sobald er angeht.
+- **Begrüßung**: Wird die Karte sichtbar (Bildschirm geht an, App oder Dashboard wird geöffnet), winkt er „Hallo!“. Ist er gerade beschäftigt, ruft er nur „Huhu!“; schläft er, blinzelt er mit einem Auge. Höchstens alle 5 Minuten. Mit `screen_entity` (z. B. dem Bildschirm-Schalter von Fully Kiosk) zählt auch das Einschalten des Bildschirms. Bei ausgeschaltetem Bildschirm ruht auf dem Gerät alles wie bei einem Tab im Hintergrund (Beschäftigungen, Besuche, Animationen); sobald er angeht, steigt der Pika mitten in der laufenden Beschäftigung ein.
 
 Die großen:
 
@@ -147,7 +148,7 @@ Die großen:
 - **Fernsehen** im Bau, bei Regen und Gewitter oder in der Dämmerung: Er sitzt mit dem Rücken zu uns im dunklen Eingang. Der Bildschirm leuchtet über seinem Kopf, sein Fell hat einen bunten Lichtsaum, beim Erdhügel flackert auch das Fenster. Ab und zu dreht er sich um und schaut heraus. Streicheln holt ihn kurz an die Tür.
 - **Musik**: Ukulele, er wiegt sich, Noten steigen auf. Manchmal singt er mit („la-la-la ♪“) oder verspielt sich („plonk!“). Sitzt ein Vögelchen da, zwitschert es mit. Zum Schluss Verbeugung.
 - **Malen** an der Staffelei, trocken und hell: Das Bild entsteht Schicht für Schicht (Himmel in der Farbe der Tageszeit, Sonne, Hügel, Motiv, Kleinkram). Motive: Blume, Selbstbildnis, Bau, Regenbogen, Pino oder ein Flugzeug, wenn gerade eins fliegt. Zwischendurch betrachtet er es, am Ende ist er stolz (oder nicht ganz zufrieden).
-- **Seifenblasen**, trocken, hell, Wind unter 30 km/h: Die Blasen treiben mit dem Wind, schillern und platzen. Ab und zu springt er einer hinterher („plopp!“). Antippen bringt eine Blase zum Platzen.
+- **Seifenblasen**, trocken, hell, Wind unter 30 km/h: Die Blasen treiben mit dem Wind, schillern und platzen. Ab und zu springt er einer hinterher („plopp!“). Antippen bringt eine Blase zum Platzen; platzt sie direkt vor seiner Nase, niest er.
 - **Frühsport** einmal am Morgen (10–180 Minuten nach dem Aufwachen, die erste trockene Gelegenheit): Stirnband, Hampelmann, Kniebeugen, Laufen auf der Stelle, Strecken; er zählt mit und schwitzt. Mit `plan_entity` turnt er auf allen Geräten nur einmal, auch nach dem Neuladen.
 
 Die kleinen:
@@ -167,11 +168,11 @@ Der Pika zeigt, was Waschmaschine, Trockner und Spülmaschine gerade machen (Hom
 | Spülmaschine | Tisch mit Spülschüssel, ein Teller taucht ein | Stapel glänzender Teller, der funkelt | leere Schüssel, Geschirrtuch über der Tischkante |
 
 - **Läuft**: Unter dem Requisit zeigt ein schmaler Balken den Fortschritt (ohne Prozentwert läuft er hin und her). Ab und zu beschäftigt sich der Pika damit: Er rührt im Zuber und bekommt eine Seifenblase auf die Nase, legt sich vor die Trommel und schaut ihr zu (die Augen drehen mit), oder er tunkt einen Teller in die Schüssel. Bei Pause und Startvorwahl steht alles still, bei Störung oder „Hilfe nötig“ blinkt ein rotes Ausrufezeichen.
-- **Fertig**: Das Requisit hüpft alle paar Sekunden kurz. Der Pika hoppelt alle 3–6 Minuten hin, tätschelt oder stupst es, dreht den Kopf zu dir und sagt Bescheid („Wäsche!“, „flauschig!“, „Geschirr!“, „fertig!“).
-- **Ausgeräumt**: Nur nach einem echten Programmende: Das Gerät wechselt von „fertig“ auf „aus“, die Tür geht bei „fertig“ auf, oder es geht kurz vor Programmende direkt auf „aus“. Einschalten, Abbrechen oder eine gelöschte Startvorwahl zählen nicht. Siehst du gerade zu, räumt der Pika sichtbar mit auf: Er hängt die Wäsche Stück für Stück an die Leine, trägt ein Handtuch in seinen Bau oder poliert einen Teller und bringt ihn hinein. Danach freut er sich. Das Ausgeräumt-Requisit bleibt 20 Minuten stehen, danach verschwindet alles bis zum nächsten Lauf. Nach dem Neuladen der Seite erscheint „ausgeräumt“ nur, wenn der Fortschritt noch bei etwa 100 % steht.
+- **Fertig**: Das Requisit hüpft alle paar Sekunden kurz. Der Pika hoppelt alle 3–6 Minuten hin (ist es schon über eine Stunde fertig, nur noch alle 20–30 Minuten), tätschelt oder stupst es, dreht den Kopf zu dir und sagt Bescheid („Wäsche!“, „flauschig!“, „Geschirr!“, „fertig!“).
+- **Ausgeräumt**: Nur nach einem echten Programmende: Das Gerät wechselt von „fertig“ auf „aus“, die Tür geht bei „fertig“ auf, oder es geht kurz vor Programmende direkt auf „aus“. Einschalten, Abbrechen oder eine gelöschte Startvorwahl zählen nicht. Siehst du gerade zu, räumt der Pika sichtbar mit auf (auch beim direkten Wechsel auf „aus“; ein Päckchen packt er vorher noch fertig aus): Er hängt die Wäsche Stück für Stück an die Leine, trägt ein Handtuch in seinen Bau oder poliert einen Teller und bringt ihn hinein. Danach freut er sich. Das Ausgeräumt-Requisit bleibt 20 Minuten stehen, danach verschwindet alles bis zum nächsten Lauf. Nach dem Neuladen der Seite erscheint „ausgeräumt“ nur, wenn der Fortschritt noch bei etwa 100 % steht und in der Stunde vor dem Ausschalten dorthin kam, und nicht kurz nach einem Neustart von Home Assistant.
 - **Tür** (`door`): Die Spülmaschine gilt als ausgeräumt, sobald die Tür bei „fertig“ aufgeht. Den AutoOpen-Spalt in den ersten 2 Minuten nach Programmende ignoriert der Pika, und Tür wieder zu macht sie nicht wieder „fertig“.
 - **Antippen** eines Requisits blendet ein Fähnchen ein (nach 9 s geht es wieder zu): Gerätename und Stand, z. B. „62 % · fertig um 14:35“, „fertig seit 35 Min“ oder „ausgeräumt“.
-- **Platz**: Alle Requisiten stehen nebeneinander ganz vorn links am unteren Bildrand, vor dem Pika, damit er sie nie verdeckt, in der Reihenfolge von `appliances`. Reicht der Platz bis zum Futterknopf nicht (schmale Karten), werden alle gemeinsam gleich stark kleiner. Die hohe Wäscheleine steht kleiner. Bodendeko der Festtage (Kürbis, Stiefel, Adventskranz, Kuchen) steht dafür auf der Wiese zwischen Heuhaufen bzw. Nische und Stein.
+- **Platz**: Alle Requisiten stehen nebeneinander ganz vorn links am unteren Bildrand, vor dem Pika, damit er sie nie verdeckt, in der Reihenfolge von `appliances`. Reicht der Platz bis zum Futterknopf nicht (schmale Karten), werden alle gemeinsam gleich stark kleiner. Die hohe Wäscheleine steht kleiner. Bodendeko der Festtage steht dafür an festen Plätzen: Kürbis und Stiefel auf der Wiese zwischen Heuhaufen bzw. Nische und Stein, Adventskranz und Kuchen rechts neben der Tür (der Kuchen im Advent links daneben); die Geräte weichen ihr aus.
 - Zwei Geräte gleichen Typs ohne `name` heißen „Waschmaschine 1“ / „Waschmaschine 2“. Schläft der Pika (und nachts bei Geräten, die nicht laufen), halten die Requisiten still, das schont schwache Tablets.
 - Ist ein Gerät kurz `unavailable` oder `unknown` (WLAN weg), bleibt alles, wie es war. Nach einem Neustart von Home Assistant setzt HA `last_changed` neu, „fertig seit …“ zählt dann ab dem Neustart.
 
@@ -202,8 +203,8 @@ Machst du dir am Kaffeevollautomaten (Home Connect) ein Getränk, trinkt der Pik
 - **Während des Bezugs** hebt er die Nase, schnuppert und denkt an eine Tasse Kaffee (Denkblase). Dann setzt er sich erwartungsvoll neben den Bau. Schläft er, zuckt er nur kurz.
 - **Ist der Bezug fertig**, holt er sich aus dem Bau dasselbe Getränk und trinkt es in aller Ruhe Schluck für Schluck (rund 2–4 Minuten, damit man es noch sieht, wenn man mit der Tasse zum Tablet kommt), oben auf dem Aussichtsstein oder neben dem Bau. Alle Geräte trinken im selben Takt; wird ein Bildschirm erst später sichtbar, steigt er mit dem passend leeren Gefäß ein. Beim Schluck macht er die Augen zu, der Füllstand sinkt, solange es heiß ist, dampft es. Gefäße: Latte Macchiato und Caffè Latte im hohen Glas mit Löffel, Cappuccino, Flat White & Co. in der Tasse mit Schaumherz, Espresso und Ristretto im Tässchen, Kaffee und Caffè Crema im gepunkteten Becher, Heißwasser als Tee mit Teebeutel, warme Milch und Milchschaum im Glas. Bei Milchgetränken bekommt er ein Milchschaum-Bärtchen und leckt es am Ende ab. Danach macht der Koffein ein paar Freudensprünge, dann bringt er das leere Gefäß zurück in den Bau.
 - **Schläft er**, weckt ihn der Duft: Er trinkt verschlafen vor der Tür und schläft danach weiter. Bei Sturm bleibt er im Bau, der Kaffee verfällt.
-- Spülen beim Ein- und Ausschalten und Reinigungsprogramme zählen nicht. Fertig ist ein Bezug, wenn das Programm mindestens 15 s nach dem Hochzählen des Tassenzählers endet. Ein Neustart von Home Assistant zählt nicht.
-- Holen und Trinken folgen einer festen Zeitleiste ab dem Ende des Bezugs (ein Schluck alle 4–7 Sekunden). Darum trinken alle Geräte im selben Takt. Lädt man die Seite neu, steht er gleich mit dem passend leeren Gefäß da; ist es auf den anderen Geräten schon ausgetrunken, kommt nichts mehr. Gemerkt werden muss dafür nichts.
+- Spülen beim Ein- und Ausschalten und Reinigungsprogramme zählen nicht. Fertig ist ein Bezug, wenn das Programm mindestens 15 s nach dem Hochzählen des Tassenzählers endet (hat die Karte den Bezug nicht live gesehen, höchstens 3 Minuten danach). Ein Neustart von Home Assistant zählt nicht. Packt er gerade ein Päckchen aus oder räumt mit auf, macht er das zuerst fertig.
+- Holen und Trinken folgen einer festen Zeitleiste ab dem Ende des Bezugs (je nach Getränk ein Schluck alle 25–45 Sekunden). Darum trinken alle Geräte im selben Takt. Lädt man die Seite neu, steht er gleich mit dem passend leeren Gefäß da; ist es auf den anderen Geräten schon ausgetrunken, kommt nichts mehr. Gemerkt werden muss dafür nichts. Wird er beim Trinken unterbrochen (Bildschirm aus, Gewitter), trinkt er danach weiter, solange nach der Zeitleiste noch etwas übrig ist; sonst verfällt der Rest.
 
 ```yaml
 coffee:
@@ -216,7 +217,7 @@ coffee:
 
 Echte Flüge aus der Umgebung ziehen über den Himmel. Die Daten kommen aus der [Flightradar24-Integration](https://github.com/AlexandrErohin/home-assistant-flightradar24) (HACS), Sensor `sensor.flightradar24_current_in_area`.
 
-- **Position**: Osten links, Westen rechts. Der Bildrand liegt bei `flight_radius` (Standard 15 km, so groß wie der Radius der Integration).
+- **Position**: Osten links, Westen rechts (auf der Südhalbkugel umgekehrt, siehe unten). Der Bildrand liegt bei `flight_radius` (Standard 15 km, so groß wie der Radius der Integration). Flugzeuge außerhalb davon belegen keinen Platz; Flüge ganz ohne Kennung (ID, Rufzeichen, Flugnummer, Kennzeichen) werden ausgelassen.
 - **Höhe und Größe**: Ein Anflug steht knapp über den Hügeln und ist groß, ein Flieger in Reiseflughöhe steht weit oben und ist klein, ab etwa 8000 m mit Kondensstreifen.
 - **Bewegung**: Zwischen den Meldungen der Integration (alle 10–30 s) fliegen sie mit Kurs, Geschwindigkeit und Steig- oder Sinkrate weiter.
 - **Antippen** blendet ein Fähnchen ein (nach 9 s geht es wieder zu): Flugnummer und Ziel, z. B. „EW 9542 → Palma de Mallorca“. Landet der Flug in der Nähe (unter 30 km), steht stattdessen die Herkunft da, z. B. „aus Katowice“. Darunter stehen Airline, Flugzeugtyp, Strecke, Höhe und Tempo. Ohne Antippen sieht man nur die Flugzeuge.
@@ -227,7 +228,7 @@ Echte Flüge aus der Umgebung ziehen über den Himmel. Die Daten kommen aus der 
 
 ## Himmel und Wetter
 
-Der Blick geht nach Süden: Osten (Sonnenaufgang) ist links, Westen rechts.
+Der Blick geht nach Süden: Osten (Sonnenaufgang) ist links, Westen rechts. Auf der Südhalbkugel (`latitude` < 0 in Home Assistant) geht er nach Norden, dort steht die Sonne mittags: Osten ist rechts, Westen links, der zunehmende Mond ist links hell; Flugzeuge und Wind folgen derselben Blickrichtung.
 
 - **Sonne** steht nach Azimut und Höhe aus `sun.sun` am Himmel und geht hinter dem Hügel unter. Der Himmel wechselt zwischen Tag, Dämmerung und Nacht.
 - **Mond** mit echter Phase und echtem Stand, berechnet aus Datum und Standort (`hass.config`). Tagsüber ist er blass zu sehen, wenn er über dem Horizont steht.
@@ -235,14 +236,15 @@ Der Blick geht nach Süden: Osten (Sonnenaufgang) ist links, Westen rechts.
   - Wolken nach Bedeckung, grauer Himmel bei bedecktem Wetter
   - Regen, Starkregen, Gewitter mit Blitzen, Schnee mit verschneiten Hügeln, Nebelschwaden
   - Mit `precip_entity` (Niederschlag in mm/h) regnet es bei „rainy“ erst ab `rain_min` (Standard 0,3 mm/h). Vorhersagen wie DWD melden „rainy“ schon bei Niesel, der oft gar nicht ankommt.
-  - Wolken ziehen und Blumen biegen sich mit Windstärke und Windrichtung
+  - Wolken ziehen und Blumen biegen sich mit Windstärke und Windrichtung (Windeinheit der Wetter-Entität: km/h, m/s, mph, kn, ft/s oder Beaufort)
 - **Pika** reagiert darauf:
-  - Bei Regen hält er sich ein Blatt als Schirm über den Kopf und bleibt in der Nähe seines Baus.
+  - Bei Regen hält er sich ein Blatt als Schirm über den Kopf und bleibt in der Nähe seines Baus. Fängt es mitten in einer Beschäftigung an, die nur trocken geht (Lesen, Gameboy, Seilspringen …), hört er damit auf; Fernsehen geht weiter.
   - Bei Starkregen und Gewitter verkriecht er sich im Bau, schaut ab und zu heraus und erschrickt bei Blitzen.
   - Unter 3 °C trägt er einen Schal.
   - Bei Schnee knabbert er an seinem Heuvorrat.
 - **Glühwürmchen** in Sommernächten (Mai bis September, auf der Südhalbkugel November bis März): 10 bis 14 Stück schwirren tief über der Wiese und um den Heuhaufen und blinken unregelmäßig gelbgrün, in der späten Dämmerung schon ein paar schwächer. Bei Regen und Gewitter verschwinden sie. Ist der Pika wach, setzt er sich hin, schaut ihnen nach und hüpft nach einem.
-- **Sternschnuppen** nachts bei klarem Himmel (nicht bei dichter Bewölkung, Nebel, Regen oder Schnee): alle paar Minuten eine, ab und zu ein heller Bolide, der kurz aufleuchtet, selten zwei kurz nacheinander. Ein wacher Pika schaut manchmal hoch: „oh!“
+- **Sternschnuppen** nachts bei klarem Himmel (nicht bei dichter Bewölkung, Nebel, Regen oder Schnee): alle paar Minuten eine, ab und zu ein heller Bolide, der kurz aufleuchtet, selten zwei kurz nacheinander. Zu den Meteorströmen (Perseiden um den 12. 8., Geminiden um den 14. 12.) kommen sie dreimal so oft. Ein wacher Pika schaut manchmal hoch: „oh!“
+- **Bewegung reduzieren** (Systemeinstellung): Feuerwerk nur als sanftes Aufleuchten mit wenigen Raketen, wenig Konfetti ohne Drehen, keine Fledermäuse, Wimpel und Maibaum-Bänder hängen still, Glühwürmchen glimmen am Platz, Sternschnuppen ohne Boliden.
 
 ## Areale
 
@@ -259,19 +261,19 @@ Mit `areal` wählst du den Bau:
 
 | Wann | Deko | Pika |
 | --- | --- | --- |
-| **Halloween** 24.–31. 10. | geschnitzter Kürbis auf der Wiese vor dem Stein, nachts leuchtet das Gesicht flackernd | schnuppert am Kürbis, erschrickt („huch!“), kichert; am 31. 10. mit Hexenhut, nachts flattern Fledermäuse über den Himmel |
-| **St. Martin** 11. 11. | bunte Papierlaterne hängt am Bau, leuchtet abends | ab 16 Uhr zieht er mit einer Laterne am Stab über die Wiese: „Laterne, Laterne…“ |
-| **Advent** 1. Advent bis 24. 12. | Adventskranz vor dem Bau, so viele Kerzen brennen, wie Adventssonntage waren; Lichterkette an der Bau-Oberkante (bis 6. 1., leuchtet in Dämmerung und Nacht) | |
+| **Halloween** 24.–31. 10. | geschnitzter Kürbis auf der Wiese vor dem Stein, nachts leuchtet das Gesicht flackernd | schnuppert am Kürbis (nur trocken), erschrickt („huch!“), kichert; am 31. 10. mit Hexenhut, nachts flattern Fledermäuse über den Himmel |
+| **St. Martin** 11. 11. | bunte Papierlaterne hängt am Bau, leuchtet abends | ab 16 Uhr zieht er bei trockenem Wetter mit einer Laterne am Stab über die Wiese: „Laterne, Laterne…“; um 11:11 Auftakt der Karnevalszeit: einmal Konfetti und „Helau!“ (wach, hell, trocken) |
+| **Advent** 1. Advent bis 24. 12. | Adventskranz vor dem Bau rechts neben der Tür, so viele Kerzen brennen, wie Adventssonntage waren; Lichterkette an der Bau-Oberkante (bis 6. 1., leuchtet in Dämmerung und Nacht) | |
 | **Nikolaus** 5. 12. ab 18 Uhr, 6. 12. | Stiefel auf der Wiese vor dem Stein, am 6. 12. gefüllt (Löwenzahn, Nüsse, Zuckerstange) | schaut hinein und freut sich („oh!“) |
 | **Weihnachten** 24.–26. 12. | Tannenbaum mit Kugeln, Lichterkette und Stern zwischen Heu und Stein, Geschenk darunter | trägt eine Weihnachtsmütze (auch beim Schlafen statt der Zipfelmütze), staunt vor dem Baum |
-| **Silvester** 31. 12. ab 23:55 bis 1:00 | Feuerwerk: Raketen, bunte Kugeln mit Funken, Lichtschein auf der Wiese, um Mitternacht ein Finale; am 1. 1. liegen zwei abgebrannte Raketenstäbe im Gras | wacht um Mitternacht auf, schaut aus dem Bau, zuckt bei jedem Knall: „Frohes Neues!“, dann schläft er weiter |
-| **Karneval** Weiberfastnacht bis Aschermittwoch | Luftschlangen am Bau, alle paar Minuten regnet Konfetti | Partyhütchen, hüpft im Konfetti: „Helau!“ |
+| **Silvester** 31. 12. ab 23:55 bis 1:00 | Feuerwerk: Raketen, bunte Kugeln mit Funken, Lichtschein auf der Wiese, um Mitternacht ein Finale; am 1. 1. liegen zwei abgebrannte Raketenstäbe im Gras | wacht um Mitternacht auf, schaut aus dem Bau, zuckt bei jedem Knall: „Frohes Neues!“, dann schläft er weiter (bei Gewitter oder Starkregen schaut er auch wach nur aus dem Bau); ein Vögelchen fliegt beim Knall davon |
+| **Karneval** Weiberfastnacht bis Aschermittwoch | Luftschlangen am Bau, alle paar Minuten regnet Konfetti (wenn er wach, es hell und trocken ist) | Partyhütchen, hüpft bei trockenem Wetter im Konfetti: „Helau!“ |
 | **Ostern** Karfreitag bis Ostermontag | 4–6 bunt bemalte Eier im Gras (antippen = wackeln) | hoppelt hin, schnuppert, stupst ein Ei an |
 | **Maibaum** 30. 4. ab 18 Uhr, 1. 5. | Maibaum mit Kranz hinter dem Bau, die Bänder wehen mit dem Wind | |
 | **Sommerfest** 21. 6. | Wimpelkette zwischen Bau und Stein | macht öfter Freudensprünge |
-| **Geburtstag** (`birthdays`) | Kuchen mit Kerze vor dem Bau, Girlande „ALLES ♥ GUTE“ | Partyhütchen, pustet die Kerze aus (nach 20 s brennt sie wieder): „Alles Gute, Mia!“ |
+| **Geburtstag** (`birthdays`) | Kuchen mit Kerze vor dem Bau rechts neben der Tür (im Advent links), Girlande „ALLES ♥ GUTE“ | Partyhütchen, pustet die Kerze aus (nach 20 s brennt sie wieder): „Alles Gute, Mia!“ |
 
-Geburtstage stehen in der Konfiguration, mehrere am selben Tag werden zusammen gefeiert („Alles Gute, Mia und Tom!“). Das Datum geht als `MM-TT`, `JJJJ-MM-TT` oder `TT.MM.`, auch ohne Anführungszeichen (`14.10` ist der 14. Oktober, `12.06` der 12. Juni); wer am 29. 2. Geburtstag hat, feiert sonst am 28. 2.
+Geburtstage stehen in der Konfiguration, mehrere am selben Tag werden zusammen gefeiert („Alles Gute, Mia und Tom!“). Das Datum geht als `MM-TT`, `JJJJ-MM-TT`, `TT.MM.` oder `TT.MM.JJJJ`, auch ohne Anführungszeichen (`14.10` ist der 14. Oktober, `12.06` der 12. Juni). Ohne Anführungszeichen den Monat immer zweistellig schreiben: YAML macht aus `5.1` und `5.10` dieselbe Zahl, beides gilt als 5. Oktober; der 5. Januar ist `05.01` (oder `"5.1."`). Ein nicht erkanntes Datum meldet die Karte einmal in der Browser-Konsole. Wer am 29. 2. Geburtstag hat, feiert sonst am 28. 2.
 
 ```yaml
 birthdays:
@@ -288,10 +290,12 @@ In `preview.html` stellen die Festtage-Knöpfe die Uhr der Karte auf den jeweili
 1. HACS → ⋮ → *Benutzerdefinierte Repositories* → `https://github.com/cschloesser/ha-pet`, Typ **Dashboard**
 2. *Pika Pet Card* herunterladen; die Ressource wird automatisch eingetragen
 3. Optional einen Text-Helfer anlegen, damit der Pika auf allen Geräten denselben Zustand hat:
-   *Einstellungen → Geräte & Dienste → Helfer → Text*, z. B. `input_text.pika_status` (max. Länge 100). Ein neuer Helfer bekommt nach etwa 20 s Startwerte, ein leerer sofort; ist er `unavailable`, wird nichts überschrieben. Fehlt die Entity, spielt die Karte lokal weiter (Hinweis in der Browser-Konsole).
-4. Optional einen zweiten Text-Helfer für den Tagesplan (Vorrat, Frühsport, Verlauf der Beschäftigungen, wie oft er heute gestreichelt wurde, was er erlebt hat, Päckchen), z. B. `input_text.pika_plan` mit **max. Länge 255**, als `plan_entity` eintragen. Ohne ihn laufen die Beschäftigungen trotzdem auf allen Geräten gleichzeitig, nur Vorrat, Frühsport, Abwechslung, Anhänglichkeit, Träume und Päckchen merkt sich jedes Gerät selbst. Der Vorrat, den ein Gerät bis 0.15 gesammelt hat, wird beim ersten Mal übernommen.
+   *Einstellungen → Geräte & Dienste → Helfer → Text*, z. B. `input_text.pika_status` (max. Länge 100). Ein neuer Helfer bekommt nach etwa 20 s Startwerte, ein leerer sofort; ist er `unavailable`, wird nichts überschrieben und nichts gesendet; bleibt er beim Laden länger als 60 s `unavailable`, spielt die Karte lokal weiter und legt das Gefütterte und Gestreichelte auf seinen Stand, sobald er wiederkommt. Fehlt die Entity, spielt die Karte lokal weiter (Hinweis in der Browser-Konsole).
+4. Optional einen zweiten Text-Helfer für den Tagesplan (Vorrat, Frühsport, Verlauf der Beschäftigungen, wie oft er heute gestreichelt wurde, was er erlebt hat, Päckchen), z. B. `input_text.pika_plan` mit **max. Länge 255**, als `plan_entity` eintragen (unter 120 wird nichts gesendet, Hinweis in der Konsole). Ohne ihn laufen die Beschäftigungen trotzdem auf allen Geräten gleichzeitig, nur Vorrat, Frühsport, Abwechslung, Anhänglichkeit, Träume und Päckchen merkt sich jedes Gerät selbst. Der Vorrat, den ein Gerät bis 0.15 gesammelt hat, wird beim ersten Mal übernommen.
 
 ## Konfiguration
+
+Die Karte hat einen grafischen Editor: Helfer, Wetter, Sonne und Bildschirm-Schalter wählt man dort aus der Liste, Schlafenszeiten tippt man ein. Geburtstage, Haushaltsgeräte und Kaffee stehen darin als YAML-Felder. HA-Versionen ohne Formular-Editor für eigene Karten zeigen nur den YAML-Editor.
 
 ```yaml
 type: custom:pika-pet-card
@@ -323,13 +327,13 @@ coffee:                          # Kaffeevollautomat, siehe Kaffee
 screen_entity: switch.tablet_bildschirm   # optional: Bildschirm-Schalter (Fully Kiosk), siehe Beschäftigungen
 ```
 
-Für `sleep_start` und `sleep_end` gehen feste Uhrzeiten (`"21:00"`) oder `sunset`/`sunrise` aus `sun.sun`, auch mit Versatz: `"sunset+01:00"` (eine Stunde nach Sonnenuntergang), `"sunrise-30"` (30 Minuten vor Sonnenaufgang). Ohne `sun.sun` gilt 21:00 bis 07:00, der Himmel richtet sich dann nach der Schlafenszeit. Uhrzeiten am besten in Anführungszeichen; `21:00` ohne geht aber auch (YAML macht 1260 daraus, reine Zahlen gelten als Minuten nach Mitternacht). Unverständliche Angaben wie `sunset+1h` fallen auf 21:00/07:00 zurück, mit Hinweis in der Konsole.
+Für `sleep_start` und `sleep_end` gehen feste Uhrzeiten (`"21:00"`) oder `sunset`/`sunrise`, auch mit Versatz: `"sunset+01:00"` (eine Stunde nach Sonnenuntergang), `"sunrise-30"` (30 Minuten vor Sonnenaufgang). Sonnenauf- und -untergang rechnet die Karte für jeden Tag aus dem Standort von HA (auf allen Geräten gleich, auch am Abend vor der Zeitumstellung); nur ohne Standort kommen sie aus `sun.sun`. Ohne beides gilt 21:00 bis 07:00, der Himmel richtet sich dann nach der Schlafenszeit. Uhrzeiten am besten in Anführungszeichen; `21:00` ohne geht aber auch (YAML macht 1260 daraus, reine Zahlen gelten als Minuten nach Mitternacht). Unverständliche Angaben wie `sunset+1h` fallen auf 21:00/07:00 zurück, mit Hinweis in der Konsole.
 
-`wind_bearing` des Wetters darf eine Gradzahl oder ein Kürzel sein („SW“, „NNO“). Flugzeuge erscheinen auch, wenn die Uhr des Geräts von der HA-Uhr abweicht. Auf schmalen Karten (z. B. Handy) werden Aussichtsstein und Heuhaufen automatisch kleiner (die Nische des Erdhügels gehört zum Bau und behält ihre Größe), damit alles ins Bild passt. Der Vorrat (Heuhaufen bzw. Nische) steht mit `plan_entity` im Helfer, sonst im Browser des Geräts.
+`wind_bearing` des Wetters darf eine Gradzahl oder ein Kürzel sein („SW“, „NNO“). Geht die Uhr eines Geräts falsch, gleicht die Karte das aus (ab 2 s Abweichung, geschätzt aus den Zeitstempeln von HA): Beschäftigungen, Besuche, Schlafenszeit, Häufchen, Päckchen, Haus-Bote, Kaffee und Flugzeuge laufen nach der Uhr von HA, auf allen Geräten gleich. Auf schmalen Karten (z. B. Handy) werden Aussichtsstein und Heuhaufen automatisch kleiner (die Nische des Erdhügels gehört zum Bau und behält ihre Größe), damit alles ins Bild passt. Der Vorrat (Heuhaufen bzw. Nische) steht mit `plan_entity` im Helfer, sonst im Browser des Geräts.
 
-Im Text-Helfer steht der Zustand als `satt,zeit,glück,zeit,großputz,maske,teilputz` (Zeiten in Sekunden). Hunger, Glück und Häufchen werden daraus beim Anzeigen berechnet, deshalb braucht es keine Automation. Ältere Werte mit vier Feldern werden weiter gelesen. Jedes Schreiben wartet auf die Bestätigung von HA: Geht es verloren (Verbindung weg, Fehler), sendet die Karte erneut, und schrieben zwei Geräte gleichzeitig, werden beide Änderungen zusammengeführt. `entity` und `plan_entity` müssen zwei verschiedene `input_text`-Helfer sein, sonst zeigt die Karte eine Fehlermeldung. Läuft auf einem Gerät noch eine Version bis 0.17, schreibt es den Tagesplan ohne Streichel-Zähler und Erlebnisse zurück; nach dem Neuladen aller Geräte ist das vorbei. Geräte bis 0.18 kennen die Päckchen nicht und schreiben den Plan ohne sie zurück. Neuere Geräte merken sich den letzten Päckchen-Stand und tragen ihn wieder ein, solange sie offen sind; trotzdem am besten alle Geräte neu laden.
+Im Text-Helfer steht der Zustand als `satt,zeit,glück,zeit,großputz,maske,teilputz` (Zeiten in Sekunden, nach der Uhr von HA). Hunger, Glück und Häufchen werden daraus beim Anzeigen berechnet, deshalb braucht es keine Automation. Ältere Werte mit vier Feldern werden weiter gelesen. Jedes Schreiben (auch das des Tagesplans) wartet auf die Bestätigung von HA: Geht es verloren (Verbindung weg, Fehler), sendet die Karte erneut, und schrieben zwei Geräte gleichzeitig, werden beide Änderungen zusammengeführt. `entity` und `plan_entity` müssen zwei verschiedene `input_text`-Helfer sein, sonst zeigt die Karte eine Fehlermeldung. Läuft auf einem Gerät noch eine Version bis 0.17, schreibt es den Tagesplan ohne Streichel-Zähler und Erlebnisse zurück; nach dem Neuladen aller Geräte ist das vorbei. Geräte bis 0.18 kennen die Päckchen nicht und schreiben den Plan ohne sie zurück. Neuere Geräte merken sich den letzten Päckchen-Stand und tragen ihn wieder ein, solange sie offen sind; trotzdem am besten alle Geräte neu laden.
 
-Die Karte schont das Gerät: Ist sie nicht zu sehen (Tab im Hintergrund, Bildschirm aus, aus dem Bild gescrollt), ruhen Schleife, Besuche und alle Animationen. Nach längerer Pause wählt sie die nächste Beschäftigung erst mit frischem Stand aus HA. Nachts ohne Wind stehen die Blumen still, Kerzen, Lichterkette und Regenschirm bewegen sich in Stufen. Mit der Systemeinstellung „Bewegung reduzieren“ ruhen Wolken, Sterne, Blumen, Rauch, Niederschlag und Blinklichter.
+Die Karte schont das Gerät: Ist sie nicht zu sehen (Tab im Hintergrund, Bildschirm aus, aus dem Bild gescrollt), ruhen Schleife, Besuche und alle Animationen. Nach längerer Pause wählt sie die nächste Beschäftigung erst mit frischem Stand aus HA. Nachts ohne Wind stehen die Blumen still, Kerzen, Lichterkette und Regenschirm bewegen sich in Stufen. Mit der Systemeinstellung „Bewegung reduzieren“ ruhen Wolken, Sterne, Blumen, Rauch, Niederschlag und Blinklichter, Blitze hellen die Karte nur sanft auf, statt Luftsprüngen macht er kleine Hüpfer, und herumflitzen (Zoomies) tut er nicht.
 
 ## Entwicklung
 

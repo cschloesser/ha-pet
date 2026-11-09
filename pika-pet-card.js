@@ -46,11 +46,12 @@
  *   gifts: true                      # Päckchen für gute Pflege (false = keine)
  *   screen_entity: switch.tablet_bildschirm  # optional: Bildschirm-Schalter (Fully Kiosk); an = Begrüßung wie beim Sichtbarwerden
  *
- * Der Blick geht nach Süden: Osten (Sonnenaufgang) links, Westen rechts. Mondphase und Mondstand
+ * Der Blick geht nach Süden: Osten (Sonnenaufgang) links, Westen rechts; auf der Südhalbkugel nach Norden
+ * (Osten rechts, Westen links: Sonne, Mond, Flugzeuge, Wind). Mondphase und Mondstand
  * werden aus Datum und Standort (hass.config) berechnet.
  */
 (() => {
-  const VERSION = '0.19.0';
+  const VERSION = '0.20.0';
 
   const DEFAULTS = {
     name: 'Pika',
@@ -87,7 +88,32 @@
     gifts: true,
   };
 
+  // Karten-Editor (getConfigForm): Beschriftungen und Hilfetexte der Felder
+  const EDITOR_LABEL = {
+    name: 'Name', areal: 'Bau', entity: 'Zustand (Text-Helfer, max. 100)', plan_entity: 'Tagesplan (Text-Helfer, max. 255)',
+    show_stats: 'Balken anzeigen', gifts: 'Päckchen', friend: 'Pino kommt zu Besuch', festive: 'Festtage-Deko',
+    sleep_start: 'Schlafenszeit', sleep_end: 'Aufwachzeit', sun_entity: 'Sonne', weather_entity: 'Wetter',
+    precip_entity: 'Niederschlag (mm/h)', rain_min: 'Regen ab', shooting_stars: 'Sternschnuppen', fireflies: 'Glühwürmchen',
+    flight_entity: 'Flüge (Flightradar24)', flight_radius: 'Radius', max_flights: 'Höchstens gleichzeitig',
+    friend_name: 'Name des Freunds', screen_entity: 'Bildschirm-Schalter', height: 'Mindesthöhe',
+    birthdays: 'Geburtstage', appliances: 'Haushaltsgeräte (Haus-Bote)', coffee: 'Kaffeevollautomat',
+  };
+  const EDITOR_HELP = {
+    entity: 'Damit alle Geräte denselben Pika sehen. Leer: nur in diesem Browser.',
+    plan_entity: 'Vorrat, Abwechslung, Päckchen und Träume für alle Geräte. Muss ein anderer Helfer sein als der Zustand.',
+    sleep_start: 'z. B. sunset, sunset+01:00 oder 21:00',
+    sleep_end: 'z. B. sunrise, sunrise-30 oder 07:00',
+    rain_min: 'Meldet das Wetter „rainy“ bei weniger, bleibt es trocken (nur mit Niederschlags-Sensor).',
+    flight_radius: 'So groß wie der Radius der Flightradar24-Integration.',
+    screen_entity: 'z. B. der Bildschirm-Schalter von Fully Kiosk: Bei „aus“ ruht die Karte, beim Einschalten winkt er.',
+    birthdays: '- name: Mia\n  date: "03-14"',
+    appliances: '- type: washer\n  state: sensor.waschmaschine_betriebszustand\n  progress: sensor.…_fortschritt\n  end: sensor.…_endzeit',
+    coffee: 'active: select.…_aktives_programm\ncounter: sensor.…_tassen\nselected: select.…_ausgewahltes_programm',
+  };
+
   const RATE = { s: 5, g: 4 }; // Abnahme pro Stunde (satt, glücklich)
+  // Im Schlaf sinken satt und glücklich nur halb so schnell (Schlafenszeit wie überall aus sleep_start/sleep_end)
+  const SLEEP_DECAY = 0.5;
   const GAIN = { feed: 25, pet: 8, clean: 10 };
   // Selbst gefressen (Wiesenblume, Heu): wenig und nur bis SELF_MAX. Jedes Gerät knabbert für sich und Blumen
   // wachsen alle 2,5 Min nach, ohne Grenze wäre er immer satt. Über die Hälfte bringt ihn nur das Füttern.
@@ -106,6 +132,9 @@
   const FLOWER_COLORS = ['#f6c945', '#f28fb1', '#ffffff', '#b99cf0', '#ff9f5a'];
 
   class Cancel extends Error {}
+  // Systemeinstellung „Bewegung reduzieren“; .matches folgt einer Änderung von selbst
+  const RED_MOTION = window.matchMedia?.('(prefers-reduced-motion: reduce)');
+  const calmMotion = () => !!RED_MOTION?.matches;
   const rnd = (a, b) => a + Math.random() * (b - a);
   const pick = (arr) => arr[Math.floor(Math.random() * arr.length)];
   const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
@@ -131,6 +160,19 @@
     if (typeof v === 'number' || /^\s*-?\d+(\.\d+)?\s*$/.test(String(v ?? ''))) return Number(v);
     const i = COMPASS.indexOf(String(v ?? '').trim().toUpperCase().replace(/O/g, 'E'));
     return i < 0 ? NaN : i * 22.5;
+  };
+  // Längenunterschied in Grad, über die Datumsgrenze gefaltet (−180…180)
+  const lonDiff = (a, b) => ((((a - b) % 360) + 540) % 360) - 180;
+  // Windgeschwindigkeit aus der Einheit der Wetter-Entität (wind_speed_unit) in km/h; unbekannt: schon km/h.
+  // Beaufort nach v = 0,836 · B^1,5 m/s.
+  const windKmh = (v, unit) => {
+    const u = String(unit || 'km/h').trim().toLowerCase();
+    if (u === 'm/s') return v * 3.6;
+    if (u === 'mph') return v * 1.609344;
+    if (u === 'kn' || u === 'kt' || u === 'knots') return v * 1.852;
+    if (u === 'ft/s') return v * 1.09728;
+    if (u === 'beaufort' || u === 'bft') return 0.836 * Math.max(0, v) ** 1.5 * 3.6;
+    return v;
   };
   // Sonnenauf- und -untergang (ms) am Kalendertag day (Ortszeit) nach der Sonnenaufgangsgleichung, auf ~1 Min
   // genau; elev: Höhe des Orts in m. Polartag/-nacht → null. Für die Häufchen der Vortage, sun.sun kennt nur das Nächste.
@@ -175,19 +217,26 @@
     const p = ((date - Date.UTC(2000, 0, 6, 18, 14)) / 864e5 / 29.530588853) % 1;
     return p < 0 ? p + 1 : p;
   };
-  // Beleuchteter Teil der Mondscheibe (Nordhalbkugel: zunehmend rechts hell), viewBox 0 0 100 100
-  const moonPath = (p) => {
+  // Beleuchteter Teil der Mondscheibe (Nordhalbkugel: zunehmend rechts hell), viewBox 0 0 100 100.
+  // mirror: Blick nach Norden (Südhalbkugel), dort ist der zunehmende Mond links hell (Bogen gespiegelt).
+  const moonPath = (p, mirror = false) => {
     const rx = Math.abs(Math.cos(2 * Math.PI * p)) * 50;
     const waxing = p < 0.5;
-    const outer = waxing ? 1 : 0;
-    const term = waxing ? (p < 0.25 ? 0 : 1) : p > 0.75 ? 1 : 0;
+    let outer = waxing ? 1 : 0;
+    let term = waxing ? (p < 0.25 ? 0 : 1) : p > 0.75 ? 1 : 0;
+    if (mirror) [outer, term] = [1 - outer, 1 - term];
     return `M50 0 A50 50 0 0 ${outer} 50 100 A${rx.toFixed(2)} 50 0 0 ${term} 50 0Z`;
   };
-  // Position am Bildhimmel in %: Azimut 90° (Ost) links, 270° (West) rechts; Höhe 0° am Hügelrand.
-  const skyPos = (az, alt) => ({
-    x: clamp((az - 90) / 180, 0.04, 0.96) * 100,
-    y: 56 - (clamp(alt, -12, 62) / 62) * 47,
-  });
+  // Position am Bildhimmel in %: Höhe 0° am Hügelrand. Blick nach Süden (Nordhalbkugel): Azimut 90° (Ost) links,
+  // 270° (West) rechts. Blick nach Norden (viewN, Südhalbkugel): Ost rechts, West links. Was hinter dem
+  // Betrachter steht, bleibt am näheren Rand.
+  const skyPos = (az, alt, viewN = false) => {
+    const d = ((((az - (viewN ? 0 : 180)) % 360) + 540) % 360) - 180; // −180…180 um die Blickrichtung
+    return {
+      x: clamp((d + 90) / 180, 0.04, 0.96) * 100,
+      y: 56 - (clamp(alt, -12, 62) / 62) * 47,
+    };
+  };
 
   // Wetterlage → Bedeckung in %, Niederschlag (Tropfen, Flocken)
   const WEATHER = {
@@ -360,6 +409,12 @@
     64% { opacity: .85; }
     78% { opacity: .15; }
   }
+  /* Weniger Bewegung gewünscht: Glühwürmchen schweben nicht umher, sie glimmen nur langsam an ihrem Platz;
+     Sternschnuppen ohne Aufleuchten des Himmels (und ohne Boliden, siehe _meteorMaybe) */
+  @media (prefers-reduced-motion: reduce) {
+    .ff .fl { animation: ff-pulse calc(var(--fp) * 3) linear var(--fpl) infinite; transform: translate(var(--x0), var(--y0)); }
+    .mflash { display: none; }
+  }
   `;
   // ==================== Ende Himmel-Extras ====================
 
@@ -392,8 +447,8 @@
   // großputz = seitdem werden Häufchen gezählt, maske = einzeln weggemachte (Bit k = Häufchen k),
   // teilputz = wann seit dem Großputz zum ersten Mal einzeln geputzt wurde (wird nur noch mitgeführt). Alte Werte mit 4 Feldern gelten ab dem letzten Kontakt als sauber.
   const sec = (ms) => Math.floor(ms / 1000) * 1000;
-  const freshStats = () => {
-    const now = sec(Date.now());
+  const freshStats = (t = Date.now()) => {
+    const now = sec(t);
     return { s: 80, st: now, g: 80, gt: now, c: now, m: 0, l: now };
   };
   const serialize = (st) =>
@@ -411,11 +466,12 @@
   // er ist der frischere. Satt/glücklich: die eigenen ungesendeten Gewinne (gain.s/g) kommen obendrauf – so geht
   // weder fremdes noch eigenes Füttern/Streicheln verloren. Hat dieses Gerät geputzt (gain.c): der neuere Großputz
   // gilt, beim selben zählen die Einzelputze beider Geräte (Maske ODER, Teilputz der spätere).
-  const mergeStats = (own, other, gain, now) => {
+  // decayH(t1, t2): Abbau-Stunden dazwischen (im Schlaf halb), ohne: gleichmäßig
+  const mergeStats = (own, other, gain, now, decayH = (t1, t2) => (t2 - t1) / 3.6e6) => {
     const out = { ...other };
     for (const k of ['s', 'g']) {
       if (!gain[k]) continue;
-      const v = clamp(other[k] - ((now - other[k + 't']) / 3.6e6) * RATE[k], 0, 100);
+      const v = clamp(other[k] - decayH(other[k + 't'], now) * RATE[k], 0, 100);
       out[k] = clamp(v + gain[k], 0, 100);
       out[k + 't'] = now;
     }
@@ -456,11 +512,15 @@
   // - gift: Päckchen (siehe GIFT): k Beginn der Pflege-Serie, a in der Serie schon verdiente, n Vorrat, u Album (ein Bit je
   //   Schatz), z verschenkte (laufende Nummer), o ausgepackte, b seit wann ein Wert unter GIFT.min liegt (sonst leer),
   //   x wann das letzte verschenkt wurde (Ballon), y goldenes im Vorrat, d schon belohnte Serien-Wochen, i Inhalt des
-  //   letzten (Index in GIFT_ITEMS, +16 = golden). Stände bis 0.18 haben das Feld nicht.
+  //   letzten (Index in GIFT_ITEMS, +16 = golden). Stände bis 0.18 haben das Feld nicht. Hinter a steht mit "_" noch p:
+  //   ab wann die Wachzeit fürs nächste Päckchen zählt (bis dahin sind die a verdient). Ältere Stände lesen nur a
+  //   (parseInt hört beim "_" auf) und schreiben es ohne p zurück, dann rechnet die Karte p einmal aus k und a nach.
   // Text: "p1|n.t.c.m|d.k|k:name:v,…|d.n.m|k.a.n.u.z.o.b.x.y.d.i" (Zahlen zur Basis 36), passt in die 255 Zeichen eines input_text.
   const HAY_MAX = 12;
   const PLAN_REC = 4;
-  const planBlank = () => ({ hay: { n: 3, t: Date.now(), c: '', m: 0 }, sport: null, rec: [], cute: null, gift: null });
+  // Kürzer als so darf der Helfer für den Tagesplan nicht sein (mit Päckchen sind es bis ~100 Zeichen ohne Verlauf)
+  const PLAN_MIN = 120;
+  const planBlank = (now = Date.now()) => ({ hay: { n: 3, t: now, c: '', m: 0 }, sport: null, rec: [], cute: null, gift: null });
   const GIFT_F = ['k', 'a', 'n', 'u', 'z', 'o', 'b', 'x', 'y', 'd', 'i'];
   const GIFT_T = new Set(['k', 'b', 'x']); // Zeiten: im Text in Sekunden
   // Streicheln zählt bis 10: ab da ist er anhänglich, mehr muss keiner wissen (und es wird nicht mehr geschrieben)
@@ -475,7 +535,8 @@
       P.sport ? `${P.sport.d.toString(36)}.${P.sport.k.toString(36)}` : '-',
       P.rec.map(([k, a, v]) => (v ? `${k.toString(36)}:${a}:${v}` : `${k.toString(36)}:${a}`)).join(',') || '-',
       P.cute ? [P.cute.d, P.cute.n, P.cute.m].map((x) => x.toString(36)).join('.') : '-',
-      ...(P.gift ? [GIFT_F.map((f) => (P.gift[f] == null ? '-' : Math.round(GIFT_T.has(f) ? P.gift[f] / 1000 : P.gift[f]).toString(36))).join('.')] : []),
+      ...(P.gift ? [GIFT_F.map((f) => (P.gift[f] == null ? '-' : Math.round(GIFT_T.has(f) ? P.gift[f] / 1000 : P.gift[f]).toString(36)
+        + (f === 'a' && P.gift.p != null ? `_${Math.round(P.gift.p / 1000).toString(36)}` : ''))).join('.')] : []),
     ].join('|');
   };
   const planParse = (str) => {
@@ -491,6 +552,8 @@
     if (gq.length === GIFT_F.length) {
       const G = {};
       GIFT_F.forEach((f, i) => (G[f] = gq[i] === '-' ? null : parseInt(gq[i], 36) * (GIFT_T.has(f) ? 1000 : 1)));
+      const gp = parseInt(gq[1].split('_')[1] ?? '', 36) * 1000;
+      G.p = Number.isFinite(gp) ? gp : null;
       if (GIFT_F.every((f) => f === 'b' || Number.isFinite(G[f]))) P.gift = G;
     }
     const q = (p[4] || '-').split('.').map((x) => parseInt(x, 36));
@@ -511,7 +574,7 @@
   const giftApply = (out, op) => {
     const G = out.gift;
     if (op.t === 'gstart') {
-      if (!G) out.gift = { k: op.k, a: 0, n: 0, u: 0, z: 0, o: 0, b: null, x: 0, y: 0, d: 0, i: 0 };
+      if (!G) out.gift = { k: op.k, a: 0, n: 0, u: 0, z: 0, o: 0, b: null, x: 0, y: 0, d: 0, i: 0, p: op.k };
       return;
     }
     if (!G) return;
@@ -519,17 +582,20 @@
       if (G.k === op.k && G.b == null) G.b = op.b;
     } else if (op.t === 'gok') {
       // Wieder alles über GIFT.min. War es zu lange darunter (brk), beginnt eine neue Serie.
-      if (G.k === op.k && G.b === op.b) Object.assign(G, op.brk ? { k: op.nk, a: 0, b: null, d: 0 } : { b: null });
+      if (G.k === op.k && G.b === op.b) Object.assign(G, op.brk ? { k: op.nk, a: 0, b: null, d: 0, p: op.nk } : { b: null });
     } else if (op.t === 'gearn') {
-      if (G.k === op.k && op.e > G.a) {
+      // p: ab da zählt die Wachzeit fürs nächste. Mit e === a trägt ein Gerät nur p zu einem älteren Stand nach.
+      if (G.k === op.k && (op.e > G.a || (op.e === G.a && G.p == null && op.p != null))) {
         G.n = Math.min(GIFT.max, G.n + op.e - G.a);
         G.a = op.e;
+        if (op.p != null) G.p = op.p;
       }
     } else if (op.t === 'ggold') {
-      if (G.k === op.k && op.w > G.d) Object.assign(G, { y: 1, d: op.w });
+      // je volle Woche eins dazu, höchstens GIFT.goldMax auf Vorrat
+      if (G.k === op.k && op.w > G.d) Object.assign(G, { y: Math.min(GIFT.goldMax, G.y + op.w - G.d), d: op.w });
     } else if (op.t === 'give') {
       if (op.z !== G.z + 1 || G.o < G.z || !(op.gold ? G.y > 0 : G.n > 0)) return;
-      if (op.gold) G.y = 0;
+      if (op.gold) G.y--;
       else G.n--;
       Object.assign(G, { z: op.z, x: op.x, i: op.i });
       if ((op.i & 15) < GIFT_TRE) G.u |= 1 << (op.i & 15);
@@ -568,7 +634,10 @@
       if (op.m != null && out.hay.m >= op.m) return out;
       const { n, c } = hayNow(out.hay, now);
       if (n >= HAY_MAX) return out;
-      out.hay = { n: n + 1, t: now, c: (c + op.c).slice(-(n + 1)), m: op.m ?? out.hay.m };
+      // t ist der Anker für den Verfall: nur um die schon verfallenen ganzen Tage weiterrücken. Mit t = now fiele bei
+      // täglichem Sammeln nie etwas weg (der angebrochene Tag ginge jedes Mal verloren).
+      const t = out.hay.t + Math.floor(Math.max(0, now - out.hay.t) / 864e5) * 864e5;
+      out.hay = { n: n + 1, t, c: (c + op.c).slice(-(n + 1)), m: op.m ?? out.hay.m };
     } else if (op.t === 'pet' || op.t === 'mem') {
       // Ein neuer Pika-Tag fängt bei null an. Der höchste Zähler gewinnt, Erlebnisse werden zusammengelegt.
       const c = out.cute;
@@ -1205,6 +1274,30 @@
   };
   // 1. Advent: vierter Sonntag vor dem 25. 12. (Tagesnummer)
   const festAdvent1 = (y) => festDay(y, 12, 25) - (new Date(y, 11, 25).getDay() || 7) - 21;
+  // Geburtsdatum → [Monat, Tag] oder null. Als Text "MM-TT", "JJJJ-MM-TT" (auch mit Uhrzeit), "TT.MM." oder
+  // "TT.MM.JJJJ". Ohne Anführungszeichen macht YAML daraus andere Typen: 1990-03-14 → Date-Objekt (Tag aus dem
+  // Datumsteil, UTC); 14.03 → Zahl 14.03, 14.10 → Zahl 14.1. Eine Nachkommastelle: ",1" kann nur der Oktober
+  // sein (der Januar steht mit Null da: 14.01), ",2"…",9" ist der Monat selbst (14.2 → 14. 2.; 20…90 gibt es nicht).
+  const festBirthdate = (v) => {
+    let bm;
+    let bd;
+    if (v instanceof Date) {
+      if (isNaN(v)) return null;
+      [bm, bd] = [v.getUTCMonth() + 1, v.getUTCDate()];
+    } else if (typeof v === 'number') {
+      const m = String(v).match(/^(\d{1,2})(?:\.(\d{1,2}))?$/);
+      if (!m || !m[2]) return null;
+      [bd, bm] = [Number(m[1]), m[2] === '1' ? 10 : Number(m[2])];
+    } else {
+      const s = String(v ?? '').trim();
+      let m = s.match(/^(?:\d{4}-)?(\d{1,2})-(\d{1,2})(?:[T ][\d:.]+(?:Z|[+-]\d{2}:?\d{2})?)?$/i);
+      if (m) [bm, bd] = [Number(m[1]), Number(m[2])];
+      else if ((m = s.match(/^(\d{1,2})\.(\d{1,2})\.(?:\d{2}|\d{4})?$|^(\d{1,2})\.(\d{1,2})$/))) {
+        [bd, bm] = [Number(m[1] ?? m[3]), Number(m[2] ?? m[4])];
+      } else return null;
+    }
+    return bm >= 1 && bm <= 12 && bd >= 1 && bd <= 31 ? [bm, bd] : null;
+  };
   // "Mia" / "Mia und Tom" / "Mia, Tom und Lea"
   const festNames = (a) => (a.length < 2 ? a[0] || '' : `${a.slice(0, -1).join(', ')} und ${a[a.length - 1]}`);
   const festF1 = (n) => n.toFixed(1);
@@ -1541,8 +1634,12 @@
   }
   .fwb { position: absolute; width: 0; height: 0; }
   .fwb i { position: absolute; left: 0; top: 0; display: block; border-radius: 50%; }
-  .fwb .fwp { width: calc(var(--H) * .018); height: calc(var(--H) * .018); margin: calc(var(--H) * -.009); background: var(--c); box-shadow: 0 0 5px 1.5px var(--c); }
-  .fwb .fws { width: 2px; height: 2px; margin: -1px; background: #fff8dc; box-shadow: 0 0 3px 1px rgba(255, 240, 190, .9); }
+  /* Leuchten über einen Verlauf statt box-shadow: der Schatten müsste bei jedem Bild weichgezeichnet werden */
+  .fwb .fwp {
+    width: calc(var(--H) * .036); height: calc(var(--H) * .036); margin: calc(var(--H) * -.018);
+    background: radial-gradient(closest-side, #fff 0, var(--c) 32%, transparent);
+  }
+  .fwb .fws { width: 6px; height: 6px; margin: -3px; background: radial-gradient(closest-side, #fffbe8 0, rgba(255, 240, 190, .8) 40%, transparent); }
   .fwb .fwc {
     width: calc(var(--H) * .07); height: calc(var(--H) * .07); margin: calc(var(--H) * -.035);
     background: radial-gradient(closest-side, #fff, var(--c) 45%, transparent); animation: fwc .5s ease-out forwards;
@@ -1552,6 +1649,10 @@
   .fest-f > .fwl.go { animation: fwl 1.1s ease-out; }
   @keyframes fwl { 8% { opacity: .2; } 100% { opacity: 0; } }
   .fcf i { position: absolute; top: 0; display: block; }
+  /* Weniger Bewegung gewünscht: Wimpel und Maibaum-Bänder hängen still (Teilchen spart das Skript, calmMotion) */
+  @media (prefers-reduced-motion: reduce) {
+    .fpn, .fmai .rb { animation: none !important; }
+  }
   `;
   // ==================== Ende Festtage ====================
 
@@ -2169,6 +2270,10 @@
   // noch trinken sieht, wenn man mit der Tasse vom Automaten zum Tablet kommt. Wer später einsteigt (Neuladen,
   // Bildschirm an), steht gleich mit dem passend leeren Gefäß da; ist es überall ausgetrunken, gibt es nichts mehr.
   const COFFEE_FETCH = 13000;
+  // Ohne live gesehenen Bezug: so lange darf das Programm höchstens nach dem Hochzählen des Zählers enden
+  const COFFEE_CTR_MS = 3 * 60000;
+  // So lange nach dem letzten Schluck nach Plan darf ein unterbrochenes Trinken noch weitergehen, danach verfällt es
+  const COFFEE_LATE = 30000;
   const COFFEE_DRINK = { latte: 240000, milk: 180000, capp: 210000, esp: 120000, mug: 210000, tea: 240000 };
   const COFFEE_CLS = [...new Set([...Object.values(COFFEE_CUP), ...Object.keys(COFFEE_CUP)])].map((k) => `ck-${k}`);
   // Denkblase beim Schnuppern: Tasse mit Dampf
@@ -2247,6 +2352,9 @@
   // Dabei darf Streicheln eine eigene Reaktion starten (sonst nur Herzchen und Hüpfer obendrauf)
   const PET_FREE = new Set(['idle', 'look', 'wander', 'groom', 'squeak', 'sniff', 'binky', 'hungry', 'watchBird', 'watchMouse',
     'watchPlane', 'curious', 'yawn', 'earClean', 'scratch', 'nod', 'hiccup', 'comeHere', 'petReact', 'stroke', 'gift']);
+  // Reaktionen auf Berührung, die über _next laufen: verfallen nach TOUCH_TTL, wenn Wichtigeres vorging
+  const TOUCH_NEXT = new Set(['petReact', 'kraul', 'stroke', 'comeHere']);
+  const TOUCH_TTL = 2000;
   // Zustandsklassen der neuen Momente, die _cleanup zurücksetzt (zeitgesteuerte wie blush, mlem, lnd gehen von selbst)
   const CUTE_CLS = ['tilt', 'tilt-b', 'content', 'squint', 'flat', 'crosseye', 'lean', 'tickle', 'roll', 'melt', 'thump',
     'yawning', 'presneeze', 'sneezing', 'earwash', 'scratching', 'nodding', 'stumble', 'pant', 'trip', 'bighop'];
@@ -2334,6 +2442,8 @@
     'haySnack', 'hideout', 'watchBird', 'watchMouse', 'watchPlane', ...CUTE_SMALL];
   const ACT_BIG = ['read', 'game', 'tablet', 'kite', 'tv', 'music', 'paint', 'bubbles', 'sport'];
   const ACT_MOOD = ['read', 'game', 'tablet', 'music', 'paint', 'bubbles'];
+  // Beschäftigungen, die beginnender Regen oder Schnee abbricht, wenn sie bei diesem Wetter nicht gehen (_actOk)
+  const WX_STOP = [...ACT_BIG, 'rope', 'weights', 'gather'];
   const ACT_RECENT = 3;
   // Wird die Karte sichtbar (Bildschirm an, App geöffnet, Ansicht gewechselt), winkt er; höchstens alle 5 Minuten.
   const ACT_SHOW_COOL = 5 * 6e4;
@@ -2482,6 +2592,7 @@
     background: radial-gradient(circle at 32% 30%, rgba(255, 255, 255, .95) 0 8%, rgba(255, 255, 255, 0) 21%),
       radial-gradient(circle, rgba(255, 255, 255, .08) 50%, rgba(140, 210, 255, .6) 70%, rgba(255, 150, 220, .7) 86%, rgba(160, 255, 210, .9) 100%);
     box-shadow: 0 0 0 1px rgba(255, 255, 255, .9), 0 0 3px 1px rgba(50, 90, 130, .3); animation: wob 1.1s ease-in-out infinite alternate;
+    will-change: transform; /* eigene Ebene: Verlauf und Schatten werden beim Wabern nicht jedes Bild neu gemalt */
   }
   .bub i::after { content: ''; position: absolute; inset: -8px; }
   @keyframes wob { to { transform: scale(1.07, .93); } }
@@ -2565,8 +2676,12 @@
   // ohne Unterbrechung gibt es ein Päckchen (höchstens max im Vorrat), nach gold am Stück ein goldenes. Verschenkt schwebt
   // es arrive ms lang an einem Ballon herein, der Pika schießt ihn vom Aussichtsstein mit der Zwille herunter und packt aus.
   // Leckerli bringen treat Satt, jedes Päckchen joy Glück.
-  const GIFT = { min: 50, grace: 60 * 6e4, every: 6 * 36e5, max: 3, gold: 7 * 864e5, arrive: 12000, treat: 15, joy: 15 };
+  const GIFT = { min: 50, grace: 60 * 6e4, every: 6 * 36e5, max: 3, gold: 7 * 864e5, goldMax: 2, arrive: 12000, treat: 15, joy: 15 };
   const GIFT_TRE = 8; // GIFT_ITEMS 0–7 sind Schätze (Album, ein Bit je Schatz), danach Leckerli
+  // Schätze, die schon ausgepackt sind: Das Bit kommt beim Verschenken, fliegt der Ballon noch, zählt es nicht
+  const giftOwned = (G) => (G ? (G.z > G.o && (G.i & 15) < GIFT_TRE ? G.u & ~(1 << (G.i & 15)) : G.u) : 0);
+  // Was die Serie gerade gefährdet (unter GIFT.min): Hinweis im Album und Zeichen am Knopf
+  const GIFT_LOW = { s: ['Hunger!', ICON_LEAF], g: ['Streicheln!', ICON_HEART], c: ['Putzen!', ICON_SPARK] };
   const GIFT_ITEMS = [
     { key: 'yarn', name: 'Wollknäuel', say: 'ein Wollknäuel!', svg: `<svg viewBox="0 0 24 24" aria-hidden="true">
       <path d="M18.4 17.6 q3.6 1.6 1.6 4 q-2 1.6 -4.4 .2" stroke="#f28fb1" stroke-width="1.2" fill="none" stroke-linecap="round"/>
@@ -2748,6 +2863,8 @@
   .gt-plush svg { display: block; width: 100%; height: auto; }
   .night .gt-plush { filter: brightness(.72) saturate(.75); }
   .scene.night:not(.windy) .gwhl, .scene.night:not(.windy) .gbob, .scene.night:not(.windy) .gdrift { animation-play-state: paused; }
+  /* Pika schläft: Windrad und Ballon halten still (wie .hb-still), das spart das Neuzeichnen unter dem Filter */
+  .gifts.still .gwhl, .gifts.still .gbob, .gifts.still .gdrift { animation-play-state: paused; }
   @media (prefers-reduced-motion: reduce) { .gwhl, .gbob, .gdrift, .gt-ham .gnet { animation: none !important; } }
 
   /* Pika: Zwille, Fernrohr, Gießkanne, Sonnenbrille */
@@ -2780,7 +2897,16 @@
   .night .gr0 { stroke: rgba(255, 255, 255, .15); }
   .gr1 { stroke: #f2b632; stroke-linecap: round; stroke-dasharray: var(--gp, 0) 100; transition: stroke-dasharray .8s; }
   .gbtn.warn .gr1 { stroke: #e8892a; animation: gwarn 1.6s ease-in-out infinite; }
+  /* Alles wieder über 50 %, nur selbst geknabbert: ruhig orange, eine Pflege-Aktion schließt die Lücke */
+  .gbtn.warn.ok .gr1 { animation: none; }
   @keyframes gwarn { 50% { opacity: .3; } }
+  /* Was fehlt (Satt, Glück, Sauber): kleines Zeichen links unten am Knopf */
+  .gcrit { position: absolute; left: -4px; bottom: -4px; width: 18px; height: 18px; padding: 2px; box-sizing: border-box;
+    border-radius: 50%; background: #fff; box-shadow: 0 1px 3px rgba(0, 0, 0, .25); }
+  .gcrit:empty { display: none; }
+  .gcrit svg { display: block; width: 100%; height: 100%; }
+  .alb-w { color: #c0601a; }
+  .night .alb-w { color: #f2a65a; }
   .gbtn.broken .gr1 { stroke: #b8b2a8; }
   .gbtn.empty .gico { opacity: .45; filter: grayscale(.7); }
   .gnum { position: absolute; right: -3px; top: -3px; min-width: 16px; height: 16px; padding: 0 3px; box-sizing: border-box;
@@ -3459,30 +3585,37 @@
     20% { opacity: 1; }
     100% { transform: translate(calc(var(--ph) * .35), calc(var(--ph) * -.6)) scale(1.2); opacity: 0; }
   }
+  /* Sprechblase: --bx (px, aus _bubbleFit) schiebt sie am Kartenrand ins Bild, die Spitze bleibt am Anker. Ist der
+     Text länger, als die Karte breit ist, bricht er um. --bf: Anteil der Blase links vom Anker. */
   .bubble {
-    position: absolute; left: 0; bottom: 4px; transform: translateX(-35%) scale(.3); transform-origin: 35% 100%;
+    position: absolute; left: 0; bottom: 4px; --bf: 35%;
+    transform: translateX(calc(var(--bx, 0px) - var(--bf))) scale(.3); transform-origin: calc(var(--bf) - var(--bx, 0px)) 100%;
     opacity: 0; transition: transform .28s cubic-bezier(.3, 1.6, .5, 1), opacity .2s;
-    background: #fff; color: #4a3a2c; border-radius: 999px; padding: .15em .6em; white-space: nowrap;
+    background: #fff; color: #4a3a2c; border-radius: 999px; padding: .15em .6em;
+    width: max-content; max-width: calc(var(--W, 300px) - 8px); box-sizing: border-box; text-align: center;
     font-size: calc(var(--ph) * .15); font-weight: 800; box-shadow: 0 2px 6px rgba(0, 0, 0, .18); pointer-events: none;
   }
-  .bubble.on { opacity: 1; transform: translateX(-35%) scale(1); }
+  .bubble.on { opacity: 1; transform: translateX(calc(var(--bx, 0px) - var(--bf))) scale(1); }
   .say::after {
-    content: ''; position: absolute; left: 30%; bottom: -5px; border: 5px solid transparent;
-    border-top-color: #fff; border-bottom: 0;
+    content: ''; position: absolute; left: clamp(6px, calc(30% - var(--bx, 0px)), calc(100% - 16px)); bottom: -5px;
+    border: 5px solid transparent; border-top-color: #fff; border-bottom: 0;
   }
   .think { padding: .3em .45em; bottom: 14px; }
   .think svg { display: block; width: calc(var(--ph) * .2); height: calc(var(--ph) * .2); }
   .think::before, .think::after { content: ''; position: absolute; background: #fff; border-radius: 50%; }
-  .think::before { width: 8px; height: 8px; left: 28%; bottom: -8px; }
-  .think::after { width: 4px; height: 4px; left: 22%; bottom: -14px; }
+  .think::before { width: 8px; height: 8px; left: clamp(2px, calc(28% - var(--bx, 0px)), calc(100% - 10px)); bottom: -8px; }
+  .think::after { width: 4px; height: 4px; left: clamp(2px, calc(22% - var(--bx, 0px)), calc(100% - 6px)); bottom: -14px; }
   /* Im Bau steht die Blase rechts neben dem Eingang (Anker --ax), damit das Schild darüber frei bleibt */
-  .inside .bubble { transform: translateX(-6%) scale(.3); transform-origin: 6% 100%; }
-  .inside .bubble.on { transform: translateX(-6%) scale(1); }
-  .inside .say::after { left: 6%; }
-  .inside .think::before { left: 8%; }
-  .inside .think::after { left: 2%; }
+  .inside .bubble { --bf: 6%; }
+  .inside .say::after { left: clamp(6px, calc(6% - var(--bx, 0px)), calc(100% - 16px)); }
+  .inside .think::before { left: clamp(2px, calc(8% - var(--bx, 0px)), calc(100% - 10px)); }
+  .inside .think::after { left: clamp(2px, calc(2% - var(--bx, 0px)), calc(100% - 6px)); }
 
   .fx { position: absolute; inset: 0; pointer-events: none; z-index: 4; }
+  /* Ansagen für Bildschirmleser (nur Begrüßung, Wiedersehen, Geschenk, Hunger) */
+  .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+  .pika:focus { outline: none; }
+  .pika:focus-visible { outline: 2px dashed rgba(255, 255, 255, .9); outline-offset: -2px; border-radius: 14px; }
   .heart {
     position: absolute; width: calc(var(--ph) * .2); margin-left: calc(var(--ph) * -.1);
     animation: heart 1.5s ease-out forwards;
@@ -3671,7 +3804,7 @@
   .plane { position: absolute; left: 0; top: 0; opacity: 0; transition: transform 5s linear, opacity 2s; will-change: transform; }
   .plane.on { opacity: 1; }
   /* Unsichtbare Tippfläche über dem Flugzeug (die Flugzeuge selbst liegen hinter den Hügeln) */
-  .phit { position: absolute; left: 0; top: 0; display: none; pointer-events: auto; cursor: pointer; transition: transform 5s linear; }
+  .phit { position: absolute; left: 0; top: 0; display: none; pointer-events: auto; cursor: pointer; touch-action: pan-y; transition: transform 5s linear; }
   .phit.on { display: block; }
   .plane .pl-s {
     position: absolute; width: calc(var(--H) * .3); left: calc(var(--H) * -.15); top: calc(var(--H) * -.06);
@@ -3732,12 +3865,79 @@
       animation: none !important;
     }
     .precip { opacity: .6; }
+    /* Blitz: nur ein sanftes, einmaliges Aufhellen statt Flackern über die ganze Karte */
+    .flash.go { animation: flash-soft 1.2s ease-out; }
+    @keyframes flash-soft { 15% { opacity: .18; } }
   }
   `;
 
   // ---------- Karte ----------
 
   class PikaPetCard extends HTMLElement {
+    // Karten-Editor (HA-Formular): die häufigen Optionen mit Auswahlfeldern, Geräte, Kaffee und Geburtstage als YAML-Felder.
+    // Ältere HA-Versionen ohne getConfigForm zeigen einfach weiter den YAML-Editor.
+    static getConfigForm() {
+      const ent = (domain) => ({ entity: { filter: { domain } } });
+      const num = (min, max, step = 1, unit) => ({ number: { min, max, step, mode: 'box', ...(unit ? { unit_of_measurement: unit } : {}) } });
+      const bool = { boolean: {} };
+      const text = { text: {} };
+      const group = (title, icon, schema) => ({ type: 'expandable', name: '', flatten: true, title, icon, schema });
+      return {
+        schema: [
+          { type: 'grid', name: '', schema: [
+            { name: 'name', selector: text },
+            { name: 'areal', default: 'huegel', selector: { select: { mode: 'dropdown', options: [
+              { value: 'huegel', label: 'Erdhügel' }, { value: 'fels', label: 'Felsen' },
+              { value: 'stumpf', label: 'Baumstumpf' }, { value: 'alpin', label: 'Alpin' },
+            ] } } },
+          ] },
+          { name: 'entity', selector: ent('input_text') },
+          { name: 'plan_entity', selector: ent('input_text') },
+          { type: 'grid', name: '', schema: [
+            { name: 'show_stats', selector: bool, default: true },
+            { name: 'gifts', selector: bool, default: true },
+            { name: 'friend', selector: bool, default: true },
+            { name: 'festive', selector: bool, default: true },
+          ] },
+          group('Schlaf, Wetter und Himmel', 'mdi:weather-night', [
+            { type: 'grid', name: '', schema: [
+              { name: 'sleep_start', selector: text },
+              { name: 'sleep_end', selector: text },
+            ] },
+            { name: 'sun_entity', selector: ent('sun') },
+            { name: 'weather_entity', selector: ent('weather') },
+            { type: 'grid', name: '', schema: [
+              { name: 'precip_entity', selector: ent('sensor') },
+              { name: 'rain_min', selector: num(0, 5, 0.1, 'mm/h') },
+            ] },
+            { type: 'grid', name: '', schema: [
+              { name: 'shooting_stars', selector: bool, default: true },
+              { name: 'fireflies', selector: bool, default: true },
+            ] },
+          ]),
+          group('Flugzeuge', 'mdi:airplane', [
+            { name: 'flight_entity', selector: ent('sensor') },
+            { type: 'grid', name: '', schema: [
+              { name: 'flight_radius', selector: num(1, 200, 1, 'km') },
+              { name: 'max_flights', selector: num(0, 6) },
+            ] },
+          ]),
+          group('Pino, Tablet und Größe', 'mdi:tablet', [
+            { name: 'friend_name', selector: text },
+            { name: 'screen_entity', selector: ent(['switch', 'light', 'input_boolean', 'binary_sensor']) },
+            { name: 'height', selector: num(120, 800, 10, 'px') },
+          ]),
+          group('Geburtstage, Haushaltsgeräte, Kaffee (YAML)', 'mdi:code-braces', [
+            { name: 'birthdays', selector: { object: {} } },
+            { name: 'appliances', selector: { object: {} } },
+            { name: 'coffee', selector: { object: {} } },
+          ]),
+        ],
+        computeLabel: (s) => EDITOR_LABEL[s.name],
+        computeHelper: (s) => EDITOR_HELP[s.name],
+      };
+    }
+
     static getStubConfig() {
       return { name: 'Pika' };
     }
@@ -3796,7 +3996,10 @@
         this._entKey = ent;
         clearTimeout(this._saveT);
         clearTimeout(this._freshT);
-        this._pendingWrite = this._synced = this._noEntity = false;
+        clearTimeout(this._unavT);
+        this._pendingWrite = this._synced = this._noEntity = this._saveWait = false;
+        this._lostW = [];
+        this._saveFail = 0;
         this._gain = { s: 0, g: 0, c: false };
         this._sent = []; // gesendet, von HA noch nicht bestätigt: { v, gain, at }
         this._lastEntityState = null; // beim nächsten hass neu lesen, auch wenn der Helfer fehlt
@@ -3816,30 +4019,60 @@
       const fresh = hass !== this._hass;
       this._hass = hass;
       const c = this._cfg;
+      this._clockHass(hass);
+      if (fresh && hass.connected !== false) this._hassN = (this._hassN || 0) + 1;
       if (c.entity) {
         const st = hass.states[c.entity]?.state;
+        // Ungesendetes, weil die Verbindung weg war: jetzt hinaus
+        if (this._saveWait && hass.connected !== false && st !== 'unavailable') this._save();
         if (st !== this._lastEntityState) {
           this._lastEntityState = st;
           const parsed = parseStats(st);
           clearTimeout(this._freshT);
+          clearTimeout(this._unavT);
           // Helfer gibt es nicht: auf diesem Gerät weiterspielen (localStorage) statt ins Leere zu schreiben
           if (st === undefined && !this._noEntity) {
             console.warn(`pika-pet-card: ${c.entity} gibt es nicht, der Zustand bleibt auf diesem Gerät`);
             if (!this._stats) this._loadLocal();
           }
           this._noEntity = st === undefined;
+          // Beim Laden länger als 60 s unavailable: wie ein fehlender Helfer lokal weiterspielen statt gar nicht zu
+          // speichern. Kommt er wieder, kommen die Gewinne von hier auf seinen Stand (siehe _save).
+          if (st === 'unavailable' && !this._synced) {
+            this._unavT = setTimeout(() => {
+              if (this._lastEntityState !== 'unavailable' || this._synced) return;
+              console.warn(`pika-pet-card: ${c.entity} ist nicht erreichbar, der Zustand bleibt vorerst auf diesem Gerät`);
+              this._noEntity = true;
+              if (!this._stats) this._loadLocal();
+              this._renderStats();
+            }, 60000);
+          }
           const own = parsed ? this._sent.findIndex((e) => e.v === st) : -1;
+          const late = own < 0 && parsed ? this._lostW?.find((e) => e.v === st) : null;
           if (own >= 0) {
             // Echo eines eigenen Schreibens: bestätigt (ältere auch, HA arbeitet der Reihe nach). Der eigene Stand
             // ist schon so weit oder weiter, nichts übernehmen.
             this._sent.splice(0, own + 1);
+            this._lostW = this._lostW?.filter((e) => e.v !== st);
+            this._saveFail = 0;
+          } else if (late) {
+            // Spätes Echo eines Schreibens, das schon als verloren galt: Es ist doch angekommen und gilt als eigenes.
+            // Sein Gewinn liegt inzwischen wieder im Ungesendeten bzw. im neuen Schreiben: dort heraus, sonst käme er
+            // beim nächsten fremden Stand ein zweites Mal obendrauf.
+            this._lostW = this._lostW.filter((e) => e !== late);
+            this._gainSub(late.gain);
+            this._saveFail = 0;
           } else if (parsed) {
+            const was = this._synced;
             this._synced = true;
+            // Erst den eigenen Stand bewerten: Lag hier etwas unter GIFT.min, steht es so fest. Sonst überdeckte ein
+            // Füttern auf einem anderen Gerät, dass es eine Weile darunter lag.
+            if (was && this._stats) this._careEval();
             const gain = this._sentGain();
             if (this._stats && (this._pendingWrite || gain.s || gain.g || gain.c)) {
               // Eigene Änderung ungesendet oder noch unbestätigt: zusammenführen statt den fremden Stand zu
               // übernehmen. Der fremde kam bei HA vor dem eigenen an, ihm fehlt also alles, was hier noch offen ist.
-              this._stats = mergeStats(this._stats, parsed, gain, Date.now());
+              this._stats = mergeStats(this._stats, parsed, gain, this._haNow(), (a, b) => this._decayH(a, b));
               this._sent.forEach((e) => (e.gain = { s: 0, g: 0, c: false })); // steckt jetzt im nächsten Schreiben
               this._gain = gain;
               this._save();
@@ -3852,7 +4085,7 @@
             if (st !== '' && st !== 'unknown') console.warn(`pika-pet-card: ${c.entity} enthält "${st}", fange neu an`);
             const fill = () => {
               this._synced = true;
-              this._stats ??= freshStats();
+              this._stats ??= freshStats(this._haNow());
               this._save();
               this._renderStats();
             };
@@ -3902,7 +4135,9 @@
         }
       }
       this._updateSky();
-      if (fresh && this._planStale) this._planFresh();
+      // Veralteter Plan nach langer Pause: erst frisch, wenn verbunden und sich seitdem etwas geändert hat (ein neues
+      // hass-Objekt allein kann nur "verbunden: ja/nein" sein, mit noch altem Stand)
+      if (fresh && this._planStale && hass.connected !== false && hass.states !== this._staleStates) this._planFresh();
     }
 
     getCardSize() {
@@ -3930,7 +4165,9 @@
       document.addEventListener('visibilitychange', this._onVis);
       // Karte aus dem Bild gescrollt (Handy, iPad): wie ein versteckter Tab alles anhalten
       this._offscreen = false;
-      this._away0 = document.hidden;
+      this._away0 = this._away();
+      // Beim Wegsehen angehaltene Effekte (Seifenblasen …) laufen weiter, auch wenn dazwischen abgehängt wurde
+      if (!this._away0) this._fxAnims(false);
       this._el.scene.classList.toggle('paused', this._away0);
       this._io = new IntersectionObserver((es) => {
         this._offscreen = !es[es.length - 1].isIntersecting;
@@ -3953,6 +4190,7 @@
       this._attachFest();
       this._attachFriend();
       this._attachBote();
+      this._attachGift();
     }
 
     _detach() {
@@ -3974,6 +4212,7 @@
       this._detachFest();
       this._detachFriend();
       this._detachBote();
+      this._detachGift();
     }
 
     // ---------- Aufbau ----------
@@ -4033,7 +4272,7 @@
             <div class="friends"></div>
             <div class="ff">${flies}</div>
             <div class="acts"></div>
-            <div class="pika" role="button" aria-label="Streicheln">
+            <div class="pika" role="button" tabindex="0" aria-label="Streicheln">
               <div class="clipw">
                 <div class="shadow"></div>
                 <div class="depth"><div class="flip"><div class="jump"><div class="hop"><div class="br">${PIKA_SVG}</div></div></div></div></div>
@@ -4062,9 +4301,10 @@
             <button class="feed" title="Füttern" aria-label="Füttern">${FOOD.lz.svg}</button>
             <button class="gbtn" hidden title="Päckchen schenken" aria-label="Päckchen schenken">
               <svg class="gring" viewBox="0 0 44 44" aria-hidden="true"><circle class="gr0" cx="22" cy="22" r="20"/><circle class="gr1" cx="22" cy="22" r="20" pathLength="100"/></svg>
-              <span class="gico">${GIFT_PARCEL}</span><b class="gnum"></b>
+              <span class="gico">${GIFT_PARCEL}</span><b class="gnum"></b><i class="gcrit"></i>
             </button>
             <div class="album" hidden></div>
+            <div class="sr" aria-live="polite"></div>
           </div>
         </ha-card>`;
 
@@ -4083,17 +4323,28 @@
         acts: $('.acts'), gifts: $('.gifts'), gbtn: $('.gbtn'), album: $('.album'),
       };
       this._el.anchor = this._el.pika.querySelector('.anchor');
+      this._el.sr = this.shadowRoot.querySelector('.sr');
+      // Tastatur: Enter oder Leertaste streichelt (ohne Stelle: Rücken)
+      this._el.pika.addEventListener('keydown', (e) => {
+        if (e.key !== 'Enter' && e.key !== ' ') return;
+        e.preventDefault();
+        this._onPet(null);
+      });
       this._el.pika.addEventListener('click', (e) => (e.stopPropagation(), this._onPet(e)));
       // Lang drücken = kraulen, waagerecht über ihn wischen = übers Fell streichen
       this._el.pika.addEventListener('pointerdown', (e) => this._pressStart(e));
       this._el.pika.addEventListener('pointermove', (e) => this._pressMove(e));
-      for (const t of ['pointerup', 'pointercancel', 'pointerleave']) this._el.pika.addEventListener(t, () => this._pressEnd());
+      for (const t of ['pointerup', 'pointercancel', 'pointerleave']) this._el.pika.addEventListener(t, (e) => this._pressEnd(e));
+      // Lang drücken auf Touch (z. B. Windows-Tablet) öffnete sonst das Kontextmenü des Browsers
+      this._el.pika.addEventListener('contextmenu', (e) => e.preventDefault());
       this._el.feed.addEventListener('click', (e) => (e.stopPropagation(), this._onFeed()));
       // Päckchen-Knopf: tippen = verschenken, lang drücken = Album
       const gb = this._el.gbtn;
       gb.addEventListener('click', (e) => (e.stopPropagation(), this._onGiftBtn()));
       gb.addEventListener('contextmenu', (e) => e.preventDefault());
       gb.addEventListener('pointerdown', () => {
+        // Nach langem Drücken kommt auf Touch (oder beim Wegziehen) oft kein Klick: den Merker nicht stehen lassen
+        this._albumHeld = false;
         clearTimeout(this._albumPT);
         this._albumPT = setTimeout(() => {
           this._albumHeld = true;
@@ -4202,6 +4453,9 @@
         // Blumen und Futter zwischen Heuhaufen und Stein
         fMin: (hL + hW + pW * 0.3) / W,
         fMax: Math.max((hL + hW + pW * 0.3) / W + 0.08, (kL - H * 0.03) / W),
+        // Rechte Grenze am Boden: links der Knopfspalte (Futter, Päckchen; 44 px breit, 10 px vom Rand), sonst
+        // stünde er halb hinter den Knöpfen und ein Tipp dort fütterte statt zu streicheln
+        xR: Math.max(pW * 0.45, W - 56 - pW * 0.4),
       };
       for (const el of [this._el.burrow, this._el.lights]) {
         el.style.left = `${bL}px`;
@@ -4235,7 +4489,7 @@
         this._lift = rock.lift;
         this._setX(rock.cx, true);
       } else {
-        this._setX((liveX ?? this._x) * ratio, true);
+        this._setX(clamp((liveX ?? this._x) * ratio, pW * 0.45, this._g.xR), true);
         // Mitten im Laufen angehalten: Aktion neu wählen, sonst hoppelt er bis zum Ende auf der Stelle
         if (liveX != null) this._interrupt();
       }
@@ -4251,8 +4505,9 @@
         this._placePiles();
         // Besucher sitzen an festen Pixeln: bei Größenänderung lieber neu kommen lassen
         if (this._bird || this._mouse) this._restartCritters();
-        // Die Staffelei steht an festen Pixeln: Malen abbrechen (räumt sie weg), er steigt gleich wieder ein
-        if (this._easelEl) this._interrupt();
+        // Staffelei und Drache stehen an festen Pixeln: abbrechen (räumt sie weg), er steigt gleich wieder ein
+        if (this._easelEl || this._kiteEl) this._interrupt();
+        if (this._giftEl) this._flowerGiftPlace(this._giftEl); // Blumengeschenk an seiner relativen Stelle
       }
     }
 
@@ -4276,8 +4531,10 @@
     // ---------- Lebensschleife ----------
 
     // Sieht gerade niemand die Karte? Tab versteckt (beim Tablet auch: Bildschirm aus) oder außerhalb des Bildes
+    // Schaut keiner hin? Tab im Hintergrund, aus dem Bild gescrollt oder (mit screen_entity) Bildschirm aus. Ein dunkler
+    // Kiosk-Bildschirm lässt den Tab sichtbar: ohne screen_entity liefe dann alles die ganze Nacht weiter.
     _away() {
-      return document.hidden || !!this._offscreen;
+      return document.hidden || !!this._offscreen || this._screenSt === 'off';
     }
 
     // Sichtbarkeit hat sich geändert: unsichtbar ruht alles (Schleife, Besucher, Animationen), sichtbar geht es weiter
@@ -4286,8 +4543,9 @@
       if (!this._attached || away === this._away0) return;
       this._away0 = away;
       this._el.scene.classList.toggle('paused', away);
+      this._fxAnims(away);
       if (away) {
-        this._hidAt = document.hidden ? Date.now() : null;
+        this._hidAt = document.hidden || this._screenSt === 'off' ? Date.now() : null;
         this._goneAt ??= Date.now(); // für das Wiedersehen
         this._stop();
         this._stopCritters();
@@ -4306,8 +4564,24 @@
       this._tick();
     }
 
+    // .paused hält nur CSS-Animationen an: die Web Animations der Effekte (Seifenblasen, Schmetterling, Blütenwurf)
+    // ebenso anhalten und beim Wiedersehen weiterlaufen lassen
+    _fxAnims(stop) {
+      if (stop) {
+        const all = this._el.fx.getAnimations?.({ subtree: true }) || [];
+        this._fxPaused = all.filter((a) => a.playState === 'running'
+          && !(typeof CSSAnimation !== 'undefined' && a instanceof CSSAnimation)
+          && !(typeof CSSTransition !== 'undefined' && a instanceof CSSTransition));
+        this._fxPaused.forEach((a) => a.pause());
+      } else {
+        (this._fxPaused || []).forEach((a) => a.playState === 'paused' && a.play());
+        this._fxPaused = null;
+      }
+    }
+
     _planStaleArm() {
       this._planStale = true;
+      this._staleStates = this._hass?.states;
       clearTimeout(this._staleT);
       // Kommt kein neuer Stand (es hat sich nichts geändert), gilt der alte nach 4 s, sobald die Verbindung steht
       const check = () => {
@@ -4387,7 +4661,11 @@
 
     async _step() {
       if (!this._g) return this._wait(500);
-      // In der Hängematte unterbrochen: aus ihr heraus (nicht zum Stein)
+      // Eine Berührung von vor Kaffee, Schlafengehen oder Begrüßung ist vorbei: nicht Minuten später darauf reagieren
+      if (TOUCH_NEXT.has(this._next) && Date.now() - (this._nextAt || 0) > TOUCH_TTL) this._next = null;
+      // In der Hängematte unterbrochen: aus ihr heraus (nicht zum Stein). Am Boden (z. B. schon beim Anlauf
+      // unterbrochen, _lift kommt erst mit dem Sprung) gilt der Merker nicht mehr.
+      if (!(this._lift > 0)) this._onHam = false;
       if (this._lift > 0 && this._onHam) return this._run('giftHamDown');
       // Unterbrochen, während er auf dem Stein stand: erst herunter. Trinkt er dort oben Kaffee, trinkt er weiter.
       const cof = this._cof?.pend;
@@ -4429,7 +4707,7 @@
       if (this._inside && !stayIn) return this._run('comeOut');
       if (next) {
         this._next = null;
-        this._forced = true; // Vorschau: auch ohne passendes Wetter
+        this._forced = !TOUCH_NEXT.has(next); // Vorschau: auch ohne passendes Wetter
         return this._run(next);
       }
       this._forced = false;
@@ -4462,7 +4740,7 @@
         [wx.snowcover || wx.wet ? 1.2 : 0, 'haySnack'],
         [wx.wet ? 0 : 1.4, 'groom'], // eine Pfote hält bei Regen das Blatt
         [0.8, 'squeak'],
-        [wx.wet ? 0 : g > 70 ? 1.2 : g > 40 ? 0.4 : 0, 'binky'],
+        [wx.wet || calmMotion() ? 0 : g > 70 ? 1.2 : g > 40 ? 0.4 : 0, 'binky'],
         [s < 30 ? 3 : 0, 'hungry'],
         [piles.length && clean < 60 ? 1.2 : 0, 'sniff'],
         [this._bird?.sitting ? 2.5 : 0, 'watchBird'],
@@ -4584,13 +4862,14 @@
     _footX(side) {
       const { rock, pW } = this._g;
       const x = rock.cx + side * (rock.w / 2 + pW * 0.15);
-      if (side > 0) return x > this._W - pW * 0.45 ? null : x;
+      if (side > 0) return x > this._g.xR ? null : x;
       return Math.max(x, pW * 0.45);
     }
 
     async _hopTo(x, lift, crouch = true) {
       const { pW } = this._g;
-      x = clamp(x, pW * 0.45, this._W - pW * 0.45); // wie beim Laufen im Bild bleiben
+      // wie beim Laufen im Bild und am Boden links der Knöpfe bleiben (auf den Stein darf er immer)
+      x = clamp(x, pW * 0.45, lift > 0 ? this._W - pW * 0.45 : this._g.xR);
       if (Math.abs(x - this._x) > 2) this._face(x > this._x ? 1 : -1);
       const p = this._el.pika;
       p.classList.remove('lnd'); // das Nachwippen der Landung verdeckte sonst den Anlauf
@@ -4714,6 +4993,7 @@
       if (name === 'out') {
         p.classList.remove('inside');
         cw.style.clipPath = open;
+        this._bubbleRefit();
         return;
       }
       const hw = hole.r - hole.l;
@@ -4732,6 +5012,7 @@
       s.setProperty('--ax', px(hole.r - L + hw * 0.02)); // Sprechblase rechts neben dem Eingang
       s.setProperty('--ay', px(hole.top - top + pH * 0.02));
       p.classList.add('inside');
+      this._bubbleRefit();
     }
 
     async _haySnack() {
@@ -4867,6 +5148,7 @@
     }
 
     async _hungry() {
+      this._announce('hat Hunger');
       this._bubble(this._el.think, true);
       this._el.pika.classList.add('look-up');
       await this._wait(3500);
@@ -5335,8 +5617,8 @@
     // ---------- Bausteine ----------
 
     async _walkTo(x, speed = 1, steady = false) {
-      const { pW } = this._g;
-      x = clamp(x, pW * 0.45, this._W - pW * 0.45);
+      const { pW, xR } = this._g;
+      x = clamp(x, pW * 0.45, xR);
       const dx = x - this._x;
       if (Math.abs(dx) < 4) return;
       this._face(dx > 0 ? 1 : -1);
@@ -5400,6 +5682,7 @@
       p.style.transform = `translate(${(x - this._g.pW / 2).toFixed(1)}px, ${(-this._lift).toFixed(1)}px)`
         + (this._lift > 0 ? ' scale(.9)' : '');
       if (instant) void p.offsetWidth;
+      this._bubbleRefit();
     }
 
     // Wo der Pika gerade wirklich steht. Beim Laufen ist this._x schon das Ziel, die CSS-Transition
@@ -5423,6 +5706,7 @@
     _face(dir) {
       this._dir = dir;
       this._el.pika.classList.toggle('left', dir < 0);
+      this._bubbleRefit(); // der Anker wechselt die Seite
     }
 
     _mouth(color) {
@@ -5431,6 +5715,7 @@
     }
 
     _jump(kind) {
+      if (kind === 'binky' && calmMotion()) kind = 'hop1'; // Bewegung reduzieren: ruhiger Hüpfer statt Luftsprung
       const j = this._el.jump;
       j.classList.remove('hop1', 'binky');
       void j.offsetWidth;
@@ -5447,15 +5732,56 @@
       this._hearts(3);
     }
 
-    _say(text, ms = 1400) {
+    // loud: auch dem Bildschirmleser ansagen (sparsam, siehe _announce)
+    _say(text, ms = 1400, loud = false) {
+      if (loud) this._announce(text);
       this._el.say.textContent = text;
       this._bubble(this._el.say, true);
       clearTimeout(this._sayT);
       this._sayT = setTimeout(() => this._bubble(this._el.say, false), ms);
     }
 
+    // Höchstens alle 20 s etwas in die aria-live-Region, damit der Bildschirmleser nicht dauernd plappert
+    _announce(text) {
+      const now = Date.now();
+      if (!this._el.sr || now - (this._srAt || 0) < 20000) return;
+      this._srAt = now;
+      this._el.sr.textContent = `${this._cfg?.name || 'Pika'}: ${text}`;
+    }
+
     _bubble(el, on) {
       el.classList.toggle('on', on);
+      if (!on) return;
+      // Am Kartenrand ins Bild schieben: der Pika (auf dem Stein 0,9 groß um die Füße) bzw. Pino an seinem Ziel
+      const fr = this._fr?.say === el ? this._fr : null;
+      if (fr) this._bubbleFit(el, fr.x, this._g.pW * FRIEND_SCALE);
+      else if (el.parentElement === this._el.anchor) this._bubbleFit(el, this._x, this._g?.pW, this._lift > 0 ? 0.9 : 1);
+    }
+
+    // Blase el so verschieben (--bx), dass sie 4 px vom Rand bleibt. cx: Mitte der Hülle (Ziel, beim Laufen schon dort),
+    // w0: deren Breite, s: Verkleinerung um die Mitte. Gemessen wird nur, wenn sie gerade zu sehen ist.
+    _bubbleFit(el, cx, w0, s = 1) {
+      if (!this._g || !el.classList.contains('on')) return;
+      const w = el.offsetWidth;
+      const ax = cx + (el.parentElement.offsetLeft - w0 / 2) * s;
+      const L = ax - w * (el.closest('.inside') ? 0.06 : 0.35);
+      // Auf gleicher Höhe wie Futter- oder Päckchen-Knopf: links davon bleiben, sonst verdeckt der Knopf die Blase
+      let R = this._W - 4;
+      const sr = this._el.scene.getBoundingClientRect();
+      const er = el.getBoundingClientRect();
+      for (const b of [this._el.feed, this._el.gbtn]) {
+        const r = b?.getBoundingClientRect();
+        if (r?.width && er.bottom > r.top && er.top < r.bottom) R = Math.min(R, r.left - sr.left - 4);
+      }
+      const bx = L < 4 ? 4 - L : L + w > R ? Math.max(4 - L, R - (L + w)) : 0;
+      el.style.setProperty('--bx', `${bx.toFixed(1)}px`);
+    }
+
+    // Sprech- und Denkblase des Pikas neu einpassen (nach Drehen, Laufen, Bau)
+    _bubbleRefit() {
+      if (!this._g) return;
+      const s = this._lift > 0 ? 0.9 : 1;
+      for (const el of [this._el.say, this._el.think]) this._bubbleFit(el, this._x, this._g.pW, s);
     }
 
     _hearts(n) {
@@ -5510,6 +5836,8 @@
       // Unsichtbar: nur Fristen pflegen, alles andere holt der Tick beim Sichtbarwerden nach
       if (this._away()) return this._tickCoffee();
       this._renderStats();
+      // Vorrat verfällt auch ohne neue Plan-Änderung (ändert nur etwas, wenn ein Tag um ist)
+      if (this._plan) this._hayFromPlan();
       // Frischer Kaffee hält ihn kurz wach (er trinkt aus und schläft dann weiter)
       if (this._sleepTime() !== this._asleep && !['goSleep', 'wakeUp', 'coffee'].includes(this._action)) {
         this._interrupt();
@@ -5535,18 +5863,15 @@
 
     _onPet(e) {
       // Nach dem Kraulen oder Wischen kommt beim Loslassen noch ein Klick: der zählt nicht extra
-      if (Date.now() < (this._noClickUntil || 0)) return;
+      if (this._eatClick) {
+        this._eatClick = false;
+        return;
+      }
       this._add('g', GAIN.pet);
       this._petFriend();
       this._petCount();
       const p = this._el.pika;
-      if (this._asleep) {
-        p.classList.add('peek');
-        clearTimeout(this._peekT);
-        this._peekT = setTimeout(() => p.classList.remove('peek'), 1300);
-        this._hearts(1);
-        return;
-      }
+      if (this._asleep) return this._sleepTouch('tap');
       // Mehrmals hintereinander: Combo (innerhalb von 6 s)
       const now = Date.now();
       this._combo = (this._combo || []).filter((t) => now - t < 6000);
@@ -5556,8 +5881,7 @@
       if (this._petFree()) {
         this._petReq = { zone: this._petZone(e), n, from: this._action };
         if (n >= 11) this._combo = [];
-        this._next = 'petReact';
-        this._interrupt();
+        this._touchNext('petReact');
         return;
       }
       this._happy();
@@ -5575,10 +5899,41 @@
 
     // ---------- Streicheln: Zonen, Combo, Kraulen, Wischen ----------
 
-    // Darf Streicheln eine eigene Reaktion starten? Nur bei Kleinigkeiten, draußen auf der Wiese.
+    // Darf Streicheln eine eigene Reaktion starten? Nur bei Kleinigkeiten, draußen auf der Wiese, und nicht, wenn
+    // schon etwas anderes ansteht (Häufchen, Vorschau-Knopf): das bliebe sonst liegen
     _petFree() {
-      return this._running && !!this._g && !this._inside && !(this._lift > 0) && !this._asleep
-        && (this._action == null || PET_FREE.has(this._action));
+      return this._running && !!this._g && !this._inside && !(this._lift > 0) && !this._asleep && !this._giftCarry
+        && (this._action == null || PET_FREE.has(this._action)) && (!this._next || TOUCH_NEXT.has(this._next));
+    }
+
+    // Reaktion auf eine Berührung als nächste Aktion (mit Zeitstempel, siehe TOUCH_TTL)
+    _touchNext(name) {
+      this._next = name;
+      this._nextAt = Date.now();
+      this._interrupt();
+    }
+
+    // Im Schlaf gestreichelt, gekrault oder übers Fell gestrichen: ein Auge auf, Herzchen, manchmal „mmh…“.
+    // Viermal in 6 s: „noch fünf Minuten…“, und er dreht sich auf die andere Seite.
+    _sleepTouch(kind) {
+      const p = this._el.pika;
+      const now = Date.now();
+      this._zzCombo = (this._zzCombo || []).filter((t) => now - t < 6000);
+      this._zzCombo.push(now);
+      clearTimeout(this._peekT);
+      if (this._zzCombo.length >= 4) {
+        this._zzCombo = [];
+        p.classList.remove('peek');
+        this._say('noch fünf Minuten…', 2200);
+        this._face(-this._dir);
+        this._cls('stw', 550, true);
+        return;
+      }
+      p.classList.add('peek');
+      this._peekT = setTimeout(() => p.classList.remove('peek'), kind === 'kraul' ? 2400 : 1300);
+      this._hearts(1);
+      if (kind !== 'tap' || Math.random() < 0.3) this._say(pick(['mmh…', 'mip…', 'mmmh…']), 1400);
+      if (kind === 'kraul') this._cls('content', 2600);
     }
 
     // Wo wurde er angetippt? In Koordinaten der Pika-Grafik (120 × 100, Blick nach rechts)
@@ -5590,9 +5945,13 @@
       const y = ((e.clientY - r.top) / r.height) * 100;
       if (this._dir < 0) x = 120 - x;
       const d = (ax, ay) => Math.hypot(x - ax, y - ay);
-      if (d(91, 53) < 9) return 'nose';
-      if (d(75, 24) < 11.5) return 'ear-l';
-      if (d(101, 25) < 11.5) return 'ear-r';
+      // Auf kleinen Karten (Handy) wären Nase und Ohren nur 13–16 px groß: Ohren mindestens 14 px Radius, die Nase
+      // (zuerst geprüft) 10 px, sonst schluckte sie auf dem Handy den ganzen Kopf
+      const m = (20 / r.width) * 120;
+      if (d(91, 53) < Math.max(9, m * 0.5)) return 'nose';
+      const el = d(75, 24);
+      const er = d(101, 25);
+      if (Math.min(el, er) < Math.max(11.5, m * 0.7)) return el < er ? 'ear-l' : 'ear-r';
       if (x > 62 && y < 63) return 'head';
       if (x > 62 && y >= 66) return 'belly';
       return 'body';
@@ -5711,27 +6070,38 @@
       await this._wait(1300);
     }
 
-    _pressStart(e) {
-      if (e.button > 0 || !this._g) return;
-      this._press = { x: e.clientX, y: e.clientY };
+    // el: wer den Finger festhält (sonst der Pika; die Tippfläche eines tiefen Fliegers reicht ihn durch)
+    _pressStart(e, el = this._el.pika) {
+      // Ein neuer Finger: der Klick zum letzten Drücken ist dann längst durch
+      this._eatClick = false;
+      // Nur der erste Finger zählt (ein zweiter beendete sonst das Kraulen)
+      if (e.button > 0 || e.isPrimary === false || !this._g) return;
+      this._press = { x: e.clientX, y: e.clientY, id: e.pointerId };
       try {
-        this._el.pika.setPointerCapture(e.pointerId); // beim Wischen nicht vom Pika abrutschen
+        el.setPointerCapture(e.pointerId); // beim Wischen nicht vom Pika abrutschen
       } catch (err) { /* nicht unterstützt */ }
       clearTimeout(this._pressT);
       this._pressT = setTimeout(() => {
         const P = this._press;
-        if (!P || P.swiped || !this._petFree()) return;
+        if (!P || P.swiped) return;
+        if (this._asleep) {
+          // im Schlaf gekrault: wohlig, aber er bleibt liegen
+          P.kraul = true;
+          this._add('g', GAIN.pet);
+          this._petCount();
+          return this._sleepTouch('kraul');
+        }
+        if (!this._petFree()) return;
         P.kraul = true;
         this._kraulOn = true;
         this._petFriend();
-        this._next = 'kraul';
-        this._interrupt();
+        this._touchNext('kraul');
       }, 550);
     }
 
     _pressMove(e) {
       const P = this._press;
-      if (!P || P.kraul || P.swiped || !this._g) return;
+      if (!P || P.id !== e.pointerId || P.kraul || P.swiped || !this._g) return;
       const dx = Math.abs(e.clientX - P.x);
       const dy = Math.abs(e.clientY - P.y);
       if (dx > this._g.pW * 0.35 && dx > dy * 1.5) {
@@ -5741,25 +6111,29 @@
       } else if (Math.hypot(dx, dy) > 12) clearTimeout(this._pressT); // bewegt: kein Kraulen
     }
 
-    _pressEnd() {
-      clearTimeout(this._pressT);
+    _pressEnd(e) {
       const P = this._press;
+      if (!P || (e && e.pointerId !== P.id)) return;
+      clearTimeout(this._pressT);
       this._press = null;
-      if (!P) return;
-      if (P.kraul || P.swiped) this._noClickUntil = Date.now() + 450;
+      // Der Klick beim Loslassen gehört zum Kraulen bzw. Wischen: den nächsten verschlucken. Bleibt er aus (Touch
+      // nach Bewegung), räumt der nächste Druck bzw. die Frist den Merker weg.
+      if (P.kraul || P.swiped) {
+        this._eatClick = true;
+        clearTimeout(this._eatClickT);
+        this._eatClickT = setTimeout(() => (this._eatClick = false), 2000);
+      }
       if (P.kraul) this._kraulOn = false;
     }
 
     // Über das Fell gestrichen: es plustert sich auf und legt sich wieder
     _onStroke() {
-      if (this._asleep) return;
       this._add('g', GAIN.pet);
       this._petCount();
+      if (this._asleep) return this._sleepTouch('stroke');
       this._blush(2000);
-      if (this._petFree()) {
-        this._next = 'stroke';
-        this._interrupt();
-      } else this._cls('fluffy', 850, true);
+      if (this._petFree()) this._touchNext('stroke');
+      else this._cls('fluffy', 850, true);
     }
 
     async _stroke() {
@@ -5803,7 +6177,7 @@
 
     // Stand des heutigen Pika-Tags aus dem Tagesplan (mit plan_entity auf allen Geräten gleich): n gestreichelt, m Erlebnisse
     _cuteToday() {
-      const d = pikaDay(Date.now());
+      const d = pikaDay(this._haNow());
       const c = this._plan?.cute;
       return c?.d === d ? c : { d, n: 0, m: 0 };
     }
@@ -5898,7 +6272,7 @@
         [this._hicDue ? 8 : 0, 'hiccup'],
         [wx.wet ? 0 : h >= 13 && h < 16 ? 0.08 : 0.02, 'nod'],
         [bfly ? 0.14 : 0, 'butterfly'],
-        [dry && g > 85 && s > 40 && !this._fr ? 0.08 : 0, 'zoomies'],
+        [dry && g > 85 && s > 40 && !this._fr && !calmMotion() ? 0.08 : 0, 'zoomies'], // Bewegung reduzieren: nie
         [gift ? 0.15 : 0, 'gift'],
       ];
     }
@@ -6131,7 +6505,7 @@
       this._jump('binky');
       await this._wait(900);
       const lo = Math.max(home, pW * 0.5);
-      const hi = this._W - pW * 0.5;
+      const hi = this._g.xR; // links der Knöpfe
       const legs = 3 + Math.floor(rnd(0, 2));
       for (let i = 0; i < legs; i++) {
         const mid = (lo + hi) / 2;
@@ -6151,21 +6525,42 @@
     async _gift() {
       const f = this._nearestFlower();
       if (!f || this._giftEl) return;
-      this._giftAt = Date.now();
       const p = this._el.pika;
-      const { pW, pH, gy } = this._g;
+      const { pW } = this._g;
       await this._approach(f.xf * this._W);
       this._pickFlower(f);
       this._mouth(f.color);
       p.classList.add('carry');
-      await this._walkTo(clamp(this._W * rnd(0.4, 0.6), pW, this._W - pW));
-      p.classList.remove('carry');
-      this._mouth(null);
+      // Unterwegs bricht Streicheln das Geschenk nicht ab (_petFree). Alles andere (Futter, Schlaf, Plan): dann legt er
+      // die Blüte eben dort ab, wo er gerade ist, statt dass sie verschwindet
+      this._giftCarry = true;
+      try {
+        await this._walkTo(clamp(this._W * rnd(0.4, 0.6), pW, this._W - pW));
+      } finally {
+        this._giftCarry = false;
+        p.classList.remove('carry');
+        this._mouth(null);
+        this._flowerGiftDrop(f.color);
+      }
+      this._say(pick(['für dich!', 'für dich ♥', 'hier!']), 1800, true);
+      this._blush(3000);
+      p.classList.add('happy');
+      this._jump('hop1');
+      await this._wait(1500);
+      p.classList.remove('happy');
+      p.classList.add('tilt');
+      await this._wait(1600);
+    }
+
+    // Blüte mit Schleife vor ihm ins Gras legen; erst jetzt zählen die 90 Minuten bis zum nächsten Geschenk
+    _flowerGiftDrop(color) {
+      this._giftAt = Date.now();
       const el = document.createElement('div');
       el.className = 'pgift';
-      el.innerHTML = GIFT_SVG(f.color);
-      el.style.left = `${this._x + this._dir * pW * 0.45}px`;
-      el.style.top = `${gy - pH * 0.17}px`;
+      el.innerHTML = GIFT_SVG(color);
+      const x = this._liveX() + this._dir * this._g.pW * 0.45;
+      el._xf = clamp(x, this._g.pH * 0.3, this._W - this._g.pH * 0.3) / this._W; // relativ: bei Größenänderung mitwandern
+      this._flowerGiftPlace(el);
       el.addEventListener('click', (e) => (e.stopPropagation(), this._takeGift()));
       this._el.fx.appendChild(el);
       this._giftEl = el;
@@ -6177,14 +6572,12 @@
         el.classList.add('wilt');
         setTimeout(() => el.remove(), 4200);
       }, 12 * 6e4);
-      this._say(pick(['für dich!', 'für dich ♥', 'hier!']), 1800);
-      this._blush(3000);
-      p.classList.add('happy');
-      this._jump('hop1');
-      await this._wait(1500);
-      p.classList.remove('happy');
-      p.classList.add('tilt');
-      await this._wait(1600);
+    }
+
+    _flowerGiftPlace(el) {
+      const { pH, gy } = this._g;
+      el.style.left = `${(el._xf * this._W).toFixed(1)}px`;
+      el.style.top = `${(gy - pH * 0.17).toFixed(1)}px`;
     }
 
     _takeGift() {
@@ -6224,7 +6617,7 @@
       await this._wait(600);
       await this._walkTo(this._W * 0.5, 1.8);
       p.classList.add('waving');
-      this._say(pick(['Da bist du ja endlich!', 'Du warst lange weg!', 'Juhuu, du bist da!']), 2200);
+      this._say(pick(['Da bist du ja endlich!', 'Du warst lange weg!', 'Juhuu, du bist da!']), 2200, true);
       this._blush(4500);
       await this._wait(1800);
       p.classList.remove('waving');
@@ -6251,7 +6644,7 @@
     _dreamSvg() {
       const opts = [[1, 'lz'], [1, 'heart'], [0.6, 'klee']];
       const c = this._plan?.cute;
-      if (c && c.d >= pikaDay(Date.now()) - 1) MEM_BITS.forEach((k, i) => c.m & (1 << i) && opts.push([3, k]));
+      if (c && c.d >= pikaDay(this._haNow()) - 1) MEM_BITS.forEach((k, i) => c.m & (1 << i) && opts.push([3, k]));
       return DREAM[weighted(opts)];
     }
 
@@ -6326,22 +6719,28 @@
     }
 
     _onLookAt(e) {
-      if (this._asleep || !this._g || this._action === 'eatFood') return;
+      const p = this._el.pika;
+      // Im Bau (auch beim Fernsehen, Rückansicht) schaut er nicht herum
+      if (this._asleep || !this._g || this._action === 'eatFood' || this._inside || p.classList.contains('tv')) return;
       const sr = this._el.scene.getBoundingClientRect();
       const x = e.clientX - sr.left;
       const c = Math.sign(x - this._liveX()) === this._dir ? 'look-f' : 'look-b';
-      const p = this._el.pika;
-      p.classList.remove('look-f', 'look-b', 'look-up');
-      p.classList.add(c);
+      // Nur den eigenen Blick vom letzten Tipp ersetzen; schaut er gerade für seine Aktion (Vögelchen, Hunger,
+      // Bild betrachten), bleibt der Blick dort
       clearTimeout(this._lookT);
-      this._lookT = setTimeout(() => p.classList.remove(c), 1500);
+      if (this._lookC) p.classList.remove(this._lookC);
+      this._lookC = null;
+      if (!['look-f', 'look-b', 'look-up'].some((k) => p.classList.contains(k))) {
+        p.classList.add(c);
+        this._lookC = c;
+        this._lookT = setTimeout(() => (p.classList.remove(c), (this._lookC = null)), 1500);
+      }
       // Heute oft gestreichelt: auf die Wiese getippt, hoppelt er gern hin. Sonst legt er manchmal den Kopf schief.
       const meadow = e.clientY - sr.top > this._g.gy - this._H * 0.3;
       if (meadow && this._clingy() && this._petFree() && Math.random() < 0.6) {
         this._comeX = clamp(x, this._g.pW * 0.5, this._W - this._g.pW * 0.5);
-        this._next = 'comeHere';
-        this._interrupt();
-      } else if (!this._inside && Math.random() < 0.35) {
+        this._touchNext('comeHere');
+      } else if (!p.classList.contains('tilt') && Math.random() < 0.35) {
         this._cls('tilt', 1400);
         if (Math.random() < 0.5) this._emote('q', 1400);
       }
@@ -6397,7 +6796,7 @@
     // Vorrat aus dem Tagesplan zeigen; wippt, wenn ein Bündel dazukam
     _hayFromPlan() {
       if (!this._el) return;
-      const { n, c } = hayNow(this._plan.hay, Date.now());
+      const { n, c } = hayNow(this._plan.hay, this._haNow());
       const pal = this._areal().flowers || FLOWER_COLORS;
       const key = `${n}|${c}|${this._arealKey}`;
       if (key === this._hayKey) return;
@@ -6505,15 +6904,27 @@
       if (this._away() || !this._g) return;
       // Halloween-Nacht: ab und zu flattert eine Fledermaus über den Himmel
       if (f.witch && this._festDark() && Math.random() < 0.35) this._festBat();
-      // Karneval: alle paar Minuten kurz Konfetti
+      // Karneval: alle paar Minuten kurz Konfetti, aber nur, wenn er wach ist, es hell und trocken ist (nachts
+      // sähe es keiner, im Regen passt es nicht; fällig gebliebenes kommt, sobald es wieder passt)
+      const party = !this._asleep && !this._festDark() && !this._wx.wet;
       if (f.karneval) {
         const t = Date.now();
         this._festCfNext ??= t + rnd(5, 30) * 1000;
-        if (t >= this._festCfNext) {
+        if (t >= this._festCfNext && party) {
           this._festConfettiRain();
           this._festCfNext = t + rnd(2, 5) * 60000;
         }
       } else this._festCfNext = null;
+      // 11. 11. um 11:11: Auftakt der Karnevalszeit, einmal kurz Konfetti und „Helau!“ (der 20-s-Takt trifft das
+      // Fenster bis 11:13 sicher)
+      if (this._cfg?.festive !== false && now.getMonth() === 10 && now.getDate() === 11 && now.getHours() === 11
+        && now.getMinutes() >= 11 && now.getMinutes() < 14 && this._festKickY !== now.getFullYear() && party && !this._wx.shelter) {
+        this._festKickY = now.getFullYear();
+        if (this._inside || this._lift > 0) {
+          this._festConfettiRain();
+          this._say('Helau!', 1500);
+        } else this._festForce('festConfetti');
+      }
       // Maibaum: Bänder drehen mit dem Wind
       const mai = this._festEls?.back.querySelector('.fmai');
       if (mai) mai.style.setProperty('--wd', this._windDir < 0 ? -1 : 1);
@@ -6592,20 +7003,19 @@
         if ((md === 430 && h >= 18) || md === 501) f.maibaum = true;
         if (md === 621) f.sommer = true;
       }
-      // Geburtstage "MM-DD" (auch "YYYY-MM-DD" oder "TT.MM."); der 29. 2. wird sonst am 28. 2. gefeiert.
-      // Ohne Anführungszeichen macht YAML daraus andere Typen: 14.10 → Zahl 14.1 (als TT.MM mit zwei Stellen
-      // lesen), 1990-03-14 → Date-Objekt bzw. "1990-03-14T00:00:00.000Z" (Tag aus dem Datumsteil, UTC)
+      // Geburtstage: der 29. 2. wird sonst am 28. 2. gefeiert. Lesen: festBirthdate (unbekannt: einmal warnen)
       const leap = new Date(y, 1, 29).getMonth() === 1;
       const names = (Array.isArray(this._cfg?.birthdays) ? this._cfg.birthdays : []).filter((b) => {
-        const v = b?.date;
-        const s = v instanceof Date ? (isNaN(v) ? '' : `${v.getUTCMonth() + 1}-${v.getUTCDate()}`)
-          : typeof v === 'number' ? v.toFixed(2) : String(v ?? '').trim();
-        let m = s.match(/^(?:\d{4}-)?(\d{1,2})-(\d{1,2})(?:[T ][\d:.]+(?:Z|[+-]\d{2}:?\d{2})?)?$/i);
-        let bm;
-        let bd;
-        if (m) [bm, bd] = [Number(m[1]), Number(m[2])];
-        else if ((m = s.match(/^(\d{1,2})\.(\d{1,2})\.?$/))) [bd, bm] = [Number(m[1]), Number(m[2])];
-        else return false;
+        const md2 = festBirthdate(b?.date);
+        if (!md2) {
+          const k = `${b?.name}|${b?.date}`;
+          if (!(this._festWarned ||= new Set()).has(k)) {
+            this._festWarned.add(k);
+            console.warn(`pika-pet-card: Geburtstag ${b?.name ?? '?'}: Datum "${b?.date}" nicht erkannt (MM-TT, JJJJ-MM-TT, TT.MM. oder TT.MM.JJJJ)`);
+          }
+          return false;
+        }
+        let [bm, bd] = md2;
         if (bm === 2 && bd === 29 && !leap) bd = 28;
         return bm === mo && bd === d;
       }).map((b) => String(b.name || '').trim()).filter(Boolean);
@@ -6700,13 +7110,15 @@
         const [x, w2] = fit(slot(...prefs), w);
         front.push(item(cls, x, bottom, w2, art, name));
       };
-      // Bodendeko zuerst auf die Wiese zwischen Heu bzw. Nische und Stein: vorn links stehen die Haus-Bote-Geräte
-      // (an Weihnachten steht dort der Baum)
-      const P = f.xmas ? ['R', 'L', 'M'] : ['M', 'R', 'L'];
-      if (f.halloween) ground('fpump', P, gy + 1, H * 0.14, FEST_PUMPKIN, 'pumpkin');
-      if (f.boot) ground('fboot', P, gy + 1, H * 0.11, FEST_BOOT(f.boot.full), 'boot');
-      if (f.advent) ground('fwreath', P, gy, H * 0.2, FEST_WREATH(f.advent.candles), 'wreath');
-      if (f.birthday) ground(`fcake${this._festCakeOut ? ' out' : ''}`, P, gy + 1, H * 0.14, FEST_CAKE, 'cake');
+      // Jede Bodendeko hat ihren festen Platz, damit sie nicht von Tag zu Tag woandershin wandert: Kürbis und
+      // Stiefel vor dem Stein (M, an Weihnachten steht dort der Baum), Adventskranz vor dem Bau rechts neben der
+      // Tür (R). Der Kuchen steht ebenfalls dort, im Advent links neben der Tür (L; vorn links stehen sonst die
+      // Haus-Bote-Geräte, die ihm ausweichen).
+      if (f.xmas) used.add('M');
+      if (f.halloween) ground('fpump', ['M', 'R', 'L'], gy + 1, H * 0.14, FEST_PUMPKIN, 'pumpkin');
+      if (f.boot) ground('fboot', ['M', 'R', 'L'], gy + 1, H * 0.11, FEST_BOOT(f.boot.full), 'boot');
+      if (f.advent) ground('fwreath', ['R', 'L', 'M'], gy, H * 0.2, FEST_WREATH(f.advent.candles), 'wreath');
+      if (f.birthday) ground(`fcake${this._festCakeOut ? ' out' : ''}`, ['R', 'L', 'M'], gy + 1, H * 0.14, FEST_CAKE, 'cake');
       if (f.lights) on.push(onBur('flights', FEST_LIGHTS(edge)));
       if (f.karneval) on.push(onBur('fstream', FEST_STREAMERS(edge)));
       if (f.martin) {
@@ -6720,7 +7132,6 @@
           + `${festSvg(FEST_LANTERN.vb, FEST_LANTERN.b, 'b')}${festSvg(FEST_LANTERN.vb, FEST_LANTERN.g, 'g')}</div>`);
       }
       if (f.xmas) {
-        used.add('M');
         const tw = (H * 0.42 * 50) / 66;
         back.push(item('ftree', slots.M.x, gy + 2, tw, FEST_TREE, 'tree'));
         // Geschenk vorn unter dem Baum, nicht vor dem Heu
@@ -6737,18 +7148,34 @@
           + `--wd:${this._windDir < 0 ? -1 : 1}">${festSvg(FEST_MAI.vb, FEST_MAI.b, 'b')}</div>`);
       }
       if (f.birthday || f.sommer) back.push(this._festString(f.birthday ? ['A', 'L', 'L', 'E', 'S', '♥', 'G', 'U', 'T', 'E'] : null));
-      // Wiese für Eier und Raketenstäbe: rechts neben der Tür bis vor den Futterknopf, rechts von dem, was
-      // schon neben der Tür steht (Kuchen an Ostern oder Neujahr)
-      let lo = hole.r + H * 0.12;
-      for (const p of Object.values(pos)) if (p.x < lo + H * 0.15) lo = Math.max(lo, p.l + p.w + H * 0.02);
+      // Wiese für Eier und Raketenstäbe: rechts neben der Tür bis vor den Futterknopf, ohne die Stellen, an
+      // denen schon Deko steht (Kuchen, Geschenk …). free(u, m): Stelle u ∈ [0, 1] entlang der freien Strecke,
+      // m = halbe Breite des Teils plus Abstand. Ist alles belegt, gilt die ganze Strecke (lieber eng als gar nicht).
+      const lo = hole.r + H * 0.12;
       const hi = Math.max(lo + H * 0.3, Math.min(W - 64, rock.l + rock.w * 0.75));
+      const taken = Object.values(pos);
+      const free = (u, m) => {
+        let segs = [[lo, hi]];
+        for (const p of taken) {
+          const a = p.l - m;
+          const b = p.l + p.w + m;
+          segs = segs.flatMap(([s, e]) => (b <= s || a >= e ? [[s, e]] : [[s, a], [b, e]].filter(([s2, e2]) => e2 - s2 > 1)));
+        }
+        const len = segs.reduce((t, [s, e]) => t + e - s, 0);
+        if (!len) return lo + (hi - lo) * u;
+        let k = u * len;
+        for (const [s, e] of segs) {
+          if (k <= e - s) return s + k;
+          k -= e - s;
+        }
+        return hi;
+      };
       const eggX = [];
       if (f.ostern) {
         const n = 4 + Math.floor(seeded(f.year, 7) * 3);
-        const seg = (hi - lo) / n;
         for (let i = 0; i < n; i++) {
           const r = (k) => seeded(f.year, i, k);
-          const x = lo + seg * (i + 0.2 + 0.6 * r(1));
+          const x = free((i + 0.2 + 0.6 * r(1)) / n, H * 0.05);
           const c1 = FEST_COLORS[Math.floor(r(2) * FEST_COLORS.length)];
           let c2 = FEST_COLORS[Math.floor(r(3) * FEST_COLORS.length)];
           if (c2 === c1) c2 = '#fff';
@@ -6764,7 +7191,7 @@
       }
       if (f.sticks) {
         [[0.3, -6], [0.68, 9]].forEach(([t, rot], i) => {
-          const x = lo + (hi - lo) * (t + (seeded(f.year, 31, i) - 0.5) * 0.1);
+          const x = free(t + (seeded(f.year, 31, i) - 0.5) * 0.1, H * 0.12);
           front.push(item('fstick', x, gy - H * 0.018, H * 0.2, FEST_STICK, `stick${i}`, `;rotate:${rot}deg`));
         });
       }
@@ -6834,7 +7261,8 @@
 
     _festBat() {
       const sky = this._festEls?.sky;
-      if (!sky || !this._g) return;
+      // Bewegung reduzieren: keine Fledermäuse
+      if (!sky || !this._g || calmMotion()) return;
       const W = this._W;
       const H = this._H;
       const el = document.createElement('div');
@@ -6861,7 +7289,7 @@
       if (on && !this._festFwT) {
         const go = () => {
           this._festRocket();
-          this._festFwT = setTimeout(go, rnd(3000, 8000));
+          this._festFwT = setTimeout(go, calmMotion() ? rnd(9000, 16000) : rnd(3000, 8000));
         };
         this._festFwT = setTimeout(go, rnd(400, 1500));
       } else if (!on && this._festFwT) {
@@ -6870,10 +7298,11 @@
       }
     }
 
+    // Finale: 10 Raketen in etwa 6 s (gleichzeitig höchstens vier, fünf Kugeln); Bewegung reduzieren: drei
     _festFinale() {
       let t = 0;
-      for (let i = 0; i < 14; i++) {
-        t += rnd(250, 750);
+      for (let i = 0, n = calmMotion() ? 3 : 10; i < n; i++) {
+        t += rnd(400, 900);
         this._festLater(() => this._festRocket(), t);
       }
     }
@@ -6892,7 +7321,8 @@
       r.style.left = `${festF1(x0)}px`;
       r.style.top = `${festF1(y0)}px`;
       sky.appendChild(r);
-      const ang = (Math.atan2(x0 - x1, y0 - y1) * 180) / Math.PI;
+      // Schweif (zeigt im Element nach unten) entgegen der Flugrichtung: nach rechts oben → Schweif nach links unten
+      const ang = (Math.atan2(x1 - x0, y0 - y1) * 180) / Math.PI;
       const dur = rnd(900, 1400);
       r.animate([
         { transform: `translate(0, 0) rotate(${festF1(ang)}deg)`, opacity: 1 },
@@ -6906,8 +7336,10 @@
 
     _festBurst(x, y) {
       const sky = this._festEls?.sky;
-      if (!sky) return;
+      // Unsichtbar geworden, während die Rakete noch stieg: keine Kugel mehr ins Leere
+      if (!sky || this._away()) return;
       const H = this._H;
+      const calm = calmMotion();
       const c = pick(FEST_FW_COLORS);
       const c2 = Math.random() < 0.4 ? pick(FEST_FW_COLORS) : c;
       const R = H * rnd(0.09, 0.15);
@@ -6919,7 +7351,9 @@
       const core = document.createElement('i');
       core.className = 'fwc';
       box.appendChild(core);
-      const n = 14 + Math.floor(rnd(0, 6));
+      // Sternchen und Funken (leuchten über einen Verlauf statt box-shadow, das spart dem Tablet das Weichzeichnen);
+      // Bewegung reduzieren: nur das sanfte Aufleuchten in der Mitte
+      const n = calm ? 0 : 11 + Math.floor(rnd(0, 4));
       for (let i = 0; i < n; i++) {
         const a = (i / n) * Math.PI * 2 + rnd(-0.1, 0.1);
         const d = R * rnd(0.85, 1.1);
@@ -6934,7 +7368,7 @@
         ], { duration: rnd(1300, 1700), easing: 'cubic-bezier(.15, .7, .35, 1)', fill: 'forwards' });
       }
       // Funken glitzern und rieseln langsam herunter
-      for (let i = 0; i < 10; i++) {
+      for (let i = 0; i < (calm ? 0 : 6); i++) {
         const a = rnd(0, Math.PI * 2);
         const d = R * rnd(0.3, 0.9);
         const s = document.createElement('i');
@@ -6959,6 +7393,8 @@
       void L.offsetWidth;
       L.classList.add('go');
       this._festBang?.();
+      // Vom Knall erschreckt: ein Vögelchen, das gerade sitzt, fliegt davon
+      if (this._bird?.sitting) this._bird.scare();
     }
 
     _festConfettiRain() {
@@ -6967,7 +7403,9 @@
       const { gy } = this._g;
       const W = this._W;
       const H = this._H;
-      for (let i = 0; i < 46; i++) {
+      // Bewegung reduzieren: nur ein paar Schnipsel, die ohne Drehen langsam herabsinken
+      const calm = calmMotion();
+      for (let i = 0; i < (calm ? 8 : 46); i++) {
         const c = document.createElement('i');
         const w = H * rnd(0.014, 0.022);
         c.style.left = `${rnd(-2, 100).toFixed(1)}%`;
@@ -6977,9 +7415,12 @@
         c.style.background = pick(FEST_COLORS);
         box.appendChild(c);
         const dx = rnd(-0.06, 0.06) * W;
-        const dur = rnd(2600, 4200);
+        const dur = calm ? rnd(6000, 8000) : rnd(2600, 4200);
         const delay = rnd(0, 1600);
-        c.animate([
+        c.animate(calm ? [
+          { transform: 'translate(0, -14px)' },
+          { transform: `translate(${festF1(dx * 0.3)}px, ${festF1(gy + 6)}px)` },
+        ] : [
           { transform: 'translate(0, -14px) rotate(0deg) rotateY(0deg)' },
           { transform: `translate(${festF1(dx * 0.4 + rnd(-10, 10))}px, ${festF1(gy * 0.45)}px) rotate(${rnd(90, 300).toFixed(0)}deg) rotateY(180deg)`, offset: 0.45 },
           { transform: `translate(${festF1(dx)}px, ${festF1(gy + 6)}px) rotate(${rnd(300, 700).toFixed(0)}deg) rotateY(360deg)` },
@@ -7129,13 +7570,20 @@
       this._festMark('festFireworks');
       const p = this._el.pika;
       const sleeping = this._asleep && this._inside;
+      // Bei Starkregen und Gewitter bleibt er auch wach im Bau und schaut nur heraus (wie im Schlaf); steht er
+      // dabei draußen, schaut er von dort aus zu, statt zur Wiese zu laufen
+      const storm = !!this._wx.shelter;
+      const peek = sleeping || (storm && this._inside);
       this._festBang = () => this._festZuck();
       try {
-        if (sleeping) {
+        if (peek) {
           p.classList.remove('sleeping');
           await this._to('peek', 900);
           this._say('!', 900);
           await this._wait(900);
+        } else if (storm) {
+          if (this._lift > 0) await this._hopDown();
+          this._face(1);
         } else {
           if (this._lift > 0) await this._hopDown();
           if (this._inside) await this._comeOut();
@@ -7156,7 +7604,7 @@
           else if (r < 0.4 && again && ny()) {
             again = false;
             this._say('Frohes Neues!', 2200);
-          } else if (r < 0.55 && !sleeping) this._face(-this._dir);
+          } else if (r < 0.55 && !peek) this._face(-this._dir);
         }
         p.classList.remove('look-up');
         this._happy(1400);
@@ -7258,9 +7706,9 @@
       plan('mouse', this._critLast.mouse);
     }
 
-    // Uhr der Besuche: echte Zeit (Vorschau: um _dbgShiftMs vorgestellt). Nicht _dbgDate, das steht fest.
+    // Uhr der Besuche: Uhr von HA (Vorschau: um _dbgShiftMs vorgestellt). Nicht _dbgDate, das steht fest.
     _visitNow() {
-      return Date.now() + this._dbgShiftMs;
+      return this._haNow() + this._dbgShiftMs;
     }
 
     // Nächster Besuch von kind (bird, mouse), der höchstens CRIT_LATE her ist und nach after liegt:
@@ -7696,6 +8144,10 @@
       const fr = this._fr;
       if (!fr || !fr.arrived || fr.leaving) return [];
       if (!fr.greeted) return [[80, 'greetFriend']];
+      // In den letzten 10 s des Besuchs kein neues Spiel mehr: sonst hängte der Pika ein Spiel ans andere, Pinos
+      // Ablauf (prüft fr.until nur zwischen den Spielen) käme nicht zum Gehen, und jedes Gerät verabschiedete
+      // ihn zu einer anderen Zeit
+      if (Date.now() >= fr.until - 10000) return [];
       // Zusammen zählen sie etwas mehr als alles andere, und die Spiele dauern länger: so verbringt
       // der Pika die meiste Zeit mit Pino, macht aber auch mal Eigenes
       const wet = ctx.wx.wet;
@@ -8134,6 +8586,7 @@
         s.transform = `translate(${(x - (this._g.pW * FRIEND_SCALE) / 2).toFixed(1)}px, ${(-lift).toFixed(1)}px)`;
       }
       if (!(ms > 0)) void fr.el.offsetWidth;
+      this._bubbleFit(fr.say, x, this._g.pW * FRIEND_SCALE);
     }
 
     // Wo Pino gerade wirklich steht (beim Hoppeln ist fr.x schon das Ziel)
@@ -8156,9 +8609,11 @@
       fr.dir = dir;
       fr.el.classList.toggle('left', dir < 0);
       fr.sw.classList.toggle('left', dir < 0);
+      this._bubbleFit(fr.say, fr.x, this._g.pW * FRIEND_SCALE);
     }
 
     _frJump(fr, kind) {
+      if (kind === 'binky' && calmMotion()) kind = 'hop1';
       const j = fr.jump;
       j.classList.remove('hop1', 'binky');
       void j.offsetWidth;
@@ -8656,8 +9111,25 @@
 
     _raw(k) {
       if (!this._stats) return 70;
-      const v = this._stats[k] - ((Date.now() - this._stats[k + 't']) / 3.6e6) * RATE[k];
-      return clamp(v, 0, 100);
+      const t = this._stats[k + 't'];
+      const now = this._haNow();
+      // Wird oft gefragt (Balken, Auswahl der Aktionen): je Sekunde einmal rechnen
+      const key = `${t}|${Math.floor(now / 1000)}|${this._wdSig}`;
+      const M = (this._rawM ??= {});
+      if (M[k]?.key !== key) M[k] = { key, h: this._decayH(t, now) };
+      return clamp(this._stats[k] - M[k].h * RATE[k], 0, 100);
+    }
+
+    // Abbau-Stunden zwischen t1 und t2: wach voll, im Schlaf SLEEP_DECAY (Wachfenster wie bei Schlafenszeit und Häufchen)
+    _decayH(t1, t2) {
+      if (!(t2 > t1)) return (t2 - t1) / 3.6e6; // Stand aus der Zukunft (Uhr): gleichmäßig
+      const aw = this._awakeMs(t1, t2);
+      return (aw + SLEEP_DECAY * (t2 - t1 - aw)) / 3.6e6;
+    }
+
+    // Umkehrung: wann ab t h Abbau-Stunden vergangen sind (wann ein Wert unter eine Grenze fällt)
+    _decayAt(t, h) {
+      return this._awakeAdd(t, h * 3.6e6, SLEEP_DECAY);
     }
 
     // Glück ist durch Schmutz gedeckelt: bei 0 % sauber höchstens 60 %. Streicheln zählt trotzdem
@@ -8673,12 +9145,13 @@
       if (room > 0) this._add('s', Math.min(d, room), true);
     }
 
-    // self: selbst gefressen. Alles andere kommt von dir (füttern, streicheln, putzen, Päckchen) und zählt für die Pflege.
+    // self: zählt nicht als Pflege (selbst gefressen, Inhalt eines Päckchens). Füttern, Streicheln, Putzen kommen von dir
+    // und zählen: Ist danach alles wieder über GIFT.min, endet die Lücke in der Pflege-Serie.
     _add(k, d, self = false) {
       this._careEval(); // vorher: lag schon etwas unter GIFT.min, steht es damit fest
-      if (!this._stats) this._stats = freshStats();
+      if (!this._stats) this._stats = freshStats(this._haNow());
       this._stats[k] = clamp(this._raw(k) + d, 0, 100);
-      this._stats[k + 't'] = Date.now();
+      this._stats[k + 't'] = this._haNow();
       this._gain[k] += d; // noch nicht gesendet (für das Zusammenführen mit fremden Ständen)
       this._renderStats();
       this._save();
@@ -8696,19 +9169,38 @@
       return g;
     }
 
-    // Ein Schreiben ging verloren (Fehler, keine Bestätigung): seinen Gewinn zurücknehmen und neu senden
+    // Ein Schreiben ging verloren (Fehler, keine Bestätigung): seinen Gewinn zurücknehmen und neu senden. Gemerkt
+    // (30 Min), falls sein Echo doch noch kommt (siehe set hass).
     _sentLost(e) {
       const i = this._sent.indexOf(e);
       if (i < 0) return;
       this._sent.splice(i, 1);
+      const now = Date.now();
+      this._lostW = [...(this._lostW || []).filter((l) => now - l.at < 30 * 6e4), { v: e.v, gain: e.gain, at: now }].slice(-8);
       this._gain.s += e.gain.s;
       this._gain.g += e.gain.g;
       this._gain.c ||= e.gain.c;
       this._save();
     }
 
+    // Gewinn g ist doch schon in HA: aus dem Ungesendeten und den unbestätigten Schreiben (neueste zuerst) nehmen
+    _gainSub(g) {
+      for (const k of ['s', 'g']) {
+        let r = g[k];
+        for (const o of [this._gain, ...this._sent.map((e) => e.gain).reverse()]) {
+          if (!(r > 0)) break;
+          const d = Math.min(r, o[k]);
+          if (d > 0) {
+            o[k] -= d;
+            r -= d;
+          }
+        }
+      }
+    }
+
     _save() {
       this._pendingWrite = true;
+      this._saveWait = false;
       clearTimeout(this._saveT);
       this._saveT = setTimeout(() => {
         const v = serialize(this._stats);
@@ -8716,32 +9208,55 @@
           // Stand aus HA noch nicht da (Start, unavailable): warten, beim Eintreffen wird zusammengeführt
           if (!this._synced || !this._hass) return;
           const id = this._cfg.entity;
+          const st = this._hass.states[id]?.state;
+          // Getrennt oder Helfer gerade nicht erreichbar: nicht ins Leere senden (es käme nie ein Echo). Bleibt
+          // ungesendet und geht beim nächsten verbundenen hass bzw. zusammengeführt mit dem wiederkehrenden Stand hinaus.
+          // ("unknown" ist ein frisch angelegter, leerer Helfer: _synced kommt dort erst nach 20 s, dann beschreiben)
+          if (this._hass.connected === false || st === 'unavailable') {
+            this._saveWait = true;
+            return;
+          }
           // Derselbe Wert ändert in HA nichts (es käme kein Echo): nicht senden
-          if (this._hass.states[id]?.state !== v) {
-            const e = { v, gain: this._gain, at: Date.now() };
+          if (st !== v) {
+            const e = { v, gain: this._gain, at: Date.now(), n: this._hassN };
             this._sent.push(e);
             if (this._sent.length > 8) this._sent.shift();
             this._hass
               .callService('input_text', 'set_value', { entity_id: id, value: v })
               .catch((err) => {
                 console.warn('pika-pet-card: Speichern fehlgeschlagen, neuer Versuch', err);
-                setTimeout(() => this._sentLost(e), 5000);
+                // mit wachsender Pause (5 s, 10 s … höchstens 5 Min): lehnt HA den Wert ab, nicht alle paar Sekunden
+                this._saveFail = (this._saveFail || 0) + 1;
+                e.failed = true; // die Pause hier gilt, _sentCheck wertet es nicht vorher schon als verloren
+                setTimeout(() => this._sentLost(e), Math.min(5000 * 2 ** (this._saveFail - 1), 3e5));
               });
-            // Kein Echo nach 15 s: steht der Wert doch in HA, gilt er als angekommen, sonst neu senden
-            setTimeout(() => {
-              if (!this._sent.includes(e)) return;
-              if (this._hass?.states[id]?.state === v) this._sent.splice(this._sent.indexOf(e), 1);
-              else this._sentLost(e);
-            }, 15000);
+            this._sentCheck(e, 15000);
           }
         } else {
           try {
             localStorage.setItem(this._lsKey(), v);
           } catch (e) { /* egal */ }
+          // Helfer fehlt oder war beim Laden nicht erreichbar: Gewinne behalten, kommt er, gehen sie auf seinen Stand
+          if (this._cfg.entity) {
+            this._pendingWrite = false;
+            return;
+          }
         }
         this._gain = { s: 0, g: 0, c: false };
         this._pendingWrite = false;
       }, 1200);
+    }
+
+    // Kein Echo nach ms: Steht der Wert doch in HA, gilt er als angekommen. Verloren ist er erst, wenn seit dem Senden
+    // ein frischer, verbundener Stand von HA kam (sonst bekommt die Karte gerade gar nichts mit, z. B. in einer
+    // abgehängten Ansicht, und sendete endlos denselben Wert): dann neu senden, sonst später wieder schauen.
+    _sentCheck(e, ms) {
+      setTimeout(() => {
+        if (!this._sent.includes(e) || e.failed) return;
+        if (this._hass?.states[this._cfg.entity]?.state === e.v) return void this._sent.splice(this._sent.indexOf(e), 1);
+        if (this._hassN === e.n || this._hass?.connected === false) return this._sentCheck(e, Math.min(ms * 2, 3e5));
+        this._sentLost(e);
+      }, ms);
     }
 
     _lsKey() {
@@ -8753,7 +9268,7 @@
       try {
         parsed = parseStats(localStorage.getItem(this._lsKey()));
       } catch (e) { /* egal */ }
-      this._stats = parsed || freshStats();
+      this._stats = parsed || freshStats(this._haNow());
     }
 
     _renderStats() {
@@ -8776,7 +9291,47 @@
     // ---------- Häufchen ----------
 
     _now() {
-      return Date.now() + this._dbgShift;
+      return this._haNow() + this._dbgShift;
+    }
+
+    // ---------- Uhr von HA ----------
+    // Geräteuhren gehen oft ein paar Sekunden bis Minuten falsch (Tablet ohne Zeitabgleich). Alles, was alle Geräte
+    // gleich sehen sollen (Tagesplan, Besuche, Schlafenszeit, Zustand, Päckchen, Haus-Bote, Kaffee), läuft darum auf
+    // der Uhr von HA: Gerätezeit + geschätzter Versatz. Auch die Zeiten im Zustand (satt seit, Großputz) sind HA-Zeit,
+    // so rechnen alle Geräte aus demselben Stand dieselben Werte und dieselben Häufchen.
+    _haNow() {
+      return Date.now() + (this._clockUse || 0);
+    }
+
+    // Versatz aus den Zeitstempeln (last_updated) von Meldungen, die gerade eben ankamen: HA stempelt sie kurz vor dem
+    // Senden, lu − jetzt ist also etwas kleiner als der wahre Versatz, der größte Wert passt am besten. Er sinkt
+    // langsam (0,2 % der Zeit, 7 s je Stunde), damit eine später gestellte Geräteuhr (NTP) nicht für immer als falsch gilt. Erste
+    // Sicht und die Sekunden nach dem (Wieder-)Verbinden zählen nicht: Das sind alte Stände.
+    _clockHass(hass) {
+      const now = Date.now();
+      const conn = hass.connected !== false;
+      if (conn && !this._clkConn) this._clkSkip = now + 5000;
+      this._clkConn = conn;
+      const c = this._cfg;
+      const seen = (this._clkSeen ??= {});
+      for (const id of [c.sun_entity, c.entity, c.plan_entity, c.weather_entity, c.flight_entity]) {
+        const o = id ? hass.states[id] : undefined;
+        if (o && seen[id] && o !== seen[id] && conn && now > this._clkSkip) this._clockSample(Date.parse(o.last_updated), now);
+        if (id) seen[id] = o;
+      }
+    }
+
+    _clockSample(lu, now = Date.now()) {
+      if (!Number.isFinite(lu)) return;
+      const prev = this._clockOff;
+      this._clockOff = prev == null ? lu - now : Math.max(lu - now, prev - (now - this._clockAt) * 0.002);
+      this._clockAt = now;
+      // Angewandt erst ab 2 s und mit Hysterese (unter 1 s wieder aus, sonst nur Änderungen über 2 s): die gemeinsame
+      // Uhr soll nicht hin und her springen, Beschäftigungen und Besuche hingen sonst daran
+      const off = this._clockOff;
+      const use = this._clockUse || 0;
+      const want = Math.abs(off) > 2000 ? off : Math.abs(off) < 1000 ? 0 : use;
+      if (Math.abs(want - use) > 2000 || (want === 0 && use !== 0)) this._clockUse = Math.round(want);
     }
 
     // Fälligkeiten (ms) der Häufchen 0, 1, 2 … seit dem letzten Großputz. Sie zählen nur Wachzeit:
@@ -8791,12 +9346,8 @@
       let t = c;
       let need = null; // restliche Wachzeit bis zum nächsten Häufchen
       for (let i = 0; i < 90 && out.length < POOP.idx; i++) {
-        const a = this._sleepMinutes(this._cfg.sleep_start, 21 * 60, day);
-        const b = this._sleepMinutes(this._cfg.sleep_end, 7 * 60, day);
-        const [y, mo, d] = [day.getFullYear(), day.getMonth(), day.getDate()];
-        const ws = new Date(y, mo, d, 0, b).getTime();
-        const we = new Date(y, mo, d + (a > b ? 0 : 1), 0, a).getTime(); // Schlafen nach Mitternacht: am Folgetag
-        day.setDate(d + 1);
+        const [ws, we] = this._wakeDay(day);
+        day.setDate(day.getDate() + 1);
         if (we <= t) continue;
         if (ws > until) break;
         let s = Math.max(t, ws);
@@ -9036,21 +9587,45 @@
       }
     }
 
+    // Schläft er jetzt (Uhr von HA)? Dieselben Wachfenster wie für Häufchen, Päckchen und den Abbau im Schlaf.
     _sleepTime() {
       if (this._dbgSleep != null) return this._dbgSleep;
-      const now = new Date();
-      const m = now.getHours() * 60 + now.getMinutes();
-      const a = this._sleepMinutes(this._cfg.sleep_start, 21 * 60);
-      const b = this._sleepMinutes(this._cfg.sleep_end, 7 * 60);
-      return a > b ? m >= a || m < b : m >= a && m < b;
+      const t = this._haNow();
+      return !this._wakeWins(t, t).some(([ws, we]) => t >= ws && t < we);
+    }
+
+    // Wachfenster [Beginn, Ende] (ms) am Kalendertag day (Ortszeit). Schlafen nach Mitternacht: Ende am Folgetag.
+    // Mit Ort (hass.config) aus Datum und Ort gerechnet, also auf allen Geräten gleich und am Tag der Zeitumstellung
+    // richtig; gemerkt je Tag, solange Einstellung und Ort gleich bleiben.
+    _wakeDay(day) {
+      const [y, mo, d] = [day.getFullYear(), day.getMonth(), day.getDate()];
+      const cfg = this._hass?.config;
+      const geo = !!cfg && Number.isFinite(cfg.latitude) && Number.isFinite(cfg.longitude);
+      const fixed = !/sun/i.test(`${this._cfg.sleep_start} ${this._cfg.sleep_end}`);
+      const sig = `${this._cfg.sleep_start}|${this._cfg.sleep_end}|${geo ? `${cfg.latitude},${cfg.longitude},${cfg.elevation}` : '-'}`;
+      if (this._wdSig !== sig) {
+        this._wdSig = sig;
+        this._wdC = new Map();
+      }
+      const key = y * 400 + mo * 32 + d;
+      const hit = this._wdC.get(key);
+      if (hit) return hit;
+      const a = this._sleepMinutes(this._cfg.sleep_start, 21 * 60, day);
+      const b = this._sleepMinutes(this._cfg.sleep_end, 7 * 60, day);
+      const w = [new Date(y, mo, d, 0, b).getTime(), new Date(y, mo, d + (a > b ? 0 : 1), 0, a).getTime()];
+      // Ohne Ort kommen Sonnenzeiten aus sun.sun (je Gerät): nicht merken
+      if (geo || fixed) {
+        if (this._wdC.size > 400) this._wdC.clear();
+        this._wdC.set(key, w);
+      }
+      return w;
     }
 
     // "21:00", "sunset", "sunset+01:00", "sunrise-30" (Minuten) → Minuten nach Mitternacht, Unverständliches → fallback.
-    // Sonnenauf- und -untergang kommen aus sun.sun (next_rising/next_setting). Die springen genau beim Ereignis auf
-    // morgen: Ist das morgige ein, zwei Minuten später (Aufgang im Herbst, Untergang im Frühjahr), wäre direkt nach
-    // dem Aufwachen wieder Schlafenszeit. Darum gilt je Kalendertag der erste Wert, der kam (war das Ereignis heute
-    // schon, ist es der von morgen – auf wenige Minuten dasselbe). Mit day (Häufchen-Plan) aus Ort und Datum gerechnet:
-    // so hat jeder Vortag seine eigenen Zeiten, und alle Geräte rechnen gleich.
+    // Sonnenauf- und -untergang am Kalendertag day (ohne: heute) aus Ort und Datum (sunTimes): so hat jeder Tag seine
+    // eigenen Zeiten, alle Geräte rechnen gleich, und am Abend vor der Zeitumstellung stimmt es auch. Nur ohne Ort aus
+    // sun.sun (next_rising/next_setting). Die springen genau beim Ereignis auf morgen: Ist das morgige ein, zwei Minuten
+    // später, wäre direkt nach dem Aufwachen wieder Schlafenszeit. Darum gilt dort je Kalendertag der erste Wert, der kam.
     _sleepMinutes(spec, fallback, day) {
       const m = String(spec ?? '').trim().toLowerCase()
         .match(/^(sunrise|sunset)\s*(?:([+-])\s*(?:(\d{1,2}):(\d{2})|(\d+)))?$/);
@@ -9064,15 +9639,15 @@
       }
       const rise = m[1] === 'sunrise';
       const cfg = this._hass?.config;
-      const at = day && cfg && Number.isFinite(cfg.latitude) && Number.isFinite(cfg.longitude)
-        && sunTimes(day, cfg.latitude, cfg.longitude, Number(cfg.elevation) || 0);
+      const at = cfg && Number.isFinite(cfg.latitude) && Number.isFinite(cfg.longitude)
+        && sunTimes(day || new Date(this._haNow()), cfg.latitude, cfg.longitude, Number(cfg.elevation) || 0);
       let v;
       if (at) {
         const t = new Date(rise ? at.rise : at.set);
         v = t.getHours() * 60 + t.getMinutes();
       } else {
         const attr = rise ? 'next_rising' : 'next_setting';
-        const today = new Date().toDateString();
+        const today = new Date(this._haNow()).toDateString();
         const c = this._sunMin?.[attr];
         if (c?.day === today) v = c.v;
         else {
@@ -9085,6 +9660,12 @@
       const sign = m[2] === '-' ? -1 : 1;
       const off = m[3] != null ? Number(m[3]) * 60 + Number(m[4]) : Number(m[5] || 0);
       return (((v + sign * off) % 1440) + 1440) % 1440;
+    }
+
+    // Blickrichtung: auf der Südhalbkugel (hass.config.latitude < 0) nach Norden, dann liegt Osten rechts und
+    // Westen links (Sonne, Mond, Flugzeuge, Wind). Sonst nach Süden: Osten links, Westen rechts.
+    _viewN() {
+      return this._hass?.config?.latitude < 0;
     }
 
     _updateSky() {
@@ -9108,7 +9689,8 @@
       sc.toggle('sun-down', e != null && e < -1);
 
       const az = this._dbgAz ?? this._az;
-      if (e != null && az != null) this._place(this._el.sun, skyPos(az, e));
+      const vn = this._viewN();
+      if (e != null && az != null) this._place(this._el.sun, skyPos(az, e, vn));
 
       // Mond höchstens alle 30 s neu berechnen, er bewegt sich gemächlich
       const now = this._dbgDate ?? Date.now();
@@ -9117,8 +9699,8 @@
         this._moonT = now;
         const m = moonPosition(now, cfg.latitude, cfg.longitude);
         const ph = moonPhase(now);
-        this._place(this._el.moon, skyPos(m.az, m.alt));
-        const d = moonPath(ph);
+        this._place(this._el.moon, skyPos(m.az, m.alt, vn));
+        const d = moonPath(ph, vn);
         if (d !== this._moonD) this._el.moonLit.setAttribute('d', (this._moonD = d));
         this._moonUp = m.alt > 2 && ph > 0.03 && ph < 0.97;
       }
@@ -9144,7 +9726,7 @@
 
     // ---------- Flugzeuge ----------
     // Echte Flüge aus der Flightradar24-Integration (Attribut flights, Meldung alle 10–30 s). Dazwischen fliegen
-    // sie mit Kurs und Geschwindigkeit weiter. Im Bild: Osten links, Westen rechts, der Bildrand liegt bei
+    // sie mit Kurs und Geschwindigkeit weiter. Im Bild: Osten links, Westen rechts (Südhalbkugel umgekehrt, _viewN), der Bildrand liegt bei
     // flight_radius. Die Flughöhe bestimmt, wie hoch sie am Himmel stehen, die Entfernung ihre Größe.
 
 
@@ -9325,7 +9907,15 @@
         this._metT = null;
         this._meteorMaybe();
         this._meteorPlan();
-      }, rnd(SKY.meteor[0], SKY.meteor[1]));
+      }, rnd(SKY.meteor[0], SKY.meteor[1]) / (this._meteorShower() ? 3 : 1));
+    }
+
+    // Meteorstrom: Perseiden um den 12. 8. (± 3 Tage), Geminiden um den 14. 12. (± 2 Tage): dreimal so oft
+    _meteorShower() {
+      const d = new Date(this._dbgDate ?? Date.now());
+      const y = d.getFullYear();
+      const day = festDay(y, d.getMonth() + 1, d.getDate());
+      return Math.abs(day - festDay(y, 8, 12)) <= 3 || Math.abs(day - festDay(y, 12, 14)) <= 2;
     }
 
     _meteorStop() {
@@ -9344,8 +9934,10 @@
 
     _meteorMaybe() {
       if (!this._meteorOk()) return;
-      this._meteor(Math.random() < SKY.bolide);
-      if (Math.random() < SKY.twin) {
+      // Bewegung reduzieren: keine aufleuchtenden Boliden, keine Nachzügler
+      const calm = calmMotion();
+      this._meteor(!calm && Math.random() < SKY.bolide);
+      if (!calm && Math.random() < SKY.twin) {
         clearTimeout(this._metT2);
         this._metT2 = setTimeout(() => this._meteorOk() && this._meteor(Math.random() < SKY.bolide / 2), rnd(500, 2200));
       }
@@ -9454,38 +10046,38 @@
       const cfg = this._hass?.config;
       if (!this._el || !cfg || !Number.isFinite(cfg.latitude)) return;
       const now = Date.now();
-      // Uhr von HA und Gerät können auseinandergehen: Versatz aus den Meldungen schätzen (die frischeste kommt
-      // praktisch sofort an, der größte Wert passt also am besten). Sonst verschwänden alle Flieger, wenn die
-      // Geräteuhr mehr als 75 s vorgeht. Die erste Meldung gilt als frisch. Der Wert sinkt langsam (5 % der Zeit),
-      // damit eine später gestellte Geräteuhr (NTP) nicht für immer als nachgehend gilt.
+      // Uhr von HA und Gerät können auseinandergehen: Versatz wie überall aus _clockHass (ungeglättet, die Flieger
+      // brauchen ihn genau). Sonst verschwänden alle Flieger, wenn die Geräteuhr mehr als 75 s vorgeht. Solange noch
+      // keiner geschätzt ist, gilt die Meldung als frisch.
       const lu = Date.parse(st?.last_updated);
-      if (Number.isFinite(lu) && st !== this._flSeen) {
-        this._flSeen = st;
-        const prev = this._clockOff;
-        this._clockOff = prev == null ? lu - now : Math.max(lu - now, prev - (now - this._clockAt) * 0.05);
-        this._clockAt = now;
-      }
-      const t0 = Number.isFinite(lu) ? Math.min(now, lu - this._clockOff) : now;
+      const t0 = Number.isFinite(lu) ? Math.min(now, lu - (this._clockOff ?? lu - now)) : now;
       // Getrennt oder unsichtbar: keine Elemente anlegen, die Meldung liegt in _lastFlights und wird beim
       // Wiederkommen gelesen
       if (!this._attached || this._away()) return;
       const kx = 111.32 * Math.cos(cfg.latitude * RAD);
+      const R = Number(this._cfg.flight_radius) || 15;
+      // Ohne Kennung (id, Rufzeichen, Flugnummer, Kennzeichen) ließe er sich von Meldung zu Meldung nicht
+      // wiedererkennen: jede Meldung gäbe ein neues Flugzeug, das alte flöge doppelt weiter. Solche auslassen.
+      const idOf = (f) => String(f.id || f.callsign || f.flight_number || f.aircraft_registration || '');
       const list = [];
       for (const f of Array.isArray(st?.attributes?.flights) ? st.attributes.flights : []) {
-        if (!f || typeof f !== 'object') continue;
+        if (!f || typeof f !== 'object' || !idOf(f)) continue;
         const alt = Number(f.altitude);
         const gs = Number(f.ground_speed);
         const lat = Number(f.latitude);
         const lon = Number(f.longitude);
         // Rollt am Flughafen oder hat keine Position: nicht am Himmel
         if (f.on_ground || !(alt > 80) || !(gs > 30) || !Number.isFinite(lat) || !Number.isFinite(lon)) continue;
-        const e = (lon - cfg.longitude) * kx;
+        const e = lonDiff(lon, cfg.longitude) * kx;
         const n = (lat - cfg.latitude) * 110.57;
+        // Außerhalb von flight_radius (bzw. ganz am Rand, wo er schon ausgeblendet ist, vgl. pa in _planeTick)
+        // sieht man ihn nicht: dann belegt er auch keinen der max_flights-Plätze, ein schon gezeigter gibt
+        // seinen Platz ab und fliegt ausgeblendet weiter
+        if (Math.max(Math.abs(e), Math.abs(n)) >= 0.99 * R) continue;
         list.push({ f, e, n, alt, gs, slant: Math.hypot(e, n, alt * 0.0003048) });
       }
       list.sort((a, b) => a.slant - b.slant);
       const max = Math.max(0, Math.round(Number(this._cfg.max_flights) || 0));
-      const idOf = (f) => String(f.id || f.callsign || f.flight_number || f.aircraft_registration || `${f.latitude},${f.longitude}`);
       // Wer schon am Himmel steht, behält seinen Platz, solange er gemeldet wird. Sonst tauschen zwei fast gleich
       // weite Flieger bei jeder Meldung die Plätze, und einer verschwindet mitten am Himmel. Neue füllen freie
       // Plätze; ein deutlich näherer darf als einer mehr dazukommen, die anderen fliegen dann normal aus dem Bild.
@@ -9544,13 +10136,19 @@
       hit.setAttribute('role', 'button');
       const p = { id, kind, f, el, tag, hit, s: el.firstElementChild, size: PLANE_SIZE[kind], fresh: true };
       // Flugzeug antippen: Flugnummer, Ziel, Airline, Typ, Strecke, Höhe und Tempo; nochmal tippen schließt
+      // Die Tippfläche eines tiefen Fliegers liegt über Pika und Häufchen: die haben Vorrang
+      const below = (e) => this.shadowRoot.elementsFromPoint(e.clientX, e.clientY)
+        .find((el) => !el.closest('.ptags') && el.closest('.pika, .poo'))?.closest('.pika, .poo');
       const toggle = (e) => {
         e.stopPropagation();
-        // Die Tippfläche eines tiefen Fliegers liegt über Pika und Häufchen: die haben Vorrang
         if (e.currentTarget === hit) {
-          const under = this.shadowRoot.elementsFromPoint(e.clientX, e.clientY)
-            .find((el) => !el.closest('.ptags') && el.closest('.pika, .poo'));
-          if (under) return under.closest('.pika, .poo').click();
+          const under = below(e);
+          // mit der Stelle weiterreichen: die Streichel-Zone hängt daran
+          if (under) {
+            return under.dispatchEvent(new MouseEvent('click', {
+              bubbles: true, composed: true, cancelable: true, clientX: e.clientX, clientY: e.clientY,
+            }));
+          }
         }
         clearTimeout(p.openT);
         const open = !tag.classList.contains('open');
@@ -9566,6 +10164,10 @@
       };
       hit.addEventListener('click', toggle);
       tag.addEventListener('click', toggle);
+      // Kraulen und Übers-Fell-Streichen unter dem Flieger: die Tippfläche hält den Finger fest und reicht ihn durch
+      hit.addEventListener('pointerdown', (e) => below(e)?.classList.contains('pika') && this._pressStart(e, hit));
+      hit.addEventListener('pointermove', (e) => this._pressMove(e));
+      for (const t of ['pointerup', 'pointercancel']) hit.addEventListener(t, (e) => this._pressEnd(e));
       this._el.planes.appendChild(el);
       this._el.ptags.append(hit, tag);
       this._planes.set(id, p);
@@ -9581,7 +10183,7 @@
       const dLat = Number(f.airport_destination_latitude);
       const dLon = Number(f.airport_destination_longitude);
       const landsHere = cfg && Number.isFinite(dLat) && Number.isFinite(dLon)
-        && Math.hypot((dLon - cfg.longitude) * 111.32 * Math.cos(cfg.latitude * RAD), (dLat - cfg.latitude) * 110.57) < 30;
+        && Math.hypot(lonDiff(dLon, cfg.longitude) * 111.32 * Math.cos(cfg.latitude * RAD), (dLat - cfg.latitude) * 110.57) < 30;
       const route = landsHere && orig ? `aus ${orig}` : dest ? `→ ${dest}` : '';
       const alt = Math.round(((p.altNow ?? p.alt ?? Number(f.altitude)) * 0.3048) / 10) * 10;
       const kmh = Math.round(Number(f.ground_speed) * 1.852);
@@ -9626,6 +10228,7 @@
       const W = this._W;
       const H = this._H;
       const R = Number(this._cfg.flight_radius) || 15;
+      const vs = this._viewN() ? -1 : 1;
       const shown = [];
       const fresh = [];
       const pos = [];
@@ -9637,10 +10240,12 @@
         const e = p.e + p.ve * dt;
         const n = p.n + p.vn * dt;
         const alt = Math.max(80, p.alt + p.vz * Math.min(dt, 30));
-        const x = W * (0.5 - (e / R) * 0.46);
-        // Höhe logarithmisch: Anflug knapp über den Hügeln, Reiseflughöhe oben; nördlich (hinter uns) etwas höher
+        // Blick nach Süden: Osten links; nach Norden (Südhalbkugel, vs −1): Osten rechts
+        const x = W * (0.5 - ((vs * e) / R) * 0.46);
+        // Höhe logarithmisch: Anflug knapp über den Hügeln, Reiseflughöhe oben; hinter uns (beim Blick nach
+        // Süden nördlich) etwas höher
         const af = clamp(Math.log1p(alt / 1000) / Math.log1p(40), 0, 1);
-        const y = (H * clamp(49 - af * 36 - clamp(n / R, -1, 1) * 4, 13, 49)) / 100;
+        const y = (H * clamp(49 - af * 36 - clamp((vs * n) / R, -1, 1) * 4, 13, 49)) / 100;
         const slant = Math.hypot(e, n, alt * 0.0003048);
         const sc = (clamp(1.6 / slant, 0.1, 0.36) / 0.3) * p.size;
         Object.assign(p, { x, y, slant, altNow: alt });
@@ -9657,8 +10262,9 @@
           this._tagsTop();
           continue;
         }
-        // nach Osten = im Bild nach links; erst ab etwa 40 km/h quer, sonst dreht ein kurvender Hubschrauber hin und her
-        if (Math.abs(p.ve) > 0.012) p.left = p.ve > 0;
+        // nach Osten = im Bild nach links (Blick nach Norden: rechts); erst ab etwa 40 km/h quer, sonst dreht ein
+        // kurvender Hubschrauber hin und her
+        if (Math.abs(p.ve) > 0.012) p.left = vs * p.ve > 0;
         // Schwellen mit etwas Spiel, damit ein Flieger knapp an der Grenze nicht bei jeder Meldung umschaltet
         p.hi = alt > (p.hi ? 7500 : 8500);
         p.ct = alt > (p.ct ? 25500 : 26500);
@@ -9794,10 +10400,7 @@
       if (w) {
         const a = w.attributes || {};
         let wind = Number(a.wind_speed);
-        const unit = String(a.wind_speed_unit || 'km/h');
-        if (unit === 'm/s') wind *= 3.6;
-        else if (unit === 'mph') wind *= 1.609;
-        else if (unit === 'kn') wind *= 1.852;
+        wind = windKmh(wind, a.wind_speed_unit);
         let temp = Number(a.temperature);
         if (a.temperature_unit === '°F') temp = (temp - 32) / 1.8;
         this._wxRaw = {
@@ -9838,14 +10441,17 @@
       };
       fx.wet = fx.rain > 0 || fx.flash; // Blatt als Regenschirm
       fx.shelter = fx.storm; // bei Starkregen und Gewitter bleibt er vor seinem Bau
-      // Windrichtung = woher der Wind kommt. Aus Westen ziehen Wolken nach Osten, im Bild also nach links.
-      const fromWest = !(raw.bearing > 0 && raw.bearing < 180);
+      // Windrichtung = woher der Wind kommt. Aus Westen ziehen Wolken nach Osten, im Bild (Blick nach Süden) also
+      // nach links; beim Blick nach Norden (Südhalbkugel) nach rechts. fromWest heißt ab hier: weht im Bild nach links.
+      const fromWest = !(raw.bearing > 0 && raw.bearing < 180) !== this._viewN();
       this._wind = raw.wind;
       this._windDir = fromWest ? -1 : 1; // wohin der Wind im Bild weht (Drachen)
       const key = JSON.stringify([fx, Math.round(raw.wind / 5), fromWest]);
       if (key === this._wxKey) return;
       this._wxKey = key;
       const wasShelter = this._wx.shelter;
+      const wasWet = this._wx.wet;
+      const wasSnow = this._wx.snowcover;
       this._wx = fx;
 
       const sc = this._el.scene.classList;
@@ -9871,6 +10477,10 @@
       p.toggle('wet', fx.wet);
       p.toggle('cold', fx.cold);
       if (fx.shelter && !wasShelter && !this._asleep && this._action !== 'eatFood') this._interrupt();
+      // Fängt es an zu regnen oder zu schneien: eine Beschäftigung, die bei diesem Wetter nicht geht, einpacken
+      // (sonst springt er Seil mit dem Blatt als Schirm oder liegt mit dem Tablet im Regen)
+      else if (((fx.wet && !wasWet) || (fx.snowcover && !wasSnow)) && !this._asleep
+        && WX_STOP.includes(this._action) && !this._actOk(this._action)) this._interrupt();
     }
 
     _setPrecip(rain, snow) {
@@ -9927,7 +10537,7 @@
       const B = this._boteSync();
       if (!B.list.length) return;
       const S = hass.states;
-      const now = Date.now();
+      const now = this._haNow();
       for (const a of B.list) {
         const c = a.cfg;
         const o = [S[c.state], c.progress && S[c.progress], c.end && S[c.end], c.door && S[c.door]];
@@ -9962,7 +10572,7 @@
       const B = this._boteSync();
       if (!B.list.length) return;
       // Live-Aufräumen, das der Pika nicht innerhalb von 3 Minuten geschafft hat: einfach ausgeräumt zeigen
-      const now = Date.now();
+      const now = this._haNow();
       for (const a of B.queue) if (now - a.liveAt > 180000) a.live = false;
       B.queue = B.queue.filter((a) => a.live);
       this._boteRefresh();
@@ -9973,7 +10583,7 @@
       if (!B?.list.length || !this._g) return [];
       B.queue = B.queue.filter((a) => a.live && a.phase === 'empty');
       if (B.queue.length) return [[1000, 'boteEmpty']];
-      const now = Date.now();
+      const now = this._haNow();
       const acts = [];
       // Fertig und noch zu: alle 3–6 Minuten hinhoppeln und Bescheid sagen
       if (B.list.some((a) => a.phase === 'done' && a.el && !a.live && now >= a.nudgeAt)) acts.push([8, 'boteNudge']);
@@ -10027,6 +10637,7 @@
       cancelAnimationFrame(this._boteRaf);
       for (const a of B.list) {
         clearTimeout(a.tagT);
+        clearTimeout(a.inT);
         a.el?.remove();
         a.bar?.remove();
         a.tag?.remove();
@@ -10055,7 +10666,7 @@
       // Trockner im Knitterschutz: Tür auf meldet manchmal "pause" – er bleibt fertig
       if (a.st === 'finished' && s === 'pause' && !first) s = 'finished';
       this._boteWarn(a, st, s, dead, [pr, en, dr]);
-      const pct = this._botePct(pr);
+      const pct = this._botePct(pr, a);
       const end = this._boteEnd(en, now);
       const doorDead = !dr || BOTE_DEAD.has(norm(dr.state));
       const door = doorDead ? !!a.door : ['open', 'on', 'opened', 'offen', 'auf', 'ajar'].includes(norm(dr.state));
@@ -10099,8 +10710,12 @@
           // Nach dem Neuladen nur, wenn es plausibel ein Programmende war: Fortschritt steht noch auf (fast) 100,
           // oder (ohne Fortschritt) eine gültige Endzeit hat sich um dieselbe Zeit geändert. Im Zweifel nicht (auch
           // nicht nach einem HA-Neustart, der alle last_changed gleichsetzt).
+          // Kein Neustart: der setzt alle last_changed auf dieselbe Zeit (_haBoot). Der Fortschritt muss außerdem in
+          // der Stunde vor dem Ausschalten so weit gekommen sein (nicht ein alter Stand vom Vortag beim Einschalten).
           const near = [pr, en].some((o) => o && !BOTE_DEAD.has(norm(o.state)) && Math.abs(lc(o) - a.changed) <= 5 * 60000);
-          a.emptyUntil = (pct != null ? pct >= 95 : near) ? a.changed + BOTE_EMPTY_MS : 0;
+          const pAge = pr ? a.changed - lc(pr) : NaN;
+          const ok = pct != null ? pct >= 95 && pAge >= -60000 && pAge <= 60 * 60000 : near;
+          a.emptyUntil = ok && !this._haBoot(a.changed) ? a.changed + BOTE_EMPTY_MS : 0;
         } else a.emptyUntil = 0;
       } else if (BOTE_RUN.has(cur)) a.emptyUntil = null;
       else if (cur === 'finished') {
@@ -10130,7 +10745,9 @@
             live = true;
           }
         } else if (idle && prevSt === 'run' && ended) {
+          // direkt aus (ohne "fertig"): auch dann räumt er sichtbar mit auf
           a.emptyUntil = a.changed + BOTE_EMPTY_MS;
+          live = true;
         } else if (a.emptyUntil == null) {
           // Abbruch, Einschalten, ready → inactive …: keine neue Frist, eine laufende behält ihr Ende
           a.emptyUntil = 0;
@@ -10144,9 +10761,22 @@
         if (ph !== 'empty') a.live = false;
         // Programm vorbei, während er gerade damit spielt: aufhören
         if (from === 'run' && this._action === BOTE_ACT[a.type]) this._interrupt();
-        if (live && from === 'done' && ph === 'empty') this._boteLive(a);
+        if (live && (from === 'done' || from === 'run') && ph === 'empty') this._boteLive(a);
       }
       this._boteRender(a);
+    }
+
+    // Kurz nach einem Neustart von HA? sun.sun entsteht dabei neu (sonst ändert es sich nur bei Auf- und
+    // Untergang), alle Entities bekommen dann last_changed um dieselbe Zeit
+    _haBoot(t) {
+      const S = this._hass?.states || {};
+      const b = Date.parse(S[this._cfg.sun_entity]?.last_changed);
+      if (!(t >= b - 60000 && t - b <= 3 * 60000)) return false;
+      // Wechselt sun.sun nur bei Sonnenauf- oder -untergang, ist das kein Neustart: Beim Neustart bekommen sehr viele
+      // Entities dieselbe Zeit (nur selten aufgerufen: Bezugsende, Neuladen beim Haus-Boten)
+      let same = 0;
+      for (const k in S) if (Math.abs(Date.parse(S[k]?.last_changed) - b) < 3000 && ++same >= 6) return true;
+      return false;
     }
 
     _botePhase(a, now) {
@@ -10171,11 +10801,15 @@
       }
     }
 
-    // Fortschritt in %; ohne Einheit "%" gilt ein Wert über 0 bis 1 als Anteil (0.45 → 45 %)
-    _botePct(pr) {
+    // Fortschritt in %; ohne Einheit "%" gilt ein Wert zwischen 0 und 1 als Anteil (0.45 → 45 %), eine ganze 1 aber
+    // als 1 % (ganzzahlige Prozent ohne Einheit), außer das Gerät meldete schon Anteile (a.frac) oder "1.0"
+    _botePct(pr, a) {
       let v = Number.parseFloat(pr?.state);
       if (!Number.isFinite(v)) return null;
-      if (pr.attributes?.unit_of_measurement !== '%' && v > 0 && v <= 1) v *= 100;
+      if (pr.attributes?.unit_of_measurement !== '%' && v > 0 && v <= 1) {
+        if (v < 1) a.frac = true;
+        if (v < 1 || a.frac || /\./.test(pr.state)) v *= 100;
+      }
       return clamp(v, 0, 100);
     }
 
@@ -10200,7 +10834,7 @@
     _boteRefresh() {
       const B = this._bote;
       if (!B?.list.length) return;
-      const now = Date.now();
+      const now = this._haNow();
       for (const a of B.list) {
         if (!a.seen) continue;
         const ph = this._botePhase(a, now);
@@ -10218,12 +10852,12 @@
       if (!this._g || !this._attached || this._away() || this._asleep) return;
       const B = this._bote;
       a.live = true;
-      a.liveAt = Date.now();
+      a.liveAt = this._haNow();
       if (!B.queue.includes(a)) B.queue.push(a);
       // Eine Beschäftigung aus dem Tagesplan macht er fertig (sie finge sonst von vorn an), aufgeräumt wird danach
       const slot = this._slot && this._action === this._slot.act;
       if (this._running && !this._wx.shelter && !this._next && !slot
-        && !['eatFood', 'goSleep', 'wakeUp', 'poop', 'boteEmpty', 'coffee'].includes(this._action)) this._interrupt();
+        && !['eatFood', 'goSleep', 'wakeUp', 'poop', 'boteEmpty', 'coffee', 'giftShoot', 'giftOpen'].includes(this._action)) this._interrupt();
     }
 
     _boteText(a) {
@@ -10249,7 +10883,7 @@
         return p.join(' · ');
       }
       if (a.phase === 'done') {
-        const m = Math.floor((Date.now() - a.changed) / 60000);
+        const m = Math.floor((this._haNow() - a.changed) / 60000);
         if (m < 1) return 'gerade fertig';
         return `fertig seit ${m < 60 ? `${m} Min` : `${Math.floor(m / 60)} Std.${m % 60 ? ` ${m % 60} Min` : ''}`}`;
       }
@@ -10332,7 +10966,7 @@
       // Ruhe, solange der Pika schläft, und nachts außer bei laufenden Geräten (schwaches Tablet)
       // Seit über einer Stunde fertig: auch ruhig (der Pika erinnert ja weiter daran)
       const still = !!this._asleep || (view !== 'run' && this._el.scene.classList.contains('night'))
-        || (view === 'done' && Date.now() - (a.finAt || 0) > 60 * 60000);
+        || (view === 'done' && this._haNow() - (a.finAt || 0) > 60 * 60000);
       cl.toggle('hb-still', still);
       // Wind: Richtung aus dem Wetter, Stärke macht das Wehen weiter und schneller
       const wind = this._wind || 0;
@@ -10587,7 +11221,7 @@
     async _boteStir() {
       const a = this._boteFind('washer', 'run');
       if (!a) return;
-      this._bote.runAt = Date.now();
+      this._bote.runAt = this._haNow();
       const { pW, pH, gy } = this._g;
       const H = this._H;
       const tc = this._boteX(a, 23);
@@ -10652,7 +11286,7 @@
     async _boteWatchDrum() {
       const a = this._boteFind('dryer', 'run');
       if (!a) return;
-      this._bote.runAt = Date.now();
+      this._bote.runAt = this._haNow();
       const { pW } = this._g;
       const s = this._boteSpot(this._boteX(a, 6), this._boteX(a, 40), 0.55 * pW);
       await this._walkTo(s.x, 0.8);
@@ -10689,7 +11323,7 @@
     async _boteDip() {
       const a = this._boteFind('dishwasher', 'run');
       if (!a) return;
-      this._bote.runAt = Date.now();
+      this._bote.runAt = this._haNow();
       const { pW, pH, gy } = this._g;
       const H = this._H;
       const bc = this._boteX(a, 22);
@@ -10785,7 +11419,9 @@
         p.classList.remove('calling');
         this._boteUncls();
         a.el?.classList.remove('hb-boop');
-        a.nudgeAt = Date.now() + (patted ? rnd(3, 6) * 60000 : 30000);
+        // Seit über einer Stunde fertig: nur noch alle 20–30 Minuten daran erinnern
+        const late = this._haNow() - (a.finAt || 0) > 60 * 60000;
+        a.nudgeAt = this._haNow() + (patted ? rnd(late ? 20 : 3, late ? 30 : 6) * 60000 : 30000);
       }
     }
 
@@ -10800,7 +11436,7 @@
       if (!a) return;
       B.queue = B.queue.filter((o) => o !== a);
       a.live = true;
-      a.liveAt = Date.now();
+      a.liveAt = this._haNow();
       this._boteRender(a);
       try {
         this._say('!', 800);
@@ -10913,8 +11549,9 @@
     // - active: aktives Programm (select). Ein Getränkeprogramm heißt: gerade wird ein Bezug gemacht. Der Pika
     //   schnuppert dann und denkt an Kaffee. Einschalten mit Spülen und Reinigen setzen kein Programm.
     // - counter: Tassenzähler (zählt zu Beginn des Bezugs hoch). Fertig ist ein Bezug, wenn kein Getränk mehr
-    //   läuft und das Programm mindestens 15 s nach dem Zählerstand endete. So erkennt jedes Gerät denselben
-    //   Bezug, auch nach dem Neuladen. Ein Neustart von HA ändert alles zugleich und zählt deshalb nicht.
+    //   läuft und das Programm mindestens 15 s nach dem Zählerstand endete (ohne live gesehenen Bezug höchstens
+    //   COFFEE_CTR_MS danach). So erkennt jedes Gerät denselben Bezug, auch nach dem Neuladen. Ein Neustart von HA
+    //   zählt nicht (Programm kam aus "unavailable" oder Zähler kurz nach dem Start gültig).
     // - selected: ausgewähltes Programm. Daraus kommt die Getränkeart, wenn die Karte den Bezug nicht live sah.
     // Gleich danach holt er sich dasselbe Getränk aus dem Bau und trinkt es (Schlaf unterbricht er dafür), nach einer
     // festen Zeitleiste ab Bezugsende (COFFEE_FETCH, COFFEE_DRINK): Alle Geräte trinken im selben Takt, ein neu
@@ -10932,8 +11569,10 @@
       this._cofN = n;
       this._cofS = sel;
       const C = (this._cof ??= { brew: null, pend: null, next: null, done: [] });
+      const prevSt = C.st; // zuletzt gesehener Zustand des Programms (undefined: frisch geladen)
+      C.st = a?.state;
       const prog = String(a?.state || '').toLowerCase();
-      const now = Date.now();
+      const now = this._haNow();
       if (COFFEE_PROG.test(prog)) {
         if (C.brew?.prog !== prog) {
           C.brew = { prog, at: Date.parse(a.last_changed) || now, sniffed: false };
@@ -10954,7 +11593,14 @@
       const t0 = n && n.state !== 'unavailable' && n.state !== 'unknown' && Date.parse(n.last_changed);
       const used = (k) => C.done.includes(k) || C.pend?.key === k || C.next?.key === k;
       // Live gesehen zählt auch, wenn der Zähler spät noch einmal hochging (zwei Tassen)
-      if (t0 && end - t0 < 15 * 60000 && (end - t0 >= 15000 || (brew && end - brew.at >= 15000))) key = n.last_changed;
+      if (brew) {
+        if (t0 && end - t0 < 15 * 60000 && (end - t0 >= 15000 || end - brew.at >= 15000)) key = n.last_changed;
+      } else if (t0 && end - t0 >= 15000 && end - t0 <= COFFEE_CTR_MS && prevSt !== 'unavailable') {
+        // Nur aus dem Zähler (neu geladen, Bezug nicht live gesehen): ein Bezug dauert keine 3 Minuten. Nicht nach
+        // einem Neustart von HA: Kam das Programm gerade aus "unavailable" zurück, oder wurde der Zähler kurz nach dem
+        // Start gültig (_haBoot), melden sich Zähler und Programm nur nacheinander zurück.
+        if (!this._haBoot(t0)) key = n.last_changed;
+      }
       // Zählte der Zähler diesen Bezug nicht (Heißwasser/Tee, eigener Zähler: sein Stand ist alt oder schon
       // getrunken), gilt, was die Karte live sah. brew.at ist die Zeit von HA, auf allen zusehenden Geräten gleich.
       if ((!key || used(key)) && brew && end - brew.at >= 15000 && end - brew.at < 15 * 60000) key = `live ${brew.at}`;
@@ -10979,15 +11625,22 @@
       C.pend = P;
       // Sofort holen, auch mitten in einer Beschäftigung (die geht danach an ihrer Stelle im Plan weiter);
       // im Schlaf weckt ihn der Duft
-      if (!['eatFood', 'coffee', 'goSleep', 'wakeUp'].includes(this._action)) this._interrupt();
+      // Auspacken und Ausräumen macht er noch fertig (danach ist der Kaffee dran)
+      if (!['eatFood', 'coffee', 'goSleep', 'wakeUp', 'giftShoot', 'giftOpen', 'boteEmpty'].includes(this._action)) this._interrupt();
     }
 
     _tickCoffee() {
       const C = this._cof;
       if (!C) return;
-      const now = Date.now();
+      const now = this._haNow();
       // Nicht abgeholt (Sturm, Karte war versteckt): verfällt. Hängt ein Bezug ewig, nicht mehr schnuppern.
       if (C.pend?.stage === 'fetch' && now > C.pend.end - 3000) {
+        this._coffeeMark(C.pend.key);
+        C.pend = null;
+      }
+      // Angetrunken und dann unterbrochen (Bildschirm aus, Gewitter): auf den anderen Geräten längst leer. Nicht Stunden
+      // später den letzten Schluck nehmen (oder ihn dafür nachts wecken), sondern verfallen lassen.
+      if (C.pend && C.pend.stage !== 'fetch' && now > C.pend.end + COFFEE_LATE && this._action !== 'coffee') {
         this._coffeeMark(C.pend.key);
         C.pend = null;
       }
@@ -11000,7 +11653,7 @@
 
     _coffeeDue() {
       const P = this._cof?.pend;
-      return !!P && !this._next && !this._wx.shelter && (P.stage !== 'fetch' || Date.now() <= P.end - 3000);
+      return !!P && !this._next && !this._wx.shelter && this._haNow() <= P.end + (P.stage === 'fetch' ? -3000 : COFFEE_LATE);
     }
 
     _coffeeActs() {
@@ -11061,8 +11714,8 @@
         P.rock = !night && !this._wx.wet && P.rockR < 0.5;
       }
       // Neu geladen, während die anderen Geräte schon trinken: gleich am Trinkplatz, das Gefäß so leer wie dort
-      if (P.stage === 'fetch' && Date.now() - P.t0 > 4000 && Date.now() - (this._loopAt || 0) < 5000) {
-        P.j = clamp(Math.floor((Date.now() - P.t0 - COFFEE_FETCH) / P.sip) + 1, 0, sips - 1);
+      if (P.stage === 'fetch' && this._haNow() - P.t0 > 4000 && Date.now() - (this._loopAt || 0) < 5000) {
+        P.j = clamp(Math.floor((this._haNow() - P.t0 - COFFEE_FETCH) / P.sip) + 1, 0, sips - 1);
         P.lv = 1 - P.j / sips;
         P.foam = P.j > 0 && COFFEE_FOAM.has(P.kind);
         this._inside = false;
@@ -11089,12 +11742,17 @@
           }
           await this._to('hidden', 400);
         }
-        await this._wait(clamp(P.t0 + 4500 - Date.now(), 800, 2800)); // drinnen klappert es
+        await this._wait(clamp(P.t0 + 4500 - this._haNow(), 800, 2800)); // drinnen klappert es
         P.stage = 'out';
       }
       p.classList.add('coffee', `ck-${COFFEE_CUP[P.kind]}`, `ck-${P.kind}`);
       p.classList.toggle('foam', !!P.foam);
       setLv();
+      // Nach einem Gewitter im Bau: zum Weitertrinken vor die Tür
+      if (P.stage === 'drink' && this._inside) {
+        await this._to('peek', 450);
+        await this._comeOut();
+      }
       // Nach einer Unterbrechung ist er vom Stein schon heruntergehüpft
       if (P.stage === 'drink') P.rock = this._lift > 0;
       if (P.stage === 'out') {
@@ -11122,7 +11780,7 @@
       // Bildschirm erst später an), ist das Gefäß gleich so leer wie auf den anderen Geräten, statt hastig aufzuholen.
       const sipAt = () => P.t0 + COFFEE_FETCH + P.j * P.sip;
       while (P.lv > 0.01) {
-        const due = Math.floor((Date.now() - P.t0 - COFFEE_FETCH) / P.sip) + 1; // nächster Schluck nach Plan
+        const due = Math.floor((this._haNow() - P.t0 - COFFEE_FETCH) / P.sip) + 1; // nächster Schluck nach Plan
         if (due > P.j + 1) {
           P.j = Math.min(due, sips - 1);
           P.lv = 1 - P.j / sips;
@@ -11131,14 +11789,14 @@
           setLv();
         }
         // Zwischen den Schlucken: Gefäß in den Pfoten, genießen, umschauen
-        while (sipAt() - Date.now() > 9000) {
+        while (sipAt() - this._haNow() > 9000) {
           await this._wait(rnd(5000, 8000));
           const r = Math.random();
           if (r < 0.3) this._twitch();
           else if (r < 0.5 && !night) this._face(-this._dir);
           else if (r < 0.62) this._say(night ? pick(['*gähn*', 'mmh…']) : P.lv > 0.45 ? pick(['pust…', 'mmh…']) : pick(['mmh…', 'ahh…', '♥']), 1100);
         }
-        await this._wait(Math.max(300, sipAt() - Date.now()));
+        await this._wait(Math.max(300, sipAt() - this._haNow()));
         p.classList.add('sip');
         await this._wait(1400);
         const first = P.j === 0;
@@ -11209,24 +11867,16 @@
       return !!this._cfg?.gifts;
     }
 
-    // Wachfenster [Beginn, Ende] (ms) je Tag, von einem Tag vor t1 bis einen Tag nach t2, gerechnet wie beim Häufchen-Plan
+    // Wachfenster [Beginn, Ende] (ms) je Tag, von einem Tag vor t1 bis einen Tag nach t2 (siehe _wakeDay)
     _wakeWins(t1, t2) {
-      const key = `${Math.floor(t1 / 864e5)}|${Math.floor(t2 / 864e5)}|${this._cfg.sleep_start}|${this._cfg.sleep_end}|${this._hass?.config?.latitude}`;
-      const C = (this._wwC ??= new Map());
-      if (C.has(key)) return C.get(key);
       const w = [];
       const day = new Date(t1);
       day.setHours(0, 0, 0, 0);
       day.setDate(day.getDate() - 1);
-      for (let i = 0; i < 800 && day.getTime() <= t2 + 864e5; i++) {
-        const a = this._sleepMinutes(this._cfg.sleep_start, 21 * 60, day);
-        const b = this._sleepMinutes(this._cfg.sleep_end, 7 * 60, day);
-        const [y, mo, d] = [day.getFullYear(), day.getMonth(), day.getDate()];
-        w.push([new Date(y, mo, d, 0, b).getTime(), new Date(y, mo, d + (a > b ? 0 : 1), 0, a).getTime()]);
-        day.setDate(d + 1);
+      for (let i = 0; i < 20000 && day.getTime() <= t2 + 864e5; i++) {
+        w.push(this._wakeDay(day));
+        day.setDate(day.getDate() + 1);
       }
-      if (C.size > 6) C.clear();
-      C.set(key, w);
       return w;
     }
 
@@ -11238,15 +11888,27 @@
       return ms;
     }
 
-    // Wann nach t weitere ms Wachzeit vergangen sind
-    _awakeAdd(t, ms) {
-      for (const [ws, we] of this._wakeWins(t, t + 3 * 864e5)) {
+    // Wann nach t weitere ms Wachzeit vergangen sind (sleepK: so zählt Schlaf, 0 = gar nicht). Tag für Tag, ohne Grenze
+    // nach vorn: auch eine lange Serie oder ein langer Abbau kommt ans Ende.
+    _awakeAdd(t, ms, sleepK = 0) {
+      const day = new Date(t);
+      day.setHours(0, 0, 0, 0);
+      day.setDate(day.getDate() - 1);
+      for (let i = 0; i < 20000; i++) {
+        const [ws, we] = this._wakeDay(day);
+        day.setDate(day.getDate() + 1);
         if (we <= t) continue;
+        if (ws > t && sleepK > 0) {
+          const d = (ws - t) * sleepK;
+          if (d >= ms) return t + ms / sleepK;
+          ms -= d;
+        }
         const s = Math.max(ws, t);
         if (s + ms <= we) return s + ms;
         ms -= we - s;
+        t = we;
       }
-      return t + 3 * 864e5;
+      return t + ms;
     }
 
     // Pflege bewerten. Zwischen zwei Änderungen sinken alle drei Werte nur (satt und glücklich gleichmäßig, sauber nach dem
@@ -11256,7 +11918,7 @@
     _careEval(user = false) {
       if (!this._giftOn() || !this._stats || !this._plan || !this._planOk || this._planStale) return null;
       if (this._cfg.entity && !this._noEntity && !this._synced) return null;
-      const now = Date.now();
+      const now = this._haNow();
       if (!this._plan.gift) this._planOp({ t: 'gstart', k: sec(now) });
       let G = this._plan.gift;
       if (!G) return null;
@@ -11268,7 +11930,7 @@
       // Seit wann? Nur nötig, solange es noch nicht feststeht
       const low = [];
       if (bad && G.b == null) {
-        for (const k of lowS) low.push(st[k] > min ? st[k + 't'] + ((st[k] - min) / RATE[k]) * 3.6e6 : st[k + 't']);
+        for (const k of lowS) low.push(st[k] > min ? this._decayAt(st[k + 't'], (st[k] - min) / RATE[k]) : st[k + 't']);
       }
       if (lowC && bad && G.b == null) {
         // Zeitpunkt eingrenzen (auf der Uhr der Häufchen, die in der Vorschau verstellt sein kann)
@@ -11288,11 +11950,14 @@
       if (low.length) this._planOp({ t: 'gbad', k: G.k, b: sec(clamp(Math.min(...low), G.k, now)) });
       G = this._plan.gift;
       const over = G.b != null && this._awakeMs(G.b, now) > GIFT.grace;
-      // Verdient bis jetzt bzw. bis die Serie riss
+      // Verdient bis jetzt bzw. bis die Serie riss. Gezählt wird ab p (bis dahin sind die a verdient), nicht jedes Mal
+      // ab Serienbeginn: so verschiebt eine geänderte Schlafenszeit nichts rückwirkend, und auch eine lange Serie
+      // rechnet nur die letzten Stunden. Ohne p (Stand einer älteren Version) einmal aus k und a nachrechnen.
       const end = G.b == null ? now : Math.min(now, this._awakeAdd(G.b, GIFT.grace));
-      const awake = this._awakeMs(G.k, end);
-      const e = Math.floor(awake / GIFT.every);
-      if (e > G.a) this._planOp({ t: 'gearn', k: G.k, e });
+      const p = G.p ?? this._awakeAdd(G.k, G.a * GIFT.every);
+      const awake = Math.max(0, this._awakeMs(p, end));
+      const de = Math.floor(awake / GIFT.every);
+      if (de > 0 || G.p == null) this._planOp({ t: 'gearn', k: G.k, e: G.a + de, p: sec(this._awakeAdd(p, de * GIFT.every)) });
       const w = Math.floor((now - G.k) / GIFT.gold);
       if (!over && w > G.d) this._planOp({ t: 'ggold', k: G.k, w });
       let res = { frac: (awake % GIFT.every) / GIFT.every, left: GIFT.every - (awake % GIFT.every), warn: G.b != null && !over, broken: over };
@@ -11304,6 +11969,14 @@
       this._care = res;
       this._giftRender();
       return res;
+    }
+
+    // Welche Werte gerade unter GIFT.min liegen: s (Satt), g (Glück), c (Sauber), in dieser Reihenfolge
+    _giftLow() {
+      if (!this._stats) return [];
+      const l = ['s', 'g'].filter((k) => this._raw(k) < GIFT.min);
+      if (this._poops().clean < GIFT.min) l.push('c');
+      return l;
     }
 
     // Knopf: erscheint mit dem ersten Päckchen, Ring = Fortschritt zum nächsten, Zahl = Vorrat
@@ -11339,6 +12012,14 @@
       b.style.setProperty('--gp', ((full ? 1 : c.frac || 0) * 100).toFixed(1));
       b.classList.toggle('warn', !!c.warn);
       b.classList.toggle('broken', !!c.broken && !full);
+      // Was fehlt, als Zeichen am Knopf. Ist schon wieder alles darüber (nur selbst geknabbert), pulsiert der Ring nicht.
+      const low = c.warn || (c.broken && !full) ? this._giftLow() : [];
+      b.classList.toggle('ok', !!c.warn && !low.length);
+      const ce = b.querySelector('.gcrit');
+      if (ce.dataset.k !== (low[0] || '')) {
+        ce.dataset.k = low[0] || '';
+        ce.innerHTML = low[0] ? GIFT_LOW[low[0]][1] : '';
+      }
       b.classList.toggle('empty', !n || G.z > G.o);
       b.classList.toggle('gold', G.y > 0);
       const [pp, pr] = G.y > 0 ? GIFT_GOLD : GIFT_PAPER[(G.z + 1) % GIFT_PAPER.length];
@@ -11366,10 +12047,29 @@
       const gold = G.y > 0;
       const z = G.z + 1;
       const i = this._giftPick(G, z, gold) + (gold ? 16 : 0);
-      this._planOp({ t: 'give', z, i, gold, x: sec(Date.now()) });
+      const x = sec(this._haNow());
+      this._planOp({ t: 'give', z, i, gold, x });
       if (this._plan.gift?.z !== z) return no();
-      if ((i & 15) >= GIFT_TRE) this._add('s', GIFT.treat);
-      this._add('g', GIFT.joy);
+      // Leckerli und Freude erst, wenn das Verschenken bestätigt ist (_giftCredit): Drückten zwei Geräte gleichzeitig,
+      // gilt nur ein Päckchen, und nur dessen Gerät gibt die Belohnung
+      this._giftOwn = { z, i, x, at: this._haNow() };
+      this._giftCredit();
+    }
+
+    // Belohnung für das eigene Verschenken, sobald es im bestätigten Plan steht (mit Helfer: Stand von HA, sonst der
+    // gespeicherte). Hat dort ein anderes Gerät dasselbe Päckchen verschenkt (anderes x/i), gibt es hier nichts.
+    // Zählt nicht als Pflege (wie selbst Geknabbertes): Päckchen kommen aus guter Pflege, sie sollen sie nicht ersetzen.
+    _giftCredit() {
+      const o = this._giftOwn;
+      if (!o) return;
+      const H = this._cfg.plan_entity && this._planMax() >= PLAN_MIN ? planParse(this._planSt) : null;
+      const G = (H || this._planBase)?.gift;
+      if (G && G.z >= o.z) {
+        this._giftOwn = null;
+        if (G.z !== o.z || G.x !== o.x || G.i !== o.i) return;
+        if ((o.i & 15) >= GIFT_TRE) this._add('s', GIFT.treat, true);
+        this._add('g', GIFT.joy, true);
+      } else if (this._haNow() - o.at > 30 * 6e4) this._giftOwn = null;
     }
 
     // Inhalt des Päckchens Nummer z, auf allen Geräten gleich: Das erste und eins von je dreien ist ein Schatz, der noch
@@ -11444,7 +12144,7 @@
       this._el.gifts.appendChild(el);
       const B = { z, el, x, gold, pp, pr, bc, item: G.i & 15, stage: 'hover' };
       this._gb = B;
-      const left = G.x + GIFT.arrive - Date.now();
+      const left = G.x + GIFT.arrive - this._haNow();
       const calm = ['idle', 'look', 'wander', 'groom', 'squeak', 'curious', 'nibble'];
       if (left > 0) {
         B.stage = 'fly';
@@ -11702,7 +12402,7 @@
         this._sparkle(to.left - sc.left + to.width / 2, to.top - sc.top + to.height * 0.3, 3);
       }
       if (key === 'shades') {
-        this._coolUntil = Date.now() + 60000;
+        this._coolUntil = this._haNow() + 60000;
         p.classList.add('cool');
         this._say('cool!', 1500);
         await this._wait(2500);
@@ -11730,12 +12430,11 @@
     _giftScene() {
       if (!this._el || !this._g) return;
       const G = this._plan?.gift;
-      let u = this._giftOn() && G ? G.u : 0;
-      if (G && G.z > G.o && (G.i & 15) < GIFT_TRE) u &= ~(1 << (G.i & 15)); // noch nicht ausgepackt
+      let u = this._giftOn() ? giftOwned(G) : 0; // ohne den noch nicht ausgepackten
       if (this._giftHide != null) u &= ~(1 << this._giftHide);
       const has = (t) => !!(u & (1 << t));
       const newest = G && G.o === G.z && (G.i & 15) < GIFT_TRE ? G.i & 15 : -1;
-      const day = pikaDay(Date.now());
+      const day = pikaDay(this._haNow());
       let meadow = [0, 5, 6].filter(has);
       if (meadow.length > 2) {
         const rest = meadow.filter((t) => t !== newest).sort((a, b) => seeded(day, a, 71) - seeded(day, b, 71));
@@ -11745,6 +12444,7 @@
       if (has(1)) want.add(1);
       if (has(7)) want.add(7);
       if (has(2) && this._asleep) want.add(2);
+      this._el.gifts.classList.toggle('still', !!this._asleep);
       const E = (this._gtEls ??= new Map());
       for (const [t, el] of E) {
         if (want.has(t)) continue;
@@ -11793,7 +12493,7 @@
       const key = GIFT_ITEMS[t].key;
       if (key === 'yarn' && this._yarnXf != null) return clamp(this._yarnXf, fMin, fMax) * W;
       if (key === 'can') return Math.max(this._H * 0.05, this._g.hole.l - this._H * 0.07);
-      const u = seeded(pikaDay(Date.now()), t, 73);
+      const u = seeded(pikaDay(this._haNow()), t, 73);
       if (key === 'hammock') return (fMin + (0.45 + 0.25 * u) * (fMax - fMin)) * W;
       return (fMin + u * (fMax - fMin)) * W;
     }
@@ -11829,6 +12529,28 @@
       this._giftFromPlan();
     }
 
+    // Karte aus dem DOM (anderes Dashboard): Zeitgeber abräumen. Ein fliegender Ballon wird beim Wiederkommen nach
+    // seiner Zeitleiste neu angelegt (sonst bliebe er ohne Ankunfts-Zeitgeber im Flug).
+    _detachGift() {
+      clearTimeout(this._albumPT);
+      clearTimeout(this._albumT);
+      clearTimeout(this._bellT);
+      clearTimeout(this._giftArrT);
+      this._albumHeld = false;
+      if (this._el) this._el.album.hidden = true;
+      this._gtEls?.get(7)?.classList.remove('ring');
+      const B = this._gb;
+      if (B?.stage === 'fly') {
+        B.anim?.cancel();
+        B.el.remove();
+        this._gb = null;
+      }
+    }
+
+    _attachGift() {
+      this._giftFromPlan();
+    }
+
     _tickGift() {
       if (!this._g) return;
       this._careEval();
@@ -11839,7 +12561,7 @@
       const raw = { ...(this._wxRaw || {}), ...(this._dbgWeather || {}) };
       const e = this._dbgElev ?? this._elev;
       const sunny = ['sunny', 'clear', 'partlycloudy'].includes(raw.cond) && (e == null || e > 15) && (raw.temp ?? 0) >= 24;
-      const cool = !!(G.u & 8) && !this._wx.wet && !this._asleep && (sunny || Date.now() < (this._coolUntil || 0));
+      const cool = !!(giftOwned(G) & 8) && !this._wx.wet && !this._asleep && (sunny || this._haNow() < (this._coolUntil || 0));
       this._el.pika.classList.toggle('cool', cool);
       // Voller Vorrat: der Knopf wackelt ab und zu
       const b = this._el.gbtn;
@@ -11860,7 +12582,7 @@
         [E.has(0) && dry ? 0.5 : 0, 'giftYarn'],
         [E.has(6) && dry && this._flowers.length < 7 ? 0.35 : 0, 'giftWater'],
         [E.has(5) && dry ? (h >= 12 && h < 18 ? 0.45 : 0.1) : 0, 'giftHammock'],
-        [G.u & 16 && dry ? (this._planeToWatch() ? 3 : 0.3) : 0, 'giftScope'],
+        [giftOwned(G) & 16 && dry ? (this._planeToWatch() ? 3 : 0.3) : 0, 'giftScope'],
       ];
     }
 
@@ -12022,16 +12744,20 @@
       const G = this._plan?.gift;
       if (!G) return;
       const c = this._careEval() || this._care || {};
-      const have = GIFT_ITEMS.slice(0, GIFT_TRE).filter((it, t) => G.u & (1 << t)).length;
-      const days = c.broken ? 0 : Math.floor((Date.now() - G.k) / 864e5);
+      const u = giftOwned(G); // der Schatz im fliegenden Ballon erscheint erst nach dem Auspacken
+      const have = GIFT_ITEMS.slice(0, GIFT_TRE).filter((it, t) => u & (1 << t)).length;
+      const days = c.broken ? 0 : Math.floor((this._haNow() - G.k) / 864e5);
       const fmt = (ms) => {
         const m = Math.max(1, Math.round(ms / 6e4));
         return m >= 60 ? `${Math.floor(m / 60)} Std.${m % 60 ? ` ${m % 60} Min.` : ''}` : `${m} Min.`;
       };
-      const next = G.n >= GIFT.max ? 'Vorrat voll' : c.broken ? 'Serie gerissen'
-        : c.warn ? 'schnell kümmern!' : `nächstes in ${fmt(c.left ?? GIFT.every)} Wachzeit`;
+      // Was fehlt, damit die Serie hält (bzw. wieder anfängt): "Hunger!", "Streicheln!", "Putzen!"
+      const low = c.warn || c.broken ? this._giftLow().map((k) => GIFT_LOW[k][0]).join(' ') : '';
+      const need = low ? `<span class="alb-w">${low}</span>` : '';
+      const next = G.n >= GIFT.max ? `Vorrat voll${need ? ` · ${need}` : ''}` : c.broken ? `Serie gerissen${need ? `, neu ab 50 %: ${need}` : ''}`
+        : c.warn ? (need ? `schnell: ${need}` : 'einmal kümmern, dann läuft sie weiter') : `nächstes in ${fmt(c.left ?? GIFT.every)} Wachzeit`;
       a.innerHTML = `<div class="alb-row">${GIFT_ITEMS.slice(0, GIFT_TRE).map((it, t) => {
-        const own = G.u & (1 << t);
+        const own = u & (1 << t);
         const nm = it.key === 'plush' ? `Plüsch-${this._frName()}` : it.name;
         return `<i class="${own ? '' : 'miss'}" title="${own ? esc(nm) : '?'}">${it.svg}</i>`;
       }).join('')}</div><div class="alb-t">${have}/${GIFT_TRE} Schätze · Serie ${days} ${days === 1 ? 'Tag' : 'Tage'} · ${next}</div>`;
@@ -12050,19 +12776,15 @@
       const id = this._cfg.screen_entity;
       const st = id ? hass.states[id]?.state : undefined;
       if (st === this._screenSt) return;
-      const was = this._screenSt;
       this._screenSt = st;
-      if (was === 'on' && st === 'off') this._goneAt ??= Date.now(); // für das Wiedersehen
-      if (was === 'off' && st === 'on' && !this._away()) {
-        // Bei dunklem Bildschirm hat keiner zugesehen: wie nach dem Neuladen gleich mitten in der Beschäftigung
-        this._loopAt = Date.now();
-        this._showReq();
-      }
+      // Bildschirm aus: wie ein versteckter Tab ruht alles (Schleife, Besuche, Animationen). Geht er an, steigt der Pika
+      // wie nach dem Neuladen gleich mitten in der Beschäftigung ein und winkt (_visSync → _start, _showReq).
+      if (this._el) this._visSync();
     }
 
     // Schaut jemand hin? Unsichtbar läuft die Schleife ohnehin nicht; mit screen_entity zählt auch der Bildschirm.
     _watched() {
-      return !this._away() && this._screenSt !== 'off';
+      return !this._away();
     }
 
     // Die Karte wird sichtbar (Bildschirm an, App geöffnet, Ansicht gewechselt): Begrüßung anmelden. Schläft er,
@@ -12111,12 +12833,12 @@
       if (this._inside) {
         this._pose('peek', 400);
         await this._wait(500);
-        this._say(pick(ACT_GREET), 1500);
+        this._say(pick(ACT_GREET), 1500, true);
         await this._wait(1800);
         return;
       }
       p.classList.add('waving');
-      this._say(pick(ACT_GREET), 1700);
+      this._say(pick(ACT_GREET), 1700, true);
       await this._wait(rnd(1500, 2100));
       p.classList.remove('waving');
       if (Math.random() < 0.5) this._jump('binky');
@@ -12128,7 +12850,7 @@
 
     // Uhr des Tagesplans (Vorschau: um _dbgPlanMs vorgestellt)
     _planNow() {
-      return Date.now() + (this._dbgPlanMs || 0);
+      return this._haNow() + (this._dbgPlanMs || 0);
     }
 
     // Fenster der Beschäftigung name, die gerade aus dem Plan läuft. Aus der Vorschau erzwungen: eins ab jetzt.
@@ -12279,7 +13001,7 @@
     }
 
     // Tagesform: aus dem Kalendertag gewürfelt, auf allen Geräten gleich
-    _tagesform(t = Date.now()) {
+    _tagesform(t = this._haNow()) {
       const day = localDay(t);
       if (this._tf?.day === day) return this._tf;
       const pool = [...ACT_MOOD];
@@ -12295,8 +13017,9 @@
       if (sp && sp.d === localDay(start)) return sp.k === k;
       const wx = this._wx;
       if (wx.wet || wx.storm || wx.shelter) return false;
-      const t = new Date(start);
-      const since = (t.getHours() * 60 + t.getMinutes() - this._sleepMinutes(this._cfg.sleep_end, 7 * 60) + 1440) % 1440;
+      // Minuten seit dem Aufwachen, aus demselben Wachfenster wie die Schlafenszeit
+      const w = this._wakeWins(start, start).find(([ws, we]) => start >= ws && start < we);
+      const since = w ? (start - w[0]) / 6e4 : -1;
       return since >= SPORT_WIN[0] && since <= SPORT_WIN[1];
     }
 
@@ -12318,7 +13041,10 @@
     _planReset() {
       clearTimeout(this._planT);
       clearTimeout(this._planFreshT);
+      clearTimeout(this._planRT);
       this._planOps = [];
+      this._planSent = []; // gesendet, noch ohne Echo: { v, at }
+      this._planAck = 0; // Änderungen bis zu dieser Zeit hat HA bestätigt
       this._planSt = null; // nicht undefined: sonst bliebe ein fehlender Helfer unbemerkt und _planOk für immer falsch
       this._planOk = !this._cfg.plan_entity; // mit Helfer erst schreiben, wenn sein Stand da ist
       this._planBase = this._planLocal();
@@ -12340,10 +13066,10 @@
         if (h && Number.isFinite(h.n) && Number.isFinite(h.t)) {
           const pal = this._areal().flowers || FLOWER_COLORS;
           const c = (Array.isArray(h.b) ? h.b : []).map((b) => Math.max(0, pal.indexOf(b?.color))).join('');
-          return { ...planBlank(), hay: { n: clamp(h.n, 1, HAY_MAX), t: h.t, c, m: 0 } };
+          return { ...planBlank(this._haNow()), hay: { n: clamp(h.n, 1, HAY_MAX), t: h.t, c, m: 0 } };
         }
       } catch (e) { /* kein Speicher: frisch anfangen */ }
-      return planBlank();
+      return planBlank(this._haNow());
     }
 
     _hassPlan(hass) {
@@ -12352,12 +13078,27 @@
       const st = hass.states[id]?.state;
       if (st === this._planSt) return;
       this._planSt = st;
-      const P = planParse(st);
-      if (P) this._planBase = P;
+      // Echo eines eigenen Schreibens: alles, was bis dahin geändert wurde, ist in HA angekommen
+      const sent = this._planSent.findIndex((e) => e.v === st);
+      if (sent >= 0) {
+        this._planAck = Math.max(this._planAck, this._planSent[sent].at);
+        this._planSent.splice(0, sent + 1);
+      }
+      // Helfer zu kurz für den Plan: er wird nicht beschrieben, sein eingefrorener Stand zählt nicht (sonst sprängen Serie,
+      // Album und Vorrat bei jedem Neuladen zurück). Der Plan bleibt im Browser, siehe _planSave.
+      const P = this._planMax() < PLAN_MIN ? null : planParse(st);
+      if (P) {
+        this._planBase = P;
+        // Ein anderes Gerät hat alle eigenen Änderungen schon mitgeschrieben (zusammengeführt): auch das ist bestätigt
+        const last = this._planOps.at(-1);
+        if (last && last.at > this._planAck && planSer(this._planOps.reduce((Q, o) => planApply(Q, o, o.at), P)) === planSer(P)) {
+          this._planAck = last.at;
+        }
+      }
       if (st === undefined && !this._planWarned) {
         this._planWarned = true;
         console.warn(`pika-pet-card: ${id} gibt es nicht, der Tagesplan bleibt auf diesem Gerät`);
-      } else if (!P && st && st !== 'unknown' && st !== 'unavailable') {
+      } else if (!P && st && st !== 'unknown' && st !== 'unavailable' && this._planMax() >= PLAN_MIN) {
         console.warn(`pika-pet-card: ${id} enthält "${st}", der Tagesplan fängt neu an`);
       }
       // unknown/unavailable (Start von HA): abwarten, sonst wäre der gespeicherte Plan überschrieben. Ein neu
@@ -12366,6 +13107,14 @@
       if (st !== 'unknown' && st !== 'unavailable') this._planReady();
       else if (st === 'unknown' && !this._planOk) {
         this._planFreshT = setTimeout(() => this._planSt === 'unknown' && this._planReady(), 20000);
+      } else if (st === 'unavailable' && !this._planOk) {
+        // Beim Laden länger nicht erreichbar: trotzdem planen (Beschäftigungen, Päckchen), erst einmal auf diesem Gerät.
+        // Kommt der Helfer wieder, kommen die noch unbestätigten eigenen Änderungen auf seinen Stand.
+        this._planFreshT = setTimeout(() => {
+          if (this._planSt !== 'unavailable') return;
+          console.warn(`pika-pet-card: ${id} ist nicht erreichbar, der Tagesplan läuft vorerst auf diesem Gerät`);
+          this._planReady();
+        }, 60000);
       }
       this._planCompose(true);
     }
@@ -12379,26 +13128,33 @@
     }
 
     // Plan = letzter bekannter Stand + eigene Änderungen der letzten 15 s. Die kommen auch auf einen fremden Stand
-    // noch einmal obendrauf: Schrieben zwei Geräte fast gleichzeitig, geht so keine verloren.
+    // noch einmal obendrauf: Schrieben zwei Geräte fast gleichzeitig, geht so keine verloren. Hat HA eine Änderung
+    // noch nicht bestätigt (Verbindung weg, Fehler), bleibt sie länger (höchstens 30 Min) und wird erneut gesendet.
+    // Behalten wird immer ein zusammenhängendes jüngstes Stück, so bleibt die Reihenfolge beim Wiederholen gleich.
     _planCompose(incoming) {
-      const now = Date.now();
-      this._planOps = this._planOps.filter((o) => now - o.at < 15000);
+      const now = this._haNow();
+      // Nicht länger behalten: 'gbad' (würde eine inzwischen von einem anderen Gerät geschriebene Entwarnung wieder
+      // aufheben, die Serie risse) und 'gdbg' (Vorschau, nicht wiederholbar)
+      this._planOps = this._planOps.filter((o) => now - o.at < 15000
+        || (o.at > this._planAck && o.t !== 'gdbg' && o.t !== 'gbad' && now - o.at < 30 * 6e4));
       let P = this._planBase;
       for (const o of this._planOps) P = planApply(P, o, o.at);
       // Ein Gerät bis 0.18 schrieb den Plan ohne Päckchen zurück: den letzten Stand behalten und wieder eintragen
       const lost = !P.gift && this._giftKeep && this._planKeyGift === this._planKey;
       if (lost) P = { ...P, gift: { ...this._giftKeep } };
+      P = this._planFit(P);
       const changed = planSer(P) !== planSer(this._plan);
       this._plan = P;
       this._hayFromPlan();
       this._giftFromPlan();
+      this._giftCredit();
       // Fehlt dem fremden Stand etwas von hier: noch einmal schreiben
       if (incoming && (this._planOps.length || lost) && planSer(P) !== planSer(this._planBase)) this._planSave();
       return changed;
     }
 
     _planOp(op) {
-      op.at = Date.now();
+      op.at = this._haNow();
       this._planOps.push(op);
       if (this._planCompose(false)) this._planSave();
     }
@@ -12408,32 +13164,84 @@
       this._planT = setTimeout(() => {
         const id = this._cfg.plan_entity;
         const ent = id && this._hass?.states[id];
-        let P = this._plan;
-        let v = planSer(P);
-        if (ent) {
+        const P = this._plan;
+        const v = planSer(P);
+        // Helfer zu kurz (max. Länge unter PLAN_MIN): Päckchen und Verlauf passen nicht hinein, darum gar nicht
+        // senden (HA lehnte jeden Wert ab), sondern einmal deutlich warnen und im Browser weiterplanen
+        const short = ent && this._planMax() < PLAN_MIN;
+        if (short && !this._planShortW) {
+          this._planShortW = true;
+          console.warn(`pika-pet-card: ${id} ist zu kurz (max. Länge ${this._planMax()}), bitte auf 255 stellen. Der Tagesplan bleibt bis dahin auf diesem Gerät.`);
+        }
+        if (ent && !short) {
           // Stand aus HA noch nicht da (Start): beim Eintreffen wird zusammengeführt und geschrieben
           if (!this._planOk) return;
-          // Zu lang für den Helfer (max. Länge zu klein eingestellt): ältere Einträge des Verlaufs weglassen, auch
-          // hier, damit dieses Gerät mit demselben Verlauf weiterplant wie die anderen
-          const max = Number(ent.attributes?.max) || 255;
-          for (let n = P.rec.length - 1; v.length > max && n >= 0; n--) {
-            P = { ...P, rec: P.rec.slice(0, n) };
-            v = planSer(P);
+          // Nicht erreichbar (war es schon beim Laden, plant die Karte nach 60 s lokal weiter): nicht ins Leere senden,
+          // später noch einmal; die eigenen Änderungen bleiben bis zur Bestätigung (siehe _planCompose)
+          // ("unknown" ist ein frisch angelegter, leerer Helfer: den beschreiben, _planOk kam erst nach 20 s)
+          if (ent.state === 'unavailable') {
+            this._planBase = P;
+            return this._planRetry(15000);
           }
-          if (v !== this._planSt) {
-            this._planSt = v;
+          // _planSt bleibt der Stand von HA (erst das Echo ändert ihn): so liest nicht jedes fremde hass-Update bis zum
+          // Echo den alten Stand neu ein und schreibt denselben Wert noch einmal
+          if (v !== this._planSt && v !== this._planSent.at(-1)?.v) {
+            this._planSent.push({ v, at: this._haNow() });
+            if (this._planSent.length > 8) this._planSent.shift();
             this._hass.callService('input_text', 'set_value', { entity_id: id, value: v })
-              .catch((e) => console.warn('pika-pet-card: Tagesplan speichern fehlgeschlagen', e));
+              .catch((e) => {
+                console.warn('pika-pet-card: Tagesplan speichern fehlgeschlagen, neuer Versuch', e);
+                this._planRetry(5000);
+              });
+            this._planRetry(15000);
           }
         } else {
           try {
             localStorage.setItem(this._planLsKey(), v);
           } catch (e) { /* privat/gesperrt: dann nur bis zum Neuladen */ }
+          this._planAck = this._haNow(); // lokal gibt es kein Echo
         }
         this._planBase = P;
+        this._giftCredit();
         // Sammeln aus der Vorschau (ohne Fenster) lässt sich nicht wiederholen, ohne doppelt zu zählen
         this._planOps = this._planOps.filter((o) => !(o.t === 'gather' && o.m == null));
       }, 400);
+    }
+
+    // Max. Länge des Helfers (ohne Helfer: unbegrenzt, der Plan bleibt im Browser)
+    _planMax() {
+      const ent = this._cfg.plan_entity && this._hass?.states[this._cfg.plan_entity];
+      return ent ? Number(ent.attributes?.max) || 255 : Infinity;
+    }
+
+    // Zu lang für den Helfer (max. Länge knapp eingestellt): ältere Einträge des Verlaufs weglassen. Auch im eigenen Plan,
+    // nicht nur beim Senden: so plant dieses Gerät mit demselben Verlauf weiter wie die anderen.
+    _planFit(P) {
+      const max = this._planMax();
+      if (max < PLAN_MIN) return P;
+      let v = planSer(P);
+      for (let n = P.rec.length - 1; v.length > max && n >= 0; n--) {
+        P = { ...P, rec: P.rec.slice(0, n) };
+        v = planSer(P);
+      }
+      return P;
+    }
+
+    // Kein Echo (Verbindung weg, HA neu gestartet) oder Fehler: noch einmal senden, solange eigene Änderungen offen sind
+    _planRetry(ms) {
+      clearTimeout(this._planRT);
+      this._planRT = setTimeout(() => {
+        this._planRT = null;
+        const id = this._cfg.plan_entity;
+        const st = id && this._hass?.states[id]?.state;
+        if (!st || !this._planOk) return;
+        this._planCompose(false); // zu alte Änderungen fallen hier weg
+        if (!this._planOps.some((o) => o.at > this._planAck)) return; // alles bestätigt
+        // Getrennt oder Helfer gerade nicht erreichbar: später noch einmal schauen
+        if (this._hass.connected === false || st === 'unavailable') return this._planRetry(15000);
+        this._planSent = [];
+        this._planSave();
+      }, ms);
     }
 
     // Punkt der Pika-Grafik (viewBox 120 × 100) in Szenen-Pixeln, ohne Atmen und Hüpfer
@@ -12635,7 +13443,7 @@
 
     _soapBubble() {
       const bubs = (this._bubs ??= new Set());
-      if (!this._g || bubs.size >= 12) return;
+      if (!this._g || bubs.size >= 8) return; // jede Blase ist eine eigene Ebene: schwache Tablets schonen
       const { pW, pH } = this._g;
       const W = this._W;
       const H = this._H;
@@ -12650,40 +13458,76 @@
       const out = this._dir * pW * rnd(0.25, 0.5);
       const dx = kd * W * 0.35 * wind * rnd(0.6, 1.3);
       const dy = -H * rnd(0.15, 0.45);
-      const at = (t, wob) => `translate(${(o.x + out * Math.min(1, t * 3) + dx * t + wob * pW * 0.2).toFixed(1)}px, `
-        + `${(o.y + dy * t + Math.abs(wob) * H * 0.03).toFixed(1)}px)`;
-      const frames = [0, 0.25, 0.5, 0.75, 1].map((t) => ({ transform: at(t, t ? rnd(-1, 1) : 0) }));
+      const at = (t, wob) => ({ x: o.x + out * Math.min(1, t * 3) + dx * t + wob * pW * 0.2, y: o.y + dy * t + Math.abs(wob) * H * 0.03 });
+      // Stützpunkte merken: _bubPos rechnet daraus, wo die Blase gleich ist
+      const pts = [0, 0.25, 0.5, 0.75, 1].map((t) => at(t, t ? rnd(-1, 1) : 0));
+      const frames = pts.map((q) => ({ transform: `translate(${q.x.toFixed(1)}px, ${q.y.toFixed(1)}px)` }));
       this._el.fx.appendChild(el);
-      const anim = el.animate(frames, { duration: rnd(3500, 7500), easing: 'linear', fill: 'forwards' });
-      const b = { el, anim };
+      const dur = rnd(3500, 7500);
+      const anim = el.animate(frames, { duration: dur, easing: 'linear', fill: 'forwards' });
+      const b = { el, anim, pts, dur };
       bubs.add(b);
-      el.firstChild.addEventListener('click', (e) => (e.stopPropagation(), this._popBubble(b)));
+      el.firstChild.addEventListener('click', (e) => (e.stopPropagation(), this._popBubble(b, true)));
       anim.finished.then(() => this._popBubble(b), () => {});
     }
 
-    _popBubble(b) {
+    // Wo Blase b in ms Millisekunden ist (Szenen-Pixel; die Animation ist linear zwischen den Stützpunkten)
+    _bubPos(b, ms = 0) {
+      const t = clamp(((b.anim.currentTime || 0) + ms) / b.dur, 0, 1) * 4;
+      const i = Math.min(3, Math.floor(t));
+      const a = b.pts[i];
+      const c = b.pts[i + 1];
+      return { x: a.x + (c.x - a.x) * (t - i), y: a.y + (c.y - a.y) * (t - i) };
+    }
+
+    // tap: angetippt. Platzt sie dabei direkt vor seiner Nase, muss er niesen.
+    _popBubble(b, tap = false) {
       if (!this._bubs?.delete(b)) return;
+      const q = tap && this._g && !this._asleep && !this._inside ? this._bubPos(b) : null;
       b.anim.pause();
       b.el.classList.add('pop');
       setTimeout(() => b.el.remove(), 220);
+      if (q && Date.now() - (this._bubSnzAt || 0) > 15000) {
+        const n = this._nosePos();
+        if (Math.hypot(q.x - n.x, q.y - n.y) < this._g.pH * 0.3) {
+          this._bubSnzAt = Date.now();
+          setTimeout(() => this._bubSneeze(), 250);
+        }
+      }
     }
 
-    // Einer tief hängenden Blase hinterher und hochspringen: plopp!
+    // Kurzer Nieser nebenher (läuft neben der Aktion, nur Mimik und Tröpfchen)
+    _bubSneeze() {
+      if (this._asleep || this._inside) return;
+      this._cls('sneezing', 450, true);
+      this._say(pick(['hatschi!', 'tschi!']), 1000);
+      this._snzFx();
+      setTimeout(() => (this._cls('eflap-l', 950, true), this._cls('eflap-r', 950, true)), 450);
+    }
+
+    // Einer tief hängenden Blase hinterher und hochspringen: plopp! Gezielt wird dorthin, wo sie bei der Ankunft
+    // ist; ist sie dann doch woanders, geht der Sprung daneben.
     async _chaseBubble() {
-      const { pH, gy } = this._g;
+      const { pH, pW, gy } = this._g;
+      const v = pW * 0.85 * 1.5; // px/s wie _walkTo mit speed 1,5
+      const low = (q) => q.y > gy - pH * 1.5 && q.y < gy - pH * 0.5;
       let best = null;
       for (const b of this._bubs || []) {
-        const m = new DOMMatrixReadOnly(getComputedStyle(b.el).transform);
-        if (m.m42 > gy - pH * 1.5 && m.m42 < gy - pH * 0.5 && (!best || Math.abs(m.m41 - this._x) < Math.abs(best.x - this._x))) {
-          best = { b, x: m.m41 };
-        }
+        // Ankunftszeit zweimal genähert: erst zur jetzigen Stelle, dann zur vorhergesagten
+        let q = this._bubPos(b);
+        q = this._bubPos(b, (Math.abs(q.x - this._x) / v) * 1000 + 260);
+        q = this._bubPos(b, (Math.abs(q.x - this._x) / v) * 1000 + 260);
+        if (low(q) && (!best || Math.abs(q.x - this._x) < Math.abs(best.x - this._x))) best = { b, x: q.x };
       }
       if (!best) return;
       await this._walkTo(best.x, 1.5);
       this._jump('hop1');
       await this._wait(260);
-      this._popBubble(best.b);
-      this._say(pick(['plopp!', 'hab dich!', 'hihi']), 1000);
+      const q = this._bubs.has(best.b) ? this._bubPos(best.b) : null;
+      if (q && Math.abs(q.x - this._x) < pW * 0.6 && low(q)) {
+        this._popBubble(best.b);
+        this._say(pick(['plopp!', 'hab dich!', 'hihi']), 1000);
+      } else this._say(pick(['och…', 'daneben!', 'huch']), 1000);
       await this._wait(800);
       this._face(this._windDir || this._dir);
     }
@@ -12901,6 +13745,7 @@
       name: 'Pika Pet Card',
       description: 'Ein kleiner Pika wohnt im Dashboard – füttern, streicheln, beim Schlafen zuschauen.',
       preview: true,
+      documentationURL: 'https://github.com/cschloesser/ha-pet#readme',
     });
     console.info(`%c PIKA-PET-CARD %c ${VERSION} `, 'background:#ad8664;color:#fff;border-radius:3px 0 0 3px', 'background:#f0e2cf;color:#5a4030;border-radius:0 3px 3px 0');
   }

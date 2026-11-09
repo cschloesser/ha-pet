@@ -724,7 +724,8 @@
   document.getElementById('cf-restart').addEventListener('click', () => {
     cfReset();
     const t = new Date().toISOString();
-    for (const id of Object.values(CF)) states[id] = { ...states[id], last_changed: t, last_updated: t };
+    // wie bei HA: alle Entities (auch sun.sun) bekommen dieselbe Zeit
+    for (const id of new Set([...Object.keys(states), ...Object.values(CF)])) states[id] = { ...states[id], last_changed: t, last_updated: t };
     push();
     log('Kaffee: HA-Neustart simuliert');
   });
@@ -771,7 +772,7 @@
   // ==================== Ende Aktivitäten ====================
 
   // ==================== Süßes ====================
-  const cuteGo = (c, act) => { c._next = act; c._interrupt(); };
+  const cuteGo = (c, act) => { c._next = act; c._nextAt = Date.now(); c._interrupt(); }; // _nextAt: Berührungen verfallen sonst
   document.querySelectorAll('[data-cute]').forEach((b) =>
     b.addEventListener('click', () => cards.forEach((c) => cuteGo(c, b.dataset.cute)))
   );
