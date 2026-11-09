@@ -52,7 +52,7 @@
  * werden aus Datum und Standort (hass.config) berechnet.
  */
 (() => {
-  const VERSION = '0.21.0';
+  const VERSION = '0.22.0';
 
   const DEFAULTS = {
     name: 'Pika',
@@ -664,7 +664,7 @@
   // ein CSS-Filter auf dem atmenden Pika müsste sonst jedes Bild neu gerechnet werden.
   const PK_FILL = {
     fu1: '#d0ad8d', fu2: '#b08a68', fu3: '#8a664b', bel: '#f0e2cf', ear: '#efe3d3', ein: '#e3a990',
-    paw: '#ecdcc6', mou: '#f4e8d8', cap: '#7c9be0',
+    paw: '#ecdcc6', mou: '#f4e8d8', cap: '#7c9be0', cpw: '#ffffff',
   };
   const PK = (k) => `var(--pk-${k}, ${PK_FILL[k]})`;
   // Wie filter: brightness(b) saturate(s), nur einmal ausgerechnet
@@ -673,6 +673,8 @@
     const L = 0.213 * c[0] + 0.715 * c[1] + 0.072 * c[2];
     return `--pk-${k}: #${c.map((v) => Math.round(clamp(L + (v - L) * s, 0, 255)).toString(16).padStart(2, '0')).join('')};`;
   }).join(' ');
+  // Accessoires mit festen Farben (Schal, Hüte, Tasse ohne die Pfoten, Milchschaum) unter dem Vorsatz pre
+  const PK_ACC = (pre) => ['.scarf', '.hats', '.cfoam', '.cup > g > g > :not(.cps)'].map((s) => `${pre} ${s}`).join(', ');
   // Körper als eine durchgehende Bohnenform (Pikas haben keinen sichtbaren Hals)
   const BODY = 'M30 90 C14 88 11 61 25 49 C37 37 55 31 67 28 C76 21 99 19 107 35 C113 48 112 66 104 78 C100 85 96 90 88 91 C70 94 46 94 30 90 Z';
   const EAR = (cx, cy, side) => `
@@ -706,7 +708,7 @@
   // Gezeichnet in 1:1, dann um 1,35 vergrößert und etwas tiefer an den Bauch gesetzt. .cpr ist die Pfote, die bei Regen den Blattschirm hält.
   const CUP_STEAM = (x, y) => `<g class="cst" fill="none" stroke="#fff" stroke-width="1.2" stroke-linecap="round">
         <path d="M${x - 2} ${y} q-1.4 -2.2 0 -4.4 q1.4 -2.2 0 -4.4"/><path d="M${x + 2} ${y - 0.6} q-1.4 -2.2 0 -4.4 q1.4 -2.2 0 -4.4"/></g>`;
-  const CUP_PAWS = (l, r) => `<g fill="${PK('paw')}" stroke="${OUT}" stroke-width="1.05">
+  const CUP_PAWS = (l, r) => `<g class="cps" fill="${PK('paw')}" stroke="${OUT}" stroke-width="1.05">
         <ellipse cx="${l[0]}" cy="${l[1]}" rx="3" ry="3.8"/><ellipse class="cpr" cx="${r[0]}" cy="${r[1]}" rx="3" ry="3.8"/></g>`;
   const CUP_SVG = `
       <g class="cup"><g transform="translate(0 4) translate(92 80) scale(1.35) translate(-92 -80)">
@@ -876,8 +878,8 @@
       </g>
       <g class="feet" fill="${PK('paw')}" stroke="${OUT}" stroke-width="1.6">
         <ellipse class="bfoot" cx="33" cy="90.5" rx="9" ry="3.6"/>
-        <ellipse cx="82" cy="91" rx="6" ry="3.4"/>
-        <ellipse cx="97" cy="90.5" rx="6" ry="3.4"/>
+        <ellipse class="ffoot" cx="82" cy="91" rx="6" ry="3.4"/>
+        <ellipse class="ffoot" cx="97" cy="90.5" rx="6" ry="3.4"/>
       </g>
       <g class="sleg"><ellipse cx="64" cy="50" rx="5.2" ry="7.4" transform="rotate(-38 64 50)" fill="${PK('paw')}" stroke="${OUT}" stroke-width="1.5"/></g>
       <g class="hd"><g class="face">
@@ -895,6 +897,8 @@
             <ellipse cx="91" cy="61" rx="1.9" ry="1.1" fill="#e8838b"/>
           </g>
           <path class="nose" d="M88.7 51.6 q2.3 -1.1 4.6 0 q-.6 1.9 -2.3 2.5 q-1.7 -.6 -2.3 -2.5z" fill="#7a4438"/>
+          <path class="nsm" d="M90.6 50 q1.7 -1.2 3 .1 q1.1 1.5 -.4 2.5 q-1.7 .8 -2.9 -.5 q-.8 -1.1 .3 -2.1z M94.4 52.6 a.7 .7 0 1 0 .01 0z"
+                fill="var(--nsm, #e8584e)" stroke="rgba(0,0,0,.25)" stroke-width=".35"/>
           <path class="mth" d="M91 54.1 v1.5 M91 55.6 q-1.5 1.7 -3 .4 M91 55.6 q1.5 1.7 3 .4"
                 stroke="${OUT}" stroke-width="1" fill="none" stroke-linecap="round"/>
           <path class="wmouth" d="M91 54.1 v1.2 M87.6 55.2 q1.7 2.6 3.4 .1 q1.7 2.5 3.4 -.1"
@@ -967,11 +971,11 @@
       <ellipse class="kpaw" cx="105" cy="50" rx="3.8" ry="4.8" fill="${PK('paw')}" stroke="${OUT}" stroke-width="1.4"/>
       <g class="hd"><g class="cap">
         <path d="M77 28 Q80 12 62 9 Q91 0 103 27 Z" fill="${PK('cap')}" stroke="${OUT}" stroke-width="1.4" stroke-linejoin="round"/>
-        <circle cx="79" cy="17" r="1.3" fill="#fff" opacity=".8"/>
-        <circle cx="88" cy="13" r="1.3" fill="#fff" opacity=".8"/>
-        <circle cx="91" cy="22" r="1.3" fill="#fff" opacity=".8"/>
-        <path d="M76 28 Q90 22 104 27" stroke="#fff" stroke-width="5" fill="none" stroke-linecap="round"/>
-        <circle cx="62" cy="9" r="4.2" fill="#fff" stroke="${OUT}" stroke-width="1.2"/>
+        <circle cx="79" cy="17" r="1.3" fill="${PK('cpw')}" opacity=".8"/>
+        <circle cx="88" cy="13" r="1.3" fill="${PK('cpw')}" opacity=".8"/>
+        <circle cx="91" cy="22" r="1.3" fill="${PK('cpw')}" opacity=".8"/>
+        <path d="M76 28 Q90 22 104 27" stroke="${PK('cpw')}" stroke-width="5" fill="none" stroke-linecap="round"/>
+        <circle cx="62" cy="9" r="4.2" fill="${PK('cpw')}" stroke="${OUT}" stroke-width="1.2"/>
       </g>
       <g class="hats">
         <g class="hat-witch">
@@ -2512,7 +2516,7 @@
   const ACT_SHOW_COOL = 5 * 6e4;
   const ACT_GREET = ['Hallo!', 'Hi!', 'Da bist du ja!', 'iiep!', 'Hallöchen!', 'Huhu!'];
   const ACT_CLS = ['waving', 'music', 'sing', 'painting', 'dab', 'mix', 'blowing', 'blow', 'sport', 'jjack', 'knee',
-    'roping', 'rope-hold', 'rdbl', 'lifting', 'lift-gnd', 'lift-lo', 'lift-hi', 'strain', 'stretch'];
+    'roping', 'rope-hold', 'rdbl', 'lifting', 'lift-gnd', 'lift-lo', 'lift-hi', 'strain', 'stretch', 'bowing', 'smudge'];
   // Frühsport nur morgens: 10–180 Minuten nach dem Aufwachen, einmal am Tag (im Helfer plan_entity vermerkt)
   const SPORT_WIN = [10, 180];
   const SPORT_INTRO = 1700;
@@ -2624,6 +2628,14 @@
   .music .ustrum { animation: strum .32s ease-in-out infinite alternate; }
   @keyframes strum { from { transform: translate(-.6px, -2.4px); } to { transform: translate(.6px, 2.2px); } }
   .sing .omouth { display: inline; }
+  /* Verbeugung nach dem Ständchen: Pfoten vor dem Bauch, Oberkörper und Kopf tief, die Ohren fallen nach vorn */
+  .bowing .paws { display: inline; transform: translateY(6px); }
+  .bowing .hop { animation: bow 1.6s ease-in-out; }
+  @keyframes bow { 28%, 64% { transform: translateY(-4%) rotate(10deg) scale(1.03, .95); } }
+  .bowing .face { animation: bowf 1.6s ease-in-out; }
+  @keyframes bowf { 28%, 64% { transform: translate(2.5px, 4.5px); } }
+  .bowing .ear { animation: bowe 1.6s ease-in-out; }
+  @keyframes bowe { 34%, 64% { transform: rotate(18deg); } 80% { transform: rotate(-5deg); } }
 
   /* Malen: Pinsel tupft, Blick auf die Palette */
   .painting .face { transform: translate(1.5px, -.6px); }
@@ -2631,6 +2643,9 @@
   .dab .bstick { transform: translate(1.6px, -.9px) rotate(-7deg); }
   .mix .face { transform: translate(-1.6px, 2.6px); }
   .mix .bstick { transform: rotate(14deg); }
+  /* Farbklecks auf der Nase (--nsm = die Farbe, mit der er gerade malte) */
+  .nsm { display: none; }
+  .smudge .nsm { display: inline; }
   .easel { position: absolute; opacity: 0; transition: opacity .6s; }
   .easel.on { opacity: 1; }
   .easel svg { display: block; width: 100%; height: 100%; overflow: visible; }
@@ -2700,20 +2715,41 @@
   @keyframes ropef { 0% { opacity: 1; } 50%, 100% { opacity: 0; } }
   @keyframes ropeb { 0% { opacity: 0; } 50%, 100% { opacity: 1; } }
   .roping .jump { animation: rjump var(--rp, .66s) linear infinite; }
+  /* Absprung bremst nach oben ab, oben kurz gestreckt, abwärts beschleunigt er (das Seil ist bei 50 % unten) */
   @keyframes rjump {
-    0%, 22%, 80%, 100% { transform: translateY(0); }
-    32% { transform: scale(1.05, .94); }
-    44%, 56% { transform: translateY(-15%); }
-    68% { transform: translateY(0) scale(1.05, .95); }
+    0%, 80%, 100% { transform: translateY(0); }
+    22% { transform: translateY(0); animation-timing-function: ease-in; }
+    32% { transform: scale(1.06, .93); animation-timing-function: cubic-bezier(.2, .65, .45, 1); }
+    50% { transform: translateY(-16%) scale(.98, 1.03); animation-timing-function: cubic-bezier(.55, 0, .8, .35); }
+    68% { transform: translateY(0) scale(1.06, .94); animation-timing-function: ease-out; }
   }
   .rdbl .jump { animation-name: rjump2; }
   @keyframes rjump2 {
-    0%, 100% { transform: translateY(0); }
-    10% { transform: scale(1.07, .92); }
-    25%, 75% { transform: translateY(-22%); }
-    50% { transform: translateY(-27%); }
-    90% { transform: translateY(0) scale(1.06, .94); }
+    0%, 100% { transform: translateY(0); animation-timing-function: ease-in; }
+    10% { transform: scale(1.07, .92); animation-timing-function: cubic-bezier(.2, .65, .45, 1); }
+    50% { transform: translateY(-27%) scale(.97, 1.04); animation-timing-function: cubic-bezier(.55, 0, .8, .35); }
+    90% { transform: translateY(0) scale(1.06, .94); animation-timing-function: ease-out; }
   }
+  .roping .bfoot { animation: fb-rope var(--rp, .66s) ease-in-out infinite; }
+  .roping .ffoot { animation: ff-rope var(--rp, .66s) ease-in-out infinite; }
+  @keyframes fb-rope { 0%, 28%, 72%, 100% { transform: none; } 44%, 56% { transform: translate(3px, -1.5px) rotate(16deg); } }
+  @keyframes ff-rope { 0%, 28%, 72%, 100% { transform: none; } 44%, 56% { transform: translate(-1px, -1.5px) rotate(14deg); } }
+  .rdbl .bfoot { animation-name: fb-air; }
+  .rdbl .ffoot { animation-name: ff-air; }
+  .roping .shadow { animation: sh-rope var(--rp, .66s) linear infinite; }
+  @keyframes sh-rope {
+    0%, 68%, 100% { transform: none; opacity: 1; }
+    32% { transform: none; opacity: 1; animation-timing-function: cubic-bezier(.2, .65, .45, 1); }
+    50% { transform: scale(.8); opacity: .58; animation-timing-function: cubic-bezier(.55, 0, .8, .35); }
+  }
+  .rdbl .shadow { animation-name: sh-rope2; }
+  @keyframes sh-rope2 {
+    0%, 90%, 100% { transform: none; opacity: 1; }
+    10% { transform: none; opacity: 1; animation-timing-function: cubic-bezier(.2, .65, .45, 1); }
+    50% { transform: scale(.7); opacity: .45; animation-timing-function: cubic-bezier(.55, 0, .8, .35); }
+  }
+  .jjack .shadow { animation: sh-jj var(--jj, .7s) ease-in-out infinite; }
+  @keyframes sh-jj { 0%, 50%, 100% { transform: none; opacity: 1; } 25% { transform: scale(.82); opacity: .6; } }
 
   /* Gewichtheben: Pusteblumen-Hantel vom Boden über den Kopf */
   .barm { transform-box: view-box; transition: transform .5s cubic-bezier(.4, 0, .3, 1); }
@@ -3299,6 +3335,33 @@
     transform: translate(calc(var(--hc) - var(--hh) * var(--hd)), var(--dy)) scale(var(--ds));
   }
   .inside .shadow { opacity: 0; }
+  /* In der Luft schrumpft und verblasst der Schatten, im Takt von hop, hops, hopb, jump und binky (--shs, --sho = am Scheitel) */
+  .walking .shadow { --shs: .86; --sho: .66; animation: sh-hop .36s linear infinite; }
+  .walking.trip .shadow { --shs: .93; --sho: .84; animation: sh-trip .24s linear infinite; }
+  .walking.bighop .shadow { --shs: .78; --sho: .52; animation-duration: .42s; }
+  @keyframes sh-hop {
+    0%, 100% { transform: scale(1.04); opacity: 1; animation-timing-function: ease-out; }
+    11% { transform: none; opacity: 1; animation-timing-function: cubic-bezier(.3, .6, .5, 1); }
+    50% { transform: scale(var(--shs)); opacity: var(--sho); animation-timing-function: cubic-bezier(.5, 0, .7, .4); }
+    88% { transform: none; opacity: 1; animation-timing-function: ease-out; }
+  }
+  @keyframes sh-trip {
+    0%, 100% { transform: none; opacity: 1; animation-timing-function: ease-out; }
+    50% { transform: scale(var(--shs)); opacity: var(--sho); animation-timing-function: ease-in; }
+  }
+  .shadow.hop1 { animation: sh-jump .6s cubic-bezier(.3, .7, .4, 1); }
+  @keyframes sh-jump {
+    15% { transform: scale(1.05); opacity: 1; animation-timing-function: cubic-bezier(.25, .6, .45, 1); }
+    45% { transform: scale(.7); opacity: .45; animation-timing-function: cubic-bezier(.5, 0, .75, .5); }
+    75% { transform: scale(1.05); opacity: 1; animation-timing-function: ease-out; }
+  }
+  .shadow.binky { animation: sh-binky .9s ease-in-out; }
+  @keyframes sh-binky {
+    12% { transform: scale(1.06); opacity: 1; animation-timing-function: cubic-bezier(.25, .6, .45, 1); }
+    40% { transform: scale(.62); opacity: .38; }
+    60% { transform: scale(.72); opacity: .48; animation-timing-function: cubic-bezier(.5, 0, .75, .5); }
+    82% { transform: scale(1.05); opacity: 1; animation-timing-function: ease-out; }
+  }
   .pika.inside .brolly { display: none; }
   .flip { transition: transform .25s; }
   .left .flip { transform: scaleX(-1); }
@@ -3308,7 +3371,13 @@
   .night .pika .pk { ${PK_DIM(0.8, 0.85)} }
   .pika.inside .pk { ${PK_DIM(0.85, 1)} }
   .night .pika.inside .pk { ${PK_DIM(0.68, 0.85)} }
-  .pk stop, .pk [fill^="var(--pk-"] { transition: fill 1s, stop-color 1s; }
+  .pk stop, .pk [fill^="var(--pk-"], .pk [stroke^="var(--pk-"] { transition: fill 1s, stop-color 1s, stroke 1s; }
+  /* Schal, Hüte und Tasse haben feste Farben: nachts und im Bau per Filter so gedimmt wie das Fell. Die Gruppen sind
+     klein und stehen still; die Pfoten an der Tasse (.cps) und die Zipfelmütze laufen schon über die Fellfarben. */
+  ${PK_ACC('.pika')} { transition: filter 1s; }
+  ${PK_ACC('.night .pika')} { filter: brightness(.8) saturate(.85); }
+  ${PK_ACC('.pika.inside')} { filter: brightness(.85); }
+  ${PK_ACC('.night .pika.inside')} { filter: brightness(.68) saturate(.85); }
   .friend .pk { transition: filter 2.5s; }
   .night .friend .pk { filter: brightness(.8) saturate(.85); }
 
@@ -3469,8 +3538,8 @@
   .yawning .hop { animation: yawnb 2.2s ease-in-out; }
   @keyframes yawnb { 30%, 72% { transform: scale(.95, 1.07); } }
   /* Augen: zu und genießen, Glanzsterne, schielen */
-  .squint .eye, .yawning .eye, .earwash .eye, .nodding .eye, .sneezing .eye { display: none; }
-  .squint .seye, .yawning .seye, .earwash .seye, .nodding .seye, .sneezing .seye { display: inline; }
+  .bowing .eye, .squint .eye, .yawning .eye, .earwash .eye, .nodding .eye, .sneezing .eye { display: none; }
+  .bowing .seye, .squint .seye, .yawning .seye, .earwash .seye, .nodding .seye, .sneezing .seye { display: inline; }
   .happy.squint .seye { display: none; }
   .estar { transform-box: fill-box; transform-origin: 50% 50%; }
   .sparkle .estar { display: inline; animation: estar .7s ease-in-out infinite alternate; }
@@ -3522,6 +3591,31 @@
   .fluffy .body { animation: fluffy .8s ease-out; }
   @keyframes fluffy { 30% { transform: scale(1.07, 1.06); } 55% { transform: scale(1.04, 1.03) skewX(-2deg); } }
   .bfoot { transform-box: fill-box; transform-origin: 20% 50%; }
+  .ffoot { transform-box: fill-box; transform-origin: 50% 50%; }
+  /* Hoppeln: Der Hinterlauf stößt ab und streckt sich nach hinten, die Vorderpfoten greifen nach vorn und setzen zuerst auf */
+  .walking .bfoot { animation: fb-hop .36s linear infinite; }
+  .walking .ffoot { animation: ff-hop .36s linear infinite; }
+  .walking.trip .bfoot, .walking.trip .ffoot { animation-duration: .24s; }
+  .walking.bighop .bfoot, .walking.bighop .ffoot { animation-duration: .42s; }
+  @keyframes fb-hop {
+    0%, 88%, 100% { transform: none; }
+    10% { transform: rotate(12deg); }
+    45% { transform: translate(-3.5px, -.5px) rotate(28deg); }
+    74% { transform: translate(1px, 0) rotate(-10deg); }
+  }
+  @keyframes ff-hop {
+    0%, 88%, 100% { transform: none; }
+    10% { transform: translate(1px, -1.5px) rotate(-14deg); }
+    45% { transform: translate(3px, -1px) rotate(-8deg); }
+    74% { transform: translate(2.5px, .5px) rotate(8deg); }
+  }
+  /* Sprünge auf der Stelle: Füße in der Luft angezogen */
+  .jump.hop1 .bfoot { animation: fb-air .6s ease-in-out; }
+  .jump.hop1 .ffoot { animation: ff-air .6s ease-in-out; }
+  .jump.binky .bfoot { animation: fb-air .9s ease-in-out; }
+  .jump.binky .ffoot { animation: ff-air .9s ease-in-out; }
+  @keyframes fb-air { 0%, 12%, 84%, 100% { transform: none; } 32%, 62% { transform: translate(3px, -1.5px) rotate(16deg); } }
+  @keyframes ff-air { 0%, 12%, 84%, 100% { transform: none; } 32%, 62% { transform: translate(-1px, -1.5px) rotate(14deg); } }
   .thump .bfoot { animation: thump .13s ease-in-out infinite alternate; }
   @keyframes thump { to { transform: translateY(-3.5px) rotate(-14deg); } }
   /* Hinterpfote kratzt am Ohr */
@@ -4435,7 +4529,7 @@
 
       const $ = (s) => this.shadowRoot.querySelector(s);
       this._el = {
-        scene: $('.scene'), pika: $('.pika'), jump: $('.jump'), mfood: $('.mfood'),
+        scene: $('.scene'), pika: $('.pika'), jump: $('.jump'), shadow: $('.pika .shadow'), mfood: $('.mfood'),
         flowers: $('.flowers'), foods: $('.foods'), fx: $('.fx'), hay: $('.hay'),
         stats: $('.stats'), name: $('.nm'), barS: $('.bar-s'), barG: $('.bar-g'),
         birds: $('.birds'), mice: $('.mice'), miceF: $('.mice-f'), planes: $('.planes'), ptags: $('.ptags'),
@@ -5051,11 +5145,18 @@
       await this._peekOut();
     }
 
-    async _enterBurrow(speed = 1) {
+    // lookBack: in der Tür dreht er sich noch einmal um und schaut zurück (Schlafengehen)
+    async _enterBurrow(speed = 1, lookBack = false) {
       await this._walkTo(this._g.home, speed);
       this._setX(this._g.home, true);
       this._inside = true;
       await this._to('door', 450);
+      if (lookBack) {
+        this._face(-this._dir);
+        await this._wait(500);
+        this._blink();
+        await this._wait(700);
+      }
       await this._wait(150);
       await this._to('hidden', 500);
     }
@@ -5164,7 +5265,7 @@
       const f = this._nearestFlower();
       if (!f) return;
       await this._approach(f.xf * this._W);
-      this._pickFlower(f);
+      await this._sniffPick(f);
       await this._eat(f.color, rnd(2500, 4000));
       this._selfFed(SELF.flower);
       if (Math.random() < 0.4) this._cls('mlem', 950, true);
@@ -5191,7 +5292,7 @@
       }
       if (f) {
         await this._approach(f.xf * this._W);
-        this._pickFlower(f);
+        await this._sniffPick(f);
       }
       this._mouth(color);
       this._el.pika.classList.add('carry');
@@ -5780,9 +5881,12 @@
     }
 
     async _goSleep() {
+      const p = this._el.pika;
       this._say('*gähn*');
-      await this._wait(1200);
-      if (!this._inside) await this._enterBurrow(0.7);
+      p.classList.add('yawning');
+      await this._wait(2200);
+      p.classList.remove('yawning');
+      if (!this._inside) await this._enterBurrow(0.7, true);
       await this._wait(900);
       this._face(1);
       this._el.pika.classList.add('sleeping');
@@ -5911,12 +6015,12 @@
 
     _jump(kind) {
       if (kind === 'binky' && calmMotion()) kind = 'hop1'; // Bewegung reduzieren: ruhiger Hüpfer statt Luftsprung
-      const j = this._el.jump;
-      j.classList.remove('hop1', 'binky');
-      void j.offsetWidth;
-      j.classList.add(kind);
+      const j = [this._el.jump, this._el.shadow]; // der Schatten macht den Sprung mit (wird kleiner)
+      for (const el of j) el.classList.remove('hop1', 'binky');
+      void j[0].offsetWidth;
+      for (const el of j) el.classList.add(kind);
       clearTimeout(this._jumpT);
-      this._jumpT = setTimeout(() => j.classList.remove(kind), 1000);
+      this._jumpT = setTimeout(() => j.forEach((el) => el.classList.remove(kind)), 1000);
     }
 
     _happy(ms = 1200) {
@@ -6734,7 +6838,7 @@
       const p = this._el.pika;
       const { pW } = this._g;
       await this._approach(f.xf * this._W);
-      this._pickFlower(f);
+      await this._sniffPick(f);
       this._mouth(f.color);
       p.classList.add('carry');
       // Unterwegs bricht Streicheln das Geschenk nicht ab (_petFree). Alles andere (Futter, Schlaf, Plan): dann legt er
@@ -6985,6 +7089,15 @@
         if (!best || Math.abs(f.xf * this._W - this._x) < Math.abs(best.xf * this._W - this._x)) best = f;
       }
       return best;
+    }
+
+    // Erst an der Blüte schnuppern (Nase wackelt, Kopf tief), dann pflücken
+    async _sniffPick(f) {
+      const p = this._el.pika;
+      p.classList.add('sniff');
+      await this._wait(rnd(600, 900));
+      p.classList.remove('sniff');
+      this._pickFlower(f);
     }
 
     _pickFlower(f) {
@@ -9094,12 +9207,12 @@
 
     _frJump(fr, kind) {
       if (kind === 'binky' && calmMotion()) kind = 'hop1';
-      const j = fr.jump;
-      j.classList.remove('hop1', 'binky');
-      void j.offsetWidth;
-      j.classList.add(kind);
+      const j = [fr.jump, fr.el.querySelector('.shadow')];
+      for (const el of j) el.classList.remove('hop1', 'binky');
+      void j[0].offsetWidth;
+      for (const el of j) el.classList.add(kind);
       clearTimeout(fr.jumpT);
-      fr.jumpT = setTimeout(() => j.classList.remove(kind), 1000);
+      fr.jumpT = setTimeout(() => j.forEach((el) => el.classList.remove(kind)), 1000);
     }
 
     _frSay(fr, text, ms = 1400) {
@@ -13810,10 +13923,12 @@
       }
       p.classList.remove('music', 'sing');
       await this._wait(300);
-      this._jump('hop1');
+      p.classList.add('bowing');
       this._say(pick(['Danke! ♥', 'Tadaa!', '♪ ♥']), 1400);
+      await this._wait(1600);
+      p.classList.remove('bowing');
       this._hearts(2);
-      await this._wait(1400);
+      await this._wait(500);
     }
 
     // ---------- Malen ----------
@@ -13866,8 +13981,14 @@
       const colors = [fill('.cv-sky'), fill('.cv-sun'), '#86c46b', EASEL_MOTIF[motif][0], '#ffffff'];
       const t0 = S.start + ACT_WALK + 1500;
       const L = (S.end - t0) / layers.length;
+      // Bei einer Schicht landet ein Klecks auf der Nase (feste Zahlen: auf allen Geräten dieselbe Farbe, auch für Späteinsteiger)
+      const smudge = S.r(40) < 0.6 ? Math.floor(S.r(41) * layers.length) : -1;
       for (let i = 0; i < layers.length; i++) {
         const lEnd = t0 + (i + 1) * L;
+        if (i === smudge) {
+          p.style.setProperty('--nsm', colors[i]);
+          p.classList.add('smudge');
+        }
         if (this._planNow() >= lEnd - 600) {
           layers[i].style.opacity = '1'; // schon gemalt
           continue;
@@ -13920,6 +14041,12 @@
       await this._wait(5000 + S.r(7) * 4000);
       p.classList.remove('look-f');
       this._easelAway();
+      // Klecks von der Nase putzen
+      if (p.classList.contains('smudge')) {
+        p.classList.add('groom');
+        await this._wait(900);
+        p.classList.remove('groom', 'smudge');
+      }
       await this._wait(600);
     }
 
