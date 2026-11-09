@@ -56,9 +56,13 @@
 <div class="bar"><b>Besuch</b>
   <button id="bird">Vögelchen kommt</button>
   <button id="mouse">Maus schaut raus</button>
+  <button id="frog">Frosch kommt</button>
+  <button id="snail">Schnecke kommt</button>
   <button id="watch">Pika schaut hin</button>
   <button data-next="bird">nächster Vogel</button>
   <button data-next="mouse">nächste Maus</button>
+  <button data-next="frog">nächster Frosch (Regen)</button>
+  <button data-next="snail">nächste Schnecke (Regen)</button>
   <button data-next="friend">nächster Pino</button>
   <button data-next="any">nächster Besuch</button>
   <button data-next="real">Besuchsuhr zurück</button>
@@ -359,8 +363,8 @@
     [...c._pileEls.keys()].forEach((k, i) => setTimeout(() => c._cleanPile(k), i * 250));
   });
   // Besuch sofort, auch wenn Wetter oder Tageszeit es sonst nicht erlauben würden
-  document.getElementById('bird').addEventListener('click', () => cards.forEach((c) => c._visit('bird', c._critId, true)));
-  document.getElementById('mouse').addEventListener('click', () => cards.forEach((c) => c._visit('mouse', c._critId, true)));
+  const CRITTERS = ['bird', 'mouse', 'frog', 'snail'];
+  for (const k of CRITTERS) document.getElementById(k).addEventListener('click', () => cards.forEach((c) => c._visit(k, c._critId, true)));
   // Besuche werden aus der Uhr berechnet: Besuchsuhr aller Karten (_dbgShiftMs) 5 s vor den nächsten Start stellen
   const visitAt = (c, kind) => {
     if (kind !== 'friend') return c._critNext(kind, c._visitNow() + 1000).at;
@@ -390,8 +394,8 @@
         c._dbgShiftMs = shift;
         c._critLast = {}; // die Uhr springt (auch zurück): gemerkte Besuche gelten nicht mehr
         c._restartCritters();
-        // Pino bleibt, wenn nur Vogel oder Maus vorgezogen werden (beides zusammen ansehen)
-        if (k === 'bird' || k === 'mouse') continue;
+        // Pino bleibt, wenn nur Vogel, Maus, Frosch oder Schnecke vorgezogen werden (beides zusammen ansehen)
+        if (CRITTERS.includes(k)) continue;
         c._frUsed = 0;
         c._friendStop();
         c._friendPlan();
@@ -399,7 +403,7 @@
     })
   );
   document.getElementById('watch').addEventListener('click', () => cards.forEach((c) => {
-    const n = c._bird?.sitting ? 'watchBird' : c._mouse?.out ? 'watchMouse' : null;
+    const n = c._bird?.sitting ? 'watchBird' : c._mouse?.out ? 'watchMouse' : c._frog?.out ? 'watchFrog' : c._snail?.out ? 'watchSnail' : null;
     if (n) { c._next = n; c._interrupt(); }
   }));
   // Flieger: wie die Flightradar24-Integration alle 20 s neue Positionen, raus aus 15 km = weg

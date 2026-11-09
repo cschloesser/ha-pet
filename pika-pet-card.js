@@ -8,6 +8,7 @@
  *   Ab und zu, Gewitter → verschwindet er in seinem Bau und schaut heraus
  *   Über den Tag        → macht er kleine Häufchen (erst in die Klo-Ecke am Stein); antippen = wegmachen
  *   Ab und zu Besuch    → Vögelchen landet auf Bau, Laterne oder Stein; Maus schaut hinter dem Stein hervor
+ *   Bei Regen           → hüpft ein Frosch auf die Wiese und quakt, eine Schnecke kriecht ein Stück heraus
  *   Echte Flugzeuge     → ziehen über den Himmel, mit Flugnummer und Ziel (Flightradar24-Integration)
  *   Beschäftigungen     → liest, spielt Gameboy, liegt mit dem Tablet in der Wiese, lässt bei Wind einen
  *                         Drachen steigen, guckt bei Regen im Bau Fernsehen (höchstens alle 12–20 Minuten)
@@ -20,7 +21,7 @@
  *   Himmel              → Sternschnuppen in klaren Nächten, Glühwürmchen in Sommernächten
  *   Päckchen            → wer sich gut kümmert (nichts lange unter 50 %), verdient Päckchen: Sie schweben am Ballon
  *                         herein, der Pika schießt sie mit der Zwille vom Himmel. Leckerli oder Schätze fürs Album.
- *   Besuche (Vögelchen, Maus, Pino) werden aus der Uhrzeit berechnet und sind auf allen Geräten gleich.
+ *   Besuche (Vögelchen, Maus, Frosch, Schnecke, Pino) werden aus der Uhrzeit berechnet und sind auf allen Geräten gleich.
  *
  * Konfiguration:
  *   type: custom:pika-pet-card
@@ -51,7 +52,7 @@
  * werden aus Datum und Standort (hass.config) berechnet.
  */
 (() => {
-  const VERSION = '0.20.1';
+  const VERSION = '0.21.0';
 
   const DEFAULTS = {
     name: 'Pika',
@@ -126,7 +127,13 @@
   // höchstens ein Besuch, sein Start liegt in den ersten win − room ms (room: Platz für den Besuch selbst, damit
   // er vor dem nächsten Fenster vorbei ist). Mittlerer Abstand win / p wie früher: Vögelchen 3–7 Min Pause +
   // ~35 s Besuch ≈ 5,6 Min, Maus 2–5 Min + ~15–25 s ≈ 4,4 Min. Alles aus seedRnd, also auf allen Geräten gleich.
-  const CRIT = { bird: { win: 240000, p: 0.72, room: 60000 }, mouse: { win: 180000, p: 0.69, room: 50000 } };
+  // Frosch und Schnecke kommen nur bei Regen (_critterWeather): der Frosch im Mittel alle 5,7 Min für ~20–35 s,
+  // die Schnecke alle 10 Min für ~40–70 s.
+  const CRIT = {
+    bird: { win: 240000, p: 0.72, room: 60000 }, mouse: { win: 180000, p: 0.69, room: 50000 },
+    frog: { win: 240000, p: 0.7, room: 70000 }, snail: { win: 420000, p: 0.7, room: 120000 },
+  };
+  const CRIT_KINDS = Object.keys(CRIT);
   const CRIT_LATE = 20000; // so lange nach dem Start kommt ein Besuch noch, danach wird er übersprungen
   const POOP = { every: 80, spread: 60, morning: [10, 20], max: 8, latrine: 3, idx: 24, fly: 4 };
   const FLOWER_COLORS = ['#f6c945', '#f28fb1', '#ffffff', '#b99cf0', '#ff9f5a'];
@@ -1825,6 +1832,60 @@
     </g>
     <g fill="#f2b8bd"><ellipse cx="8.6" cy="17.4" rx="2" ry=".9"/><ellipse cx="18" cy="17.4" rx="2" ry=".9"/></g>
   </svg>`;
+  // Frosch (viewBox 30 × 22, Füße bei y 22, schaut nach rechts). Sitzend ist das Hinterbein gefaltet (.fhl), im
+  // Sprung gestreckt (.fxl). .fsac ist die Schallblase (bläht sich beim Quaken), .ftng die Zunge, .flid das Lid.
+  const FOUT = '#35581f';
+  const FROG_SVG = `
+  <svg viewBox="0 0 30 22" aria-hidden="true">
+    <g class="fxl" fill="none" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M9 16.4 L2.4 19.6 L-3.6 23.4" stroke="${FOUT}" stroke-width="4"/>
+      <path d="M9 16.4 L2.4 19.6 L-3.6 23.4" stroke="#62a441" stroke-width="2.4"/>
+      <path d="M-3.6 23.4 L-7 23 M-3.6 23.4 L-6.4 25.4" stroke="${FOUT}" stroke-width="1.5"/>
+    </g>
+    <path d="M5 19.5 Q3.4 14 9 11 Q15 7.2 21.5 7.6 Q27.8 8.2 28.2 12.4 Q28.3 15 24.8 16.6 Q22 20.5 14 20.7 Q6 20.9 5 19.5Z"
+      fill="#74b64d" stroke="${FOUT}" stroke-width="1" stroke-linejoin="round"/>
+    <path d="M11.6 20.2 Q19.6 20.6 24.4 16.4 Q26.8 15.4 27.7 13.5 Q24 15.5 19 16.6 Q13.8 17.7 11.6 20.2Z" fill="#e6efb2"/>
+    <ellipse class="fsac" cx="25" cy="16.9" rx="4.2" ry="3.5" fill="#f4f6cf" stroke="${FOUT}" stroke-width=".7"/>
+    <g fill="#5a9a3b"><circle cx="11" cy="13.2" r="1.05"/><circle cx="14.8" cy="10.7" r=".8"/><circle cx="8.3" cy="15.8" r=".7"/></g>
+    <circle cx="21.2" cy="7.3" r="3.1" fill="#74b64d" stroke="${FOUT}" stroke-width=".9"/>
+    <circle cx="21.7" cy="7.1" r="2" fill="#fdf6c9"/>
+    <ellipse cx="22.2" cy="7.2" rx="1" ry="1.35" fill="#1f1a17"/><circle cx="22.6" cy="6.6" r=".4" fill="#fff"/>
+    <circle class="flid" cx="21.7" cy="7.1" r="2.15" fill="#74b64d"/>
+    <path class="ftng" d="M27.4 13.2 Q32 12.6 36.4 8.4" stroke="#f07a95" stroke-width="1.5" fill="none" stroke-linecap="round"/>
+    <path d="M27.8 13.1 Q23.6 14.9 19.6 13.3" stroke="${FOUT}" stroke-width=".7" fill="none" stroke-linecap="round"/>
+    <circle cx="27" cy="10.7" r=".4" fill="${FOUT}"/>
+    <circle cx="19.8" cy="12.3" r="1.3" fill="#f28fb1" opacity=".5"/>
+    <g fill="none" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M20.4 16.6 Q19.7 19.4 21 21.1 H24" stroke="${FOUT}" stroke-width="2.7"/>
+      <path d="M20.4 16.6 Q19.7 19.4 21 21.1 H24" stroke="#74b64d" stroke-width="1.3"/>
+    </g>
+    <g class="fhl">
+      <path d="M4.6 19.6 Q3 13.6 9.4 13 Q14.4 12.8 14 17.6 Q13.6 20.4 10 20.6Z" fill="#62a441" stroke="${FOUT}" stroke-width=".9" stroke-linejoin="round"/>
+      <path d="M6 20.2 Q11 19.5 16.8 20.7 Q17.8 21.2 17 21.8 H6.4 Q5.2 21.3 6 20.2Z" fill="#74b64d" stroke="${FOUT}" stroke-width=".8" stroke-linejoin="round"/>
+    </g>
+  </svg>`;
+  // Schnecke (viewBox 30 × 20, Sohle bei y 20, schaut nach rechts). .sbody zieht sich ins Haus zurück (.hide),
+  // .sfeel sind die Fühler mit den Augen. Hausfarben: [Haus, Spirale].
+  const SNAILS = [['#d99a5b', '#8a5a2c'], ['#f0d27a', '#a8792c'], ['#e9a7a0', '#a85f5a']];
+  const SNAIL_SVG = ([shell, line]) => `
+  <svg viewBox="0 0 30 20" aria-hidden="true">
+    <g class="sbody">
+      <g class="sfeel" stroke="#7a5a3a" stroke-width=".9" stroke-linecap="round">
+        <path d="M25 10.4 L23.8 5.2 M27.3 10.4 L28.6 5.8"/>
+        <circle cx="23.7" cy="4.5" r="1.1" fill="#1f1a17" stroke="none"/><circle cx="28.8" cy="5.1" r="1.1" fill="#1f1a17" stroke="none"/>
+        <circle cx="24" cy="4.2" r=".35" fill="#fff" stroke="none"/><circle cx="29.1" cy="4.8" r=".35" fill="#fff" stroke="none"/>
+      </g>
+      <path d="M1.6 19.3 Q4 17.3 10 17.4 L19 17.4 Q22.2 17.2 22.8 13.6 Q23.4 9.8 26.1 9.8 Q28.9 10 28.6 13.8 Q28.2 19.5 22 19.7 H3 Q1 19.8 1.6 19.3Z"
+        fill="#ecd6ac" stroke="#7a5a3a" stroke-width=".9" stroke-linejoin="round"/>
+      <path d="M26.3 14.7 q1 .8 1.8 -.1" stroke="#7a5a3a" stroke-width=".6" fill="none" stroke-linecap="round"/>
+      <circle cx="25" cy="15.6" r="1" fill="#f28fb1" opacity=".5"/>
+    </g>
+    <g class="sshell">
+      <circle cx="12.6" cy="10" r="8" fill="${shell}" stroke="#6b4a2f" stroke-width="1"/>
+      <path d="M18.2 10 A5.6 5.6 0 0 0 7 10 A4.3 4.3 0 0 0 15.6 10 A3 3 0 0 0 9.6 10 A1.9 1.9 0 0 0 13.4 10" stroke="${line}" stroke-width="1.1" fill="none" stroke-linecap="round"/>
+      <path d="M6.9 6.4 Q9 3.6 12.4 3.2" stroke="#fff" stroke-width=".9" fill="none" stroke-linecap="round" opacity=".55"/>
+    </g>
+  </svg>`;
   // Kehrschaufel mit Holzstiel, liegt bei y 22 auf dem Boden
   const SCOOP_SVG = `
   <svg viewBox="0 0 44 24" aria-hidden="true">
@@ -2353,7 +2414,7 @@
   const CUTE_SMALL = ['curious', 'yawn', 'sneeze', 'earClean', 'scratch', 'hiccup', 'nod', 'butterfly', 'zoomies', 'gift', 'comeHere'];
   // Dabei darf Streicheln eine eigene Reaktion starten (sonst nur Herzchen und Hüpfer obendrauf)
   const PET_FREE = new Set(['idle', 'look', 'wander', 'groom', 'squeak', 'sniff', 'binky', 'hungry', 'watchBird', 'watchMouse',
-    'watchPlane', 'curious', 'yawn', 'earClean', 'scratch', 'nod', 'hiccup', 'comeHere', 'petReact', 'stroke', 'gift']);
+    'watchFrog', 'watchSnail', 'watchPlane', 'curious', 'yawn', 'earClean', 'scratch', 'nod', 'hiccup', 'comeHere', 'petReact', 'stroke', 'gift']);
   // Reaktionen auf Berührung, die über _next laufen: verfallen nach TOUCH_TTL, wenn Wichtigeres vorging
   const TOUCH_NEXT = new Set(['petReact', 'kraul', 'stroke', 'comeHere']);
   const TOUCH_TTL = 2000;
@@ -2441,7 +2502,7 @@
   const localDay = (t) => Math.floor((t - new Date(t).getTimezoneOffset() * 6e4) / 864e5);
   // Kleinigkeiten, die der Beginn einer Beschäftigung aus dem Plan sofort abbricht
   const ACT_SMALL = ['idle', 'look', 'wander', 'groom', 'squeak', 'sniff', 'binky', 'hungry', 'lookout', 'burrow', 'nibble',
-    'haySnack', 'hideout', 'watchBird', 'watchMouse', 'watchPlane', ...CUTE_SMALL];
+    'haySnack', 'hideout', 'watchBird', 'watchMouse', 'watchFrog', 'watchSnail', 'watchPlane', ...CUTE_SMALL];
   const ACT_BIG = ['read', 'game', 'tablet', 'kite', 'tv', 'music', 'paint', 'bubbles', 'sport'];
   const ACT_MOOD = ['read', 'game', 'tablet', 'music', 'paint', 'bubbles'];
   // Beschäftigungen, die beginnender Regen oder Schnee abbricht, wenn sie bei diesem Wetter nicht gehen (_actOk)
@@ -3724,6 +3785,58 @@
   @keyframes whisk { to { transform: rotate(-8deg); } }
   .mear { transform-box: fill-box; transform-origin: 50% 90%; }
   .mouse.twitch .mear { animation: twitch .45s; }
+  /* Regen-Besucher Frosch und Schnecke: kommen hinter dem Stein hervor wie die Maus, translate setzt das Skript */
+  .frog, .snail { position: absolute; left: 0; top: 0; width: 0; height: 0; --cw: calc(var(--H) * .13); }
+  .snail { --cw: calc(var(--H) * .12); }
+  .cw {
+    position: absolute; left: calc(var(--cw) * -.5 - 8px); bottom: -6px; width: var(--cw); padding: 10px 8px 6px;
+    pointer-events: auto; cursor: pointer;
+  }
+  .cf, .cb { transform-origin: 50% 100%; }
+  .frog.left .cf, .snail.left .cf { transform: scaleX(-1); }
+  .cw svg { display: block; width: 100%; height: auto; overflow: visible; transform-origin: 50% 100%; }
+  .fxl, .frog.leap .fhl { display: none; }
+  .frog.leap .fxl { display: inline; }
+  /* Ein Satz (.leap, nicht .hop: das ist eine Ebene des Pikas): --hd Dauer, --fh Höhe (in Froschhöhen); die Strecke läuft als transition am .frog */
+  .frog.leap .cb { animation: fhop var(--hd, .4s) both; }
+  @keyframes fhop {
+    0% { transform: scale(1.1, .86); animation-timing-function: cubic-bezier(.2, .6, .5, 1); }
+    50% { transform: translateY(var(--fh, -100%)) rotate(-9deg) scale(.94, 1.08); animation-timing-function: cubic-bezier(.5, 0, .8, .4); }
+    100% { transform: rotate(7deg) scale(1.06, .92); }
+  }
+  .fsac { transform-box: fill-box; transform-origin: 40% 15%; transform: scale(0); }
+  .frog.croak .fsac { animation: fsac .9s ease-in-out; }
+  @keyframes fsac {
+    18%, 42% { transform: scale(1); } 30% { transform: scale(.7); }
+    58%, 82% { transform: scale(1.08); } 70% { transform: scale(.75); } 100% { transform: scale(0); }
+  }
+  .frog.croak svg { animation: fpuff .9s ease-in-out; }
+  @keyframes fpuff { 18%, 58% { transform: scale(1.04, .96); } 42%, 82% { transform: scale(.98, 1.03); } }
+  .flid { transform-box: fill-box; transform-origin: 50% 0; transform: scaleY(0); animation: fblink 4.6s infinite; }
+  @keyframes fblink { 0%, 93%, 100% { transform: scaleY(0); } 96% { transform: scaleY(1); } }
+  .ftng { transform-box: fill-box; transform-origin: 0 100%; transform: scale(0); }
+  .frog.zap .ftng { animation: fzap .38s ease-out; }
+  @keyframes fzap { 40%, 55% { transform: scale(1); } 100% { transform: scale(0); } }
+  .sbody { transform-box: view-box; transform-origin: 13px 19px; transition: transform .9s ease-out; }
+  .sshell { transform-box: view-box; transform-origin: 12.6px 18px; transition: transform .3s; }
+  .sfeel { transform-box: view-box; transform-origin: 26px 10.5px; }
+  .snail.crawl .sbody { animation: scrawl 1.4s ease-in-out infinite; }
+  @keyframes scrawl { 50% { transform: scaleX(1.07); } }
+  .snail.crawl .sshell { animation: sbob 1.4s ease-in-out infinite; }
+  @keyframes sbob { 50% { transform: translateX(.5px) rotate(2deg); } }
+  .snail.crawl .sfeel { animation: sfeel 1.9s ease-in-out infinite alternate; }
+  @keyframes sfeel { from { transform: rotate(-5deg); } to { transform: rotate(6deg); } }
+  .snail.peer .sfeel { animation: speer 2.6s ease-in-out infinite alternate; }
+  @keyframes speer {
+    from { transform: rotate(-12deg) scaleY(1.2); } 50% { transform: rotate(4deg) scaleY(1.3); } to { transform: rotate(12deg) scaleY(1.15); }
+  }
+  .snail.hide .sbody { transform: scale(.3, .45); transition: transform .22s ease-in; }
+  .snail.hide .sshell { transform: translateY(1.6px) rotate(-6deg); }
+  .snail.hide.wob .sshell { animation: swob .5s ease-in-out; }
+  @keyframes swob {
+    0%, 100% { transform: translateY(1.6px) rotate(-6deg); } 30% { transform: translateY(1.6px) rotate(-14deg); }
+    65% { transform: translateY(1.6px) rotate(2deg); }
+  }
   .squeak {
     position: absolute; padding: .1em .45em; border-radius: 999px; background: #fff; color: #4a3a2c; pointer-events: none;
     font-size: calc(var(--H) * .05); font-weight: 800; white-space: nowrap; box-shadow: 0 1px 4px rgba(0, 0, 0, .2);
@@ -3979,9 +4092,9 @@
       this._dbgShiftMs = 0; // Vorschau: Uhr für die Besuche (Vögelchen, Maus, Pino) vorstellen
       this._pileEls = new Map(); // sichtbare Häufchen: Schlüssel "großputz:k" → Element
       this._poopPending = null; // Häufchen, das er gerade live macht
-      this._critId = 0; // Besucher (Vögelchen, Maus): Lauf-Nummer zum Abbrechen
+      this._critId = 0; // Besucher (Vögelchen, Maus, Frosch, Schnecke): Lauf-Nummer zum Abbrechen
       this._critT = [];
-      this._bird = this._mouse = null;
+      this._bird = this._mouse = this._frog = this._snail = null;
       this._planes = new Map(); // Flug-ID → Flugzeug am Himmel
       this._planeT = null;
       this._sent = [];
@@ -4516,7 +4629,7 @@
         this._planeSnap();
         this._placePiles();
         // Besucher sitzen an festen Pixeln: bei Größenänderung lieber neu kommen lassen
-        if (this._bird || this._mouse) this._restartCritters();
+        if (CRIT_KINDS.some((k) => this['_' + k])) this._restartCritters();
         // Staffelei und Drache stehen an festen Pixeln: abbrechen (räumt sie weg), er steigt gleich wieder ein
         if (this._easelEl || this._kiteEl) this._interrupt();
         if (this._giftEl) this._flowerGiftPlace(this._giftEl); // Blumengeschenk an seiner relativen Stelle
@@ -4766,6 +4879,8 @@
         [piles.length && clean < 60 ? 1.2 : 0, 'sniff'],
         [this._bird?.sitting ? 2.5 : 0, 'watchBird'],
         [this._mouse?.out ? 2.5 : 0, 'watchMouse'],
+        [this._frog?.out ? 2.5 : 0, 'watchFrog'],
+        [this._snail?.out && !this._snail.hidden ? 2.5 : 0, 'watchSnail'],
         [this._planeToWatch() ? 2.5 : 0, 'watchPlane'],
         ...this._cuteActs(ctx),
         ...this._skyActs(ctx),
@@ -5269,6 +5384,65 @@
       }
       if (Math.random() < 0.4) this._say(pick(['mip?', 'iiep?']), 1000);
       await this._wait(rnd(1000, 2200));
+    }
+
+    // Den Frosch anpiepsen: Er quakt zurück, der Pika zuckt zusammen
+    async _watchFrog() {
+      const f = this._frog;
+      if (!f?.out) return;
+      const p = this._el.pika;
+      const there = () => this._frog === f && f.out;
+      this._face(f.x >= this._x ? 1 : -1);
+      p.classList.add('look-f');
+      await this._wait(rnd(900, 1600));
+      if (!there()) return;
+      p.classList.add('calling');
+      this._say(pick(['mip?', 'iiep?']), 900);
+      await this._wait(650);
+      p.classList.remove('calling');
+      await this._wait(rnd(300, 700));
+      if (there()) {
+        this._croak(f);
+        await this._wait(350);
+        this._jump('hop1');
+        this._say('!', 800);
+        await this._wait(900);
+        p.classList.add('tilt');
+        if (Math.random() < 0.5) this._emote('q', 1400);
+      }
+      await this._wait(rnd(1000, 2000));
+    }
+
+    // Zur Schnecke hin und an ihr schnuppern: Sie zieht sich ins Haus zurück, er wartet, bis sie wieder herausschaut
+    async _watchSnail() {
+      const s = this._snail;
+      if (!s?.out) return;
+      const p = this._el.pika;
+      const there = () => this._snail === s && s.out;
+      this._face(s.x >= this._x ? 1 : -1);
+      p.classList.add('look-f');
+      if (Math.random() < 0.4) p.classList.add('tilt');
+      await this._wait(rnd(900, 1500));
+      if (!there() || Math.random() < 0.3) return this._wait(rnd(800, 1600));
+      p.classList.remove('look-f', 'tilt');
+      await this._approach(s.x, 0.6);
+      if (!there()) return;
+      p.classList.add('sniff');
+      await this._wait(500);
+      s.poke();
+      await this._wait(rnd(500, 900));
+      p.classList.remove('sniff');
+      p.classList.add('tilt');
+      this._emote('q', 1400);
+      // warten, bis sie wieder herausschaut
+      for (let i = 0; i < 14 && there() && s.hidden; i++) await this._wait(500);
+      p.classList.remove('tilt');
+      if (there() && !s.hidden) {
+        await this._wait(700);
+        this._twitch();
+        this._say(pick(['oh!', 'mip!']), 1000);
+      }
+      await this._wait(rnd(900, 1600));
     }
 
     // Einem tief fliegenden Flugzeug nachschauen; ganz nah und laut erschrickt er kurz
@@ -7743,8 +7917,7 @@
           if (id === this._critId) plan(kind, nx.at);
         }, Math.max(0, nx.at - now));
       };
-      plan('bird', this._critLast.bird);
-      plan('mouse', this._critLast.mouse);
+      for (const k of CRIT_KINDS) plan(k, this._critLast[k]);
     }
 
     // Uhr der Besuche: Uhr von HA (Vorschau: um _dbgShiftMs vorgestellt). Nicht _dbgDate, das steht fest.
@@ -7752,7 +7925,7 @@
       return this._haNow() + this._dbgShiftMs;
     }
 
-    // Nächster Besuch von kind (bird, mouse), der höchstens CRIT_LATE her ist und nach after liegt:
+    // Nächster Besuch von kind (bird, mouse, frog, snail), der höchstens CRIT_LATE her ist und nach after liegt:
     // { at: Startzeit, pick: feste Entscheidungen }. Gleiche Uhr → gleiches Ergebnis auf allen Geräten.
     _critNext(kind, now, after = -Infinity) {
       const { win, p, room } = CRIT[kind];
@@ -7770,6 +7943,9 @@
         return { bird: Math.floor(r(2) * BIRDS.length), spot: r(3), rockX: 35 + r(4) * 30,
           side: r(5) < 0.5 ? -1 : 1, out: r(6) < 0.5 ? -1 : 1, stay: 15000 + r(7) * 30000, alt: r(8) };
       }
+      // Frosch: wie weit auf die Wiese und wie lange; Schnecke: Hausfarbe und wie weit
+      if (kind === 'frog') return { x: r(2), stay: 12000 + r(3) * 14000 };
+      if (kind === 'snail') return { shell: Math.floor(r(2) * SNAILS.length), far: r(3) };
       const k = r(2); // seitlich : oben : auf die Wiese = 2 : 1 : 5 (auf der Wiese sieht man sie am besten)
       return { kind: k < 0.25 ? 'side' : k < 0.375 ? 'top' : 'run', x: 30 + r(3) * 40 };
     }
@@ -7779,24 +7955,29 @@
       this._critId++;
       Object.values(this._critT).forEach((t) => clearTimeout(t));
       this._critT = {};
-      for (const c of [this._bird, this._mouse]) c?.el.remove();
-      this._bird = this._mouse = null;
+      for (const k of CRIT_KINDS) {
+        this['_' + k]?.el.remove();
+        this['_' + k] = null;
+      }
     }
 
     // Neue Größe oder neues Areal: wer gerade zu Besuch ist, kommt gleich wieder (falls sein Start höchstens
     // CRIT_LATE her ist); wer schon fertig war, nicht noch einmal
     _restartCritters() {
       if (this._critLast) {
-        if (this._bird) delete this._critLast.bird;
-        if (this._mouse) delete this._critLast.mouse;
+        for (const k of CRIT_KINDS) if (this['_' + k]) delete this._critLast[k];
       }
       this._stopCritters();
       this._startCritters();
     }
 
-    // Vögel kommen nur bei Tag, beide nicht bei Regen oder Gewitter
+    // Vögel kommen nur bei Tag, Vögel und Maus nicht bei Regen oder Gewitter. Frosch und Schnecke kommen nur bei
+    // Regen (auch nachts und bei Starkregen), aber nicht bei Gewitter, Schneeregen oder unter 3 °C.
     _critterWeather(kind) {
-      if (!this._g || this._wx.wet || this._wx.storm) return false;
+      const wx = this._wx;
+      if (!this._g) return false;
+      if (kind === 'frog' || kind === 'snail') return wx.rain > 0 && !wx.snow && !wx.flash && !wx.cold;
+      if (wx.wet || wx.storm) return false;
       if (kind === 'mouse') return true;
       const e = this._dbgElev ?? this._elev;
       return e == null ? !this._asleep : e > 3;
@@ -7804,11 +7985,11 @@
 
     // pk: feste Entscheidungen aus _critNext (ohne: Zufall, Vorschau-Knöpfe); late: so viele ms nach dem Start
     async _visit(kind, id, force = false, pk = null, late = 0) {
-      if (!this._g || (kind === 'bird' ? this._bird : this._mouse)) return;
+      if (!this._g || this['_' + kind]) return;
       if (!force && !this._critterWeather(kind)) return;
       pk ??= this._critPick(kind, () => Math.random());
       try {
-        await this[kind === 'bird' ? '_birdVisit' : '_mouseVisit'](id, force, pk, late);
+        await this[`_${kind}Visit`](id, force, pk, late);
       } catch (e) {
         if (!(e instanceof Cancel)) console.warn('pika-pet-card:', e);
       }
@@ -7967,7 +8148,11 @@
       const peekX = edge + mw * 0.1;
       const door = edge - mw * 0.6; // ganz neben dem Stein: hier wechselt sie zwischen hinterer und vorderer Ebene
       // Hinter dem Stein läuft sie in der Ebene hinter Bau und Stein, auf der Wiese vor den Blumen
-      const layer = (front) => (front ? this._el.miceF : this._el.mice).appendChild(el);
+      // Umhängen setzt den Stil zurück: gleich neu berechnen, sonst spränge sie ohne Übergang ans nächste Ziel
+      const layer = (front) => {
+        (front ? this._el.miceF : this._el.mice).appendChild(el);
+        void el.offsetWidth;
+      };
       const topY = rock.top0 + 13.5 * rock.ku;
       const face = (d) => ((m.dir = d), el.classList.toggle('left', d < 0));
       const move = (x, y, ms = 0, ease = 'ease-out') => {
@@ -8109,6 +8294,259 @@
         }
       } finally {
         if (this._mouse === m) this._mouse = null;
+        el.remove();
+      }
+    }
+
+    // Frosch (nur bei Regen): hüpft hinter dem Aussichtsstein hervor auf die Wiese, sitzt da, quakt, schnappt mit der
+    // Zunge nach Tropfen und hüpft zurück. Antippen oder ein zu naher Pika: „quak!“ und mit großen Sätzen davon.
+    async _frogVisit(id, force, pk, late = 0) {
+      const { rock, gy, pW } = this._g;
+      const fw = this._H * 0.13;
+      const el = document.createElement('div');
+      el.className = 'frog left';
+      el.innerHTML = `<div class="cw" role="button" aria-label="Frosch"><div class="cf"><div class="cb">${FROG_SVG}</div></div></div>`;
+      const yG = gy - this._H * 0.02; // knapp hinter dem Pika
+      const f = this._critter({ el, x: 0, y: yG, w: fw, dir: -1, out: false });
+      el.querySelector('.cw').addEventListener('click', (e) => (e.stopPropagation(), f.scare()));
+      this._frog = f;
+      this._el.mice.appendChild(el);
+
+      const edge = rock.l + 7 * rock.ku; // linke Steinkante
+      const hideX = edge + fw * 0.8;
+      const door = edge - fw * 0.6; // neben dem Stein: hier wechselt er zwischen hinterer und vorderer Ebene
+      const minX = Math.min(Math.max(this._g.fMin * this._W, fw), door);
+      const maxX = Math.max(minX, door - fw * 0.7);
+      // Umhängen setzt den Stil zurück: gleich neu berechnen, sonst spränge das nächste Stück ohne Übergang ans Ziel
+      const layer = (front) => {
+        (front ? this._el.miceF : this._el.mice).appendChild(el);
+        void el.offsetWidth;
+      };
+      const face = (d) => ((f.dir = d), el.classList.toggle('left', d < 0));
+      const move = (x, ms = 0) => {
+        el.style.transition = ms ? `transform ${ms}ms linear` : 'none';
+        el.style.transform = `translate(${x.toFixed(1)}px, ${yG.toFixed(1)}px)`;
+        f.x = x;
+        if (!ms) void el.offsetWidth;
+      };
+      // Warten; kommt der Pika zu nah, erschrickt er
+      const FLEE = {};
+      const step = async (ms) => {
+        await this._cw(id, ms, f);
+        if (f.out && Math.abs(this._liveX() - f.x) < pW * 0.55) f.scare();
+        if (f.scared) throw FLEE;
+      };
+      // In Sätzen bis x. fast: große, schnelle Sätze auf der Flucht (dann erschrickt er nicht noch einmal)
+      const hop = async (x, fast = false) => {
+        const L = this._H * (fast ? 0.34 : 0.22);
+        while (Math.abs(x - f.x) > 1) {
+          const d = clamp(x - f.x, -L, L);
+          const k = Math.abs(d) / L;
+          face(d > 0 ? 1 : -1);
+          const ms = (fast ? 240 : 320) + k * 90;
+          el.style.setProperty('--hd', `${ms}ms`);
+          el.style.setProperty('--fh', `${-Math.round(40 + 80 * k)}%`);
+          el.classList.add('leap');
+          move(f.x + d, ms);
+          await (fast ? this._cw(id, ms) : step(ms));
+          el.classList.remove('leap');
+          await (fast ? this._cw(id, 50) : step(rnd(140, 420)));
+        }
+      };
+      // Nicht auf der Schnecke sitzen: liegt x zu nah an ihr, den Platz daneben nehmen (auf der Seite, wo Wiese ist)
+      const free = (x) => {
+        const s = this._snail;
+        if (!s?.out || Math.abs(x - s.x) >= fw) return x;
+        const side = (x < s.x && s.x - fw * 1.1 >= minX) || s.x + fw * 1.1 > maxX ? -1 : 1;
+        return clamp(s.x + side * fw * 1.1, minX, maxX);
+      };
+      try {
+        try {
+          move(hideX);
+          await step(60);
+          await hop(door);
+          layer(true);
+          f.out = true;
+          await hop(free(maxX - pk.x * Math.min(maxX - minX, this._H * 0.7)));
+          this._noticeCritter(f.x, false);
+          const until = Date.now() + Math.max(3000, pk.stay - late);
+          // angekommen quakt er gleich, danach, was ihm einfällt
+          let act = 'croak';
+          let gap = 500;
+          while (Date.now() < until && (force || this._critterWeather('frog'))) {
+            await step(gap);
+            // die Schnecke ist herangekrochen: zur Seite hüpfen
+            if (free(f.x) !== f.x) await hop(free(f.x));
+            else if (act === 'croak') {
+              for (let n = Math.random() < 0.4 ? 2 : 1; n > 0; n--) {
+                this._croak(f);
+                await step(1050);
+              }
+            } else if (act === 'turn') face(-f.dir);
+            else if (act === 'zap') {
+              el.classList.add('zap');
+              await step(400);
+              el.classList.remove('zap');
+            } else await hop(free(clamp(f.x + rnd(0.8, 2) * fw * pick([-1, 1]), minX, maxX)));
+            act = weighted([[3, 'croak'], [2, 'turn'], [2, 'hop'], [1.5, 'zap']]);
+            gap = rnd(900, 2400);
+          }
+          await hop(door);
+          f.out = false;
+          layer(false);
+          await hop(hideX);
+        } catch (e) {
+          if (e !== FLEE) throw e;
+          // „quak!“ und mit großen Sätzen zurück hinter den Stein
+          const t = getComputedStyle(el).transform;
+          move(t && t !== 'none' ? new DOMMatrixReadOnly(t).m41 : f.x);
+          el.classList.remove('leap', 'croak', 'zap');
+          f.out = false;
+          this._peep(f.x, yG - fw * 0.95, 'quak!');
+          await this._cw(id, 120);
+          if (el.parentNode === this._el.miceF) {
+            await hop(door, true);
+            layer(false);
+          }
+          await hop(hideX, true);
+          await this._cw(id, 200);
+        }
+      } finally {
+        if (this._frog === f) this._frog = null;
+        el.remove();
+      }
+    }
+
+    // Schallblase bläht sich zweimal, „quak!“ steigt auf
+    _croak(f) {
+      if (!f?.out || f.scared) return;
+      const el = f.el;
+      el.classList.remove('croak');
+      void el.offsetWidth;
+      el.classList.add('croak');
+      clearTimeout(f.croakT);
+      f.croakT = setTimeout(() => el.classList.remove('croak'), 950);
+      this._peep(f.x + f.dir * f.w * 0.3, f.y - f.w * 0.85, pick(['quak!', 'quak!', 'quaak!']));
+    }
+
+    // Schnecke (nur bei Regen): kriecht hinter dem Aussichtsstein hervor ein Stück über die Wiese, reckt die Fühler,
+    // schaut sich um und kriecht zurück. Weglaufen kann sie nicht: Antippen oder ein naher Pika, und sie zieht sich
+    // ins Haus zurück; nach ein paar Sekunden kommt sie wieder heraus.
+    async _snailVisit(id, force, pk, late = 0) {
+      const { rock, gy, pW } = this._g;
+      const sw = this._H * 0.12;
+      const v = this._H * 0.035; // Kriechtempo in px/s
+      const el = document.createElement('div');
+      el.className = 'snail left';
+      el.innerHTML = `<div class="cw" role="button" aria-label="Schnecke"><div class="cf"><div class="cb">${SNAIL_SVG(SNAILS[pk.shell])}</div></div></div>`;
+      const yG = gy - this._H * 0.02;
+      const s = { el, x: 0, y: yG, dir: -1, out: false, hidden: false, poked: false };
+      const wob = () => {
+        el.classList.remove('wob');
+        void el.offsetWidth;
+        el.classList.add('wob');
+      };
+      // Anstupsen (Antippen, Pika-Nase): ins Haus; ist sie schon drin, wackelt es und sie bleibt länger
+      s.poke = () => {
+        s.poked = true;
+        if (s.hidden) wob();
+      };
+      el.querySelector('.cw').addEventListener('click', (e) => (e.stopPropagation(), s.poke()));
+      this._snail = s;
+      this._el.mice.appendChild(el);
+
+      const edge = rock.l + 7 * rock.ku; // linke Steinkante
+      const hideX = edge + sw * 0.8;
+      const door = edge - sw * 0.6; // neben dem Stein: Wechsel zwischen hinterer und vorderer Ebene
+      const minX = Math.min(Math.max(this._g.fMin * this._W, sw), door);
+      // Umhängen setzt den Stil zurück: gleich neu berechnen, sonst spränge das nächste Stück ohne Übergang ans Ziel
+      const layer = (front) => {
+        (front ? this._el.miceF : this._el.mice).appendChild(el);
+        void el.offsetWidth;
+      };
+      const face = (d) => ((s.dir = d), el.classList.toggle('left', d < 0));
+      const liveX = () => {
+        const t = getComputedStyle(el).transform;
+        return t && t !== 'none' ? new DOMMatrixReadOnly(t).m41 : s.x;
+      };
+      // Ohne Dauer steht sie sofort dort; mit Dauer kriecht sie hin (s.x folgt in wait)
+      const put = (x, ms = 0) => {
+        el.style.transition = ms ? `transform ${ms}ms linear` : 'none';
+        el.style.transform = `translate(${x.toFixed(1)}px, ${yG.toFixed(1)}px)`;
+        if (!ms) {
+          s.x = x;
+          void el.offsetWidth;
+        }
+      };
+      // Vor einem nahen Pika erschrickt sie einmal; erst wenn er wieder weg war, beim nächsten Mal wieder
+      let shy = true;
+      const near = () => {
+        const n = s.out && Math.abs(this._liveX() - s.x) < pW * 0.6;
+        const hit = n && shy;
+        shy = !n;
+        return hit;
+      };
+      // In kleinen Schritten warten; true: angestupst oder der Pika kam zu nah
+      const wait = async (ms) => {
+        const end = Date.now() + ms;
+        while (Date.now() < end) {
+          await this._cw(id, clamp(end - Date.now(), 20, 200));
+          s.x = liveX();
+          if (s.poked || near()) return true;
+        }
+        return false;
+      };
+      const hide = async () => {
+        put(liveX());
+        el.classList.remove('crawl', 'peer');
+        el.classList.add('hide');
+        s.hidden = true;
+        do {
+          s.poked = false;
+          await this._cw(id, rnd(2600, 4200));
+        } while (s.poked);
+        el.classList.remove('hide', 'wob');
+        s.hidden = false;
+        near(); // steht der Pika noch da, erschrickt sie davor nicht gleich wieder
+        await this._cw(id, 900);
+      };
+      const crawl = async (x) => {
+        while (Math.abs(x - s.x) > 1) {
+          face(x > s.x ? 1 : -1);
+          const ms = (Math.abs(x - s.x) / v) * 1000;
+          el.classList.add('crawl');
+          put(x, ms);
+          const hit = await wait(ms);
+          el.classList.remove('crawl');
+          if (hit) await hide();
+          else put(x);
+        }
+      };
+      const rest = async (ms) => {
+        el.classList.add('peer');
+        while (await wait(ms)) {
+          await hide();
+          el.classList.add('peer');
+          ms = 1500;
+        }
+        el.classList.remove('peer');
+      };
+      try {
+        put(hideX);
+        await this._cw(id, 60);
+        await crawl(door);
+        layer(true);
+        s.out = true;
+        this._noticeCritter(s.x, false);
+        await crawl(door - (0.3 + 0.6 * pk.far) * Math.min(door - minX, this._H * 0.7));
+        // Fühler recken und umschauen (später eingestiegen: kürzer)
+        await rest(Math.max(1500, rnd(5000, 9000) - late));
+        await crawl(door);
+        s.out = false;
+        layer(false);
+        await crawl(hideX);
+      } finally {
+        if (this._snail === s) this._snail = null;
         el.remove();
       }
     }
