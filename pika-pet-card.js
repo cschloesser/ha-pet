@@ -53,7 +53,11 @@
  * werden aus Datum und Standort (hass.config) berechnet.
  */
 (() => {
-  const VERSION = '0.24.0';
+  const VERSION = '0.25.0';
+
+  // Prototyp Tiefe (depth: true): hintere Spur liegt LANE_DY × Kartenhöhe über der Bodenlinie, Pika dort um LANE_S kleiner
+  const LANE_DY = 0.075;
+  const LANE_S = 0.8;
 
   const DEFAULTS = {
     name: 'Pika',
@@ -88,6 +92,8 @@
     fireflies: true,
     // Päckchen: für gute Pflege verdient, am Ballon verschenkt (siehe Abschnitt "Päckchen")
     gifts: true,
+    // Prototyp: Kulisse mit Parallax, hintere Spur zum Herumhoppeln (nur YAML, nicht im Editor)
+    depth: false,
   };
 
   // Karten-Editor (getConfigForm): Beschriftungen und Hilfetexte der Felder
@@ -3213,6 +3219,30 @@
   .scene.night.snowcover { --h1: #55627c; --h2: #4c5974; --h3: #44516b; }
   .snowcover .flowers { opacity: 0; }
 
+  /* ---- Prototyp Tiefe (depth: true) ----
+     Kulisse in Ebenen: Je weiter weg, desto mehr wandert sie mit dem Pika mit (--plx -1 … 1, die Wiese
+     mit Bau, Stein und Heu bleibt stehen). Ferne Hügelkette im Dunst nur hier. Einheiten der viewBox (100 breit),
+     scaleX deckt die Ränder beim Verschieben ab. */
+  .hills .h0 { display: none; fill: var(--h1); opacity: .45; transition: fill 2.5s; }
+  .tiefe .hills .h0 { display: inline; }
+  .tiefe .hills .mtn, .tiefe .hills .h0, .tiefe .hills .h1 { transform-box: view-box; transform-origin: 50% 100%; }
+  .tiefe .hills .mtn { transform: translateX(calc(var(--plx, 0) * 3.2px)) scaleX(1.08); transition: transform 4s ease-in-out; }
+  .tiefe .hills .h0 { transform: translateX(calc(var(--plx, 0) * 2.4px)) scaleX(1.06); transition: fill 2.5s, transform 4s ease-in-out; }
+  .tiefe .hills .h1 { transform: translateX(calc(var(--plx, 0) * 1.2px)) scaleX(1.03); transition: fill 2.5s, transform 4s ease-in-out; }
+  .tiefe .clouds { transform: translateX(calc(var(--plx, 0) * 2%)); transition: transform 4s ease-in-out; }
+  /* Hintere Spur: Schatten etwas blasser, tagsüber ein Hauch Dunst (heller, weniger satt) */
+  .pika.lane1 .shadow { opacity: .75; }
+  .pika .br { transition: filter 1s; }
+  .day:not(.overcast) .pika.lane1 .br { filter: saturate(.85) brightness(1.05); }
+  /* Hintere Spur (.hinten an der Szene, wechselt auf halbem Weg): Blumen, Futter, Geschenke und Mäuse vorn
+     liegen im DOM vor dem Pika und ohne z-index, sonst stünde er vor ihnen. Darum der Pika unter sie,
+     über Bau, Stein und Festdeko am Bau (z 1, im DOM davor), unter Vögeln (z 2), Pino, Heu und Gras (z 3). */
+  .hinten .pika { z-index: 1; }
+  .hinten .flowers, .hinten .foods, .hinten .gifts, .hinten .mice-f { z-index: 2; }
+  /* Die Ebenen füllen die ganze Szene: Tipps zum Pika durchlassen (Antippbares darin setzt selbst auto) */
+  .hinten .flowers, .hinten .foods { pointer-events: none; }
+  @media (prefers-reduced-motion: reduce) { .tiefe .hills *, .tiefe .clouds { transition: none !important; } }
+
   .land, .flowers, .foods, .birds, .mice, .mice-f { position: absolute; inset: 0; transition: filter 2.5s, opacity 2s; }
   .birds, .mice, .mice-f { pointer-events: none; }
   .birds { z-index: 2; } /* über der Festdeko am Bau (.fon, z 1), hinter Pika, Pino, Heu und Gras (z 3) */
@@ -4330,6 +4360,15 @@
       this._el.stats.hidden = !this._cfg.show_stats;
       if (this._W) this._btnFit();
       this._el.scene.style.minHeight = `${Number(this._cfg.height) || DEFAULTS.height}px`;
+      // Prototyp Tiefe an/aus: ausgeschaltet zurück auf die vordere Spur, Kulisse in die Mitte
+      this._el.scene.classList.toggle('tiefe', !!this._cfg.depth);
+      if (!this._cfg.depth) {
+        this._el.scene.style.removeProperty('--plx');
+        if (this._lane) {
+          this._lane = 0;
+          if (this._g) this._setX(this._x, true);
+        }
+      } else if (this._W) this._el.scene.style.setProperty('--plx', clamp(this._x / this._W * 2 - 1, -1, 1).toFixed(3));
       // Zustand nur beim ersten Mal und bei anderem Helfer neu laden: Der Editor ruft setConfig bei jeder
       // Änderung, ein noch nicht gespeicherter Stand (1,2 s Wartezeit beim Speichern) ginge sonst verloren
       const ent = this._cfg.entity || '';
@@ -4591,6 +4630,7 @@
                 <path class="mcap" d="M70 34 L74 37 L72 36.4 L70.5 37.6 L69 36.5 L68.1 37Z"/>
                 <path class="mcap" d="M47 30 L49.6 34 L48.3 33.5 L47 34.6 L45.8 33.6 L44.6 34Z"/>
               </g>
+              <path class="h0" d="M0 55 Q12 47 26 52 T56 48 T82 51 T100 46 V100 H0Z"/>
               <path class="h1" d="M0 64 Q16 50 36 60 T72 55 T100 50 V100 H0Z"/>
               <path class="h2" d="M0 83 Q25 79 50 83 T100 82 V100 H0Z"/>
             </svg>
@@ -4866,6 +4906,7 @@
       const p = this._el.pika;
       this._asleep = on;
       this._lift = 0;
+      this._lane = 0;
       p.classList.toggle('sleeping', on);
       this._giftScene();
       if (on) {
@@ -5149,7 +5190,21 @@
         : this._x + rnd(pW * 0.6, Math.max(pW, this._W * 0.4)) * pick([-1, 1]);
       // Bei Regen nicht weit weg vom Bau
       if (this._wx.wet) x = rnd(home, home + this._W * 0.35);
-      await this._walkTo(x);
+      // Prototyp Tiefe: manchmal auf die hintere Spur, zwischen Heuhaufen (hinter ihm vorbei) und Stein,
+      // der vor der Spur liegt und ihn sonst nicht verdecken könnte. _laneNext erzwingt die Spur (Vorschau).
+      let lane = 0;
+      if (this._cfg.depth) {
+        const g = this._g;
+        const l = g.stash ? g.fMin * this._W : g.hay;
+        const r = g.rock.l - pW * 0.55;
+        const want = this._laneNext ?? (this._wx.wet ? 0 : Math.random() < 0.4 ? 1 : 0);
+        this._laneNext = null;
+        if (want && r - l > pW * 0.3) {
+          lane = 1;
+          x = rnd(l, r);
+        }
+      }
+      await this._walkTo(x, 1, false, lane);
       await this._wait(rnd(400, 1400));
     }
 
@@ -5241,6 +5296,7 @@
       }
       p.style.transition = 'transform .55s cubic-bezier(.3, .6, .4, 1)';
       this._lift = lift;
+      this._lane = 0;
       this._setX(x);
       this._jump('hop1');
       await this._wait(620);
@@ -6046,20 +6102,31 @@
 
     // ---------- Bausteine ----------
 
-    async _walkTo(x, speed = 1, steady = false) {
+    // lane (Prototyp Tiefe): 1 = hintere Spur. Alle anderen Wege führen auf die vordere Spur zurück.
+    async _walkTo(x, speed = 1, steady = false, lane = 0) {
       const { pW, xR } = this._g;
       x = clamp(x, pW * 0.45, xR);
       const dx = x - this._x;
-      if (Math.abs(dx) < 4) return;
-      this._face(dx > 0 ? 1 : -1);
-      const dur = Math.abs(dx) / (pW * 0.85 * speed);
+      lane = this._cfg.depth ? lane : 0;
+      const dl = lane !== (this._lane || 0);
+      if (Math.abs(dx) < 4 && !dl) return;
+      if (Math.abs(dx) >= 4) this._face(dx > 0 ? 1 : -1);
+      // Der Spurwechsel zählt wie ein kurzes Stück Weg
+      const dist = Math.max(Math.abs(dx), dl ? pW * 0.6 : 0);
+      const dur = dist / (pW * 0.85 * speed);
       const p = this._el.pika;
       // Gangart: kurze Wege trippelt er, eilig macht er große Hopser
-      const gait = Math.abs(dx) < pW * 0.8 && speed <= 1.2 ? 'trip' : speed >= 1.8 ? 'bighop' : null;
+      const gait = dist < pW * 0.8 && speed <= 1.2 ? 'trip' : speed >= 1.8 ? 'bighop' : null;
       // Beim Herumhoppeln stolpert er selten über die eigenen Füße
-      const stumble = !steady && this._action === 'wander' && Math.abs(dx) > pW * 1.5 && Math.random() < 0.05;
+      const stumble = !steady && !dl && this._action === 'wander' && Math.abs(dx) > pW * 1.5 && Math.random() < 0.05;
       p.style.transition = `transform ${dur.toFixed(2)}s linear`;
+      this._lane = lane;
       this._setX(x);
+      // Ebene vor/hinter dem Vordergrund erst auf halbem Weg wechseln
+      if (dl) {
+        this._el.scene.classList.toggle('hinten', !lane);
+        this._laneZT = setTimeout(() => this._el.scene.classList.toggle('hinten', !!this._laneDy()), dur * 500);
+      }
       p.classList.add('walking');
       if (gait) p.classList.add(gait);
       try {
@@ -6074,7 +6141,7 @@
           this._say('hoppla!', 900);
           this._blush(1500);
           await this._wait(500);
-          return await this._walkTo(x, speed, true);
+          return await this._walkTo(x, speed, true, lane);
         }
         await this._wait(dur * 1000);
       } finally {
@@ -6108,11 +6175,24 @@
       const p = this._el.pika;
       this._x = x;
       if (instant) p.style.transition = 'none';
-      // Auf dem Stein (weiter hinten) etwas kleiner, Ursprung sind die Füße
-      p.style.transform = `translate(${(x - this._g.pW / 2).toFixed(1)}px, ${(-this._lift).toFixed(1)}px)`
-        + (this._lift > 0 ? ' scale(.9)' : '');
+      // Auf dem Stein (weiter hinten) etwas kleiner, Ursprung sind die Füße. Prototyp Tiefe: auf der
+      // hinteren Spur höher und kleiner
+      const ly = this._laneDy();
+      const s = (this._lift > 0 ? 0.9 : 1) * (ly ? LANE_S : 1);
+      p.style.transform = `translate(${(x - this._g.pW / 2).toFixed(1)}px, ${(-this._lift - ly).toFixed(1)}px)`
+        + (s !== 1 ? ` scale(${s.toFixed(3)})` : '');
+      p.classList.toggle('lane1', !!ly);
+      clearTimeout(this._laneZT);
+      this._el.scene.classList.toggle('hinten', !!ly);
+      // Kulisse folgt dem Pika ein wenig (-1 links … 1 rechts), die Übergänge macht das CSS
+      if (this._cfg.depth && this._W) this._el.scene.style.setProperty('--plx', clamp(x / this._W * 2 - 1, -1, 1).toFixed(3));
       if (instant) void p.offsetWidth;
       this._bubbleRefit();
+    }
+
+    // Prototyp Tiefe (depth: true): Höhe der hinteren Spur über der Bodenlinie, sonst 0
+    _laneDy() {
+      return this._cfg.depth && this._lane && !(this._lift > 0) ? this._H * LANE_DY : 0;
     }
 
     // Wo der Pika gerade wirklich steht. Beim Laufen ist this._x schon das Ziel, die CSS-Transition
@@ -6129,7 +6209,10 @@
 
     _freeze() {
       const x = this._liveX();
-      this._lift = Math.max(0, this._liveLift());
+      const e = this._liveLift();
+      // Mitten im Spurwechsel: auf der Spur bleiben, der er schon näher ist
+      if (this._cfg.depth && !(this._lift > 0)) this._lane = e > this._H * LANE_DY / 2 ? 1 : 0;
+      this._lift = Math.max(0, e - this._laneDy());
       this._setX(x, true);
     }
 

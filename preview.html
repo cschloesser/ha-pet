@@ -15,6 +15,15 @@
 </style>
 </head>
 <body>
+<div class="bar" id="bar-tiefe"><b>Tiefe</b>
+  <button id="tiefe">Tiefe an/aus</button>
+  <button data-lane="1">nach hinten hoppeln</button>
+  <button data-lane="0">nach vorn hoppeln</button>
+  <button data-areal="huegel">Hügel</button>
+  <button data-areal="fels">Fels</button>
+  <button data-areal="stumpf">Stumpf</button>
+  <button data-areal="alpin">Alpin</button>
+</div>
 <div class="bar"><b>Tageszeit</b>
   <button data-sun="110,8,0">Morgen</button>
   <button data-sun="180,28,0">Mittag</button>
@@ -308,6 +317,23 @@
   }
   cards.forEach((c) => c.setConfig({ name: 'Pika', entity: 'input_text.pika_status', plan_entity: 'input_text.pika_plan' }));
   push();
+
+  // Prototyp Tiefe: Schalter (setConfig wie in HA), Spur erzwingen, Areal wechseln
+  const tiefeBtn = document.getElementById('tiefe');
+  const tiefeMark = () => (tiefeBtn.style.borderColor = cards[0]._cfg.depth ? '#6bb152' : '');
+  tiefeBtn.addEventListener('click', () => {
+    cards.forEach((c) => c.setConfig({ ...c._cfg, depth: !c._cfg.depth }));
+    tiefeMark();
+  });
+  document.querySelectorAll('[data-lane]').forEach((b) => b.addEventListener('click', () => cards.forEach((c) => {
+    if (!c._cfg.depth) c.setConfig({ ...c._cfg, depth: true });
+    c._laneNext = Number(b.dataset.lane);
+    c._next = 'wander';
+    c._interrupt();
+    tiefeMark();
+  })));
+  document.querySelectorAll('[data-areal]').forEach((b) => b.addEventListener('click', () =>
+    cards.forEach((c) => c.setConfig({ ...c._cfg, areal: b.dataset.areal }))));
 
   document.querySelectorAll('[data-sun]').forEach((b) =>
     b.addEventListener('click', () => {
