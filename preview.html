@@ -215,7 +215,7 @@
   <button data-cute="nod">Einnicken</button>
   <button data-cute="butterfly">Schmetterling</button>
   <button data-cute="zoomies">Zoomies</button>
-  <button data-cute="gift">Geschenk</button>
+  <button data-cute="gift">Geschenk (links)</button>
   <i style="flex-basis:100%"></i><b></b>
   <button data-pet="nose">Nase (boop)</button>
   <button data-pet="ear-r">Ohr</button>
@@ -790,7 +790,8 @@
   // ==================== Süßes ====================
   const cuteGo = (c, act) => { c._next = act; c._nextAt = Date.now(); c._interrupt(); }; // _nextAt: Berührungen verfallen sonst
   document.querySelectorAll('[data-cute]').forEach((b) =>
-    b.addEventListener('click', () => cards.forEach((c) => cuteGo(c, b.dataset.cute)))
+    // Das Blumengeschenk steht im Tagesplan: nur links hinlegen, rechts erscheint es über den Helfer
+    b.addEventListener('click', () => (b.dataset.cute === 'gift' ? cards.slice(0, 1) : cards).forEach((c) => cuteGo(c, b.dataset.cute)))
   );
   // Streicheln ohne genaues Zielen: Zone bzw. Combo-Zahl direkt vorgeben
   document.querySelectorAll('[data-pet]').forEach((b) => b.addEventListener('click', () => cards.forEach((c) => {

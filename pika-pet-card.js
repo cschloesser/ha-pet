@@ -53,7 +53,7 @@
  * werden aus Datum und Standort (hass.config) berechnet.
  */
 (() => {
-  const VERSION = '0.23.0';
+  const VERSION = '0.24.0';
 
   const DEFAULTS = {
     name: 'Pika',
@@ -527,12 +527,16 @@
   //   (parseInt hört beim "_" auf) und schreiben es ohne p zurück, dann rechnet die Karte p einmal aus k und a nach.
   //   Ebenso hinter u mit "_" noch v: die Stufen der Schätze (Bit t = Trick, Bit 8 + t = Gold, siehe giftLv). Geräte
   //   bis 0.22 lesen nur u und schreiben es ohne v zurück; dann trägt die Karte das zuletzt bekannte v wieder ein.
-  // Text: "p1|n.t.c.m|d.k|k:name:v,…|d.n.m|k.a.n.u.z.o.b.x.y.d.i" (Zahlen zur Basis 36), passt in die 255 Zeichen eines input_text.
+  // - fl: das Blumengeschenk im Gras (t wann er es hinlegte, c Blütenfarbe als Ziffer der Areal-Palette, x Stelle in % der
+  //   Breite, k angenommen). Steht mit "_" hinter m von hay: Geräte bis 0.23 lesen nur m und schreiben es ohne fl zurück.
+  // Text: "p1|n.t.c.m_t_cxxk|d.k|k:name:v,…|d.n.m|k.a.n.u.z.o.b.x.y.d.i" (Zahlen zur Basis 36), passt in die 255 Zeichen eines input_text.
   const HAY_MAX = 12;
   const PLAN_REC = 4;
   // Kürzer als so darf der Helfer für den Tagesplan nicht sein (mit Päckchen sind es bis ~100 Zeichen ohne Verlauf)
   const PLAN_MIN = 120;
-  const planBlank = (now = Date.now()) => ({ hay: { n: 3, t: now, c: '', m: 0 }, sport: null, rec: [], cute: null, gift: null });
+  const planBlank = (now = Date.now()) => ({ hay: { n: 3, t: now, c: '', m: 0 }, sport: null, rec: [], cute: null, gift: null, fl: null });
+  // Blumengeschenk: höchstens alle 90 Minuten (auf allen Geräten zusammen), welkt nach 12 Minuten
+  const FLGIFT = { gap: 90 * 6e4, life: 12 * 6e4 };
   const GIFT_F = ['k', 'a', 'n', 'u', 'z', 'o', 'b', 'x', 'y', 'd', 'i'];
   const GIFT_T = new Set(['k', 'b', 'x']); // Zeiten: im Text in Sekunden
   // Streicheln zählt bis 10: ab da ist er anhänglich, mehr muss keiner wissen (und es wird nicht mehr geschrieben)
@@ -543,7 +547,9 @@
   const pikaDay = (t) => Math.floor((t - new Date(t).getTimezoneOffset() * 6e4 - 4 * 36e5) / 864e5);
   const planSer = (P) => {
     const h = P.hay;
-    return ['p1', [h.n, Math.round(h.t / 1000).toString(36), h.c || '-', h.m.toString(36)].join('.'),
+    const f = P.fl;
+    const fs = f ? `_${Math.round(f.t / 1000).toString(36)}_${f.c}${f.x.toString(36).padStart(2, '0')}${f.k ? 1 : 0}` : '';
+    return ['p1', [h.n, Math.round(h.t / 1000).toString(36), h.c || '-', h.m.toString(36) + fs].join('.'),
       P.sport ? `${P.sport.d.toString(36)}.${P.sport.k.toString(36)}` : '-',
       P.rec.map(([k, a, v]) => (v ? `${k.toString(36)}:${a}:${v}` : `${k.toString(36)}:${a}`)).join(',') || '-',
       P.cute ? [P.cute.d, P.cute.n, P.cute.m].map((x) => x.toString(36)).join('.') : '-',
@@ -560,7 +566,12 @@
     const t = parseInt(h[1], 36) * 1000;
     const m = parseInt(h[3], 36);
     if (h.length !== 4 || !Number.isFinite(n) || !Number.isFinite(t) || !Number.isFinite(m)) return null;
-    const P = { hay: { n: clamp(n, 1, HAY_MAX), t, c: h[2] === '-' ? '' : h[2].replace(/\D/g, ''), m }, sport: null, rec: [], cute: null, gift: null };
+    const P = { hay: { n: clamp(n, 1, HAY_MAX), t, c: h[2] === '-' ? '' : h[2].replace(/\D/g, ''), m }, sport: null, rec: [], cute: null, gift: null, fl: null };
+    const fq = h[3].split('_');
+    if (fq.length === 3 && /^\d[0-9a-z]{2}[01]$/.test(fq[2])) {
+      const ft = parseInt(fq[1], 36) * 1000;
+      if (Number.isFinite(ft)) P.fl = { t: ft, c: Number(fq[2][0]), x: clamp(parseInt(fq[2].slice(1, 3), 36), 0, 100), k: fq[2][3] === '1' };
+    }
     const gq = (p[5] || '').split('.');
     if (gq.length === GIFT_F.length) {
       const G = {};
@@ -639,7 +650,7 @@
   // Änderung op auf den Plan P anwenden. Alle Änderungen sind wiederholbar (gleiches Ergebnis beim zweiten Mal), so
   // dürfen sie auf jeden neu eintreffenden Stand eines anderen Geräts noch einmal gelegt werden.
   const planApply = (P, op, now) => {
-    const out = { hay: { ...P.hay }, sport: P.sport, rec: P.rec.map((e) => [...e]), cute: P.cute, gift: P.gift && { ...P.gift } };
+    const out = { hay: { ...P.hay }, sport: P.sport, rec: P.rec.map((e) => [...e]), cute: P.cute, gift: P.gift && { ...P.gift }, fl: P.fl };
     if (GIFT_OPS.has(op.t)) {
       giftApply(out, op);
       return out;
@@ -664,6 +675,13 @@
       // täglichem Sammeln nie etwas weg (der angebrochene Tag ginge jedes Mal verloren).
       const t = out.hay.t + Math.floor(Math.max(0, now - out.hay.t) / 864e5) * 864e5;
       out.hay = { n: n + 1, t, c: (c + op.c).slice(-(n + 1)), m: op.m ?? out.hay.m };
+    } else if (op.t === 'fdrop') {
+      // Hat ein anderes Gerät gerade eins hingelegt (weniger als FLGIFT.gap davor oder danach), gilt das: So zeigen alle
+      // Geräte dasselbe, egal in welcher Reihenfolge die Stände ankommen
+      const f = out.fl;
+      if (!f || (f.t !== op.f.t && Math.abs(op.f.t - f.t) >= FLGIFT.gap)) out.fl = { ...op.f };
+    } else if (op.t === 'ftake') {
+      if (out.fl?.t === op.ft) out.fl = { ...out.fl, k: true };
     } else if (op.t === 'pet' || op.t === 'mem') {
       // Ein neuer Pika-Tag fängt bei null an. Der höchste Zähler gewinnt, Erlebnisse werden zusammengelegt.
       const c = out.cute;
@@ -2389,7 +2407,7 @@
       <circle cx="15.4" cy="4.8" r="1.3" fill="${d}" opacity=".6"/></g>
     <ellipse cx="10" cy="8.6" rx="1" ry="4" fill="#4a3628"/>
     <path d="M9.6 4.8 Q8.6 2.4 7.4 1.8 M10.4 4.8 Q11.4 2.4 12.6 1.8" stroke="#4a3628" stroke-width=".55" fill="none" stroke-linecap="round"/></svg>`;
-  // Geschenk: liegende Blüte mit rosa Schleife (viewBox 34 × 16)
+  // Geschenk: liegende Blüte mit großer rosa Schleife (viewBox 34 × 16)
   const GIFT_SVG = (c) => `<svg viewBox="0 0 34 16" aria-hidden="true">
     <path d="M2 13 Q13 11.6 24 8.6" stroke="#4f8a3a" stroke-width="1.6" fill="none" stroke-linecap="round"/>
     <ellipse cx="9" cy="10.4" rx="3.6" ry="1.5" fill="#6bab4c" transform="rotate(-24 9 10.4)"/>
@@ -2400,7 +2418,7 @@
       }).join('')}
     </g>
     <circle cx="27" cy="7.6" r="1.7" fill="#e0a032"/>
-    <g fill="#f28fb1" stroke="#c9577f" stroke-width=".6" stroke-linejoin="round">
+    <g fill="#f2789f" stroke="#b8406a" stroke-width=".5" stroke-linejoin="round" transform="translate(15 11) scale(1.45) translate(-15 -11)">
       <path d="M15 11 L10.8 7.6 L11.4 12.6Z"/><path d="M15 11 L19.4 8.4 L18.6 13.2Z"/>
       <path d="M15 11 L13.2 15.4 M15 11 L16.6 15.2" fill="none" stroke-linecap="round"/>
       <circle cx="15" cy="11" r="1.2"/></g></svg>`;
@@ -3043,19 +3061,19 @@
   .g-can .gcan [stroke="#8fd16f"] { stroke: #fff2b0; }
   .pour .gcr { transform: rotate(32deg); }
 
-  /* Knopf (über dem Futterknopf) mit Fortschrittsring, Album */
+  /* Knopf (links neben dem Futterknopf, oben rechts) mit Fortschrittsring, Album */
   .gbtn {
-    position: absolute; right: 10px; bottom: 62px; z-index: 5; width: 44px; height: 44px; padding: 0;
+    position: absolute; right: 52px; top: 6px; z-index: 5; width: 36px; height: 36px; padding: 0;
     border: none; border-radius: 50%; cursor: pointer; background: rgba(255, 255, 255, .75); -webkit-touch-callout: none;
     box-shadow: 0 2px 6px rgba(0, 0, 0, .18); transition: transform .15s, background 2.5s; user-select: none;
   }
   .gbtn[hidden] { display: none; }
   .gbtn:active { transform: scale(.88); }
   .night .gbtn { background: rgba(15, 22, 45, .55); }
-  .gbtn .gico { position: absolute; inset: 8px 8px 9px; transition: opacity .4s, filter .4s; }
+  .gbtn .gico { position: absolute; inset: 7px 7px 7.5px; transition: opacity .4s, filter .4s; }
   .gbtn .gico svg { display: block; width: 100%; height: 100%; overflow: visible; }
   .gring { position: absolute; inset: 0; width: 100%; height: 100%; transform: rotate(-90deg); overflow: visible; }
-  .gring circle { fill: none; stroke-width: 3; }
+  .gring circle { fill: none; stroke-width: 3.4; }
   .gr0 { stroke: rgba(0, 0, 0, .1); }
   .night .gr0 { stroke: rgba(255, 255, 255, .15); }
   .gr1 { stroke: #f2b632; stroke-linecap: round; stroke-dasharray: var(--gp, 0) 100; transition: stroke-dasharray .8s; }
@@ -3064,7 +3082,7 @@
   .gbtn.warn.ok .gr1 { animation: none; }
   @keyframes gwarn { 50% { opacity: .3; } }
   /* Was fehlt (Satt, Glück, Sauber): kleines Zeichen links unten am Knopf */
-  .gcrit { position: absolute; left: -4px; bottom: -4px; width: 18px; height: 18px; padding: 2px; box-sizing: border-box;
+  .gcrit { position: absolute; left: -5px; bottom: -5px; width: 16px; height: 16px; padding: 2px; box-sizing: border-box;
     border-radius: 50%; background: #fff; box-shadow: 0 1px 3px rgba(0, 0, 0, .25); }
   .gcrit:empty { display: none; }
   .gcrit svg { display: block; width: 100%; height: 100%; }
@@ -3072,8 +3090,8 @@
   .night .alb-w { color: #f2a65a; }
   .gbtn.broken .gr1 { stroke: #b8b2a8; }
   .gbtn.empty .gico { opacity: .45; filter: grayscale(.7); }
-  .gnum { position: absolute; right: -3px; top: -3px; min-width: 16px; height: 16px; padding: 0 3px; box-sizing: border-box;
-    border-radius: 8px; background: #e8584e; color: #fff; font: 700 11px/16px sans-serif; text-align: center; }
+  .gnum { position: absolute; right: -4px; top: -3px; min-width: 15px; height: 15px; padding: 0 3px; box-sizing: border-box;
+    border-radius: 8px; background: #e8584e; color: #fff; font: 700 10px/15px sans-serif; text-align: center; }
   .gnum:empty { display: none; }
   .gbtn.gold .gnum { background: #d99a12; }
   .gbtn.wig { animation: gwig .7s; }
@@ -3082,7 +3100,7 @@
   @keyframes gnew { from { transform: scale(0) rotate(-40deg); } }
   .gbtn.no { animation: no .4s; }
   .album {
-    position: absolute; right: 62px; bottom: 10px; z-index: 6; max-width: calc(100% - 84px); box-sizing: border-box;
+    position: absolute; right: 8px; top: 48px; z-index: 6; max-width: calc(100% - 16px); box-sizing: border-box;
     padding: 6px 10px; border-radius: 14px; background: rgba(255, 255, 255, .9); color: #4a3a2c;
     font-size: 12px; font-weight: 700; box-shadow: 0 2px 8px rgba(0, 0, 0, .2); backdrop-filter: blur(4px);
   }
@@ -3750,18 +3768,44 @@
   .bfly .bwl, .bfly .bwr { transform-box: view-box; transform-origin: 10px 8px; animation: bfw .15s ease-in-out infinite alternate; }
   .bfly.rest .bwl, .bfly.rest .bwr { animation-duration: 1.3s; }
   @keyframes bfw { to { transform: scaleX(.2); } }
-  /* Geschenk: eine Blüte mit Schleife vorn im Gras, antippen nimmt sie an */
+  /* Geschenk: eine Blüte mit großer Schleife ganz vorn im Gras, antippen nimmt sie an. Damit sie neben den Wiesenblumen
+     auffällt: warmer Lichthof, der pulsiert, drei Funken und ab und zu ein Wackeln. Nachts weniger gedimmt als die Wiese. */
   .pgift {
-    position: absolute; width: calc(var(--ph) * .5); margin-left: calc(var(--ph) * -.25); pointer-events: auto; cursor: pointer;
-    filter: drop-shadow(0 0 1.5px rgba(255, 255, 255, .95)) drop-shadow(0 1px 1.5px rgba(0, 0, 0, .3));
-    transform-origin: 50% 100%; animation: giftin .5s ease-out;
+    position: absolute; width: calc(var(--ph) * .68); margin-left: calc(var(--ph) * -.34); pointer-events: auto; cursor: pointer;
+    transform-origin: 50% 100%; animation: giftin .5s ease-out; isolation: isolate;
   }
-  .pgift svg { display: block; width: 100%; height: auto; overflow: visible; }
+  .pgift::before {
+    content: ''; position: absolute; left: -30%; right: -30%; top: -55%; bottom: -35%; z-index: -1; border-radius: 50%;
+    background: radial-gradient(closest-side, #fffbe0, rgba(255, 212, 84, .85) 40%, rgba(255, 170, 60, .35) 70%, rgba(255, 170, 60, 0));
+    animation: pglow 2.2s ease-in-out infinite;
+  }
+  .pgift svg {
+    display: block; width: 100%; height: auto; overflow: visible; transform-origin: 50% 90%;
+    filter: drop-shadow(0 0 1.5px #fff) drop-shadow(0 0 1.5px #fff) drop-shadow(0 1px 2px rgba(0, 0, 0, .35));
+    animation: pwig 4.5s ease-in-out 1s infinite;
+  }
+  .pspk {
+    position: absolute; width: 22%; aspect-ratio: 1; pointer-events: none; background: #ffd23a;
+    clip-path: polygon(50% 0, 61% 39%, 100% 50%, 61% 61%, 50% 100%, 39% 61%, 0 50%, 39% 39%);
+    animation: pspk 1.8s ease-in-out infinite;
+  }
+  .pspk:nth-of-type(1) { left: -6%; top: -45%; }
+  .pspk:nth-of-type(2) { left: 70%; top: -70%; width: 16%; animation-delay: .6s; }
+  .pspk:nth-of-type(3) { left: 92%; top: 10%; width: 13%; animation-delay: 1.2s; }
   .pgift.take { animation: gifttake .9s ease-in forwards; pointer-events: none; }
+  .pgift.take::before, .pgift.take .pspk, .pgift.wilt::before, .pgift.wilt .pspk { display: none; }
   .pgift.wilt { transition: opacity 4s; opacity: 0; pointer-events: none; }
-  .night .pgift { filter: brightness(.55) saturate(.6); }
+  .night .pgift svg { filter: brightness(.8) saturate(.8) drop-shadow(0 0 1.5px rgba(255, 246, 196, .8)); }
+  .night .pgift::before { opacity: .6; }
   @keyframes giftin { from { transform: translateY(-50%) rotate(-25deg); opacity: 0; } }
   @keyframes gifttake { 30% { transform: translateY(-20%) scale(1.15); } to { transform: translateY(-160%) scale(1.3) rotate(12deg); opacity: 0; } }
+  @keyframes pglow { 50% { transform: scale(1.12); opacity: .7; } }
+  @keyframes pwig { 0%, 76%, 100% { transform: none; } 80% { transform: rotate(-7deg) scale(1.06); } 85% { transform: rotate(6deg) scale(1.06); } 90% { transform: rotate(-3deg); } }
+  @keyframes pspk { 0%, 100% { transform: scale(.2) rotate(0); opacity: 0; } 50% { transform: scale(1) rotate(45deg); opacity: 1; } }
+  @media (prefers-reduced-motion: reduce) {
+    .pgift::before, .pgift svg { animation: none; }
+    .pspk { animation: none; transform: scale(.7); }
+  }
 
   /* Beschäftigungen: Buch, Gameboy, Tablet (auf dem Bauch), Drachenschnur, Fernsehen (Rückansicht im Bau) */
   .book, .gb, .tab, .kpaw, .bk { display: none; }
@@ -3879,8 +3923,10 @@
   .bar-g { background: #f07a95; }
   .st.low b { background: #e8a33a; }
 
+  /* Futter- und Päckchen-Knopf oben rechts nebeneinander (unten rechts verdeckten sie Pika, Pino und Wiese). Ist die
+     Karte so schmal, dass sie an die Statusleiste stoßen, stehen sie untereinander (.btncol). */
   .feed {
-    position: absolute; right: 10px; bottom: 10px; z-index: 5; width: 44px; height: 44px; padding: 6px;
+    position: absolute; right: 8px; top: 6px; z-index: 5; width: 36px; height: 36px; padding: 5px;
     border: none; border-radius: 50%; cursor: pointer; background: rgba(255, 255, 255, .75);
     box-shadow: 0 2px 6px rgba(0, 0, 0, .18); transition: transform .15s, background 2.5s;
   }
@@ -3888,6 +3934,8 @@
   .feed svg { display: block; width: 100%; height: 100%; }
   .night .feed { background: rgba(15, 22, 45, .55); }
   .feed.no { animation: no .4s; }
+  .btncol .gbtn { right: 8px; top: 48px; }
+  .btncol .album { top: 90px; }
   @keyframes no { 25% { transform: translateX(-4px); } 75% { transform: translateX(4px); } }
   .bar-c { background: #5fb9de; }
 
@@ -4280,6 +4328,7 @@
       this._applyAreal();
       this._el.name.textContent = this._cfg.name;
       this._el.stats.hidden = !this._cfg.show_stats;
+      if (this._W) this._btnFit();
       this._el.scene.style.minHeight = `${Number(this._cfg.height) || DEFAULTS.height}px`;
       // Zustand nur beim ersten Mal und bei anderem Helfer neu laden: Der Editor ruft setConfig bei jeder
       // Änderung, ein noch nicht gespeicherter Stand (1,2 s Wartezeit beim Speichern) ginge sonst verloren
@@ -4682,6 +4731,14 @@
       }
     }
 
+    // Futter- und Päckchen-Knopf oben rechts nebeneinander (Päckchen-Knopf links, 36 px, 8 px Abstand). Stoßen sie an
+    // die Statusleiste (schmale Karte, langer Name), stehen sie untereinander.
+    _btnFit() {
+      const { scene, stats } = this._el;
+      const sR = stats.hidden ? 0 : stats.offsetLeft + stats.offsetWidth;
+      scene.classList.toggle('btncol', sR + 8 > scene.clientWidth - 88);
+    }
+
     _layout() {
       const W = this._el.scene.clientWidth;
       const H = this._el.scene.clientHeight;
@@ -4694,6 +4751,7 @@
       const ratio = first ? 1 : W / this._W;
       this._W = W;
       this._H = H;
+      this._btnFit();
       const pH = clamp(H * 0.4, 48, 170);
       const pW = pH * 1.2;
       const gy = H * 0.9;
@@ -4719,9 +4777,9 @@
       const hole = { l: bL + A.hole.x1 * u, r: bL + A.hole.x2 * u, top: Y(A.hole.top), lip: Y(A.hole.lip) };
       hole.cx = (hole.l + hole.r) / 2;
       const hL = bL + (S ? S.x1 * u : bW * A.hay);
-      // Aussichtsstein rechts, links neben dem Futterknopf, aber nie über den rechten Rand hinaus
+      // Aussichtsstein rechts, knapp vor dem rechten Rand, aber nie darüber hinaus
       const ku = kW / 100;
-      const kL = Math.min(Math.max(hL + hW + gap, W - 66 - kW), W - kW);
+      const kL = Math.min(Math.max(hL + hW + gap, W - 10 - kW), W - kW);
       const rock = { l: kL, w: kW, cx: kL + kW / 2, lift: (46 - 13) * ku };
       const rs = this._el.rock.style;
       rs.left = `${kL}px`;
@@ -4744,9 +4802,8 @@
         // Blumen und Futter zwischen Heuhaufen und Stein
         fMin: (hL + hW + pW * 0.3) / W,
         fMax: Math.max((hL + hW + pW * 0.3) / W + 0.08, (kL - H * 0.03) / W),
-        // Rechte Grenze am Boden: links der Knopfspalte (Futter, Päckchen; 44 px breit, 10 px vom Rand), sonst
-        // stünde er halb hinter den Knöpfen und ein Tipp dort fütterte statt zu streicheln
-        xR: Math.max(pW * 0.45, W - 56 - pW * 0.4),
+        // Rechte Grenze am Boden: ganz im Bild wie links (die Knöpfe sitzen oben rechts)
+        xR: Math.max(pW * 0.45, W - pW * 0.45),
       };
       for (const el of [this._el.burrow, this._el.lights]) {
         el.style.left = `${bL}px`;
@@ -4799,6 +4856,8 @@
         // Staffelei und Drache stehen an festen Pixeln: abbrechen (räumt sie weg), er steigt gleich wieder ein
         if (this._easelEl || this._kiteEl) this._interrupt();
         if (this._giftEl) this._flowerGiftPlace(this._giftEl); // Blumengeschenk an seiner relativen Stelle
+      } else {
+        this._flowerFromPlan(); // lag schon eins (anderes Gerät, Neuladen)
       }
     }
 
@@ -5170,7 +5229,7 @@
 
     async _hopTo(x, lift, crouch = true) {
       const { pW } = this._g;
-      // wie beim Laufen im Bild und am Boden links der Knöpfe bleiben (auf den Stein darf er immer)
+      // wie beim Laufen im Bild bleiben (auf den Stein darf er immer ganz nach rechts)
       x = clamp(x, pW * 0.45, lift > 0 ? this._W - pW * 0.45 : this._g.xR);
       if (Math.abs(x - this._x) > 2) this._face(x > this._x ? 1 : -1);
       const p = this._el.pika;
@@ -6644,7 +6703,7 @@
       this._pollenSeason = dry && mo >= 2 && mo <= 5;
       const sleepyH = (h >= 13 && h < 15) || h >= 19 || (elev != null && elev < 6 && h >= 12);
       const bfly = mo >= 3 && mo <= 8 && dry && !wx.cold && (this._wind || 0) < 30 && (elev == null || elev > 8) && !this._bfly;
-      const gift = hasFlowers && !wx.wet && g > 60 && !this._giftEl && Date.now() - (this._giftAt || 0) > 90 * 6e4;
+      const gift = hasFlowers && !wx.wet && g > 60 && !this._giftEl && this._haNow() - (this._plan?.fl?.t || 0) > FLGIFT.gap;
       return [
         [dry ? 0.5 : 0.25, 'curious'],
         [sleepyH ? 0.35 : 0.12, 'yawn'],
@@ -6887,7 +6946,7 @@
       this._jump('binky');
       await this._wait(900);
       const lo = Math.max(home, pW * 0.5);
-      const hi = this._g.xR; // links der Knöpfe
+      const hi = this._g.xR;
       const legs = 3 + Math.floor(rnd(0, 2));
       for (let i = 0; i < legs; i++) {
         const mid = (lo + hi) / 2;
@@ -6922,7 +6981,8 @@
         this._giftCarry = false;
         p.classList.remove('carry');
         this._mouth(null);
-        this._flowerGiftDrop(f.color);
+        // Hat unterwegs ein anderes Gerät eins hingelegt, liegt das schon da (und gilt auf allen)
+        if (!this._giftEl) this._flowerGiftDrop(f.color);
       }
       this._say(pick(['für dich!', 'für dich ♥', 'hier!']), 1800, true);
       this._blush(3000);
@@ -6934,32 +6994,54 @@
       await this._wait(1600);
     }
 
-    // Blüte mit Schleife vor ihm ins Gras legen; erst jetzt zählen die 90 Minuten bis zum nächsten Geschenk
+    // Blüte mit Schleife vor ihm ins Gras legen; erst jetzt zählen die 90 Minuten bis zum nächsten Geschenk. Sie steht im
+    // Tagesplan (fl), so liegt sie auf allen Geräten an derselben Stelle (siehe _flowerFromPlan).
     _flowerGiftDrop(color) {
-      this._giftAt = Date.now();
-      const el = document.createElement('div');
-      el.className = 'pgift';
-      el.innerHTML = GIFT_SVG(color);
-      const x = this._liveX() + this._dir * this._g.pW * 0.45;
-      el._xf = clamp(x, this._g.pH * 0.3, this._W - this._g.pH * 0.3) / this._W; // relativ: bei Größenänderung mitwandern
-      this._flowerGiftPlace(el);
-      el.addEventListener('click', (e) => (e.stopPropagation(), this._takeGift()));
-      this._el.fx.appendChild(el);
-      this._giftEl = el;
-      clearTimeout(this._giftT);
-      // Nimmt sie keiner, welkt sie nach 12 Minuten
-      this._giftT = setTimeout(() => {
-        if (this._giftEl !== el) return;
-        this._giftEl = null;
-        el.classList.add('wilt');
-        setTimeout(() => el.remove(), 4200);
-      }, 12 * 6e4);
+      const pal = this._areal().flowers || FLOWER_COLORS;
+      const x = clamp(this._liveX() + this._dir * this._g.pW * 0.45, this._g.pH * 0.35, this._W - this._g.pH * 0.35);
+      this._planOp({ t: 'fdrop', f: { t: this._haNow(), c: Math.max(0, pal.indexOf(color)) % 10, x: Math.round((x / this._W) * 100), k: false } });
     }
 
+    // Blumengeschenk nach dem Tagesplan zeigen: hinlegen (auch wenn es ein anderes Gerät hingelegt hat), auf allen Geräten
+    // wegnehmen, sobald es auf einem angetippt wurde, und nach FLGIFT.life welken lassen
+    _flowerFromPlan() {
+      if (!this._g || !this._el) return;
+      const f = this._plan?.fl;
+      const left = f && !f.k ? f.t + FLGIFT.life - this._haNow() : 0;
+      const el = this._giftEl;
+      if (el && (el._t !== f?.t || left <= 0)) {
+        this._giftEl = null;
+        clearTimeout(this._giftT);
+        if (el._t === f?.t && f.k) {
+          // auf einem anderen Gerät angenommen
+          el.classList.add('take');
+          setTimeout(() => el.remove(), 950);
+        } else {
+          el.classList.add('wilt');
+          if (el._t !== f?.t) el.style.transitionDuration = '.6s'; // durch ein anderes ersetzt
+          setTimeout(() => el.remove(), 4200);
+        }
+      }
+      if (this._giftEl || left <= 0 || left > FLGIFT.life + 6e4) return;
+      const pal = this._areal().flowers || FLOWER_COLORS;
+      const g = document.createElement('div');
+      g.className = 'pgift';
+      g.innerHTML = `${GIFT_SVG(pal[f.c % pal.length])}<i class="pspk"></i><i class="pspk"></i><i class="pspk"></i>`;
+      g._t = f.t;
+      g._xf = f.x / 100; // relativ: bei Größenänderung mitwandern
+      this._flowerGiftPlace(g);
+      g.addEventListener('click', (e) => (e.stopPropagation(), this._takeGift()));
+      this._el.fx.appendChild(g);
+      this._giftEl = g;
+      clearTimeout(this._giftT);
+      this._giftT = setTimeout(() => this._flowerFromPlan(), left + 100);
+    }
+
+    // Ganz vorn im Gras, nah am Betrachter
     _flowerGiftPlace(el) {
       const { pH, gy } = this._g;
       el.style.left = `${(el._xf * this._W).toFixed(1)}px`;
-      el.style.top = `${(gy - pH * 0.17).toFixed(1)}px`;
+      el.style.top = `${(gy - pH * 0.1).toFixed(1)}px`;
     }
 
     _takeGift() {
@@ -6967,6 +7049,7 @@
       if (!el) return;
       this._giftEl = null;
       clearTimeout(this._giftT);
+      this._planOp({ t: 'ftake', ft: el._t });
       const r = el.getBoundingClientRect();
       const s = this._el.scene.getBoundingClientRect();
       for (let i = 0; i < 3; i++) {
@@ -7457,7 +7540,7 @@
     }
 
     // Deko aufbauen. Plätze: rechts und links neben der Tür, die Wiese zwischen Heu und Stein, die Bau-Oberkante,
-    // hinter dem Bau; Statusleiste links oben und Futterknopf rechts unten bleiben frei.
+    // hinter dem Bau; Statusleiste links oben und die Knöpfe rechts oben bleiben frei.
     _festRender() {
       const E = this._festEls;
       if (!E || !this._g) return;
@@ -7548,11 +7631,11 @@
           + `--wd:${this._windDir < 0 ? -1 : 1}">${festSvg(FEST_MAI.vb, FEST_MAI.b, 'b')}</div>`);
       }
       if (f.birthday || f.sommer) back.push(this._festString(f.birthday ? ['A', 'L', 'L', 'E', 'S', '♥', 'G', 'U', 'T', 'E'] : null));
-      // Wiese für Eier und Raketenstäbe: rechts neben der Tür bis vor den Futterknopf, ohne die Stellen, an
+      // Wiese für Eier und Raketenstäbe: rechts neben der Tür bis kurz vor den rechten Rand, ohne die Stellen, an
       // denen schon Deko steht (Kuchen, Geschenk …). free(u, m): Stelle u ∈ [0, 1] entlang der freien Strecke,
       // m = halbe Breite des Teils plus Abstand. Ist alles belegt, gilt die ganze Strecke (lieber eng als gar nicht).
       const lo = hole.r + H * 0.12;
-      const hi = Math.max(lo + H * 0.3, Math.min(W - 64, rock.l + rock.w * 0.75));
+      const hi = Math.max(lo + H * 0.3, Math.min(W - 10, rock.l + rock.w * 0.75));
       const taken = Object.values(pos);
       const free = (u, m) => {
         let segs = [[lo, hi]];
@@ -9201,8 +9284,8 @@
     _frRange() {
       const { pW, home, hay, stash } = this._g;
       const lo = Math.max(home + pW * 0.8, stash ? 0 : hay + this._H * 0.13 + pW * FRIEND_SCALE * 0.3);
-      // Rechts wie beim Pika (xR) vor der Knopfspalte bleiben: Dahinter wäre er kaum zu sehen, und ein Tipp auf ihn fütterte
-      return [lo, Math.max(lo, this._W - 56 - pW * FRIEND_SCALE * 0.4)];
+      // Rechts wie beim Pika (xR) ganz im Bild bleiben
+      return [lo, Math.max(lo, this._W - pW * FRIEND_SCALE * 0.45)];
     }
 
     // free: ohne Begrenzung auf die Wiese (herein- und hinaushoppeln)
@@ -10534,7 +10617,7 @@
 
     // Jedem Glühwürmchen einen Ort und einen eigenen Driftweg (vier Punkte, px) geben. Gut die Hälfte schwirrt
     // tief über der Wiese, ein Drittel um den Heuhaufen (--hl, --hw), der Rest etwas höher. Kein Weg führt
-    // über die Statusleiste oder den Futterknopf, durchs Heu oder ins Gras (beide liegen vorn, z 3).
+    // über die Statusleiste oder die Knöpfe, durchs Heu oder ins Gras (beide liegen vorn, z 3).
     _ffPlace() {
       const g = this._g;
       const flies = this._el.ff.children;
@@ -10546,7 +10629,7 @@
       const hw = g.stash ? g.hW : H * 0.26;
       const hl = g.hay - hw / 2;
       const avoid = [];
-      for (const el of [this._el.stats, this._el.feed]) {
+      for (const el of [this._el.stats, this._el.feed, this._el.gbtn]) {
         if (el.offsetWidth) {
           avoid.push({ l: el.offsetLeft - 10, t: el.offsetTop - 10, r: el.offsetLeft + el.offsetWidth + 10, b: el.offsetTop + el.offsetHeight + 10 });
         }
@@ -11679,7 +11762,7 @@
     }
 
     // Alle Geräte stehen nebeneinander ganz vorn links am unteren Rand (näher am Betrachter, also etwas größer und
-    // vor dem Pika), in der Reihenfolge der Konfiguration. Reicht der Platz bis zum Futterknopf nicht, werden alle
+    // vor dem Pika), in der Reihenfolge der Konfiguration. Reicht der Platz bis zum rechten Rand nicht, werden alle
     // gemeinsam gleich stark kleiner. Setzt nur Positionen und tut nichts, wenn sich nichts ändert.
     _boteLayout() {
       const B = this._bote;
@@ -11689,7 +11772,7 @@
       const H = this._H;
       const W = this._W;
       const left = 6;
-      const right = W - 60; // Futterknopf rechts unten
+      const right = W - 6;
       const gap = 0.02 * H;
       // die hohe Wäscheleine steht vorn deutlich kleiner, sonst überragt sie den Pika
       const w1 = row.map((a) => a.spec.vb[2] * BOTE_K * H * BOTE_FRONT * (a.spec.back ? BOTE_TALL : 1));
@@ -14180,6 +14263,7 @@
       this._plan = P;
       this._hayFromPlan();
       this._giftFromPlan();
+      this._flowerFromPlan();
       this._giftCredit();
       // Fehlt dem fremden Stand etwas von hier: noch einmal schreiben
       if (incoming && (this._planOps.length || lost) && planSer(P) !== planSer(this._planBase)) this._planSave();
@@ -14338,8 +14422,8 @@
       const EH = pH;
       const EW = EH * 0.75;
       const tip = pW * (117.2 / 120 - 0.5);
-      // Staffelei auf der Seite mit Platz, nicht über dem Futterknopf (unten rechts)
-      const maxR = W - 56 - EW * 0.83 - tip;
+      // Staffelei auf der Seite mit Platz, ganz im Bild
+      const maxR = W - 4 - EW * 0.83 - tip;
       const minL = 4 + tip + EW * 0.83;
       let x = this._hobbySpot(S.r(2));
       let dir = S.r(3) < 0.5 ? 1 : -1;
