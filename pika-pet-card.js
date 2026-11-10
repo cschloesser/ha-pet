@@ -52,7 +52,7 @@
  * werden aus Datum und Standort (hass.config) berechnet.
  */
 (() => {
-  const VERSION = '0.22.0';
+  const VERSION = '0.22.1';
 
   const DEFAULTS = {
     name: 'Pika',
@@ -3335,6 +3335,8 @@
     transform: translate(calc(var(--hc) - var(--hh) * var(--hd)), var(--dy)) scale(var(--ds));
   }
   .inside .shadow { opacity: 0; }
+  /* Im Bau liegt er hinter Pino (z 3), der draußen vor dem Eingang vorbeihoppelt; Vögel (z 2) stehen im DOM davor */
+  .pika.inside { z-index: 2; }
   /* In der Luft schrumpft und verblasst der Schatten, im Takt von hop, hops, hopb, jump und binky (--shs, --sho = am Scheitel) */
   .walking .shadow { --shs: .86; --sho: .66; animation: sh-hop .36s linear infinite; }
   .walking.trip .shadow { --shs: .93; --sho: .84; animation: sh-trip .24s linear infinite; }
