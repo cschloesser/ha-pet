@@ -20,7 +20,8 @@
  *   Freund-Pika Pino    → kommt zu Besuch, spielt Fangen, sitzt mit ihm, piepst im Duett
  *   Himmel              → Sternschnuppen in klaren Nächten, Glühwürmchen in Sommernächten
  *   Päckchen            → wer sich gut kümmert (nichts lange unter 50 %), verdient Päckchen: Sie schweben am Ballon
- *                         herein, der Pika schießt sie mit der Zwille vom Himmel. Leckerli oder Schätze fürs Album.
+ *                         herein, der Pika schießt sie mit der Zwille vom Himmel. Leckerli oder Schätze fürs Album,
+ *                         ist es voll, Tricks und Gold für die Schätze.
  *   Besuche (Vögelchen, Maus, Frosch, Schnecke, Pino) werden aus der Uhrzeit berechnet und sind auf allen Geräten gleich.
  *
  * Konfiguration:
@@ -52,7 +53,7 @@
  * werden aus Datum und Standort (hass.config) berechnet.
  */
 (() => {
-  const VERSION = '0.22.1';
+  const VERSION = '0.23.0';
 
   const DEFAULTS = {
     name: 'Pika',
@@ -524,6 +525,8 @@
   //   letzten (Index in GIFT_ITEMS, +16 = golden). Stände bis 0.18 haben das Feld nicht. Hinter a steht mit "_" noch p:
   //   ab wann die Wachzeit fürs nächste Päckchen zählt (bis dahin sind die a verdient). Ältere Stände lesen nur a
   //   (parseInt hört beim "_" auf) und schreiben es ohne p zurück, dann rechnet die Karte p einmal aus k und a nach.
+  //   Ebenso hinter u mit "_" noch v: die Stufen der Schätze (Bit t = Trick, Bit 8 + t = Gold, siehe giftLv). Geräte
+  //   bis 0.22 lesen nur u und schreiben es ohne v zurück; dann trägt die Karte das zuletzt bekannte v wieder ein.
   // Text: "p1|n.t.c.m|d.k|k:name:v,…|d.n.m|k.a.n.u.z.o.b.x.y.d.i" (Zahlen zur Basis 36), passt in die 255 Zeichen eines input_text.
   const HAY_MAX = 12;
   const PLAN_REC = 4;
@@ -545,7 +548,8 @@
       P.rec.map(([k, a, v]) => (v ? `${k.toString(36)}:${a}:${v}` : `${k.toString(36)}:${a}`)).join(',') || '-',
       P.cute ? [P.cute.d, P.cute.n, P.cute.m].map((x) => x.toString(36)).join('.') : '-',
       ...(P.gift ? [GIFT_F.map((f) => (P.gift[f] == null ? '-' : Math.round(GIFT_T.has(f) ? P.gift[f] / 1000 : P.gift[f]).toString(36)
-        + (f === 'a' && P.gift.p != null ? `_${Math.round(P.gift.p / 1000).toString(36)}` : ''))).join('.')] : []),
+        + (f === 'a' && P.gift.p != null ? `_${Math.round(P.gift.p / 1000).toString(36)}` : '')
+        + (f === 'u' && P.gift.v != null ? `_${P.gift.v.toString(36)}` : ''))).join('.')] : []),
     ].join('|');
   };
   const planParse = (str) => {
@@ -563,6 +567,11 @@
       GIFT_F.forEach((f, i) => (G[f] = gq[i] === '-' ? null : parseInt(gq[i], 36) * (GIFT_T.has(f) ? 1000 : 1)));
       const gp = parseInt(gq[1].split('_')[1] ?? '', 36) * 1000;
       G.p = Number.isFinite(gp) ? gp : null;
+      // Stufen: "u_v". Ohne Anhang (Stand bis 0.22, oder ein Gerät bis 0.22 hat sie weggelassen) 0 und nov: dann trägt
+      // _planCompose die zuletzt bekannten wieder ein
+      const gv = parseInt(gq[3].split('_')[1] ?? '', 36);
+      G.v = Number.isFinite(gv) ? gv & 0xffff : 0;
+      if (!Number.isFinite(gv)) G.nov = true;
       if (GIFT_F.every((f) => f === 'b' || Number.isFinite(G[f]))) P.gift = G;
     }
     const q = (p[4] || '-').split('.').map((x) => parseInt(x, 36));
@@ -583,7 +592,7 @@
   const giftApply = (out, op) => {
     const G = out.gift;
     if (op.t === 'gstart') {
-      if (!G) out.gift = { k: op.k, a: 0, n: 0, u: 0, z: 0, o: 0, b: null, x: 0, y: 0, d: 0, i: 0, p: op.k };
+      if (!G) out.gift = { k: op.k, a: 0, n: 0, u: 0, v: 0, z: 0, o: 0, b: null, x: 0, y: 0, d: 0, i: 0, p: op.k };
       return;
     }
     if (!G) return;
@@ -607,11 +616,19 @@
       if (op.gold) G.y--;
       else G.n--;
       Object.assign(G, { z: op.z, x: op.x, i: op.i });
-      if ((op.i & 15) < GIFT_TRE) G.u |= 1 << (op.i & 15);
+      // Schatz: fehlt er, kommt er ins Album, sonst eine Stufe höher (Gold nur aus goldenen Päckchen)
+      const t = op.i & 15;
+      if (t < GIFT_TRE) {
+        const lv = giftLv(G, t);
+        if (!lv) G.u |= 1 << t;
+        else if (lv === 1) G.v = (G.v || 0) | (1 << t);
+        else if (lv === 2 && op.gold) G.v = (G.v || 0) | (1 << (8 + t));
+      }
     } else if (op.t === 'gopen') {
       G.o = Math.max(G.o, Math.min(op.z, G.z));
     } else if (op.t === 'gdbg') {
       Object.assign(G, op.f); // Vorschau
+      if ('v' in op.f) delete G.nov;
     }
   };
   // Vorrat jetzt: 2 Bündel weniger je Tag seit der letzten Änderung, die ältesten Blüten fallen zuerst weg
@@ -2777,8 +2794,16 @@
   // Leckerli bringen treat Satt, jedes Päckchen joy Glück.
   const GIFT = { min: 50, grace: 60 * 6e4, every: 6 * 36e5, max: 3, gold: 7 * 864e5, goldMax: 2, arrive: 12000, treat: 15, joy: 15 };
   const GIFT_TRE = 8; // GIFT_ITEMS 0–7 sind Schätze (Album, ein Bit je Schatz), danach Leckerli
-  // Schätze, die schon ausgepackt sind: Das Bit kommt beim Verschenken, fliegt der Ballon noch, zählt es nicht
-  const giftOwned = (G) => (G ? (G.z > G.o && (G.i & 15) < GIFT_TRE ? G.u & ~(1 << (G.i & 15)) : G.u) : 0);
+  // Stufe des Schatzes t im Plan: 0 fehlt, 1 Schatz, 2 mit Trick, 3 golden (u: Bit t, v: Bit t und Bit 8 + t)
+  const giftLv = (G, t) => (!G || !(G.u & (1 << t)) ? 0 : !(G.v & (1 << t)) ? 1 : G.v & (1 << (8 + t)) ? 3 : 2);
+  // Stufen aller Schätze, wie sie schon ausgepackt sind: Die Stufe kommt beim Verschenken, fliegt der Ballon noch,
+  // zählt sie nicht (hide: diesen Schatz ebenfalls eine Stufe tiefer, solange er ausgepackt wird)
+  const giftLvs = (G, hide = null) => [...Array(GIFT_TRE).keys()].map((t) => {
+    const lv = giftLv(G, t);
+    return Math.max(0, lv - ((G && G.z > G.o && (G.i & 15) === t) || hide === t ? 1 : 0));
+  });
+  // Schätze, die schon ausgepackt sind, als Bits
+  const giftOwned = (G) => giftLvs(G).reduce((m, lv, t) => (lv ? m | (1 << t) : m), 0);
   // Was die Serie gerade gefährdet (unter GIFT.min): Hinweis im Album und Zeichen am Knopf
   const GIFT_LOW = { s: ['Hunger!', ICON_LEAF], g: ['Streicheln!', ICON_HEART], c: ['Putzen!', ICON_SPARK] };
   const GIFT_ITEMS = [
@@ -2852,6 +2877,10 @@
   const GIFT_PAPER = [['#5fb9de', '#f6c945'], ['#f28fb1', '#ffffff'], ['#7cc35a', '#e8584e'], ['#b99cf0', '#f6c945'], ['#ff9f5a', '#5fb9de']];
   const GIFT_BALLOONS = ['#e8584e', '#5fb9de', '#f6c945', '#b99cf0', '#7cc35a', '#f28fb1'];
   const GIFT_GOLD = ['#f2c230', '#fff7d6'];
+  // Stufe 2 der Schätze: ein neuer Trick (je Schatz, Reihenfolge wie GIFT_ITEMS). Stufe 3 macht ihn golden.
+  const GIFT_TRICK = ['Kopfball', 'Anpusten', 'Kuscheln', 'Brille lupfen', 'Sterngucken', 'Schaukeln', 'Regenbogen', 'Glockenspiel'];
+  const GIFT_GILT = ['ein goldenes %', 'ein goldenes %', 'ein goldener %', 'eine goldene %', 'ein goldenes %', 'eine goldene %',
+    'eine goldene %', 'ein goldenes %'];
   const GIFT_PARCEL = `<svg viewBox="0 0 24 24" aria-hidden="true">
       <g class="gp-box">
         <rect x="3.6" y="11" width="16.8" height="11" rx="1.2" fill="var(--gpp, #5fb9de)" stroke="${OUT}" stroke-width="1"/>
@@ -2893,7 +2922,9 @@
   const GIFT_WHEEL = `<svg viewBox="0 0 24 44" aria-hidden="true">
       <path d="M12 12 V44" stroke="#b5793e" stroke-width="1.6" stroke-linecap="round"/>
       ${GIFT_ITEMS[1].svg.replace(/^<svg[^>]*>|<\/svg>$/g, '').replace(/<path d="M12 12 V23"[^>]*\/>/, '')}</svg>`;
-  const GIFT_CLS = ['sling', 'aim', 'snap', 'spy', 'wcan', 'pour'];
+  // Umfärben nach Gold (Stufe 3 der Schätze)
+  const GILT_F = 'sepia(1) saturate(2.6) hue-rotate(8deg) brightness(1.12)';
+  const GIFT_CLS = ['sling', 'aim', 'snap', 'spy', 'wcan', 'pour', 'shup', 'wink', 'hswing', 'puffy'];
 
   const STYLE_GIFT = `
   .gifts { position: absolute; inset: 0; pointer-events: none; transition: filter 2.5s; }
@@ -2960,7 +2991,25 @@
   @keyframes gham { from { transform: rotate(-2.5deg); } to { transform: rotate(2.5deg); } }
   .gt-plush { width: calc(var(--H) * .085); margin-left: calc(var(--H) * -.0425); transform: rotate(-12deg); }
   .gt-plush svg { display: block; width: 100%; height: auto; }
+  .gt-plush.out { width: calc(var(--H) * .13); margin-left: calc(var(--H) * -.065); transform: rotate(-5deg); }
   .night .gt-plush { filter: brightness(.72) saturate(.75); }
+  /* Golden (Stufe 3): Farben nach Gold umgefärbt, leichter Schimmer */
+  .gt.gilt, .gitem.gilt svg { filter: ${GILT_F} drop-shadow(0 0 2px rgba(255, 220, 110, .75)); }
+  .night .gt-plush.gilt { filter: ${GILT_F} brightness(.72); }
+  /* Tricks: Schaukeln, Anpusten, Regenbogen */
+  .gt-ham.swing .gnet { animation: gswing .9s ease-in-out infinite alternate; }
+  @keyframes gswing { from { transform: rotate(-9deg); } to { transform: rotate(9deg); } }
+  .hswing .depth { transform-origin: 50% -40%; animation: gswing-p .9s ease-in-out infinite alternate; }
+  @keyframes gswing-p { from { transform: rotate(-7deg); } to { transform: rotate(7deg); } }
+  .gair { position: absolute; width: calc(var(--H) * .022); height: calc(var(--H) * .012); margin: calc(var(--H) * -.006);
+    border-radius: 50%; border: 1.5px solid rgba(255, 255, 255, .85); border-left-color: transparent; opacity: 0;
+    animation: gair .8s ease-out forwards; }
+  @keyframes gair { 15% { opacity: 1; } to { transform: translate(var(--dx), var(--dy)) scale(1.6); opacity: 0; } }
+  .grbow { position: absolute; width: calc(var(--H) * .22); margin-left: calc(var(--H) * -.11); opacity: 0;
+    animation: grbow 2.6s ease-in-out forwards; pointer-events: none; }
+  .grbow svg { display: block; width: 100%; height: auto; }
+  @keyframes grbow { 20%, 70% { opacity: .75; } to { opacity: 0; } }
+  @media (prefers-reduced-motion: reduce) { .gt-ham.swing .gnet, .hswing .depth { animation: none !important; } }
   .scene.night:not(.windy) .gwhl, .scene.night:not(.windy) .gbob, .scene.night:not(.windy) .gdrift { animation-play-state: paused; }
   /* Pika schläft: Windrad und Ballon halten still (wie .hb-still), das spart das Neuzeichnen unter dem Filter */
   .gifts.still .gwhl, .gifts.still .gbob, .gifts.still .gdrift { animation-play-state: paused; }
@@ -2977,6 +3026,21 @@
   .snap .slb-p, .snap .slp { display: none; }
   .snap .slb-r { display: inline; }
   .gcr { transform-box: view-box; transform-origin: 106px 62px; transition: transform .45s; }
+  /* Tricks: Brille hochschieben und zwinkern, Backen aufblasen beim Pusten */
+  .shades { transition: transform .35s ease-out; }
+  .shup .shades { transform: translateY(-12px); }
+  .wink .eye-r { display: none; }
+  .wink .seye-r { display: inline; }
+  .puffy .omouth { display: inline; }
+  /* Goldene Sonnenbrille, goldenes Fernrohr, goldene Gießkanne */
+  .g-shd .shades path:first-child { stroke: #e0a820; stroke-width: 1.6; }
+  .g-shd .shades path:nth-child(2) { stroke: #c98a0c; stroke-width: 1.2; }
+  .g-scp .gspy [fill="#b8862e"] { fill: #e8b52a; }
+  .g-scp .gspy [fill="#d9a441"] { fill: #ffd75a; }
+  .g-scp .gspy [fill="#8a5a32"] { fill: #c98a0c; }
+  .g-scp .gspy [stroke="#f3cf7a"] { stroke: #fff4c2; }
+  .g-can .gcan [fill="#5fae4a"] { fill: #f2c230; }
+  .g-can .gcan [stroke="#8fd16f"] { stroke: #fff2b0; }
   .pour .gcr { transform: rotate(32deg); }
 
   /* Knopf (über dem Futterknopf) mit Fortschrittsring, Album */
@@ -3028,6 +3092,12 @@
   .alb-row i { display: block; width: 24px; height: 24px; }
   .alb-row i svg { display: block; width: 100%; height: 100%; overflow: visible; }
   .alb-row i.miss svg { filter: brightness(0); opacity: .16; }
+  .alb-row i { position: relative; }
+  .alb-row i.lv2::after { content: ''; position: absolute; right: -3px; bottom: -3px; width: 7px; height: 7px; border-radius: 50%;
+    background: #5fb9de; box-shadow: 0 0 0 1.5px #fff; }
+  .alb-row i.gilt svg { filter: ${GILT_F} drop-shadow(0 0 2px rgba(255, 214, 90, .9)); }
+  .alb-row i.gilt::after { background: #f2b632; }
+  .night .alb-row i.lv2::after { box-shadow: 0 0 0 1.5px rgba(15, 22, 45, .85); }
   .night .alb-row i.miss svg { filter: brightness(0) invert(1); opacity: .2; }
   .alb-t { margin-top: 4px; font-weight: 600; opacity: .85; }
   `;
@@ -12698,10 +12768,14 @@
       } else if (this._haNow() - o.at > 30 * 6e4) this._giftOwn = null;
     }
 
-    // Inhalt des Päckchens Nummer z, auf allen Geräten gleich: Das erste und eins von je dreien ist ein Schatz, der noch
-    // fehlt (goldene immer), sonst ein Leckerli der Jahreszeit. Ist das Album voll, gibt es nur noch Leckerli.
+    // Inhalt des Päckchens Nummer z, auf allen Geräten gleich: Das erste und eins von je dreien ist ein Schatz (goldene
+    // immer), sonst ein Leckerli der Jahreszeit. Schatz heißt: erst einer, der noch fehlt, dann ein Trick für einen, der
+    // noch keinen hat. Goldene vergolden lieber einen mit Trick, bevor sie einen neuen Trick bringen. Hat jeder Schatz
+    // alles, was er aus solchen Päckchen bekommen kann, gibt es nur noch Leckerli.
     _giftPick(G, z, gold) {
-      const miss = [...Array(GIFT_TRE).keys()].filter((t) => !(G.u & (1 << t)));
+      const T = [...Array(GIFT_TRE).keys()];
+      const at = (lv) => T.filter((t) => giftLv(G, t) === lv);
+      const miss = at(0).length ? at(0) : gold && at(2).length ? at(2) : at(1);
       const tre = miss.length && (gold || z === 1 || (z - 1) % 3 === Math.floor(seedRnd('gblk', Math.floor((z - 1) / 3)) * 3));
       if (tre) return miss[Math.floor(seedRnd('gtre', z) * miss.length)];
       const south = (this._hass?.config?.latitude ?? 50) < 0;
@@ -12947,6 +13021,9 @@
       await this._wait(1000);
       // Ab hier gilt es als ausgepackt, auch auf den anderen Geräten
       B.stage = 'open';
+      // Stufe nach dem Auspacken (1 neu, 2 Trick, 3 golden); bis zum Verstauen zeigt die Szene noch die alte
+      const PG = this._plan?.gift;
+      const lv = B.item < GIFT_TRE && PG?.z === B.z ? giftLv(PG, B.item) : 1;
       this._giftHide = B.item < GIFT_TRE ? B.item : null;
       this._planOp({ t: 'gopen', z: B.z });
       const it = GIFT_ITEMS[B.item];
@@ -12958,7 +13035,7 @@
         B.el.querySelector('.gp-lid').classList.add('off');
         this._sparkle(B.x, gy - this._H * 0.1, B.gold ? 8 : 4);
         ie = document.createElement('div');
-        ie.className = `gitem rise${B.gold ? ' gold' : ''}`;
+        ie.className = `gitem rise${B.gold ? ' gold' : ''}${lv === 3 ? ' gilt' : ''}`;
         ie.innerHTML = it.svg;
         ie.style.left = `${B.x.toFixed(1)}px`;
         ie.style.top = `${(gy - this._H * 0.2).toFixed(1)}px`;
@@ -12978,9 +13055,12 @@
         } else {
           this._happy(1800);
           this._jump(B.gold ? 'binky' : 'hop1');
-          this._say(it.key === 'plush' ? `ein Plüsch-${this._frName()}!` : it.say, 1800);
+          const nm = it.key === 'plush' ? `Plüsch-${this._frName()}` : it.name;
+          this._say(lv === 2 ? `neuer Trick: ${GIFT_TRICK[B.item]}!` : lv === 3 ? `${GIFT_GILT[B.item].replace('%', nm)}!`
+            : it.key === 'plush' ? `ein ${nm}!` : it.say, 1800);
+          if (lv === 3) for (let i = 0; i < 3; i++) setTimeout(() => this._g && this._sparkle(B.x, gy - this._H * 0.25, 2), 300 + i * 400);
           await this._wait(1900);
-          await this._giftStow(B.item, ie);
+          await this._giftStow(B.item, ie, lv);
         }
       } finally {
         B.el.classList.add('fade');
@@ -12995,8 +13075,9 @@
       }
     }
 
-    // Neuer Schatz an seinen Platz: fliegt hin und ploppt dort auf. Getragene probiert er gleich aus.
-    async _giftStow(t, ie) {
+    // Neuer Schatz an seinen Platz: fliegt hin und ploppt dort auf. Getragene probiert er gleich aus, einen neuen Trick
+    // führt er gleich vor, golden funkelt er.
+    async _giftStow(t, ie, lv = 1) {
       const key = GIFT_ITEMS[t].key;
       const p = this._el.pika;
       const sc = this._el.scene.getBoundingClientRect();
@@ -13031,9 +13112,18 @@
       }
       if (key === 'shades') {
         this._coolUntil = this._haNow() + 60000;
+        this._giftDress();
         p.classList.add('cool');
-        this._say('cool!', 1500);
+        if (lv === 2) return this._giftShades();
+        this._say(lv === 3 ? 'goldig!' : 'cool!', 1500);
         await this._wait(2500);
+      } else if (lv === 2) {
+        await this._wait(500);
+        await this._giftTrick(t);
+      } else if (lv === 3) {
+        this._giftDress();
+        this._say(pick(['ooh!', 'glänzt!', 'wie schön!']), 1400);
+        await this._wait(1600);
       } else if (key === 'scope') {
         p.classList.add('spy', 'look-up');
         this._say('ahoi!', 1300);
@@ -13058,9 +13148,9 @@
     _giftScene() {
       if (!this._el || !this._g) return;
       const G = this._plan?.gift;
-      let u = this._giftOn() ? giftOwned(G) : 0; // ohne den noch nicht ausgepackten
-      if (this._giftHide != null) u &= ~(1 << this._giftHide);
-      const has = (t) => !!(u & (1 << t));
+      // ohne den noch nicht ausgepackten, und den gerade ausgepackten noch auf seiner alten Stufe
+      const lvs = this._giftOn() ? giftLvs(G, this._giftHide) : [];
+      const has = (t) => lvs[t] > 0;
       const newest = G && G.o === G.z && (G.i & 15) < GIFT_TRE ? G.i & 15 : -1;
       const day = pikaDay(this._haNow());
       let meadow = [0, 5, 6].filter(has);
@@ -13071,7 +13161,7 @@
       const want = new Set(meadow);
       if (has(1)) want.add(1);
       if (has(7)) want.add(7);
-      if (has(2) && this._asleep) want.add(2);
+      if (has(2) && (this._asleep || this._plushX != null)) want.add(2);
       this._el.gifts.classList.toggle('still', !!this._asleep);
       const E = (this._gtEls ??= new Map());
       for (const [t, el] of E) {
@@ -13090,10 +13180,14 @@
           (key === 'plush' ? this._el.fx : this._el.gifts).appendChild(el);
           E.set(t, el);
         }
+        el.classList.toggle('gilt', lvs[t] >= 3);
+        if (t === 2) el.classList.toggle('out', this._plushX != null);
         this._giftPlace(t, el);
       }
-      // Windrad: dreht sich mit dem Wind, bei Flaute ganz langsam
-      E.get(1)?.style.setProperty('--gws', `${clamp(9 - (this._wind || 0) / 4, 0.35, 9).toFixed(2)}s`);
+      // Windrad: dreht sich mit dem Wind, bei Flaute ganz langsam (angepustet kurz schnell)
+      const blow = this._haNow() < (this._blowUntil || 0);
+      E.get(1)?.style.setProperty('--gws', `${blow ? 0.32 : clamp(9 - (this._wind || 0) / 4, 0.35, 9).toFixed(2)}s`);
+      this._giftDress(lvs);
     }
 
     _giftPlace(t, el) {
@@ -13106,6 +13200,10 @@
       else if (key === 'bell') {
         x = hole.cx + (hole.r - hole.cx) * 0.62;
         top = hole.top + (hole.lip - hole.top) * 0.06;
+      } else if (key === 'plush' && this._plushX != null) {
+        // tagsüber zum Kuscheln draußen auf der Wiese
+        x = this._plushX;
+        top = this._g.gy - H * 0.13 * 0.92;
       } else if (key === 'plush') {
         x = hole.l + (hole.r - hole.l) * 0.32;
         top = hole.lip - H * 0.085 * 0.82;
@@ -13127,7 +13225,7 @@
     }
 
     // Glöckchen an der Tür bimmelt (er kommt heraus, Pino kommt an)
-    _giftBell() {
+    _giftBell(text = 'bimm!') {
       const el = this._gtEls?.get(7);
       if (!el || this._away()) return;
       el.classList.remove('ring');
@@ -13137,7 +13235,7 @@
       this._bellT = setTimeout(() => el.classList.remove('ring'), 1700);
       const r = el.getBoundingClientRect();
       const s = this._el.scene.getBoundingClientRect();
-      this._peep(r.left - s.left + r.width, r.top - s.top, 'bimm!');
+      this._peep(r.left - s.left + r.width, r.top - s.top, text);
     }
 
     _layoutGift(first) {
@@ -13191,6 +13289,7 @@
       const sunny = ['sunny', 'clear', 'partlycloudy'].includes(raw.cond) && (e == null || e > 15) && (raw.temp ?? 0) >= 24;
       const cool = !!(giftOwned(G) & 8) && !this._wx.wet && !this._asleep && (sunny || this._haNow() < (this._coolUntil || 0));
       this._el.pika.classList.toggle('cool', cool);
+      this._giftGlint();
       // Voller Vorrat: der Knopf wackelt ab und zu
       const b = this._el.gbtn;
       if (G.n >= GIFT.max && !b.hidden && Math.random() < 0.25) {
@@ -13206,11 +13305,18 @@
       const E = this._gtEls || new Map();
       const dry = !wx.wet && !wx.snowcover;
       const h = new Date(this._dbgDate ?? Date.now()).getHours();
+      const lv = giftLvs(G);
+      const dusk = this._el.scene.classList.contains('dusk') && !this._asleep;
       return [
-        [E.has(0) && dry ? 0.5 : 0, 'giftYarn'],
+        [E.has(0) && dry ? (lv[0] >= 2 ? 0.7 : 0.5) : 0, 'giftYarn'],
         [E.has(6) && dry && this._flowers.length < 7 ? 0.35 : 0, 'giftWater'],
         [E.has(5) && dry ? (h >= 12 && h < 18 ? 0.45 : 0.1) : 0, 'giftHammock'],
-        [giftOwned(G) & 16 && dry ? (this._planeToWatch() ? 3 : 0.3) : 0, 'giftScope'],
+        [lv[4] && dry ? (this._planeToWatch() ? 3 : lv[4] >= 2 && dusk && wx.cover < 70 && !wx.fog ? 1.5 : 0.3) : 0, 'giftScope'],
+        // Tricks (Stufe 2)
+        [E.has(1) && lv[1] >= 2 && !wx.wet && (this._wind || 0) < 12 ? 0.3 : 0, 'giftBlow'],
+        [lv[2] >= 2 && dry && !dusk ? 0.25 : 0, 'giftPlush'],
+        [lv[3] >= 2 && this._el.pika.classList.contains('cool') ? 0.6 : 0, 'giftShades'],
+        [E.has(7) && lv[7] >= 2 ? 0.25 : 0, 'giftTune'],
       ];
     }
 
@@ -13241,8 +13347,60 @@
         await this._walkTo(to - this._dir * pW * 0.42, 1.9);
       }
       el.style.transition = '';
+      if (giftLvs(this._plan?.gift)[0] >= 2 && Math.random() < 0.6) return this._giftHeader();
       this._happy(1000);
       await this._wait(800);
+    }
+
+    // Trick des Wollknäuels: mit der Nase hochstupsen, Kopfball, es fliegt im Bogen weiter über die Wiese
+    async _giftHeader() {
+      const el = this._gtEls?.get(0);
+      if (!el) return;
+      const p = this._el.pika;
+      const { pW, pH, fMin, fMax } = this._g;
+      const W = this._W;
+      await this._approach(this._giftX(0), 1.2);
+      const x0 = this._giftX(0);
+      const dir = this._dir;
+      const hx = this._x + dir * pW * 0.22 - x0;
+      const hy = -pH * 0.72;
+      // Richtung mit genug Platz, notfalls über ihn hinweg nach hinten
+      const room = dir > 0 ? fMax * W - x0 : x0 - fMin * W;
+      const kd = room > W * 0.15 ? dir : -dir;
+      const x1 = clamp(x0 + kd * W * rnd(0.15, 0.3), fMin * W, fMax * W);
+      p.classList.add('crouch');
+      await this._wait(260);
+      p.classList.remove('crouch');
+      this._say('hopp!', 700);
+      // hoch über den Kopf, er springt ihm entgegen
+      const up = el.animate([
+        { transform: 'none' },
+        { transform: `translate(${(hx * 0.6).toFixed(1)}px, ${(hy * 1.7).toFixed(1)}px)`, offset: 0.55 },
+        { transform: `translate(${hx.toFixed(1)}px, ${hy.toFixed(1)}px)` },
+      ], { duration: 900, easing: 'ease-in-out', fill: 'forwards' });
+      setTimeout(() => this._g && this._jump('hop1'), 520);
+      await this._wait(900);
+      this._say('Kopfball!', 1200);
+      const dx = x1 - x0;
+      const away = el.animate([
+        { transform: `translate(${hx.toFixed(1)}px, ${hy.toFixed(1)}px)` },
+        { transform: `translate(${((hx + dx) / 2).toFixed(1)}px, ${(hy * 1.6).toFixed(1)}px)`, offset: 0.45 },
+        { transform: `translate(${dx.toFixed(1)}px, 0)`, offset: 0.85 },
+        { transform: `translate(${dx.toFixed(1)}px, ${(hy * 0.12).toFixed(1)}px)`, offset: 0.93 },
+        { transform: `translate(${dx.toFixed(1)}px, 0)` },
+      ], { duration: 1100, easing: 'ease-in-out', fill: 'forwards' });
+      up.cancel();
+      this._yarnRot = (this._yarnRot || 0) + kd * 540;
+      el.querySelector('svg').style.transform = `rotate(${this._yarnRot.toFixed(0)}deg)`;
+      await this._wait(1100);
+      this._yarnXf = x1 / W;
+      el.style.left = `${x1.toFixed(1)}px`;
+      away.cancel();
+      this._puff(x1, this._g.gy, 2);
+      this._happy(1400);
+      this._jump('binky');
+      this._say(pick(['Tor!', 'jaaa!', 'hihi!']), 1200);
+      await this._wait(1300);
     }
 
     // Gießkanne holen, Blumen gießen, zwei neue wachsen
@@ -13274,6 +13432,9 @@
         p.classList.add('pour');
         await this._wait(400);
         const sx = this._x + dir * pW * 0.5;
+        // Trick: Regenbogen im Wasserstrahl, wenn die Sonne scheint
+        const lvW = giftLvs(this._plan?.gift)[6];
+        if (lvW >= 2 && this._wx.cover < 70 && !this._el.scene.classList.contains('night')) this._giftRainbow(sx, gy - this._H * 0.12, dir);
         for (let i = 0; i < 12; i++) {
           const d = document.createElement('span');
           d.className = 'gdrop';
@@ -13285,7 +13446,10 @@
         }
         p.classList.remove('pour');
         await this._wait(500);
-        for (let i = 0; i < 2 && this._flowers.length < 8; i++) this._addFlower(true, (sx + (i ? 1 : -1) * rnd(8, 20)) / W);
+        const nf = lvW >= 2 ? 3 : 2;
+        for (let i = 0; i < nf && this._flowers.length < 8; i++) {
+          this._addFlower(true, (sx + (nf === 2 ? (i ? 1 : -1) * rnd(8, 20) : (i - 1) * rnd(12, 20))) / W);
+        }
         this._say(pick(['wachs!', 'hübsch!', '♥']), 1200);
         this._happy(1000);
         await this._wait(1600);
@@ -13308,8 +13472,10 @@
       await this._wait(800);
       this._onHam = true;
       await this._hopTo(cx, pW * GIFT_HAM_W * GIFT_HAM_LIFT);
-      el.classList.add('sway');
       p.classList.add('lying');
+      if (giftLvs(this._plan?.gift)[5] >= 2 && (this._dbgSwing || Math.random() < 0.7)) await this._giftSwing(el);
+      this._dbgSwing = false;
+      el.classList.add('sway');
       await this._wait(900);
       p.classList.add('doze');
       await this._wait(rnd(18000, 32000));
@@ -13324,8 +13490,8 @@
         this._say(pick(['ausgeschlafen!', '*streck*', 'hmm…']), 1200);
         await this._wait(900);
       }
-      p.classList.remove('lying');
-      el?.classList.remove('sway');
+      p.classList.remove('lying', 'hswing');
+      el?.classList.remove('sway', 'swing');
       const cx = el ? this._giftX(5) : this._x;
       await this._hopTo(cx + pick([-1, 1]) * this._g.pW * 0.95, 0);
       this._onHam = false;
@@ -13345,20 +13511,235 @@
       this._puff(rock.cx, this._g.gy - rock.lift, 2);
       await this._wait(500);
       p.classList.add('spy');
+      // Trick: in der Dämmerung schaut er nach den ersten Sternen
+      const stars = giftLvs(this._plan?.gift)[4] >= 2 && this._el.scene.classList.contains('dusk');
       for (let i = 0; i < 3; i++) {
         const pl = this._planeToWatch();
         if (pl) this._face(pl.x >= this._x ? 1 : -1);
         else if (i) this._face(-this._dir);
-        p.classList.toggle('look-up', !!pl || Math.random() < 0.5);
+        p.classList.toggle('look-up', !!pl || stars || Math.random() < 0.5);
         if (pl) {
           this._memo('plane');
           this._say(pick(['Flugzeug!', 'da oben!', 'brumm!']), 1300);
+        } else if (stars) {
+          const sx = clamp(this._x + this._dir * this._W * rnd(0.15, 0.35), 10, this._W - 10);
+          this._sparkle(sx, this._H * rnd(0.08, 0.2), 1);
+          this._say(pick(['ein Stern!', 'Abendstern!', 'noch einer!', 'funkel!', 'wünsch dir was!']), 1400);
         } else if (Math.random() < 0.5) this._say(pick(['Land in Sicht!', 'ahoi!', 'hmm…', 'ich seh dich!']), 1300);
         await this._wait(rnd(1800, 3000));
       }
       p.classList.remove('spy', 'look-up');
       await this._wait(400);
       await this._hopDown();
+    }
+
+    // ---------- Tricks (Stufe 2) und Gold (Stufe 3) ----------
+
+    // Neuen Trick gleich nach dem Auspacken vorführen (kurz)
+    async _giftTrick(t) {
+      const key = GIFT_ITEMS[t].key;
+      const p = this._el.pika;
+      if (key === 'yarn' && this._gtEls?.has(0)) return this._giftHeader();
+      if (key === 'wheel') return this._giftBlow();
+      if (key === 'plush') return this._giftPlush(4000);
+      if (key === 'bell') return this._giftTune();
+      if (key === 'scope') {
+        p.classList.add('spy', 'look-up');
+        this._sparkle(clamp(this._x + this._dir * this._W * 0.2, 10, this._W - 10), this._H * 0.12, 2);
+        this._say('Sterne gucken!', 1500);
+        await this._wait(2400);
+        p.classList.remove('spy', 'look-up');
+        return;
+      }
+      if (key === 'hammock') {
+        const el = this._gtEls?.get(5);
+        el?.classList.add('swing');
+        this._say('hui!', 1200);
+        await this._wait(2600);
+        el?.classList.remove('swing');
+        return;
+      }
+      if (key === 'can') {
+        const el = this._gtEls?.get(6);
+        const r = el?.getBoundingClientRect();
+        const sc = this._el.scene.getBoundingClientRect();
+        if (r) this._giftRainbow(r.left - sc.left + r.width * 0.9, r.top - sc.top, 1);
+        this._say('ein Regenbogen!', 1500);
+        await this._wait(2400);
+      }
+    }
+
+    // Goldene Schätze, die er trägt bzw. hält: Sonnenbrille, Fernrohr, Gießkanne (lvs: Stufen aus _giftScene)
+    _giftDress(lvs) {
+      const p = this._el?.pika;
+      if (!p) return;
+      const lv = lvs || (this._giftOn() ? giftLvs(this._plan?.gift, this._giftHide) : []);
+      p.classList.toggle('g-shd', lv[3] >= 3);
+      p.classList.toggle('g-scp', lv[4] >= 3);
+      p.classList.toggle('g-can', lv[6] >= 3);
+    }
+
+    // Trick des Windrads: bei wenig Wind hinhoppeln und es anpusten, dann dreht es sich kurz ganz schnell
+    async _giftBlow() {
+      const el = this._gtEls?.get(1);
+      if (!el) return;
+      const p = this._el.pika;
+      const { pW, pH, gy } = this._g;
+      const r = el.getBoundingClientRect();
+      const sc = this._el.scene.getBoundingClientRect();
+      const wx = r.left - sc.left + r.width / 2;
+      // mit Abstand daneben (meist rechts davon, links steht der Bau), damit man das Windrad sieht
+      const side = wx + pW * 0.85 < this._g.fMax * this._W ? 1 : -1;
+      await this._walkTo(wx + side * pW * 0.8, 1);
+      this._face(-side);
+      await this._wait(300);
+      p.classList.add('look-up', 'puffy');
+      await this._wait(500);
+      this._say('puuuh!', 1300);
+      this._blowUntil = this._haNow() + 3500;
+      this._giftScene();
+      const mx = this._x + this._dir * pW * 0.45;
+      const my = gy - pH * 0.5;
+      for (let i = 0; i < 4; i++) {
+        const a = document.createElement('span');
+        a.className = 'gair';
+        a.style.left = `${mx.toFixed(1)}px`;
+        a.style.top = `${(my + rnd(-3, 3)).toFixed(1)}px`;
+        a.style.setProperty('--dx', `${(wx - mx).toFixed(1)}px`);
+        a.style.setProperty('--dy', `${(r.top - sc.top + r.width * 0.25 - my).toFixed(1)}px`);
+        a.style.animationDelay = `${i * 110}ms`;
+        this._el.fx.appendChild(a);
+        setTimeout(() => a.remove(), 900 + i * 110);
+      }
+      await this._wait(700);
+      p.classList.remove('puffy');
+      await this._wait(1600);
+      p.classList.remove('look-up');
+      this._say(pick(['huii!', 'schnell!', 'hihi!']), 1100);
+      this._happy(1200);
+      await this._wait(1400);
+      this._giftScene();
+    }
+
+    // Trick des Plüsch-Pinos: tagsüber aus dem Bau holen und auf der Wiese mit ihm kuscheln
+    async _giftPlush(ms = rnd(6000, 10000)) {
+      const p = this._el.pika;
+      const { hole, pW, gy } = this._g;
+      try {
+        if (this._action !== 'giftOpen') {
+          await this._walkTo(hole.cx + pW * 0.15, 1);
+          this._face(-1);
+          await this._wait(500);
+          this._say(pick([`komm, ${this._frName()}!`, 'hab dich!']), 1200);
+          await this._wait(900);
+          // mit ihm hinaus auf die Wiese
+          const { fMin, fMax } = this._g;
+          await this._walkTo((fMin + rnd(0.2, 0.45) * (fMax - fMin)) * this._W, 0.9);
+        }
+        // er sitzt vor ihm, Blick zu ihm
+        const d = this._x + pW * 0.7 < this._g.fMax * this._W ? 1 : -1;
+        this._face(d);
+        this._plushX = this._x + d * pW * 0.52;
+        this._giftScene();
+        const el = this._gtEls?.get(2);
+        el?.classList.add('new');
+        setTimeout(() => el?.classList.remove('new'), 800);
+        this._puff(this._plushX, gy, 2);
+        await this._wait(600);
+        p.classList.add('content', 'tilt');
+        this._blush(2200);
+        this._say('♥', 1300);
+        await this._wait(ms / 2);
+        p.classList.add('squint');
+        this._happy(1500);
+        await this._wait(ms / 2);
+        p.classList.remove('squint', 'tilt', 'content');
+        this._say(pick(['bis heut Abend!', 'ab ins Bett mit dir!', '♥']), 1200);
+        await this._wait(900);
+      } finally {
+        if (this._plushX != null) {
+          this._puff(this._plushX, gy, 2);
+          this._plushX = null;
+          this._giftScene();
+        }
+      }
+    }
+
+    // Trick der Sonnenbrille: hochschieben, zwinkern, wieder runter
+    async _giftShades() {
+      const p = this._el.pika;
+      if (!p.classList.contains('cool')) return;
+      this._face(1);
+      p.classList.add('shup');
+      await this._wait(450);
+      p.classList.add('wink');
+      this._say(pick(['lässig!', 'na?', 'cool, oder?']), 1300);
+      await this._wait(1100);
+      p.classList.remove('wink');
+      await this._wait(300);
+      p.classList.remove('shup');
+      await this._wait(800);
+    }
+
+    // Trick der Hängematte: mit Schwung schaukeln, bevor er einnickt
+    async _giftSwing(el) {
+      const p = this._el.pika;
+      el.classList.add('swing');
+      p.classList.add('hswing');
+      this._say(pick(['hui!', 'schauuukel!', 'juhu!']), 1300);
+      await this._wait(rnd(3500, 5000));
+      el.classList.remove('swing');
+      p.classList.remove('hswing');
+      await this._wait(300);
+    }
+
+    // Kleiner Regenbogen im Wasserstrahl (x, y: Mitte des Strahls, dir: wohin er gießt)
+    _giftRainbow(x, y, dir) {
+      const el = document.createElement('div');
+      el.className = 'grbow';
+      el.innerHTML = `<svg viewBox="0 0 40 22" aria-hidden="true">${['#e8584e', '#f6a345', '#f6d845', '#7cc35a', '#5fb9de', '#9b7fe0']
+        .map((c, i) => `<path d="M${2 + i * 1.6} 22 A${18 - i * 1.6} ${18 - i * 1.6} 0 0 1 ${38 - i * 1.6} 22" stroke="${c}" stroke-width="1.7" fill="none"/>`).join('')}</svg>`;
+      el.style.left = `${(x + dir * this._H * 0.03).toFixed(1)}px`;
+      el.style.top = `${(y - this._H * 0.1).toFixed(1)}px`;
+      this._el.fx.appendChild(el);
+      setTimeout(() => el.remove(), 2700);
+    }
+
+    // Trick des Glöckchens: an die Tür hoppeln und eine kleine Melodie bimmeln
+    async _giftTune() {
+      const el = this._gtEls?.get(7);
+      if (!el) return;
+      const p = this._el.pika;
+      const sc = this._el.scene.getBoundingClientRect();
+      const r = el.getBoundingClientRect();
+      const bx = r.left - sc.left + r.width / 2;
+      if (this._action !== 'giftOpen') await this._walkTo(bx + this._g.pW * 0.42, 1);
+      this._face(-1);
+      await this._wait(400);
+      const tune = pick([['bimm!', 'bamm!', 'bimm!'], ['ding!', 'dong!', 'ding-ding!'], ['bimm!', 'bimm!', 'bamm!', 'bimm!']]);
+      for (const t of tune) {
+        p.classList.add('look-up');
+        this._giftBell(t);
+        this._jump('hop1');
+        await this._wait(520);
+        p.classList.remove('look-up');
+        await this._wait(180);
+      }
+      this._peep(this._x, this._g.gy - this._g.pH * 1.05, '♪');
+      this._happy(1500);
+      this._say(pick(['♪♫', 'Musik!', 'tadaa!']), 1200);
+      await this._wait(1500);
+    }
+
+    // Golden: ab und zu ein Funkeln
+    _giftGlint() {
+      if (this._asleep || !this._gtEls || Math.random() > 0.2) return;
+      const gl = [...this._gtEls.values()].filter((el) => el.classList.contains('gilt') && el.isConnected);
+      if (!gl.length) return;
+      const el = pick(gl);
+      const r = el.getBoundingClientRect();
+      const sc = this._el.scene.getBoundingClientRect();
+      if (r.width) this._sparkle(r.left - sc.left + r.width * rnd(0.3, 0.7), r.top - sc.top + r.height * rnd(0.1, 0.5), 1);
     }
 
     // Album (lang drücken): Schätze, Serie, wann das nächste Päckchen kommt
@@ -13372,8 +13753,10 @@
       const G = this._plan?.gift;
       if (!G) return;
       const c = this._careEval() || this._care || {};
-      const u = giftOwned(G); // der Schatz im fliegenden Ballon erscheint erst nach dem Auspacken
-      const have = GIFT_ITEMS.slice(0, GIFT_TRE).filter((it, t) => u & (1 << t)).length;
+      const lvs = giftLvs(G); // der Schatz im fliegenden Ballon erscheint erst nach dem Auspacken
+      const have = lvs.filter((lv) => lv > 0).length;
+      const tricks = lvs.filter((lv) => lv >= 2).length;
+      const gilt = lvs.filter((lv) => lv >= 3).length;
       const days = c.broken ? 0 : Math.floor((this._haNow() - G.k) / 864e5);
       const fmt = (ms) => {
         const m = Math.max(1, Math.round(ms / 6e4));
@@ -13384,11 +13767,14 @@
       const need = low ? `<span class="alb-w">${low}</span>` : '';
       const next = G.n >= GIFT.max ? `Vorrat voll${need ? ` · ${need}` : ''}` : c.broken ? `Serie gerissen${need ? `, neu ab 50 %: ${need}` : ''}`
         : c.warn ? (need ? `schnell: ${need}` : 'einmal kümmern, dann läuft sie weiter') : `nächstes in ${fmt(c.left ?? GIFT.every)} Wachzeit`;
+      // Stufen: ein Abzeichen rechts unten (blau = Trick), golden = goldener Schatz
+      const stage = have < GIFT_TRE ? '' : ` · ${tricks} ${tricks === 1 ? 'Trick' : 'Tricks'}${gilt ? `, ${gilt} golden` : ''}`;
       a.innerHTML = `<div class="alb-row">${GIFT_ITEMS.slice(0, GIFT_TRE).map((it, t) => {
-        const own = u & (1 << t);
+        const lv = lvs[t];
         const nm = it.key === 'plush' ? `Plüsch-${this._frName()}` : it.name;
-        return `<i class="${own ? '' : 'miss'}" title="${own ? esc(nm) : '?'}">${it.svg}</i>`;
-      }).join('')}</div><div class="alb-t">${have}/${GIFT_TRE} Schätze · Serie ${days} ${days === 1 ? 'Tag' : 'Tage'} · ${next}</div>`;
+        const tip = !lv ? '?' : `${nm}${lv >= 2 ? ` · Trick: ${GIFT_TRICK[t]}` : ''}${lv >= 3 ? ' · golden' : ''}`;
+        return `<i class="${['miss', '', 'lv2', 'lv2 gilt'][lv]}" title="${esc(tip)}">${it.svg}</i>`;
+      }).join('')}</div><div class="alb-t">${have}/${GIFT_TRE} Schätze${stage} · Serie ${days} ${days === 1 ? 'Tag' : 'Tage'} · ${next}</div>`;
       a.hidden = false;
       this._albumT = setTimeout(() => this._album(false), 9000);
     }
@@ -13781,8 +14167,14 @@
       let P = this._planBase;
       for (const o of this._planOps) P = planApply(P, o, o.at);
       // Ein Gerät bis 0.18 schrieb den Plan ohne Päckchen zurück: den letzten Stand behalten und wieder eintragen
-      const lost = !P.gift && this._giftKeep && this._planKeyGift === this._planKey;
-      if (lost) P = { ...P, gift: { ...this._giftKeep } };
+      const keep = this._giftKeep && this._planKeyGift === this._planKey ? this._giftKeep : null;
+      let lost = !P.gift && !!keep;
+      if (lost) P = { ...P, gift: { ...keep } };
+      // Ein Gerät bis 0.22 schrieb das Album ohne Stufen zurück (v fehlt): Stufen wachsen nur, also wieder dazunehmen
+      else if (P.gift?.nov && keep?.v && (P.gift.v & keep.v) !== keep.v && P.gift.u === (P.gift.u | keep.u)) {
+        P = { ...P, gift: { ...P.gift, v: P.gift.v | keep.v, nov: undefined } };
+        lost = true;
+      }
       P = this._planFit(P);
       const changed = planSer(P) !== planSer(this._plan);
       this._plan = P;

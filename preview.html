@@ -252,6 +252,18 @@
   <button id="gift-bell">Glöckchen</button>
   <button id="gift-hot">heiß &amp; sonnig (Sonnenbrille)</button>
   <button id="gift-state">Stand anzeigen</button>
+  <i style="flex-basis:100%"></i><b>Stufen</b>
+  <button id="gift-trick">alle mit Trick</button>
+  <button id="gift-gilt">alle golden</button>
+  <button id="gift-nostage">Stufen weg</button>
+  <button data-gift="giftHeader">Kopfball</button>
+  <button data-gift="giftBlow">Anpusten</button>
+  <button data-gift="giftPlush">Kuscheln</button>
+  <button data-gift="giftShades">Brille lupfen</button>
+  <button id="gift-dusk">Sterngucken (Dämmerung)</button>
+  <button id="gift-swing">Schaukeln</button>
+  <button id="gift-rbow">Regenbogen (Gießen)</button>
+  <button data-gift="giftTune">Glockenspiel</button>
 </div>
 <!-- ==================== Ende Päckchen ==================== -->
 
@@ -830,7 +842,8 @@
     const r = c._careEval() || {};
     log(G ? `Vorrat ${G.n}${G.y ? ' + golden' : ''} · Serie seit ${new Date(G.k).toLocaleString()} · Fortschritt ${Math.round((r.frac || 0) * 100)} %`
       + `${G.b ? ` · unter 50 % seit ${new Date(G.b).toLocaleTimeString()}${r.broken ? ' (gerissen)' : ''}` : ''} · verschenkt ${G.z}, ausgepackt ${G.o}`
-      + ` · Album ${G.u.toString(2).padStart(8, '0')}` : 'noch kein Päckchen-Stand');
+      + ` · Album ${G.u.toString(2).padStart(8, '0')} · Tricks ${(G.v & 255).toString(2).padStart(8, '0')} · Gold ${(G.v >> 8).toString(2).padStart(8, '0')}`
+      + ` · Plan „${String(c._planSt || '').split('|')[5] || '-'}“` : 'noch kein Päckchen-Stand');
   };
   document.getElementById('gift-earn').addEventListener('click', () => { giftSet({ n: Math.min(3, gift().n + 1) }); giftLog(); });
   document.getElementById('gift-gold').addEventListener('click', () => { giftSet({ y: 1 }); giftLog(); });
@@ -851,7 +864,7 @@
   });
   document.getElementById('gift-full').addEventListener('click', () => { giftSet({ u: 255 }); giftLog(); });
   document.getElementById('gift-reset').addEventListener('click', () => {
-    giftSet({ k: Math.floor(Date.now() / 1000) * 1000, a: 0, n: 0, u: 0, z: 0, o: 0, b: null, x: 0, y: 0, d: 0, i: 0 });
+    giftSet({ k: Math.floor(Date.now() / 1000) * 1000, a: 0, n: 0, u: 0, v: 0, z: 0, o: 0, b: null, x: 0, y: 0, d: 0, i: 0 });
     try { localStorage.removeItem('pika-pet-gift:Pika'); } catch (e) { /* egal */ }
     giftLog();
   });
@@ -865,6 +878,21 @@
     setTimeout(() => cards.forEach((c) => c._tickGift()), 100);
   });
   document.getElementById('gift-state').addEventListener('click', giftLog);
+  // Stufen: Trick bzw. Gold für alle Schätze, die schon im Album sind (Album voll vorher drücken für alle acht)
+  document.getElementById('gift-trick').addEventListener('click', () => { giftSet({ v: gift().u }); giftLog(); });
+  document.getElementById('gift-gilt').addEventListener('click', () => { giftSet({ v: gift().u | (gift().u << 8) }); giftLog(); });
+  document.getElementById('gift-nostage').addEventListener('click', () => { giftSet({ v: 0 }); giftLog(); });
+  document.getElementById('gift-dusk').addEventListener('click', () => cards.forEach((c) => {
+    c._dbgElev = 0;
+    c._updateSky();
+    cuteGo(c, 'giftScope');
+  }));
+  // Schaukeln: Hängematte auf die Wiese holen (sie gilt als neuester Schatz) und sicher schaukeln
+  document.getElementById('gift-swing').addEventListener('click', () => {
+    giftSet({ i: 5 });
+    cards.forEach((c) => { c._giftScene(); c._dbgSwing = true; cuteGo(c, 'giftHammock'); });
+  });
+  document.getElementById('gift-rbow').addEventListener('click', () => cards.forEach((c) => cuteGo(c, 'giftWater')));
   // ==================== Ende Päckchen ====================
 </script>
 </body>
