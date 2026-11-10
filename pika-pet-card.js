@@ -53,7 +53,7 @@
  * werden aus Datum und Standort (hass.config) berechnet.
  */
 (() => {
-  const VERSION = '0.25.1';
+  const VERSION = '0.25.2';
 
   // Prototyp Tiefe (depth: true): hintere Spur liegt LANE_DY × Kartenhöhe über der Bodenlinie, Pika dort um LANE_S kleiner
   const LANE_DY = 0.075;
@@ -3082,7 +3082,9 @@
   .gring circle { fill: none; stroke-width: 3.4; }
   .gr0 { stroke: rgba(0, 0, 0, .1); }
   .night .gr0 { stroke: rgba(255, 255, 255, .15); }
-  .gr1 { stroke: #f2b632; stroke-linecap: round; stroke-dasharray: var(--gp, 0) 100; transition: stroke-dasharray .8s; }
+  .gr1 { stroke: #f2b632; stroke-linecap: round; stroke-dasharray: var(--gp, 0) 100; transition: stroke-dasharray .8s, opacity .3s; }
+  /* Fortschritt noch nicht berechnet (gerade geladen): kein Punkt bei 0 %, danach füllt sich der Ring */
+  .gbtn.wait .gr1 { opacity: 0; }
   .gbtn.warn .gr1 { stroke: #e8892a; animation: gwarn 1.6s ease-in-out infinite; }
   /* Alles wieder über 50 %, nur selbst geknabbert: ruhig orange, eine Pflege-Aktion schließt die Lücke */
   .gbtn.warn.ok .gr1 { animation: none; }
@@ -12835,6 +12837,18 @@
       return res;
     }
 
+    // Bis der Fortschritt einmal berechnet ist, alle 0,5 s versuchen (_careEval braucht Plan, Zustand aus HA und
+    // abgeglichenen Stand). Unsichtbar übernimmt das der Tick beim Sichtbarwerden.
+    _careSoon() {
+      if (this._care || this._careT) return;
+      this._careT = setTimeout(() => {
+        this._careT = null;
+        if (this._care || !this._attached || this._away()) return;
+        this._careEval();
+        this._careSoon();
+      }, 500);
+    }
+
     // Welche Werte gerade unter GIFT.min liegen: s (Satt), g (Glück), c (Sauber), in dieser Reihenfolge
     _giftLow() {
       if (!this._stats) return [];
@@ -12873,6 +12887,10 @@
       const c = this._care || {};
       const n = G.n + G.y;
       const full = G.n >= GIFT.max;
+      // Fortschritt noch nie berechnet (gerade geladen): Ring leer statt 0 % zeigen und gleich nachrechnen,
+      // nicht erst im nächsten Takt (_tick, alle 20 s)
+      b.classList.toggle('wait', !this._care && !full);
+      if (!this._care) this._careSoon();
       b.style.setProperty('--gp', ((full ? 1 : c.frac || 0) * 100).toFixed(1));
       b.classList.toggle('warn', !!c.warn);
       b.classList.toggle('broken', !!c.broken && !full);
