@@ -53,7 +53,7 @@
  * werden aus Datum und Standort (hass.config) berechnet.
  */
 (() => {
-  const VERSION = '0.25.0';
+  const VERSION = '0.25.1';
 
   // Prototyp Tiefe (depth: true): hintere Spur liegt LANE_DY × Kartenhöhe über der Bodenlinie, Pika dort um LANE_S kleiner
   const LANE_DY = 0.075;
@@ -3139,9 +3139,10 @@
     user-select: none; -webkit-user-select: none; -webkit-tap-highlight-color: transparent;
     font-family: var(--ha-font-family-body, var(--paper-font-body1_-_font-family, system-ui, sans-serif));
     --h1: #a9d68f; --h2: #86c46b; --h3: #7ab960;
+    --h0: #b4dcc2; /* ferne Hügelkette (depth): --h1 halb mit dem Himmel auf ihrer Höhe gemischt, deckend */
   }
-  .scene.dusk { --h1: #8fa98a; --h2: #6e9562; --h3: #648c58; }
-  .scene.night { --h1: #2c4547; --h2: #26433a; --h3: #223d34; }
+  .scene.dusk { --h1: #8fa98a; --h2: #6e9562; --h3: #648c58; --h0: #b4a09e; }
+  .scene.night { --h1: #2c4547; --h2: #26433a; --h3: #223d34; --h0: #273a52; }
 
   .sky { position: absolute; inset: 0; opacity: 0; transition: opacity 2.5s; }
   .sky-day { background: linear-gradient(#93cdf0, #dff1fa 78%); }
@@ -3214,16 +3215,17 @@
   .hills { position: absolute; inset: 0; width: 100%; height: 100%; transition: filter 2.5s; }
   .hills .h1 { fill: var(--h1); transition: fill 2.5s; }
   .hills .h2 { fill: var(--h2); transition: fill 2.5s; }
-  .scene.snowcover { --h1: #e9eff3; --h2: #dfe7ed; --h3: #cfdbe3; }
-  .scene.dusk.snowcover { --h1: #b9bdd0; --h2: #aeb4c8; --h3: #a1a9bf; }
-  .scene.night.snowcover { --h1: #55627c; --h2: #4c5974; --h3: #44516b; }
+  .scene.snowcover { --h1: #e9eff3; --h2: #dfe7ed; --h3: #cfdbe3; --h0: #d4e8f4; }
+  .scene.dusk.snowcover { --h1: #b9bdd0; --h2: #aeb4c8; --h3: #a1a9bf; --h0: #c9aac1; }
+  .scene.night.snowcover { --h1: #55627c; --h2: #4c5974; --h3: #44516b; --h0: #3c496d; }
   .snowcover .flowers { opacity: 0; }
 
   /* ---- Prototyp Tiefe (depth: true) ----
      Kulisse in Ebenen: Je weiter weg, desto mehr wandert sie mit dem Pika mit (--plx -1 … 1, die Wiese
-     mit Bau, Stein und Heu bleibt stehen). Ferne Hügelkette im Dunst nur hier. Einheiten der viewBox (100 breit),
-     scaleX deckt die Ränder beim Verschieben ab. */
-  .hills .h0 { display: none; fill: var(--h1); opacity: .45; transition: fill 2.5s; }
+     mit Bau, Stein und Heu bleibt stehen). Ferne Hügelkette im Dunst nur hier, deckend im Dunstton (--h0),
+     sonst schiene die tiefstehende Sonne durch. Einheiten der viewBox (100 breit), scaleX deckt die Ränder
+     beim Verschieben ab. */
+  .hills .h0 { display: none; fill: var(--h0); transition: fill 2.5s; }
   .tiefe .hills .h0 { display: inline; }
   .tiefe .hills .mtn, .tiefe .hills .h0, .tiefe .hills .h1 { transform-box: view-box; transform-origin: 50% 100%; }
   .tiefe .hills .mtn { transform: translateX(calc(var(--plx, 0) * 3.2px)) scaleX(1.08); transition: transform 4s ease-in-out; }
