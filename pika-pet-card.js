@@ -53,7 +53,7 @@
  * werden aus Datum und Standort (hass.config) berechnet.
  */
 (() => {
-  const VERSION = '0.25.2';
+  const VERSION = '0.26.0';
 
   // Prototyp Tiefe (depth: true): hintere Spur liegt LANE_DY × Kartenhöhe über der Bodenlinie, Pika dort um LANE_S kleiner
   const LANE_DY = 0.075;
@@ -122,6 +122,9 @@
   const RATE = { s: 5, g: 4 }; // Abnahme pro Stunde (satt, glücklich)
   // Im Schlaf sinken satt und glücklich nur halb so schnell (Schlafenszeit wie überall aus sleep_start/sleep_end)
   const SLEEP_DECAY = 0.5;
+  // Uhr von HA (_clockSample): so viele Meldungen zählen, ab so viel ms Unterschied wird nachgestellt
+  const CLOCK_KEEP = 12;
+  const CLOCK_STEP = 250;
   const GAIN = { feed: 25, pet: 8, clean: 10 };
   // Selbst gefressen (Wiesenblume, Heu): wenig und nur bis SELF_MAX. Jedes Gerät knabbert für sich und Blumen
   // wachsen alle 2,5 Min nach, ohne Grenze wäre er immer satt. Über die Hälfte bringt ihn nur das Füttern.
@@ -141,7 +144,12 @@
     frog: { win: 240000, p: 0.7, room: 70000 }, snail: { win: 420000, p: 0.7, room: 120000 },
   };
   const CRIT_KINDS = Object.keys(CRIT);
-  const CRIT_LATE = 20000; // so lange nach dem Start kommt ein Besuch noch, danach wird er übersprungen
+  const CRIT_LATE = 20000; // so lange nach dem Start kommt ein Besuch mindestens noch, danach wird er übersprungen
+  // Länger, wenn der Besuch selbst länger dauert: Ein Gerät, das mittendrin dazukommt (Bildschirm an, kurz
+  // weggescrollt), zeigt ihn für den Rest. Höchstens CRIT_BACK zurück wird nach einem laufenden Besuch gesucht.
+  const CRIT_BACK = 45000;
+  const critJoin = (kind, pk) => Math.max(CRIT_LATE, kind === 'bird' ? pk.stay - 5000 : kind === 'frog' ? pk.stay - 3000
+    : kind === 'snail' ? 30000 : 0);
   const POOP = { every: 80, spread: 60, morning: [10, 20], max: 8, latrine: 3, idx: 24, fly: 4 };
   const FLOWER_COLORS = ['#f6c945', '#f28fb1', '#ffffff', '#b99cf0', '#ff9f5a'];
 
@@ -535,12 +543,19 @@
   //   bis 0.22 lesen nur u und schreiben es ohne v zurück; dann trägt die Karte das zuletzt bekannte v wieder ein.
   // - fl: das Blumengeschenk im Gras (t wann er es hinlegte, c Blütenfarbe als Ziffer der Areal-Palette, x Stelle in % der
   //   Breite, k angenommen). Steht mit "_" hinter m von hay: Geräte bis 0.23 lesen nur m und schreiben es ohne fl zurück.
-  // Text: "p1|n.t.c.m_t_cxxk|d.k|k:name:v,…|d.n.m|k.a.n.u.z.o.b.x.y.d.i" (Zahlen zur Basis 36), passt in die 255 Zeichen eines input_text.
+  // - fu: Pino ist vor der Zeit gegangen (Regen, Schlafenszeit) und kommt bis dahin nicht wieder, auch nicht auf einem
+  //   Gerät, das erst danach dazukommt. Steht mit "_" hinter cute.
+  // - fd: Futter auf der Wiese, höchstens 3 (t wann es fiel, x Stelle 0–99 zwischen Heu und Stein, k Sorte: 0 Löwenzahn,
+  //   1 Klee, e gefressen). So fällt es auf allen Geräten, er frisst überall, und nach dem Neuladen liegt es noch da.
+  //   Steht mit "_" je Futter hinter sport ("t-xxf"): Geräte bis 0.25 lesen nur d.k und schreiben es ohne fd zurück.
+  // Text: "p1|n.t.c.m_t_cxxk|d.k_t-xxf…|k:name:v,…|d.n.m|k.a.n.u.z.o.b.x.y.d.i" (Zahlen zur Basis 36), passt in die 255 Zeichen eines input_text.
   const HAY_MAX = 12;
   const PLAN_REC = 4;
   // Kürzer als so darf der Helfer für den Tagesplan nicht sein (mit Päckchen sind es bis ~100 Zeichen ohne Verlauf)
   const PLAN_MIN = 120;
-  const planBlank = (now = Date.now()) => ({ hay: { n: 3, t: now, c: '', m: 0 }, sport: null, rec: [], cute: null, gift: null, fl: null });
+  const planBlank = (now = Date.now()) => ({ hay: { n: 3, t: now, c: '', m: 0 }, sport: null, rec: [], cute: null, gift: null, fl: null, fd: [] });
+  const FOOD_MAX = 3;
+  const FOOD_KINDS = ['lz', 'klee'];
   // Blumengeschenk: höchstens alle 90 Minuten (auf allen Geräten zusammen), welkt nach 12 Minuten
   const FLGIFT = { gap: 90 * 6e4, life: 12 * 6e4 };
   const GIFT_F = ['k', 'a', 'n', 'u', 'z', 'o', 'b', 'x', 'y', 'd', 'i'];
@@ -556,9 +571,11 @@
     const f = P.fl;
     const fs = f ? `_${Math.round(f.t / 1000).toString(36)}_${f.c}${f.x.toString(36).padStart(2, '0')}${f.k ? 1 : 0}` : '';
     return ['p1', [h.n, Math.round(h.t / 1000).toString(36), h.c || '-', h.m.toString(36) + fs].join('.'),
-      P.sport ? `${P.sport.d.toString(36)}.${P.sport.k.toString(36)}` : '-',
+      (P.sport ? `${P.sport.d.toString(36)}.${P.sport.k.toString(36)}` : '-')
+        + (P.fd || []).map((f) => `_${Math.round(f.t / 1000).toString(36)}-${f.x.toString(36).padStart(2, '0')}${(f.k ? 1 : 0) + (f.e ? 2 : 0)}`).join(''),
       P.rec.map(([k, a, v]) => (v ? `${k.toString(36)}:${a}:${v}` : `${k.toString(36)}:${a}`)).join(',') || '-',
-      P.cute ? [P.cute.d, P.cute.n, P.cute.m].map((x) => x.toString(36)).join('.') : '-',
+      (P.cute ? [P.cute.d, P.cute.n, P.cute.m].map((x) => x.toString(36)).join('.') : '-')
+        + (P.fu ? `_${Math.round(P.fu / 1000).toString(36)}` : ''),
       ...(P.gift ? [GIFT_F.map((f) => (P.gift[f] == null ? '-' : Math.round(GIFT_T.has(f) ? P.gift[f] / 1000 : P.gift[f]).toString(36)
         + (f === 'a' && P.gift.p != null ? `_${Math.round(P.gift.p / 1000).toString(36)}` : '')
         + (f === 'u' && P.gift.v != null ? `_${P.gift.v.toString(36)}` : ''))).join('.')] : []),
@@ -572,7 +589,7 @@
     const t = parseInt(h[1], 36) * 1000;
     const m = parseInt(h[3], 36);
     if (h.length !== 4 || !Number.isFinite(n) || !Number.isFinite(t) || !Number.isFinite(m)) return null;
-    const P = { hay: { n: clamp(n, 1, HAY_MAX), t, c: h[2] === '-' ? '' : h[2].replace(/\D/g, ''), m }, sport: null, rec: [], cute: null, gift: null, fl: null };
+    const P = { hay: { n: clamp(n, 1, HAY_MAX), t, c: h[2] === '-' ? '' : h[2].replace(/\D/g, ''), m }, sport: null, rec: [], cute: null, gift: null, fl: null, fd: [] };
     const fq = h[3].split('_');
     if (fq.length === 3 && /^\d[0-9a-z]{2}[01]$/.test(fq[2])) {
       const ft = parseInt(fq[1], 36) * 1000;
@@ -591,10 +608,18 @@
       if (!Number.isFinite(gv)) G.nov = true;
       if (GIFT_F.every((f) => f === 'b' || Number.isFinite(G[f]))) P.gift = G;
     }
-    const q = (p[4] || '-').split('.').map((x) => parseInt(x, 36));
+    const [cq, fuq] = (p[4] || '-').split('_');
+    const fu = parseInt(fuq ?? '', 36) * 1000;
+    P.fu = Number.isFinite(fu) ? fu : 0;
+    const q = cq.split('.').map((x) => parseInt(x, 36));
     if (q.length === 3 && q.every(Number.isFinite)) P.cute = { d: q[0], n: clamp(q[1], 0, PET_CAP), m: q[2] };
-    const s = p[2].split('.').map((x) => parseInt(x, 36));
+    const [sp, ...fds] = p[2].split('_');
+    const s = sp.split('.').map((x) => parseInt(x, 36));
     if (s.length === 2 && s.every(Number.isFinite)) P.sport = { d: s[0], k: s[1] };
+    for (const e of fds.slice(0, FOOD_MAX)) {
+      const m2 = /^([0-9a-z]+)-([0-9a-z]{2})([0-3])$/.exec(e);
+      if (m2) P.fd.push({ t: parseInt(m2[1], 36) * 1000, x: clamp(parseInt(m2[2], 36), 0, 99), k: Number(m2[3]) & 1, e: Number(m2[3]) > 1 });
+    }
     if (p[3] !== '-') {
       for (const e of p[3].split(',')) {
         const [k, a, v] = e.split(':');
@@ -656,7 +681,7 @@
   // Änderung op auf den Plan P anwenden. Alle Änderungen sind wiederholbar (gleiches Ergebnis beim zweiten Mal), so
   // dürfen sie auf jeden neu eintreffenden Stand eines anderen Geräts noch einmal gelegt werden.
   const planApply = (P, op, now) => {
-    const out = { hay: { ...P.hay }, sport: P.sport, rec: P.rec.map((e) => [...e]), cute: P.cute, gift: P.gift && { ...P.gift }, fl: P.fl };
+    const out = { hay: { ...P.hay }, sport: P.sport, rec: P.rec.map((e) => [...e]), cute: P.cute, gift: P.gift && { ...P.gift }, fl: P.fl, fd: P.fd || [], fu: P.fu || 0 };
     if (GIFT_OPS.has(op.t)) {
       giftApply(out, op);
       return out;
@@ -686,6 +711,13 @@
       // Geräte dasselbe, egal in welcher Reihenfolge die Stände ankommen
       const f = out.fl;
       if (!f || (f.t !== op.f.t && Math.abs(op.f.t - f.t) >= FLGIFT.gap)) out.fl = { ...op.f };
+    } else if (op.t === 'frgone') {
+      out.fu = Math.max(out.fu, op.u);
+    } else if (op.t === 'feed') {
+      // Jedes Futter einmal (t ist seine Kennung); mehr als FOOD_MAX liegen nie da, die ältesten fallen heraus
+      if (!out.fd.some((f) => f.t === op.f.t)) out.fd = [...out.fd, { ...op.f }].sort((a, b) => a.t - b.t).slice(-FOOD_MAX);
+    } else if (op.t === 'fate') {
+      out.fd = out.fd.map((f) => (f.t === op.ft ? { ...f, e: true } : f));
     } else if (op.t === 'ftake') {
       if (out.fl?.t === op.ft) out.fl = { ...out.fl, k: true };
     } else if (op.t === 'pet' || op.t === 'mem') {
@@ -952,12 +984,12 @@
           <path d="M113 51 q4 5 0 10"/><path d="M118 47.5 q6 8.5 0 17"/><path d="M123 44 q8 12 0 24"/>
         </g>
       </g></g>
-      <g class="mfood">
+      <g class="mfood"><g class="mf-bloom">
         <path d="M92 58 Q100 58 106 61" stroke="#4f8a3a" stroke-width="1.6" fill="none" stroke-linecap="round"/>
         <ellipse cx="99" cy="61" rx="4.2" ry="1.7" fill="#6bab4c" transform="rotate(22 99 61)"/>
         <circle class="mbloom" cx="108" cy="61" r="4.4"/>
         <circle cx="108" cy="61" r="1.6" fill="#e0a032" opacity=".8"/>
-      </g>
+      </g><g class="mf-item" transform="translate(94.8 52.2) scale(.68)"></g></g>
       <g class="paws" fill="${PK('paw')}" stroke="${OUT}" stroke-width="1.4">
         <ellipse cx="84" cy="61" rx="4" ry="5"/>
         <ellipse cx="98" cy="61" rx="4" ry="5"/>
@@ -1723,6 +1755,11 @@
     <circle cx="10" cy="9" r="2.3" fill="${c === '#f6c945' ? '#c47f1a' : '#f4b73a'}"/>
   </svg>`;
 
+  // Ein Maulvoll Heu (Heu-Snack am Haufen), gleiche Größe wie die Leckerli aus den Päckchen (24 × 24)
+  const HAY_BITE = `<svg viewBox="0 0 24 24" aria-hidden="true"><g fill="none" stroke-linecap="round">
+    <path d="M2 13.5 L21 9 M3 17 L22 13.5 M4.5 10 L20 17.5" stroke="#b8963f" stroke-width="2.6"/>
+    <path d="M2 13.5 L21 9 M3 17 L22 13.5 M4.5 10 L20 17.5 M6 19.5 L18.5 7" stroke="#dcbc6a" stroke-width="1.6"/>
+    <path d="M5 15 L19 11.6" stroke="#f0d98e" stroke-width="1"/></g></svg>`;
   const FOOD = {
     lz: {
       color: '#f7cf2e',
@@ -3614,6 +3651,9 @@
   .wet:not(.inside):not(.sleeping) .brolly { animation: brolly 2.6s steps(10) infinite alternate; }
   @keyframes brolly { from { transform: rotate(-3deg); } to { transform: rotate(3deg); } }
   .carry .mfood, .eating .mfood { display: inline; }
+  /* Anderes Futter als eine Blüte (Leckerli aus dem Päckchen, Heu): dessen Grafik statt der Blüte */
+  .mf-item, .mfood.item .mf-bloom { display: none; }
+  .mfood.item .mf-item { display: inline; }
   .mbloom { fill: var(--mf, #f6c945); stroke: rgba(0, 0, 0, .15); stroke-width: .5; }
   .mfood.shrink { transform-box: fill-box; transform-origin: 0% 30%; animation: shrink var(--eat, 3s) linear forwards; }
   @keyframes shrink { to { transform: scale(.1); opacity: .2; } }
@@ -4902,6 +4942,7 @@
         if (this._giftEl) this._flowerGiftPlace(this._giftEl); // Blumengeschenk an seiner relativen Stelle
       } else {
         this._flowerFromPlan(); // lag schon eins (anderes Gerät, Neuladen)
+        this._foodFromPlan();
       }
     }
 
@@ -4945,6 +4986,7 @@
         this._stop();
         this._stopCritters();
         this._hiddenFeatures(true);
+        this._giftFromPlan(); // woanders schon ausgepackt: hier schaut jetzt keiner mehr zu, dann ist es weg
         return;
       }
       // Länger versteckt: Der Stand aus HA (Tagesplan, Wetter) ist wohl veraltet, die Verbindung baut sich gerade neu
@@ -5447,7 +5489,7 @@
       await this._walkTo(this._g.stand);
       this._face(-1);
       await this._wait(300);
-      await this._eat('#dcbc6a', rnd(2500, 3500));
+      await this._eat('#dcbc6a', rnd(2500, 3500), HAY_BITE);
       this._selfFed(SELF.hay);
       await this._wait(rnd(300, 900));
     }
@@ -6060,6 +6102,11 @@
       await this._approach(food.xf * this._W, 1.6);
       if (!this._foods.includes(food)) return;
       this._removeFood(food);
+      // Gefressen gilt für alle Geräte: Wer später dazukommt (oder gerade schläft, nicht zu sehen ist), zeigt es nicht mehr
+      if (food.t != null) {
+        (this._foodDone ??= new Set()).add(food.t);
+        this._planOp({ t: 'fate', ft: food.t });
+      }
       await this._eat(FOOD[food.kind].color, 3800);
       this._memo(food.kind);
       this._cls('mlem', 950, true); // Zungenspitze: lecker
@@ -6161,10 +6208,11 @@
       this._face(x >= this._x ? 1 : -1);
     }
 
-    async _eat(color, ms) {
+    // svg: Grafik des Futters (24 × 24), wenn es keine Blüte ist
+    async _eat(color, ms, svg = null) {
       const p = this._el.pika;
       const m = this._el.mfood;
-      this._mouth(color);
+      this._mouth(color, svg);
       p.style.setProperty('--eat', `${ms}ms`);
       m.classList.remove('shrink');
       void m.getBoundingClientRect();
@@ -6226,9 +6274,17 @@
       this._bubbleRefit(); // der Anker wechselt die Seite
     }
 
-    _mouth(color) {
-      if (color) this._el.pika.style.setProperty('--mf', color);
-      else this._el.mfood.classList.remove('shrink');
+    // Was er im Maul hat: eine Blüte in color, oder mit svg (24 × 24) genau dieses Futter. null: nichts mehr.
+    _mouth(color, svg = null) {
+      const m = this._el.mfood;
+      if (!color) return m.classList.remove('shrink');
+      this._el.pika.style.setProperty('--mf', color);
+      const it = m.querySelector('.mf-item');
+      if (it && (it._svg || null) !== svg) {
+        it._svg = svg;
+        it.innerHTML = svg ? svg.replace(/^\s*<svg[^>]*>|<\/svg>\s*$/g, '') : '';
+      }
+      m.classList.toggle('item', !!svg && !!it);
     }
 
     _jump(kind) {
@@ -7243,31 +7299,62 @@
         return;
       }
       this._add('s', GAIN.feed);
-      const kind = Math.random() < 0.6 ? 'lz' : 'klee';
       const { fMin, fMax } = this._g;
       let xf = rnd(fMin, fMax);
       // nicht direkt auf den Pika fallen lassen
       if (Math.abs(xf * this._W - this._x) < this._g.pW * 0.6) xf = clamp(xf + 0.25 * pick([-1, 1]), fMin, fMax);
+      // Das Futter steht im Tagesplan und fällt von dort auf allen Geräten (_foodFromPlan). t ist seine Kennung.
+      const t = Math.max(sec(this._haNow()), ...(this._plan.fd || []).map((f) => f.t + 1000));
+      const x = clamp(Math.round(((xf - fMin) / Math.max(1e-6, fMax - fMin)) * 99), 0, 99);
+      this._planOp({ t: 'feed', f: { t, x, k: Math.random() < 0.6 ? 0 : 1, e: false } });
+    }
+
+    // Futter aus dem Tagesplan auf die Wiese: gerade gefüttert (auch auf einem anderen Gerät) fällt es herunter, sonst
+    // liegt es schon da (Neuladen, Bildschirm war aus). Was dieses Gerät schon fressen sah, kommt nicht wieder.
+    _foodFromPlan() {
+      if (!this._el || !this._g) return;
+      const now = this._haNow();
+      const done = (this._foodDone ??= new Set());
+      for (const f of this._plan?.fd || []) {
+        const have = this._foods.find((o) => o.t === f.t);
+        if (f.e) {
+          // Woanders gefressen, hier sah keiner zu (schläft, Karte nicht zu sehen): dann ist es auch hier weg.
+          // Schaut man zu, frisst er es gleich selbst.
+          if (have && (this._asleep || !this._running)) this._removeFood(have);
+          continue;
+        }
+        if (have || done.has(f.t) || now - f.t > 864e5) continue;
+        this._foodAdd(f, now - f.t < 2500);
+      }
+    }
+
+    _foodAdd(f, drop) {
+      const { fMin, fMax } = this._g;
+      const xf = fMin + (f.x / 99) * (fMax - fMin);
+      const kind = FOOD_KINDS[f.k] || 'lz';
       const el = document.createElement('div');
-      el.className = 'food drop';
+      el.className = drop ? 'food drop' : 'food';
       el.style.setProperty('--xf', xf.toFixed(4));
       el.innerHTML = FOOD[kind].svg;
       this._el.foods.appendChild(el);
-      const food = { xf, kind, el, landed: false };
+      const food = { xf, kind, el, landed: !drop, t: f.t };
       this._foods.push(food);
-      // Sternchenaugen, wenn Futter kommt
-      if (!this._asleep) this._cls('sparkle', 2600);
-      setTimeout(() => {
+      const land = () => {
         food.landed = true;
         el.classList.remove('drop');
         if (this._asleep) {
+          if (!drop) return;
           this._el.pika.classList.add('peek');
           setTimeout(() => this._el.pika.classList.remove('peek'), 900);
         } else if (this._action !== 'eatFood' && this._action !== 'coffee') {
           // Beim Kaffee nicht: das Futter frisst er ohnehin erst danach, er hüpfte nur vom Stein
           this._interrupt();
         }
-      }, 800);
+      };
+      if (!drop) return land();
+      // Sternchenaugen, wenn Futter kommt
+      if (!this._asleep) this._cls('sparkle', 2600);
+      setTimeout(land, 800);
     }
 
     _onLookAt(e) {
@@ -7511,8 +7598,9 @@
       return out;
     }
 
+    // Uhr von HA: Feuerwerk, Finale und „Helau!“ kommen auf allen Geräten im selben Moment
     _festNow() {
-      return this._dbgDate ?? Date.now();
+      return this._dbgDate ?? this._haNow();
     }
 
     _festDark() {
@@ -8266,13 +8354,33 @@
         const nx = this._critNext(kind, now, after);
         this._critT[kind] = setTimeout(async () => {
           if (id !== this._critId) return;
-          this._critLast[kind] = nx.at;
+          this._critT[kind] = null;
           const late = this._visitNow() - nx.at;
-          if (late <= CRIT_LATE) await this._visit(kind, id, false, nx.pick, Math.max(0, late));
+          // Die Uhr wurde inzwischen zurückgestellt (Abgleich mit HA): noch nicht so weit, neu planen
+          if (late < -500) return plan(kind, after);
+          this._critLast[kind] = nx.at;
+          if (late <= critJoin(kind, nx.pick)) await this._visit(kind, id, false, nx.pick, Math.max(0, late));
           if (id === this._critId) plan(kind, nx.at);
         }, Math.max(0, nx.at - now));
       };
+      this._critPlan = plan;
       for (const k of CRIT_KINDS) plan(k, this._critLast[k]);
+    }
+
+    // Die gemeinsame Uhr wurde nachgestellt: wartende Besuche und den Beginn der nächsten Beschäftigung neu planen
+    // (wer gerade zu Besuch ist, bleibt; danach wird ohnehin mit der neuen Uhr geplant)
+    _clockMoved() {
+      if (this._critOn && this._critPlan) {
+        for (const k of CRIT_KINDS) {
+          if (!this._critT[k]) continue;
+          clearTimeout(this._critT[k]);
+          this._critPlan(k, this._critLast[k]);
+        }
+      }
+      if (this._running) {
+        this._slotNext = null;
+        this._slotArm();
+      }
     }
 
     // Uhr der Besuche: Uhr von HA (Vorschau: um _dbgShiftMs vorgestellt). Nicht _dbgDate, das steht fest.
@@ -8280,15 +8388,17 @@
       return this._haNow() + this._dbgShiftMs;
     }
 
-    // Nächster Besuch von kind (bird, mouse, frog, snail), der höchstens CRIT_LATE her ist und nach after liegt:
+    // Nächster Besuch von kind (bird, mouse, frog, snail), der noch läuft (critJoin) und nach after liegt:
     // { at: Startzeit, pick: feste Entscheidungen }. Gleiche Uhr → gleiches Ergebnis auf allen Geräten.
     _critNext(kind, now, after = -Infinity) {
       const { win, p, room } = CRIT[kind];
-      for (let k = Math.floor(Math.max(now - CRIT_LATE, after + 1) / win); ; k++) {
+      for (let k = Math.floor(Math.max(now - CRIT_BACK, after + 1) / win); ; k++) {
         if (seedRnd(kind, k, 0) >= p) continue;
         const at = k * win + Math.floor(seedRnd(kind, k, 1) * (win - room));
-        if (at < now - CRIT_LATE || at <= after) continue;
-        return { at, pick: this._critPick(kind, (n) => seedRnd(kind, k, n)) };
+        if (at <= after) continue;
+        const pick = this._critPick(kind, (n) => seedRnd(kind, k, n));
+        if (at < now - critJoin(kind, pick)) continue;
+        return { at, pick };
       }
     }
 
@@ -8311,17 +8421,18 @@
       Object.values(this._critT).forEach((t) => clearTimeout(t));
       this._critT = {};
       for (const k of CRIT_KINDS) {
-        this['_' + k]?.el.remove();
+        const c = this['_' + k];
+        // Wer gerade zu Besuch ist, kommt beim Weitermachen für den Rest wieder (kurz weggescrollt, Bildschirm
+        // aus und an, neue Größe), solange sein Besuch noch läuft. Verscheucht bleibt verscheucht.
+        if (c && !c.scared && this._critLast) delete this._critLast[k];
+        c?.el.remove();
         this['_' + k] = null;
       }
     }
 
-    // Neue Größe oder neues Areal: wer gerade zu Besuch ist, kommt gleich wieder (falls sein Start höchstens
-    // CRIT_LATE her ist); wer schon fertig war, nicht noch einmal
+    // Neue Größe oder neues Areal: wer gerade zu Besuch ist, kommt gleich wieder (falls sein Besuch noch läuft,
+    // siehe _stopCritters); wer schon fertig war, nicht noch einmal
     _restartCritters() {
-      if (this._critLast) {
-        for (const k of CRIT_KINDS) if (this['_' + k]) delete this._critLast[k];
-      }
       this._stopCritters();
       this._startCritters();
     }
@@ -9090,9 +9201,19 @@
       if (bad) this._friendLeave(true, !!(bad & 1));
     }
 
+    // Pino ist auf einem anderen Gerät vor der Zeit gegangen: hier geht er auch und kommt in dem Fenster nicht wieder
+    _friendFromPlan() {
+      const fu = this._plan?.fu || 0;
+      if (!this._el || fu <= (this._frUsed || 0)) return;
+      this._frUsed = fu;
+      const fr = this._fr;
+      if (fr && !fr.leaving && fu > this._visitNow()) this._friendLeave(true);
+    }
+
     _friendStop() {
       clearTimeout(this._frT);
       this._frT = null;
+      this._frBye = null; // sonst verabschiedete er sich später von einem Pino, der gar nicht mehr da ist
       if (this._fr) this._friendGone(this._fr);
     }
 
@@ -9227,7 +9348,11 @@
       fr.hurry = now;
       // nach dem Abschied kommt er in diesem Fenster nicht wieder (auch nicht nach Display aus/an)
       const s = this._friendSchedule();
-      if (!s.nextInMs) this._frUsed = Math.max(this._frUsed || 0, this._visitNow() + s.stayMs);
+      if (!s.nextInMs) {
+        this._frUsed = Math.max(this._frUsed || 0, this._visitNow() + s.stayMs);
+        // Vor der Zeit gegangen: gilt für alle Geräte (_friendFromPlan)
+        if (now) this._planOp({ t: 'frgone', u: Math.ceil(this._frUsed / 1000) * 1000 });
+      }
       this._frTake(fr);
       if (!sleep && !this._asleep) {
         this._frBye = { x: fr.x, until: Date.now() + 15000, done: false };
@@ -10159,9 +10284,8 @@
     }
 
     // Versatz aus den Zeitstempeln (last_updated) von Meldungen, die gerade eben ankamen: HA stempelt sie kurz vor dem
-    // Senden, lu − jetzt ist also etwas kleiner als der wahre Versatz, der größte Wert passt am besten. Er sinkt
-    // langsam (0,2 % der Zeit, 7 s je Stunde), damit eine später gestellte Geräteuhr (NTP) nicht für immer als falsch gilt. Erste
-    // Sicht und die Sekunden nach dem (Wieder-)Verbinden zählen nicht: Das sind alte Stände.
+    // Senden, lu − jetzt ist also etwas kleiner als der wahre Versatz (siehe _clockSample). Erste Sicht und die
+    // Sekunden nach dem (Wieder-)Verbinden zählen nicht: Das sind alte Stände.
     _clockHass(hass) {
       const now = Date.now();
       const conn = hass.connected !== false;
@@ -10177,16 +10301,22 @@
     }
 
     _clockSample(lu, now = Date.now()) {
-      if (!Number.isFinite(lu)) return;
-      const prev = this._clockOff;
-      this._clockOff = prev == null ? lu - now : Math.max(lu - now, prev - (now - this._clockAt) * 0.002);
-      this._clockAt = now;
-      // Angewandt erst ab 2 s und mit Hysterese (unter 1 s wieder aus, sonst nur Änderungen über 2 s): die gemeinsame
-      // Uhr soll nicht hin und her springen, Beschäftigungen und Besuche hingen sonst daran
-      const off = this._clockOff;
+      // Im Hintergrund kommen Meldungen verspätet an: nicht werten
+      if (!Number.isFinite(lu) || document.hidden) return;
+      // Der größte Wert der letzten Meldungen (die mit der kürzesten Laufzeit) passt am besten. Eine später gestellte
+      // Geräteuhr (NTP) ist nach CLOCK_KEEP neuen Meldungen vergessen.
+      const S = (this._clockS ??= []);
+      S.push(lu - now);
+      if (S.length > CLOCK_KEEP) S.shift();
+      this._clockOff = Math.max(...S);
+      // Angewandt wird nur eine Änderung ab CLOCK_STEP: die gemeinsame Uhr soll nicht bei jeder Meldung um ein paar
+      // Millisekunden springen, Beschäftigungen und Besuche hängen daran. Geräte liegen so höchstens etwa eine
+      // Viertelsekunde auseinander (früher bis 2 s).
       const use = this._clockUse || 0;
-      const want = Math.abs(off) > 2000 ? off : Math.abs(off) < 1000 ? 0 : use;
-      if (Math.abs(want - use) > 2000 || (want === 0 && use !== 0)) this._clockUse = Math.round(want);
+      if (Math.abs(this._clockOff - use) < CLOCK_STEP) return;
+      this._clockUse = Math.round(this._clockOff);
+      this._rawM = null;
+      this._clockMoved();
     }
 
     // Fälligkeiten (ms) der Häufchen 0, 1, 2 … seit dem letzten Großputz. Sie zählen nur Wachzeit:
@@ -11567,8 +11697,9 @@
       if (first) {
         if (BOTE_RUN.has(cur)) a.emptyUntil = null;
         else if (cur === 'finished') {
-          // Tür später als 2 Minuten nach Programmende geöffnet: ausgeräumt
-          a.opened = door && !doorDead && doorAt - a.finAt > BOTE_AUTOOPEN_MS;
+          // Tür später als 2 Minuten nach Programmende bewegt: ausgeräumt. Auch wenn sie jetzt wieder zu ist (geöffnet
+          // und geschlossen), sonst riefe ein später geladenes Gerät weiter, während die anderen schon Ruhe geben.
+          a.opened = !!dr && !doorDead && doorAt - a.finAt > BOTE_AUTOOPEN_MS;
           a.emptyUntil = a.opened ? doorAt + BOTE_EMPTY_MS : null;
         } else if (idle) {
           // Nach dem Neuladen nur, wenn es plausibel ein Programmende war: Fortschritt steht noch auf (fast) 100,
@@ -12725,7 +12856,8 @@
     // Pflege-Serie (Tagesplan-Feld gift), Knopf mit Fortschrittsring und Album, Ballon mit Zwille, Auspacken, Leckerli und
     // Schätze in der Szene. Was alle Geräte wissen müssen, steht im Plan. Ballon, Zwille und Auspacken zeigt jedes Gerät
     // selbst: Der Ballon schwebt nach fester Zeitleiste ab dem Verschenken (G.x) herein, ausgepackt ist es, sobald es
-    // ein Gerät gezeigt hat (G.o), danach verschwindet der Ballon auch auf den anderen.
+    // ein Gerät gezeigt hat (G.o). Geräte, auf denen gerade jemand zuschaut, zeigen es trotzdem noch zu Ende (der Pika
+    // schießt und packt dort fast gleichzeitig aus); wo keiner zuschaut oder er schläft, verschwindet der Ballon.
 
     _giftOn() {
       return !!this._cfg?.gifts;
@@ -12982,8 +13114,11 @@
       if (!this._g) return;
       const pend = this._giftOn() && !!G && G.z > G.o;
       const B = this._gb;
-      // Auf einem anderen Gerät schon ausgepackt (oder abgeschaltet): Ballon bzw. Päckchen verschwindet hier auch
-      if (B && B.stage !== 'open' && (!pend || B.z !== G.z || B.item !== (G.i & 15))) this._giftDrop();
+      // Abgeschaltet oder ein anderes Päckchen: weg. Auf einem anderen Gerät schon ausgepackt: Schaut hier jemand zu,
+      // packt er es auch hier noch aus (sonst verschwände es vor den Augen), sonst ist es weg.
+      const mine = !!B && this._giftOn() && !!G && B.z === G.z && B.item === (G.i & 15);
+      const watch = this._running && !this._asleep && !this._away();
+      if (B && B.stage !== 'open' && !(mine && (pend || watch))) this._giftDrop();
       if (pend && !this._gb) this._giftBalloon(G);
       this._giftScene();
     }
@@ -13233,7 +13368,7 @@
           this._say(`${it.name}!`, 1400);
           await this._wait(1100);
           ie.classList.add('eat');
-          await this._eat(it.color, 3200);
+          await this._eat(it.color, 3200, it.svg);
           this._cls('mlem', 950, true);
           this._happy();
           this._jump('hop1');
@@ -13268,6 +13403,7 @@
       const p = this._el.pika;
       const sc = this._el.scene.getBoundingClientRect();
       this._giftHide = null;
+      if (this._gb) this._gb.stowed = true;
       this._giftScene();
       const tgt = this._gtEls?.get(t);
       const from = ie.getBoundingClientRect();
@@ -13335,7 +13471,10 @@
       if (!this._el || !this._g) return;
       const G = this._plan?.gift;
       // ohne den noch nicht ausgepackten, und den gerade ausgepackten noch auf seiner alten Stufe
-      const lvs = this._giftOn() ? giftLvs(G, this._giftHide) : [];
+      // ebenso der, der hier noch am Ballon hängt oder im Päckchen liegt (woanders schon ausgepackt)
+      const B = this._gb;
+      const hide = this._giftHide ?? (B && !B.stowed && B.item < GIFT_TRE && G && B.z === G.z ? B.item : null);
+      const lvs = this._giftOn() ? giftLvs(G, hide) : [];
       const has = (t) => lvs[t] > 0;
       const newest = G && G.o === G.z && (G.i & 15) < GIFT_TRE ? G.i & 15 : -1;
       const day = pikaDay(this._haNow());
@@ -14367,6 +14506,8 @@
       this._hayFromPlan();
       this._giftFromPlan();
       this._flowerFromPlan();
+      this._foodFromPlan();
+      this._friendFromPlan();
       this._giftCredit();
       // Fehlt dem fremden Stand etwas von hier: noch einmal schreiben
       if (incoming && (this._planOps.length || lost) && planSer(P) !== planSer(this._planBase)) this._planSave();
