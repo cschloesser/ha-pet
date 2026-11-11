@@ -22,6 +22,8 @@
  *   Päckchen            → wer sich gut kümmert (nichts lange unter 50 %), verdient Päckchen: Sie schweben am Ballon
  *                         herein, der Pika schießt sie mit der Zwille vom Himmel. Leckerli oder Schätze fürs Album,
  *                         ist es voll, Tricks und Gold für die Schätze.
+ *   Tagebuch            → Tipp auf die Statusleiste: was er heute und gestern erlebt hat (aus dem Verlauf der Helfer
+ *                         in HA abgeleitet), dazu seine Schätze
  *   Besuche (Vögelchen, Maus, Frosch, Schnecke, Pino) werden aus der Uhrzeit berechnet und sind auf allen Geräten gleich.
  *
  * Konfiguration:
@@ -46,6 +48,7 @@
  *   friend: true / friend_name: Pino # Freund-Pika
  *   shooting_stars: true / fireflies: true   # Himmel-Extras
  *   gifts: true                      # Päckchen für gute Pflege (false = keine)
+ *   diary: true / diary_house: true  # Tagebuch (Leiste antippen); Kaffee und Haushaltsgeräte darin
  *   screen_entity: switch.tablet_bildschirm  # optional: Bildschirm-Schalter (Fully Kiosk); an = Begrüßung wie beim Sichtbarwerden
  *
  * Der Blick geht nach Süden: Osten (Sonnenaufgang) links, Westen rechts; auf der Südhalbkugel nach Norden
@@ -53,7 +56,7 @@
  * werden aus Datum und Standort (hass.config) berechnet.
  */
 (() => {
-  const VERSION = '0.26.0';
+  const VERSION = '0.27.0';
 
   // Prototyp Tiefe (depth: true): hintere Spur liegt LANE_DY × Kartenhöhe über der Bodenlinie, Pika dort um LANE_S kleiner
   const LANE_DY = 0.075;
@@ -94,6 +97,10 @@
     gifts: true,
     // Prototyp: Kulisse mit Parallax, hintere Spur zum Herumhoppeln (nur YAML, nicht im Editor)
     depth: false,
+    // Tagebuch: Antippen der Statusleiste zeigt, was er heute und gestern erlebt hat, und seine Schätze.
+    // diary_house: false lässt Kaffee und Haushaltsgeräte darin weg.
+    diary: true,
+    diary_house: true,
   };
 
   // Karten-Editor (getConfigForm): Beschriftungen und Hilfetexte der Felder
@@ -105,10 +112,13 @@
     flight_entity: 'Flüge (Flightradar24)', flight_radius: 'Radius', max_flights: 'Höchstens gleichzeitig',
     friend_name: 'Name des Freunds', screen_entity: 'Bildschirm-Schalter', height: 'Mindesthöhe',
     birthdays: 'Geburtstage', appliances: 'Haushaltsgeräte (Haus-Bote)', coffee: 'Kaffeevollautomat',
+    diary: 'Tagebuch', diary_house: 'Haushalt im Tagebuch',
   };
   const EDITOR_HELP = {
     entity: 'Damit alle Geräte denselben Pika sehen. Leer: nur in diesem Browser.',
     plan_entity: 'Vorrat, Abwechslung, Päckchen und Träume für alle Geräte. Muss ein anderer Helfer sein als der Zustand.',
+    diary: 'Antippen der Leiste öffnet sein Tagebuch.',
+    diary_house: 'Kaffee, Wäsche und Geschirr stehen mit Uhrzeit drin.',
     sleep_start: 'z. B. sunset, sunset+01:00 oder 21:00',
     sleep_end: 'z. B. sunrise, sunrise-30 oder 07:00',
     rain_min: 'Meldet das Wetter „rainy“ bei weniger, bleibt es trocken (nur mit Niederschlags-Sensor).',
@@ -560,8 +570,10 @@
   const FLGIFT = { gap: 90 * 6e4, life: 12 * 6e4 };
   const GIFT_F = ['k', 'a', 'n', 'u', 'z', 'o', 'b', 'x', 'y', 'd', 'i'];
   const GIFT_T = new Set(['k', 'b', 'x']); // Zeiten: im Text in Sekunden
-  // Streicheln zählt bis 10: ab da ist er anhänglich, mehr muss keiner wissen (und es wird nicht mehr geschrieben)
-  const PET_CAP = 10;
+  // Streicheln: ab PET_CLING ist er anhänglich. Gezählt wird fürs Tagebuch weiter bis PET_CAP, danach wird der Helfer
+  // dafür nicht mehr geschrieben. (Geräte bis 0.26 zählen nur bis 10 und schreiben höchstens das zurück.)
+  const PET_CLING = 10;
+  const PET_CAP = 99;
   // Erlebnisse für die Träume, je ein Bit
   const MEM_BITS = ['lz', 'klee', 'coffee', 'heart', 'pino', 'plane', 'bird', 'note', 'bfly'];
   // Pika-Tag: wechselt um 4 Uhr nachts, so träumt er nach Mitternacht noch vom Vortag
@@ -3131,8 +3143,6 @@
     border-radius: 50%; background: #fff; box-shadow: 0 1px 3px rgba(0, 0, 0, .25); }
   .gcrit:empty { display: none; }
   .gcrit svg { display: block; width: 100%; height: 100%; }
-  .alb-w { color: #c0601a; }
-  .night .alb-w { color: #f2a65a; }
   .gbtn.broken .gr1 { stroke: #b8b2a8; }
   .gbtn.empty .gico { opacity: .45; filter: grayscale(.7); }
   .gnum { position: absolute; right: -4px; top: -3px; min-width: 15px; height: 15px; padding: 0 3px; box-sizing: border-box;
@@ -3144,27 +3154,341 @@
   .gbtn.new { animation: gnew .9s cubic-bezier(.3, 1.6, .5, 1); }
   @keyframes gnew { from { transform: scale(0) rotate(-40deg); } }
   .gbtn.no { animation: no .4s; }
-  .album {
-    position: absolute; right: 8px; top: 48px; z-index: 6; max-width: calc(100% - 16px); box-sizing: border-box;
-    padding: 6px 10px; border-radius: 14px; background: rgba(255, 255, 255, .9); color: #4a3a2c;
-    font-size: 12px; font-weight: 700; box-shadow: 0 2px 8px rgba(0, 0, 0, .2); backdrop-filter: blur(4px);
-  }
-  .album[hidden] { display: none; }
-  .night .album { background: rgba(15, 22, 45, .85); color: #e8e6f5; }
-  .alb-row { display: flex; flex-wrap: wrap; gap: 4px; }
-  .alb-row i { display: block; width: 24px; height: 24px; }
-  .alb-row i svg { display: block; width: 100%; height: 100%; overflow: visible; }
-  .alb-row i.miss svg { filter: brightness(0); opacity: .16; }
-  .alb-row i { position: relative; }
-  .alb-row i.lv2::after { content: ''; position: absolute; right: -3px; bottom: -3px; width: 7px; height: 7px; border-radius: 50%;
-    background: #5fb9de; box-shadow: 0 0 0 1.5px #fff; }
-  .alb-row i.gilt svg { filter: ${GILT_F} drop-shadow(0 0 2px rgba(255, 214, 90, .9)); }
-  .alb-row i.gilt::after { background: #f2b632; }
-  .night .alb-row i.lv2::after { box-shadow: 0 0 0 1.5px rgba(15, 22, 45, .85); }
-  .night .alb-row i.miss svg { filter: brightness(0) invert(1); opacity: .2; }
-  .alb-t { margin-top: 4px; font-weight: 600; opacity: .85; }
   `;
   // ==================== Ende Päckchen ====================
+
+  // ==================== Tagebuch ====================
+  // Tippt man auf die Statusleiste, geht „Pikas Tagebuch“ auf: was er heute und gestern erlebt hat (aus seiner Sicht),
+  // dazu seine Schätze. Gespeichert wird dafür nichts Neues: Die Einträge entstehen beim Öffnen aus dem Verlauf der
+  // beiden Helfer in HA (history/history_during_period), also aus den Änderungen von Zustand und Tagesplan samt
+  // Uhrzeit. Ohne Helfer schreibt das Gerät dieselbe Liste selbst im Browser mit (DIARY.keep). Was kein Gerät gezeigt
+  // hat, steht nicht im Verlauf: Dafür erfindet das Tagebuch nichts, eine lange Lücke bleibt „mein Geheimnis“.
+  // keep/max: Mitschrift im Browser, close: schließt sich nach so langer Ruhe selbst (Wand-Tablet), gap: ab so langer
+  // Lücke in der Wachzeit ein Geheimnis, acts: so viele Beschäftigungen je Tageszeit ausführlich (der Rest in einer Zeile)
+  const DIARY = { keep: 3 * 864e5, max: 400, close: 60000, gap: 100 * 6e4, acts: 2 };
+  const DI = (body) => `<svg viewBox="0 0 24 24" aria-hidden="true">${body}</svg>`;
+  const DIARY_BOOK = DI(`<rect x="4.6" y="2.6" width="15" height="18.8" rx="2.2" fill="#e9a23b" stroke="${OUT}" stroke-width="1.1"/>
+    <path d="M8.2 2.8 V21.2" stroke="${OUT}" stroke-width="1"/><rect x="10.4" y="6.4" width="6.6" height="4.4" rx=".8" fill="#fff3d6" stroke="${OUT}" stroke-width=".7"/>
+    <path d="M14.6 21.2 v2 l1.3 -1 l1.3 1 v-2" fill="#e8584e" stroke="${OUT}" stroke-width=".6" stroke-linejoin="round"/>`);
+  const DIARY_PAW = DI(`<g fill="currentColor"><ellipse cx="12" cy="15.6" rx="5" ry="4.2"/><ellipse cx="5.6" cy="10.4" rx="2" ry="2.6"/>
+    <ellipse cx="9.6" cy="6.8" rx="2" ry="2.7"/><ellipse cx="14.4" cy="6.8" rx="2" ry="2.7"/><ellipse cx="18.4" cy="10.4" rx="2" ry="2.6"/></g>`);
+  const DIARY_ICON = {
+    wake: DI(`<path d="M12 3 v3 M4.6 7.6 l2 2 M19.4 7.6 l-2 2 M2.4 15.6 h2.6 M19 15.6 h2.6" stroke="#f0a02c" stroke-width="1.6" stroke-linecap="round"/>
+      <path d="M6 17 a6 6 0 0 1 12 0Z" fill="#f6c945" stroke="${OUT}" stroke-width="1"/><path d="M2 20 h20" stroke="#7cc35a" stroke-width="2.2" stroke-linecap="round"/>`),
+    sleep: DI(`<path d="M15.5 3.5 a8.6 8.6 0 1 0 5 12.4 A7.2 7.2 0 0 1 15.5 3.5Z" fill="#f6e7a8" stroke="${OUT}" stroke-width="1" stroke-linejoin="round"/>
+      <path d="M16.6 5.4 h3.6 l-3.6 3.8 h3.6" fill="none" stroke="#7c9be0" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/>`),
+    read: DI(`<path d="M3 5.4 q4.5 -2.2 9 0 v14 q-4.5 -2.2 -9 0Z" fill="#7cc4ee" stroke="${OUT}" stroke-width="1" stroke-linejoin="round"/>
+      <path d="M21 5.4 q-4.5 -2.2 -9 0 v14 q4.5 -2.2 9 0Z" fill="#a8dcf5" stroke="${OUT}" stroke-width="1" stroke-linejoin="round"/>
+      <path d="M5.4 8.6 q2 -.8 4.2 0 M5.4 11.6 q2 -.8 4.2 0 M14.4 8.6 q2.2 -.8 4.2 0 M14.4 11.6 q2.2 -.8 4.2 0" stroke="#fff" stroke-width=".9" fill="none" stroke-linecap="round"/>`),
+    game: DI(`<rect x="6" y="2.4" width="12" height="19.2" rx="2.2" fill="#c9cfd8" stroke="${OUT}" stroke-width="1"/>
+      <rect x="8" y="4.8" width="8" height="6.4" rx=".9" fill="#9ccf6a" stroke="${OUT}" stroke-width=".7"/>
+      <path d="M8.6 15.4 h3.2 M10.2 13.8 v3.2" stroke="${OUT}" stroke-width="1.3" stroke-linecap="round"/><circle cx="15" cy="15.4" r="1.2" fill="#e8584e"/>`),
+    tablet: DI(`<rect x="2.4" y="5" width="19.2" height="14" rx="2.2" fill="#4a4f5c" stroke="${OUT}" stroke-width="1"/>
+      <rect x="4.4" y="7" width="15.2" height="10" rx=".7" fill="#8fd0f2"/><path d="M6.6 14.6 l3 -3.2 l2.6 2.2 l2.2 -2.8 l3 3.8" stroke="#fff" stroke-width="1.1" fill="none" stroke-linejoin="round"/>`),
+    kite: DI(`<path d="M12 1.8 L18.2 9 L12 17.4 L5.8 9Z" fill="#e8584e" stroke="${OUT}" stroke-width="1" stroke-linejoin="round"/>
+      <path d="M12 1.8 V17.4 M5.8 9 H18.2" stroke="${OUT}" stroke-width=".7"/><path d="M12 17.4 q-2.4 1.8 0 3.2 q2 1.2 .4 2.6" stroke="#5fb9de" stroke-width="1.2" fill="none" stroke-linecap="round"/>`),
+    tv: DI(`<path d="M8 2.6 l4 3.4 l4 -3.4" stroke="${OUT}" stroke-width="1" fill="none" stroke-linecap="round"/>
+      <rect x="2.8" y="6" width="18.4" height="12.6" rx="2.2" fill="#a0703f" stroke="${OUT}" stroke-width="1"/>
+      <rect x="4.8" y="8" width="11.4" height="8.6" rx="1.2" fill="#9fdcff" stroke="${OUT}" stroke-width=".6"/>
+      <circle cx="18.6" cy="10.2" r=".9" fill="#f6c945"/><circle cx="18.6" cy="13.4" r=".9" fill="#f6c945"/><path d="M7 21 h10" stroke="${OUT}" stroke-width="1.2" stroke-linecap="round"/>`),
+    music: DI(`<path d="M9.2 17.4 V5 L19.4 3 v12.4" fill="none" stroke="${OUT}" stroke-width="1.6" stroke-linejoin="round"/>
+      <ellipse cx="6.6" cy="17.6" rx="3" ry="2.3" fill="#b99cf0" stroke="${OUT}" stroke-width="1"/><ellipse cx="16.8" cy="15.6" rx="3" ry="2.3" fill="#b99cf0" stroke="${OUT}" stroke-width="1"/>`),
+    paint: DI(`<path d="M12 3 a9 9 0 1 0 0 18 c1.7 0 2.1 -1.2 1.4 -2.3 c-.8 -1.3 0 -2.7 1.6 -2.7 H17 a4 4 0 0 0 4 -4 c0 -5 -4 -9 -9 -9Z" fill="#f0e2cf" stroke="${OUT}" stroke-width="1"/>
+      <circle cx="7.4" cy="11" r="1.5" fill="#e8584e"/><circle cx="10.6" cy="7" r="1.5" fill="#f6c945"/><circle cx="15.4" cy="7.6" r="1.5" fill="#5fb9de"/><circle cx="8.6" cy="15.4" r="1.5" fill="#7cc35a"/>`),
+    bubbles: DI(`<circle cx="8.4" cy="14.4" r="5.6" fill="#d9f1fb" stroke="#5a9cc8" stroke-width="1"/><circle cx="16.8" cy="7.2" r="3.6" fill="#e6f6fd" stroke="#5a9cc8" stroke-width=".9"/>
+      <circle cx="18.4" cy="17.4" r="2.2" fill="#e6f6fd" stroke="#5a9cc8" stroke-width=".8"/><path d="M5.4 12.6 q.8 -2 2.6 -2.4 M15 6.2 q.6 -1 1.6 -1.2" stroke="#fff" stroke-width="1" fill="none" stroke-linecap="round"/>`),
+    sport: DI(`<path d="M7 12 h10" stroke="${OUT}" stroke-width="2.2"/><rect x="3" y="7.4" width="4.2" height="9.2" rx="1.3" fill="#e8584e" stroke="${OUT}" stroke-width="1"/>
+      <rect x="16.8" y="7.4" width="4.2" height="9.2" rx="1.3" fill="#e8584e" stroke="${OUT}" stroke-width="1"/>`),
+    bird: DI(`<path d="M9 18.6 v2.8 M13 18.6 v2.8" stroke="${OUT}" stroke-width="1" stroke-linecap="round"/><circle cx="11" cy="12" r="7.2" fill="#b5895f" stroke="${OUT}" stroke-width="1"/>
+      <path d="M6.8 13.4 q4.2 3.8 8.4 0 q-.6 4.4 -4.2 4.8 q-3.6 -.4 -4.2 -4.8Z" fill="#f08a4b"/><path d="M17.8 10.4 l3.4 1.3 l-3.3 1.4Z" fill="#f6c945" stroke="${OUT}" stroke-width=".7" stroke-linejoin="round"/>
+      <circle cx="14" cy="9.6" r="1" fill="#2a1a12"/>`),
+    plane: DI(`<path d="M12.2 9.8 L8.6 4.4 h2.2 l5.4 4.2" fill="#f4f6f8" stroke="#5a6470" stroke-width=".9" stroke-linejoin="round"/>
+      <path d="M2.4 13.6 L19.4 9 q2.6 -.4 2.2 1.2 q-.4 1.2 -2.2 1.7 l-5 1.5 l-4 5.2 h-2 l2 -4.4 l-4 1.2 l-1.6 1.8 H3.4 l1 -3.2Z" fill="#f4f6f8" stroke="#5a6470" stroke-width=".9" stroke-linejoin="round"/>`),
+    bfly: DI(`<path d="M12 12 C9 3.6 1.8 5 3.8 11 c1 3 5.2 3 8.2 1Z M12 12 c3 -8.4 10.2 -7 8.2 -1 c-1 3 -5.2 3 -8.2 1Z" fill="#f28fb1" stroke="${OUT}" stroke-width=".8" stroke-linejoin="round"/>
+      <path d="M12 12 c-3 1 -6 4.2 -3.2 7 c2 1 3.2 -3 3.2 -7Z M12 12 c3 1 6 4.2 3.2 7 c-2 1 -3.2 -3 -3.2 -7Z" fill="#b99cf0" stroke="${OUT}" stroke-width=".8" stroke-linejoin="round"/>
+      <path d="M12 8 v10" stroke="${OUT}" stroke-width="1.5" stroke-linecap="round"/>`),
+    secret: DI(`<path d="M3 10.6 q9 8 18 0" fill="none" stroke="${OUT}" stroke-width="1.7" stroke-linecap="round"/>
+      <path d="M5.6 14.4 l-1.5 2 M9.6 16.2 l-.7 2.4 M14.4 16.2 l.7 2.4 M18.4 14.4 l1.5 2" stroke="${OUT}" stroke-width="1.4" stroke-linecap="round"/>`),
+    gather: DI(`<path d="M12 13 v9" stroke="#4f8a3a" stroke-width="1.6" stroke-linecap="round"/><ellipse cx="15" cy="17.6" rx="2.6" ry="1.1" fill="#5fae4a" transform="rotate(-30 15 17.6)"/>
+      <g transform="translate(12 9)">${[0, 72, 144, 216, 288].map((a) => `<ellipse rx="2.5" ry="3.7" transform="rotate(${a}) translate(0 -3.3)" fill="#f6c945" stroke="${OUT}" stroke-width=".7"/>`).join('')}
+      <circle r="2.2" fill="#e0a032"/></g>`),
+    washer: DI(`<rect x="4" y="2.8" width="16" height="18.4" rx="2.2" fill="#e9eef2" stroke="${OUT}" stroke-width="1"/><circle cx="12" cy="13.6" r="4.7" fill="#8fd0f2" stroke="${OUT}" stroke-width="1"/>
+      <circle cx="7" cy="5.8" r=".9" fill="#5fb9de"/><path d="M9.4 14.2 q2.6 -2 5.2 0" stroke="#fff" stroke-width="1" fill="none" stroke-linecap="round"/>`),
+    dryer: DI(`<rect x="4" y="2.8" width="16" height="18.4" rx="2.2" fill="#f3e6d2" stroke="${OUT}" stroke-width="1"/><circle cx="12" cy="13.6" r="4.7" fill="#f6c08a" stroke="${OUT}" stroke-width="1"/>
+      <circle cx="7" cy="5.8" r=".9" fill="#f0a04b"/><path d="M10 12.4 q1.2 1.2 0 2.6 M13.4 12.4 q1.2 1.2 0 2.6" stroke="#fff" stroke-width="1" fill="none" stroke-linecap="round"/>`),
+    dishwasher: DI(`<circle cx="11" cy="13" r="8.4" fill="#fff" stroke="${OUT}" stroke-width="1"/><circle cx="11" cy="13" r="5" fill="none" stroke="#c9d3da" stroke-width="1"/>
+      <path fill="#5fb9de" transform="translate(13.4 -.6) scale(.42)" d="${STAR}"/>`),
+    fest: DI(`<path d="${STAR}" fill="#f6c945" stroke="${OUT}" stroke-width=".8" stroke-linejoin="round"/>`),
+    more: DI('<circle cx="5" cy="12" r="1.9" fill="currentColor"/><circle cx="12" cy="12" r="1.9" fill="currentColor"/><circle cx="19" cy="12" r="1.9" fill="currentColor"/>'),
+    coffee: COFFEE_THINK, heart: ICON_HEART, clean: ICON_SPARK, hungry: FOOD.lz.svg, parcel: GIFT_PARCEL,
+    pino: GIFT_ITEMS[2].svg, flower: GIFT_ITEMS[11].svg,
+  };
+  // Das gemalte Bild zum Einkleben (Leinwand der Staffelei ohne Gestell)
+  const diaryPainting = (motif) => (!EASEL_MOTIF[motif] ? '' : `<svg class="pic" viewBox="9 7 42 44" aria-hidden="true">
+    <rect x="9" y="7" width="42" height="44" fill="#bfe3f7"/><circle cx="42" cy="16" r="4.6" fill="#f6c945"/>
+    <path d="M9 38 Q21 30 33 36 T51 33 V51 H9Z" fill="#86c46b"/><path d="M9 45 Q26 40 51 45 V51 H9Z" fill="#5fae4a"/>${EASEL_MOTIF[motif][1]}</svg>`);
+  // Texte aus seiner Sicht. Mehrere Fassungen je Ereignis: Welche erscheint, hängt an Ereignis und Minute (diaryPick),
+  // so steht auf Tablet und Handy derselbe Satz, auch beim zweiten Öffnen. {n} = Name des Freunds.
+  const DIARY_TXT = {
+    wake: ['Aufgewacht! Erst mal strecken und gähnen.', 'Guten Morgen! Die Nase zuerst aus dem Bau gesteckt.', 'Zipfelmütze ab, der Tag kann losgehen.'],
+    sleep: ['Zipfelmütze auf und ab in den Bau. Gute Nacht!', 'Müde. Ich hab mich im Bau eingekuschelt.', 'Augen zu. Schlaf gut, liebes Tagebuch.'],
+    act: {
+      read: ['Ein Buch gelesen. An der lustigen Stelle musste ich kichern.', 'Gelesen, bis mir fast die Augen zugefallen sind.',
+        'Mein Buch war so spannend, dass ich das Umblättern vergessen hab.'],
+      game: ['Gameboy gespielt. Eine Runde gewonnen, juhu!', 'Am Gameboy war der Wurm drin. Mööp.', 'Gameboy gespielt, bis die Daumen müde waren.'],
+      tablet: ['Auf dem Bauch gelegen und am Tablet gewischt.', 'Am Tablet geschaut, wohin die Flugzeuge fliegen.'],
+      kite: ['Drachen steigen lassen! Der Wind hat ganz schön gezerrt.', 'Mein Drache stand hoch am Himmel. Ich hab die Schnur gut festgehalten.'],
+      tv: ['Im Bau ferngesehen. Draußen war es mir zu ungemütlich.', 'Fernsehen im Bau. Gemütlich!'],
+      music: ['Ukulele gespielt und mitgesungen. La-la-la!', 'Musik gemacht. Ein Ton ging daneben, plonk. Egal.',
+        'Ein kleines Konzert gegeben. Zum Schluss hab ich mich verbeugt.'],
+      paint: ['Ich hab {m} gemalt. Ich finde, es ist richtig gut geworden.', 'An der Staffelei gestanden und {m} gemalt.',
+        'Ich hab {m} gemalt. Dabei hatte ich einen Farbklecks auf der Nase.'],
+      bubbles: ['Seifenblasen gepustet und hinterhergesprungen. Plopp!', 'Seifenblasen! Eine ist direkt vor meiner Nase geplatzt.'],
+      sport: ['Frühsport! Hampelmann, Kniebeugen, Strecken. Danach war ich platt.', 'Stirnband auf und los: Frühsport. Ich hab sogar mitgezählt.'],
+    },
+    // dasselbe kurz, für die Zeile „Außerdem: …“, und als Hauptwort für die Tagesform
+    actShort: { read: 'gelesen', game: 'Gameboy gespielt', tablet: 'am Tablet gewischt', kite: 'Drachen steigen lassen', tv: 'ferngesehen',
+      music: 'Musik gemacht', paint: 'gemalt', bubbles: 'Seifenblasen gepustet', sport: 'geturnt' },
+    actNoun: { read: 'Lesen', game: 'Gameboy', tablet: 'Tablet', music: 'Musik', paint: 'Malen', bubbles: 'Seifenblasen' },
+    motif: { blume: 'eine Blume', pika: 'mich selbst', pino: '{n}', bau: 'meinen Bau', flieger: 'ein Flugzeug', regenbogen: 'einen Regenbogen' },
+    pino: ['{n} war zu Besuch! Wir haben uns mit den Nasen angestupst.', '{n} kam vorbei. Zusammen ist alles schöner.',
+      'Mit {n} gespielt. Beim Abschied hingen meine Ohren kurz.'],
+    coffee: ['Es roch nach Kaffee. Ich hab mir auch einen geholt.', 'Kaffeeduft! Ich hab mitgetrunken, Schluck für Schluck.'],
+    bird: ['Ein Vögelchen saß da. Ich hab gepiepst, es hat zurückgezwitschert.', 'Besuch von einem Vögelchen. Wir haben uns nett unterhalten.'],
+    plane: ['Ein Flugzeug! Ich hab ihm lange nachgeschaut. Brumm.', 'Hoch oben flog ein Flugzeug. Wo es wohl hinwollte?'],
+    bfly: ['Ein Schmetterling ist auf meiner Nase gelandet. Ich hab ganz still gehalten.', 'Schmetterling auf der Nase! Ich musste schielen.'],
+    heart: ['So viel gestreichelt worden. Mein Fell steht noch ganz flauschig ab.', 'Ganz viele Streicheleinheiten bekommen. Ich bin fast geschmolzen.'],
+    parcel: ['Ein Päckchen am Ballon! Ich hab es mit der Zwille heruntergeholt.', 'Ein Päckchen! Schleife auf, Deckel ab.'],
+    earn: ['Du kümmerst dich so gut um mich, dass ein Päckchen für mich bereitliegt.', 'Ein neues Päckchen wartet auf mich. Danke fürs Kümmern!'],
+    earnGold: ['Eine ganze Woche am Stück gut umsorgt: Dafür gibt es ein goldenes Päckchen!'],
+    flowerTaken: ['Ich hab dir eine Blume gepflückt und ins Gras gelegt. Du hast sie genommen!', 'Für dich: eine Blume mit Schleife. Du hast sie angenommen, da hab ich mich gefreut.'],
+    flowerWait: ['Ich hab dir eine Blume ins Gras gelegt. Sie wartet auf dich.'],
+    flowerWilt: ['Ich hab dir eine Blume hingelegt. Sie ist leider verwelkt. Ich pflück dir bald eine neue.'],
+    gather1: ['Eine Blüte für meinen Vorrat gesammelt.'],
+    gatherN: ['{c} Blüten für meinen Vorrat gesammelt. Der Winter kann kommen.', '{c} Blüten gepflückt und in den Vorrat gelegt.'],
+    hungry: ['Mein Bauch hat geknurrt. Zum Glück gab es bald etwas zu knabbern.'],
+    hungryNow: ['Mein Bauch hat geknurrt. Ich hab ganz fest an Löwenzahn gedacht.'],
+    clean: ['Alles blitzblank! Danke fürs Saubermachen, da hab ich einen Freudensprung gemacht.', 'Meine Wiese ist wieder sauber. Sie funkelt richtig!'],
+    streak: ['Meine Päckchen-Serie fängt von vorn an. Macht nichts, das schaffen wir zusammen.'],
+    secret: ['Da steht nichts in meinem Tagebuch. Was ich gemacht habe, bleibt mein Geheimnis.',
+      'Da steht nichts. Vielleicht hab ich Purzelbäume geübt. Vielleicht auch nicht.'],
+    bote: { washer: ['Die Wäsche war fertig. Ich hab ganz laut Bescheid gesagt!'], dryer: ['Der Trockner war fertig. Die Handtücher waren schön flauschig.'],
+      dishwasher: ['Das Geschirr war fertig und hat geglänzt.'] },
+    fest: { witch: 'Halloween! Ich hab einen Hexenhut auf.', martin: 'St. Martin! Laterne, Laterne …', boot: 'Nikolaus! Mein Stiefel ist voll.',
+      xmas: 'Weihnachten! Bei mir steht ein Tannenbaum.', sticks: 'Frohes Neues! Ich hab das Feuerwerk gesehen.', karneval: 'Helau! Es regnet Konfetti.',
+      ostern: 'Ostern! Im Gras liegen bunte Eier.', maibaum: 'Hinter meinem Bau steht ein Maibaum.', sommer: 'Sommerfest! Die Wimpel flattern.' },
+    treasure: ['Stups ich an und flitze hinterher.', 'Dreht sich im echten Wind.', 'Mit dem kuschle ich nachts.', 'Für sonnige Tage ab 24 Grad.',
+      'Damit schau ich Flugzeugen nach.', 'Für mein Nickerchen.', 'Damit gieße ich die Blumen.', 'Bimmelt, wenn ich rauskomme.'],
+    wx: { sunny: 'sonnig', clear: 'klar', 'clear-night': 'klar', partlycloudy: 'heiter', cloudy: 'bewölkt', rainy: 'Regen', pouring: 'Starkregen',
+      snowy: 'Schnee', 'snowy-rainy': 'Schneeregen', fog: 'Nebel', lightning: 'Gewitter', 'lightning-rainy': 'Gewitter', hail: 'Hagel',
+      windy: 'windig', 'windy-variant': 'windig' },
+  };
+  const diaryPick = (list, ...key) => list[Math.floor(seedRnd('tb', ...key) * list.length)];
+  const diaryTime = (t) => {
+    const d = new Date(t);
+    return `${d.getHours()}:${String(d.getMinutes()).padStart(2, '0')}`;
+  };
+  const bitCount = (n) => {
+    let c = 0;
+    for (let v = n >>> 0; v; v &= v - 1) c++;
+    return c;
+  };
+  // Verlauf → Roh-Ereignisse { t, k, … }. S und P: [{ t, v }] mit geparstem Zustand bzw. Tagesplan, aufsteigend; der
+  // jeweils erste Stand ist nur die Ausgangslage. from: Ereignisse davor zählen nicht. decayAt(t, h): wann ab t h
+  // Abbau-Stunden um sind (für „Bauch hat geknurrt“), until: jetzt.
+  // → { ev, stamps (wann sich überhaupt etwas änderte), pets (Pika-Tag → wie oft gestreichelt) }
+  const diaryDerive = (S, P, from, { decayAt, until }) => {
+    const ev = [];
+    const stamps = [];
+    const pets = {};
+    const add = (t, k, x) => t >= from && ev.push({ t, k, ...x });
+    const acts = new Map(); // Fenster → Ereignis (das Motiv beim Malen kommt erst am Ende dazu)
+    const fed = new Set((P[0]?.v.fd || []).map((f) => f.t));
+    let pend = null; // verschenktes, noch nicht ausgepacktes Päckchen
+    const petMax = (c) => c && (pets[c.d] = Math.max(pets[c.d] || 0, c.n));
+    petMax(P[0]?.v.cute);
+    for (let i = 1; i < P.length; i++) {
+      const a = P[i - 1].v;
+      const b = P[i].v;
+      const t = P[i].t;
+      stamps.push(t);
+      for (const [k, name, v] of b.rec) {
+        if (acts.has(k)) {
+          if (v) acts.get(k).v = v;
+        } else if (!a.rec.some((e) => e[0] === k) && k * ACT_WIN.big > t - 3 * 36e5) {
+          // (ein Fenster von vor Stunden ist kein neues: Es fiel nur aus dem Verlauf und kam zurück)
+          const e = { t, k: 'act', a: name, v: v || '' };
+          acts.set(k, e);
+          if (t >= from) ev.push(e);
+        }
+      }
+      if (b.hay.c !== a.hay.c || b.hay.m > a.hay.m) add(t, 'gather');
+      if (b.fl && b.fl.t !== a.fl?.t) add(b.fl.t, 'flower', { id: b.fl.t, taken: !!b.fl.k });
+      else if (b.fl?.k && !a.fl?.k) {
+        const e = ev.find((x) => x.k === 'flower' && x.id === b.fl.t);
+        if (e) e.taken = true;
+        else add(t, 'flower', { id: b.fl.t, taken: true });
+      }
+      for (const f of b.fd) {
+        if (fed.has(f.t)) continue;
+        fed.add(f.t);
+        add(f.t, 'feed');
+      }
+      const c = b.cute;
+      if (c) {
+        petMax(c);
+        const neu = c.m & ~(a.cute?.d === c.d ? a.cute.m : 0);
+        MEM_BITS.forEach((name, bit) => neu & (1 << bit) && add(t, 'mem', { b: name }));
+      }
+      const g0 = a.gift;
+      const g1 = b.gift;
+      if (g0 && g1) {
+        if (g1.k === g0.k && g1.a > g0.a) add(t, 'earn');
+        if (g1.k === g0.k && g1.d > g0.d) add(t, 'earnGold');
+        if (g1.k !== g0.k && g0.b != null && g1.a === 0) add(t, 'streak');
+        if (g1.z > g0.z) {
+          const it = g1.i & 15;
+          const bit = 1 << it;
+          const v0 = g0.v || 0;
+          const v1 = g1.v || 0;
+          pend = { z: g1.z, it, gold: !!(g1.i & 16), what: it >= GIFT_TRE ? 'treat' : !(g0.u & bit) ? 'new'
+            : v1 & (bit << 8) && !(v0 & (bit << 8)) ? 'gilt' : v1 & bit && !(v0 & bit) ? 'trick' : 'new' };
+        }
+        if (g1.o > g0.o) {
+          const it = g1.i & 15;
+          add(t, 'parcel', pend && pend.z <= g1.o ? pend : { it, gold: !!(g1.i & 16), what: it >= GIFT_TRE ? 'treat' : 'new' });
+          pend = null;
+        }
+      }
+    }
+    // Zustand: Großputz, einzeln weggemachte Häufchen, und wann der Bauch knurrte (satt unter 30 %, bevor es wieder stieg)
+    let food = S[0]?.v;
+    const growl = (v, end, eaten) => {
+      if (!v || !(v.s > 30)) return;
+      const x = decayAt(v.st, (v.s - 30) / RATE.s);
+      if (x < end) add(x, 'hungry', { eaten });
+    };
+    for (let i = 1; i < S.length; i++) {
+      const a = S[i - 1].v;
+      const b = S[i].v;
+      const t = S[i].t;
+      stamps.push(t);
+      if (b.c > a.c) add(t, 'clean', { n: 1, all: true });
+      else if (b.c === a.c && b.m & ~a.m) add(t, 'clean', { n: bitCount(b.m & ~a.m) });
+      if (b.st !== food.st) {
+        growl(food, b.st, true);
+        food = b;
+      }
+    }
+    growl(food, until, false);
+    return { ev, stamps: stamps.sort((x, y) => x - y), pets };
+  };
+  // Fenster über dem Dashboard (eigener Schattenbaum an document.body): Notizbuch mit Klebestreifen und Linien
+  const STYLE_DIARY = `
+  :host { all: initial; }
+  .bd {
+    position: fixed; inset: 0; z-index: 9999; display: flex; align-items: center; justify-content: center; padding: 14px;
+    box-sizing: border-box; background: rgba(40, 28, 18, .5); animation: tbin .2s; -webkit-tap-highlight-color: transparent;
+    font-family: var(--ha-font-family-body, var(--paper-font-body1_-_font-family, Roboto, "Segoe UI", system-ui, sans-serif));
+    --pp: #fbf5e6; --ink: #4a3a2c; --soft: #8a7461; --line: rgba(90, 64, 48, .09); --tab: rgba(90, 64, 48, .08); --acc: #c9853a;
+  }
+  .bd.night { --pp: #262d4a; --ink: #ecebf7; --soft: #a9add0; --line: rgba(255, 255, 255, .07); --tab: rgba(255, 255, 255, .09); --acc: #f2c56b; }
+  .sheet {
+    position: relative; display: flex; flex-direction: column; width: min(440px, 100%); height: min(640px, 100%);
+    box-sizing: border-box; border-radius: 18px; background: var(--pp); color: var(--ink); outline: none;
+    box-shadow: 0 14px 44px rgba(0, 0, 0, .4); animation: tbup .3s cubic-bezier(.3, 1.3, .5, 1);
+  }
+  .sheet::before {
+    content: ''; position: absolute; left: 50%; top: -8px; width: 92px; height: 21px; margin-left: -46px; border-radius: 2px;
+    background: repeating-linear-gradient(90deg, rgba(242, 143, 177, .85) 0 8px, rgba(246, 201, 69, .85) 8px 16px);
+    transform: rotate(-2deg); box-shadow: 0 1px 2px rgba(0, 0, 0, .15);
+  }
+  .hd { display: flex; align-items: center; gap: 10px; padding: 18px 12px 6px 18px; }
+  .hd .bk { flex: none; width: 34px; height: 34px; transform: rotate(-6deg); }
+  .hd svg, .ic svg, .chips svg, .t i svg, .row > i svg { display: block; width: 100%; height: 100%; overflow: visible; }
+  .ht { flex: 1; min-width: 0; }
+  .ht b { display: block; font-size: 19px; font-weight: 800; line-height: 1.2; }
+  .ht span { display: block; font-size: 13px; color: var(--soft); margin-top: 1px; }
+  button { font: inherit; color: inherit; border: none; background: none; cursor: pointer; padding: 0; }
+  button:focus-visible, .page:focus-visible { outline: 2px solid var(--acc); outline-offset: 1px; }
+  .x { flex: none; width: 40px; height: 40px; border-radius: 50%; font-size: 18px; color: var(--soft); }
+  .x:hover { background: var(--tab); }
+  .tabs { display: flex; gap: 6px; padding: 6px 16px 10px; }
+  .tabs button { flex: 1; height: 38px; border-radius: 12px; font-size: 14px; font-weight: 700; color: var(--soft); background: var(--tab); }
+  .tabs button[aria-selected="true"] { background: var(--acc); color: #fff; }
+  .night .tabs button[aria-selected="true"] { color: #2a2238; }
+  .page {
+    flex: 1; min-height: 120px; overflow-y: auto; overscroll-behavior: contain; padding: 4px 18px 16px; border-radius: 0 0 18px 18px;
+    background: repeating-linear-gradient(transparent 0 31px, var(--line) 31px 32px) local;
+    scrollbar-width: thin; scrollbar-color: var(--soft) transparent;
+  }
+  .fazit { margin: 6px 0 10px; font-size: 16px; line-height: 1.45; font-weight: 600; font-style: italic; }
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 4px; }
+  .chips span { display: inline-flex; align-items: center; gap: 5px; padding: 4px 10px 4px 7px; border-radius: 999px; font-size: 13px; font-weight: 700; background: var(--tab); }
+  .chips i { display: block; width: 15px; height: 15px; }
+  h3 { margin: 16px 0 2px; font-size: 13px; font-weight: 800; letter-spacing: .02em; color: var(--acc); }
+  .e { display: grid; grid-template-columns: 40px minmax(0, 1fr); gap: 11px; padding: 8px 0; }
+  .ic { display: block; width: 40px; height: 40px; box-sizing: border-box; padding: 7px; border-radius: 50%; background: rgba(255, 255, 255, .75);
+    box-shadow: 0 1px 3px rgba(90, 64, 48, .22); transform: rotate(-4deg); color: var(--soft); }
+  .e:nth-child(even) .ic { transform: rotate(3deg); }
+  .night .ic { background: rgba(255, 255, 255, .14); box-shadow: none; }
+  .tm { display: block; font-size: 12px; font-weight: 700; color: var(--soft); }
+  .e p { margin: 1px 0 0; font-size: 15px; line-height: 1.45; }
+  .e.dim p { color: var(--soft); }
+  .e.sub p { font-size: 14px; color: var(--soft); }
+  .pic { display: block; width: 84px; height: 88px; margin: 8px 0 2px 4px; padding: 5px 5px 14px; background: #fff; border-radius: 2px;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, .25); transform: rotate(-3deg); box-sizing: border-box; }
+  .wait, .none { margin: 26px 4px; text-align: center; font-size: 15px; line-height: 1.5; color: var(--soft); }
+  .note { margin: 14px 0 0; font-size: 12px; color: var(--soft); }
+  .sign { display: flex; justify-content: flex-end; align-items: center; gap: 6px; margin-top: 12px; font-size: 13px; font-weight: 700; color: var(--soft); }
+  .sign i { display: block; width: 18px; height: 18px; transform: rotate(14deg); }
+  .sign svg { display: block; width: 100%; height: 100%; }
+  .tre { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin-top: 8px; }
+  .t { display: grid; grid-template-columns: 38px minmax(0, 1fr); gap: 9px; align-items: center; padding: 8px; border-radius: 12px; background: var(--tab); }
+  .t i, .row > i { display: block; width: 38px; height: 38px; position: relative; }
+  .t b, .row b { display: block; font-size: 14px; font-weight: 800; line-height: 1.25; }
+  .t span, .row span { display: block; font-size: 12px; line-height: 1.3; color: var(--soft); }
+  .t.miss i svg { filter: brightness(0); opacity: .16; }
+  .night .t.miss i svg { filter: brightness(0) invert(1); opacity: .2; }
+  .t.lv2 i::after { content: ''; position: absolute; right: -2px; bottom: -2px; width: 10px; height: 10px; border-radius: 50%; background: #5fb9de; box-shadow: 0 0 0 2px var(--pp); }
+  .t.gilt i svg { filter: ${GILT_F} drop-shadow(0 0 2px rgba(255, 214, 90, .9)); }
+  .t.gilt i::after { background: #f2b632; }
+  .row { display: grid; grid-template-columns: 38px minmax(0, 1fr); gap: 11px; align-items: center; padding: 10px 8px 0; }
+  .row .w { color: #d9622b; font-weight: 800; }
+  .dots { display: inline-flex; gap: 3px; margin-left: 6px; vertical-align: -1px; }
+  .dots u { width: 9px; height: 9px; border-radius: 50%; box-shadow: inset 0 0 0 1px rgba(90, 64, 48, .35); }
+  @keyframes tbin { from { opacity: 0; } }
+  @keyframes tbup { from { transform: translateY(24px) scale(.96); opacity: 0; } }
+  @media (max-width: 520px) {
+    .bd { align-items: flex-end; padding: 0; }
+    .sheet { width: 100%; height: min(640px, 90%); border-radius: 20px 20px 0 0; }
+    .page { border-radius: 0; padding-bottom: 24px; }
+    .tre { grid-template-columns: 1fr; }
+  }
+  @media (prefers-reduced-motion: reduce) { .bd, .sheet { animation: none; } }
+  `;
+  // In der Karte: Die Statusleiste ist der Einstieg (Buch und Punkt für Neues), ohne Leiste ein kleiner Buch-Knopf
+  const STYLE_DIARY_BTN = `
+  .stats .tb { display: none; position: relative; width: 16px; height: 16px; margin-right: -3px; }
+  .stats .tb svg { display: block; width: 100%; height: 100%; }
+  .stats.dia { cursor: pointer; }
+  .stats.dia .tb { display: block; }
+  .stats.dia:active { transform: scale(.97); }
+  .stats:focus-visible, .tbbtn:focus-visible { outline: 2px solid #fff; outline-offset: 1px; }
+  .stats.neu .tb::after, .tbbtn.neu::after {
+    content: ''; position: absolute; right: -3px; top: -3px; width: 7px; height: 7px; border-radius: 50%; background: #e8584e;
+    box-shadow: 0 0 0 1.5px rgba(255, 255, 255, .9);
+  }
+  .tbbtn {
+    position: absolute; left: 8px; top: 6px; z-index: 5; width: 32px; height: 32px; padding: 6px; border: none; border-radius: 50%;
+    cursor: pointer; background: rgba(255, 255, 255, .75); box-shadow: 0 2px 6px rgba(0, 0, 0, .18); transition: transform .15s, background 2.5s;
+  }
+  .tbbtn[hidden] { display: none; }
+  .tbbtn:active { transform: scale(.88); }
+  .tbbtn svg { display: block; width: 100%; height: 100%; }
+  .night .tbbtn { background: rgba(15, 22, 45, .55); }
+  `;
+  // ==================== Ende Tagebuch ====================
 
   const STYLE = `
   :host { display: block; height: 100%; }
@@ -4009,7 +4333,6 @@
   .night .feed { background: rgba(15, 22, 45, .55); }
   .feed.no { animation: no .4s; }
   .btncol .gbtn { right: 8px; top: 48px; }
-  .btncol .album { top: 90px; }
   @keyframes no { 25% { transform: translateX(-4px); } 75% { transform: translateX(4px); } }
   .bar-c { background: #5fb9de; }
 
@@ -4311,6 +4634,8 @@
             { name: 'gifts', selector: bool, default: true },
             { name: 'friend', selector: bool, default: true },
             { name: 'festive', selector: bool, default: true },
+            { name: 'diary', selector: bool, default: true },
+            { name: 'diary_house', selector: bool, default: true },
           ] },
           group('Schlaf, Wetter und Himmel', 'mdi:weather-night', [
             { type: 'grid', name: '', schema: [
@@ -4402,6 +4727,7 @@
       this._applyAreal();
       this._el.name.textContent = this._cfg.name;
       this._el.stats.hidden = !this._cfg.show_stats;
+      this._diarySync();
       if (this._W) this._btnFit();
       this._el.scene.style.minHeight = `${Number(this._cfg.height) || DEFAULTS.height}px`;
       // Prototyp Tiefe an/aus: ausgeschaltet zurück auf die vordere Spur, Kulisse in die Mitte
@@ -4636,6 +4962,7 @@
       this._detachFriend();
       this._detachBote();
       this._detachGift();
+      this._diaryClose();
     }
 
     // ---------- Aufbau ----------
@@ -4655,7 +4982,7 @@
       ].map(([top, s, d, dl]) => `<div class="cloud" style="top:${top}%;--s:${s};--d:${d}s;--dl:${dl}s"></div>`).join('');
 
       this.shadowRoot.innerHTML = `
-        <style>${STYLE}${STYLE_SKY}${STYLE_FEST}${STYLE_FRIEND}${STYLE_BOTE}${STYLE_COFFEE}${STYLE_ACT}${STYLE_GIFT}</style>
+        <style>${STYLE}${STYLE_SKY}${STYLE_FEST}${STYLE_FRIEND}${STYLE_BOTE}${STYLE_COFFEE}${STYLE_ACT}${STYLE_GIFT}${STYLE_DIARY_BTN}</style>
         <ha-card>
           <div class="scene day">
             <div class="sky sky-day"></div><div class="sky sky-dusk"></div><div class="sky sky-night"></div>
@@ -4717,17 +5044,17 @@
             <div class="ptags"></div>
             <div class="fx"></div>
             <div class="stats">
-              <span class="nm"></span>
+              <span class="tb">${DIARY_BOOK}</span><span class="nm"></span>
               <span class="st st-s" title="Satt">${ICON_LEAF}<i><b class="bar-s"></b></i></span>
               <span class="st st-g" title="Glücklich">${ICON_HEART}<i><b class="bar-g"></b></i></span>
               <span class="st st-c" title="Sauber">${ICON_SPARK}<i><b class="bar-c"></b></i></span>
             </div>
+            <button class="tbbtn" hidden title="Tagebuch" aria-label="Tagebuch öffnen">${DIARY_BOOK}</button>
             <button class="feed" title="Füttern" aria-label="Füttern">${FOOD.lz.svg}</button>
             <button class="gbtn" hidden title="Päckchen schenken" aria-label="Päckchen schenken">
               <svg class="gring" viewBox="0 0 44 44" aria-hidden="true"><circle class="gr0" cx="22" cy="22" r="20"/><circle class="gr1" cx="22" cy="22" r="20" pathLength="100"/></svg>
               <span class="gico">${GIFT_PARCEL}</span><b class="gnum"></b><i class="gcrit"></i>
             </button>
-            <div class="album" hidden></div>
             <div class="sr" aria-live="polite"></div>
           </div>
         </ha-card>`;
@@ -4744,7 +5071,7 @@
         precip: $('.precip'), flash: $('.flash'),
         burrow: $('.burrow'), lights: $('.lights'), clipw: $('.clipw'), depth: $('.depth'), rock: $('.lookout'),
         meteors: $('.meteors'), ff: $('.ff'), festB: $('.fest-b'), festF: $('.fest-f'), props: $('.props'), friends: $('.friends'),
-        acts: $('.acts'), gifts: $('.gifts'), gbtn: $('.gbtn'), album: $('.album'),
+        acts: $('.acts'), gifts: $('.gifts'), gbtn: $('.gbtn'), tbbtn: $('.tbbtn'),
       };
       this._el.anchor = this._el.pika.querySelector('.anchor');
       this._el.sr = this.shadowRoot.querySelector('.sr');
@@ -4762,7 +5089,20 @@
       // Lang drücken auf Touch (z. B. Windows-Tablet) öffnete sonst das Kontextmenü des Browsers
       this._el.pika.addEventListener('contextmenu', (e) => e.preventDefault());
       this._el.feed.addEventListener('click', (e) => (e.stopPropagation(), this._onFeed()));
-      // Päckchen-Knopf: tippen = verschenken, lang drücken = Album
+      // Statusleiste (oder, ist sie ausgeblendet, der Buch-Knopf) öffnet das Tagebuch
+      const diary = (e) => {
+        if (!this._diaryOn()) return;
+        e.stopPropagation();
+        this._diaryOpen();
+      };
+      this._el.stats.addEventListener('click', diary);
+      this._el.tbbtn.addEventListener('click', diary);
+      this._el.stats.addEventListener('keydown', (e) => {
+        if ((e.key !== 'Enter' && e.key !== ' ') || !this._diaryOn()) return;
+        e.preventDefault();
+        this._diaryOpen();
+      });
+      // Päckchen-Knopf: tippen = verschenken, lang drücken = Schätze im Tagebuch (früher das Album)
       const gb = this._el.gbtn;
       gb.addEventListener('click', (e) => (e.stopPropagation(), this._onGiftBtn()));
       gb.addEventListener('contextmenu', (e) => e.preventDefault());
@@ -4772,11 +5112,10 @@
         clearTimeout(this._albumPT);
         this._albumPT = setTimeout(() => {
           this._albumHeld = true;
-          this._album(true);
+          this._diaryOpen('schatz');
         }, 550);
       });
       for (const t of ['pointerup', 'pointercancel', 'pointerleave']) gb.addEventListener(t, () => clearTimeout(this._albumPT));
-      this._el.album.addEventListener('click', (e) => (e.stopPropagation(), this._album(false)));
       this._el.scene.addEventListener('click', (e) => this._onLookAt(e));
       this._hay = 3;
       this._blooms = []; // Blüten im Vorrat: { color, sx, sy }, kommen aus dem Tagesplan (_hayFromPlan)
@@ -4818,8 +5157,9 @@
     // Futter- und Päckchen-Knopf oben rechts nebeneinander (Päckchen-Knopf links, 36 px, 8 px Abstand). Stoßen sie an
     // die Statusleiste (schmale Karte, langer Name), stehen sie untereinander.
     _btnFit() {
-      const { scene, stats } = this._el;
-      const sR = stats.hidden ? 0 : stats.offsetLeft + stats.offsetWidth;
+      const { scene, stats, tbbtn } = this._el;
+      const left = stats.hidden ? tbbtn : stats;
+      const sR = left.hidden ? 0 : left.offsetLeft + left.offsetWidth;
       scene.classList.toggle('btncol', sR + 8 > scene.clientWidth - 88);
     }
 
@@ -6423,6 +6763,7 @@
       this._tickBote();
       this._tickCoffee();
       this._tickGift();
+      this._diaryDot();
     }
 
     _hiddenFeatures(hidden) {
@@ -6769,13 +7110,13 @@
     // Wie oft er heute gestreichelt wurde, auf allen Geräten zusammen: ab 10 kommt er auch mal angehoppelt
     _petCount() {
       const c = this._cuteToday();
-      if (c.n >= PET_CAP) return; // mehr muss keiner wissen, der Helfer wird nicht mehr geschrieben
+      if (c.n >= PET_CAP) return; // mehr muss keiner wissen, der Helfer wird dafür nicht mehr geschrieben
       this._planOp({ t: 'pet', d: c.d, n: c.n + 1 });
       if (c.n + 1 === 8) this._memo('heart');
     }
 
     _clingy() {
-      return this._cuteToday().n >= PET_CAP;
+      return this._cuteToday().n >= PET_CLING;
     }
 
     async _comeHere() {
@@ -7632,8 +7973,8 @@
     }
 
     // Aktive Feste am (Orts-)Datum. festive: false lässt nur die Geburtstage übrig.
-    _festToday() {
-      const now = new Date(this._festNow());
+    _festToday(at = this._festNow()) {
+      const now = new Date(at);
       const y = now.getFullYear();
       const mo = now.getMonth() + 1;
       const d = now.getDate();
@@ -10197,6 +10538,7 @@
           try {
             localStorage.setItem(this._lsKey(), v);
           } catch (e) { /* egal */ }
+          this._diaryLog('s', v);
           // Helfer fehlt oder war beim Laden nicht erreichbar: Gewinne behalten, kommt er, gehen sie auf seinen Stand
           if (this._cfg.entity) {
             this._pendingWrite = false;
@@ -10232,7 +10574,7 @@
       if (from == null || to == null || from === to) return;
       try {
         const mine = (this._lsCopies ??= new Set());
-        for (const p of ['pika-pet-card', 'pika-pet-plan', 'pika-pet-gift']) {
+        for (const p of ['pika-pet-card', 'pika-pet-plan', 'pika-pet-gift', 'pika-pet-diary']) {
           const v = localStorage.getItem(`${p}:${from}`);
           if (v != null && localStorage.getItem(`${p}:${to}`) == null) {
             localStorage.setItem(`${p}:${to}`, v);
@@ -12997,7 +13339,6 @@
       const on = this._giftOn() && !!G && (G.z > 0 || G.n > 0 || G.y > 0);
       if (!on) {
         b.hidden = true;
-        this._el.album.hidden = true;
         return;
       }
       if (b.hidden) {
@@ -13040,7 +13381,7 @@
       b.style.setProperty('--gpp', pp);
       b.style.setProperty('--gpr', pr);
       b.querySelector('.gnum').textContent = n ? String(n) : '';
-      b.title = n ? `Päckchen schenken (${n} da), lang drücken: Album` : 'Päckchen: gerade keins da, lang drücken: Album';
+      b.title = n ? `Päckchen schenken (${n} da), lang drücken: Schätze` : 'Päckchen: gerade keins da, lang drücken: Schätze';
     }
 
     _onGiftBtn() {
@@ -13048,7 +13389,6 @@
         this._albumHeld = false;
         return;
       }
-      if (!this._el.album.hidden) return this._album(false);
       const G = this._plan?.gift;
       const b = this._el.gbtn;
       const no = () => {
@@ -13584,11 +13924,9 @@
     // seiner Zeitleiste neu angelegt (sonst bliebe er ohne Ankunfts-Zeitgeber im Flug).
     _detachGift() {
       clearTimeout(this._albumPT);
-      clearTimeout(this._albumT);
       clearTimeout(this._bellT);
       clearTimeout(this._giftArrT);
       this._albumHeld = false;
-      if (this._el) this._el.album.hidden = true;
       this._gtEls?.get(7)?.classList.remove('ring');
       const B = this._gb;
       if (B?.stage === 'fly') {
@@ -14067,43 +14405,476 @@
       if (r.width) this._sparkle(r.left - sc.left + r.width * rnd(0.3, 0.7), r.top - sc.top + r.height * rnd(0.1, 0.5), 1);
     }
 
-    // Album (lang drücken): Schätze, Serie, wann das nächste Päckchen kommt
-    _album(on) {
-      const a = this._el.album;
-      clearTimeout(this._albumT);
-      if (!on) {
-        a.hidden = true;
-        return;
-      }
+    // Stand der Päckchen in Worten (Schätze im Tagebuch): Stufen, Serie, wann das nächste kommt, was gerade fehlt
+    _giftInfo() {
       const G = this._plan?.gift;
-      if (!G) return;
+      if (!G) return null;
       const c = this._careEval() || this._care || {};
       const lvs = giftLvs(G); // der Schatz im fliegenden Ballon erscheint erst nach dem Auspacken
-      const have = lvs.filter((lv) => lv > 0).length;
-      const tricks = lvs.filter((lv) => lv >= 2).length;
-      const gilt = lvs.filter((lv) => lv >= 3).length;
-      const days = c.broken ? 0 : Math.floor((this._haNow() - G.k) / 864e5);
       const fmt = (ms) => {
         const m = Math.max(1, Math.round(ms / 6e4));
         return m >= 60 ? `${Math.floor(m / 60)} Std.${m % 60 ? ` ${m % 60} Min.` : ''}` : `${m} Min.`;
       };
       // Was fehlt, damit die Serie hält (bzw. wieder anfängt): "Hunger!", "Streicheln!", "Putzen!"
       const low = c.warn || c.broken ? this._giftLow().map((k) => GIFT_LOW[k][0]).join(' ') : '';
-      const need = low ? `<span class="alb-w">${low}</span>` : '';
-      const next = G.n >= GIFT.max ? `Vorrat voll${need ? ` · ${need}` : ''}` : c.broken ? `Serie gerissen${need ? `, neu ab 50 %: ${need}` : ''}`
-        : c.warn ? (need ? `schnell: ${need}` : 'einmal kümmern, dann läuft sie weiter') : `nächstes in ${fmt(c.left ?? GIFT.every)} Wachzeit`;
-      // Stufen: ein Abzeichen rechts unten (blau = Trick), golden = goldener Schatz
-      const stage = have < GIFT_TRE ? '' : ` · ${tricks} ${tricks === 1 ? 'Trick' : 'Tricks'}${gilt ? `, ${gilt} golden` : ''}`;
-      a.innerHTML = `<div class="alb-row">${GIFT_ITEMS.slice(0, GIFT_TRE).map((it, t) => {
-        const lv = lvs[t];
-        const nm = it.key === 'plush' ? `Plüsch-${this._frName()}` : it.name;
-        const tip = !lv ? '?' : `${nm}${lv >= 2 ? ` · Trick: ${GIFT_TRICK[t]}` : ''}${lv >= 3 ? ' · golden' : ''}`;
-        return `<i class="${['miss', '', 'lv2', 'lv2 gilt'][lv]}" title="${esc(tip)}">${it.svg}</i>`;
-      }).join('')}</div><div class="alb-t">${have}/${GIFT_TRE} Schätze${stage} · Serie ${days} ${days === 1 ? 'Tag' : 'Tage'} · ${next}</div>`;
-      a.hidden = false;
-      this._albumT = setTimeout(() => this._album(false), 9000);
+      const next = G.n >= GIFT.max ? `Vorrat voll${low ? ` · ${low}` : ''}` : c.broken ? `Serie gerissen${low ? `, neu ab 50 %: ${low}` : ''}`
+        : c.warn ? (low ? `schnell: ${low}` : 'einmal kümmern, dann läuft sie weiter') : `nächstes in ${fmt(c.left ?? GIFT.every)} Wachzeit`;
+      return {
+        G, lvs, next, warn: !!(c.warn || c.broken),
+        have: lvs.filter((lv) => lv > 0).length,
+        days: c.broken ? 0 : Math.floor((this._haNow() - G.k) / 864e5),
+      };
     }
     // ==================== Ende Päckchen ====================
+
+    // ==================== Tagebuch: Methoden ====================
+
+    _diaryOn() {
+      return this._cfg?.diary !== false;
+    }
+
+    _diaryLsKey() {
+      return `pika-pet-diary:${this._cfg.name}`;
+    }
+
+    // Einstieg: Die Statusleiste wird zum Knopf (Buch davor); ist sie ausgeblendet, gibt es einen kleinen Buch-Knopf
+    _diarySync() {
+      const on = this._diaryOn();
+      const { stats, tbbtn } = this._el;
+      stats.classList.toggle('dia', on);
+      for (const [k, v] of [['role', 'button'], ['tabindex', '0'], ['aria-label', `Tagebuch von ${this._cfg.name} öffnen`]]) {
+        if (on) stats.setAttribute(k, v);
+        else stats.removeAttribute(k);
+      }
+      tbbtn.hidden = !on || !!this._cfg.show_stats;
+      this._diaryDot();
+    }
+
+    // Punkt am Buch: ein neuer Tag oder ein ausgepacktes Päckchen seit dem letzten Aufschlagen (je Gerät gemerkt)
+    _diarySig() {
+      const G = this._plan?.gift;
+      return `${pikaDay(this._haNow())}.${G ? `${G.o}.${G.u}.${G.v || 0}` : '-'}`;
+    }
+
+    _diaryDot() {
+      if (!this._el || !this._planOk) return;
+      let seen = null;
+      try {
+        seen = localStorage.getItem(`pika-pet-diary-seen:${this._cfg.name}`);
+      } catch (e) { /* egal */ }
+      const neu = this._diaryOn() && seen !== this._diarySig();
+      this._el.stats.classList.toggle('neu', neu);
+      this._el.tbbtn.classList.toggle('neu', neu);
+    }
+
+    // Ohne Helfer gibt es keinen Verlauf in HA: Dann schreibt das Gerät jeden gespeicherten Stand mit Uhrzeit im Browser
+    // mit (k: 's' Zustand, 'p' Tagesplan), DIARY.keep lang und dazu den letzten Stand davor als Ausgangslage.
+    _diaryLog(k, v) {
+      try {
+        const key = this._diaryLsKey();
+        if (this._dlogKey !== key) {
+          this._dlogKey = key;
+          this._dlog = JSON.parse(localStorage.getItem(key) || 'null') || {};
+        }
+        const a = (this._dlog[k] ||= []);
+        if (a.at(-1)?.[1] === v) return;
+        const now = Math.round(this._haNow() / 1000);
+        a.push([now, v]);
+        const i = a.findIndex((e) => e[0] >= now - DIARY.keep / 1000);
+        if (i > 1) a.splice(0, i - 1);
+        if (a.length > DIARY.max) a.splice(0, a.length - DIARY.max);
+        localStorage.setItem(key, JSON.stringify(this._dlog));
+      } catch (e) { /* kein Speicher: dann ohne Tagebuch */ }
+    }
+
+    // Beginn des Pika-Tags (4 Uhr nachts, wie pikaDay), back Tage zurück
+    _diaryDay(back = 0) {
+      const d = new Date(this._haNow() - 4 * 36e5);
+      d.setHours(4, 0, 0, 0);
+      d.setDate(d.getDate() - back);
+      return d.getTime();
+    }
+
+    // Verlauf von Zustand und Tagesplan (und der Geräte des Haus-Boten) zwischen from und to. Mit Helfer aus HA,
+    // ohne aus der Mitschrift im Browser. → { S, P (geparst, aufsteigend), bote (Ereignisse), fail }
+    async _diaryHist(from, to) {
+      const c = this._cfg;
+      const hass = this._hass;
+      const haS = !!c.entity && !this._noEntity;
+      const haP = !!c.plan_entity && !!hass?.states[c.plan_entity] && this._planMax() >= PLAN_MIN;
+      const house = c.diary_house !== false ? this._boteSync().list : [];
+      const ids = [...new Set([...(haS ? [c.entity] : []), ...(haP ? [c.plan_entity] : []), ...house.map((a) => a.cfg.state)])];
+      let res = {};
+      let fail = false;
+      if (ids.length) {
+        try {
+          res = (await hass.callWS({
+            type: 'history/history_during_period', start_time: new Date(from).toISOString(), end_time: new Date(to).toISOString(),
+            entity_ids: ids, minimal_response: true, no_attributes: true, significant_changes_only: false,
+          })) || {};
+        } catch (e) {
+          fail = true;
+          console.warn('pika-pet-card: Verlauf für das Tagebuch nicht lesbar', e);
+        }
+      }
+      // HA liefert je Helfer [{ s: Stand, lu: Sekunden }], ältere Versionen { state, last_updated }
+      const rows = (id) => (Array.isArray(res[id]) ? res[id] : [])
+        .map((r) => ({ t: Math.round((Number(r.lu ?? r.lc) || Date.parse(r.last_updated || r.last_changed) / 1000) * 1000), s: r.s ?? r.state }))
+        .filter((r) => Number.isFinite(r.t))
+        .sort((a, b) => a.t - b.t);
+      let L = null;
+      const local = (k) => {
+        try {
+          L ??= JSON.parse(localStorage.getItem(this._diaryLsKey()) || 'null') || {};
+        } catch (e) {
+          L = {};
+        }
+        return (L[k] || []).map(([t, s]) => ({ t: t * 1000, s }));
+      };
+      // (Zustände mit vier Feldern, bis 0.4, kennen keinen Großputz: auslassen)
+      const S = (haS ? rows(c.entity) : local('s'))
+        .map((r) => ({ t: r.t, v: String(r.s).split(',').length === 7 ? parseStats(r.s) : null })).filter((r) => r.v);
+      const P = (haP ? rows(c.plan_entity) : local('p')).map((r) => ({ t: r.t, v: planParse(r.s) })).filter((r) => r.v);
+      // Haus-Bote: ein Programm ging zu Ende (läuft → fertig)
+      const bote = [];
+      const norm = (v) => String(v ?? '').split('.').pop().toLowerCase().replace(/[\s_-]/g, '');
+      for (const a of house) {
+        let last = null;
+        for (const r of rows(a.cfg.state)) {
+          const raw = norm(r.s);
+          const s = BOTE_ALIAS[raw] || raw;
+          if (BOTE_DEAD.has(s)) continue;
+          if (s === 'finished' && BOTE_RUN.has(last) && r.t >= from) bote.push({ t: r.t, k: 'bote', type: a.type, name: a.name });
+          last = s;
+        }
+      }
+      // Helfer da, aber kein einziger Stand im Verlauf: Der Recorder zeichnet ihn nicht auf
+      return { S, P, bote, fail, none: !fail && ((haS && !S.length) || (haP && !P.length)) };
+    }
+
+    // Beide Seiten (heute, gestern) aus dem Verlauf. Vorschau: _dbgDiary liefert fertige Roh-Ereignisse.
+    async _diaryBuild() {
+      const now = this._haNow();
+      const d0 = this._diaryDay(0);
+      const d1 = this._diaryDay(1);
+      let R;
+      let H = { bote: [], fail: false, none: false, S: [], P: [] };
+      if (this._dbgDiary) R = { stamps: [], pets: {}, ...this._dbgDiary(d0, d1, now), data: true };
+      else {
+        H = await this._diaryHist(d1, now + 60000);
+        R = { ...diaryDerive(H.S, H.P, d1, { decayAt: (t, h) => this._decayAt(t, h), until: now }), data: H.S.length + H.P.length > 0 };
+      }
+      const page = (start, end, today) => this._diaryModel(start, end, R, H.bote, today, H.fail);
+      return { fail: H.fail, none: H.none, days: [page(d0, now + 1, true), page(d1, d0, false)] };
+    }
+
+    _diaryParcel(e, t) {
+      const it = GIFT_ITEMS[e.it];
+      const fr = this._frName();
+      const lead = e.gold ? 'Ein goldenes Päckchen! Ich hab es mit der Zwille vom Himmel geholt.' : diaryPick(DIARY_TXT.parcel, 'parcel', Math.floor(t / 60000));
+      if (!it) return lead;
+      const nm = it.key === 'plush' ? `Plüsch-${fr}` : it.name;
+      if (e.what === 'treat') return `${lead} Drin war ein Leckerli: ${nm}. Sofort aufgefuttert!`;
+      if (e.what === 'trick') return `${lead} Jetzt kann ich einen neuen Trick: ${GIFT_TRICK[e.it]}!`;
+      if (e.what === 'gilt') return `${lead} Jetzt hab ich ${GIFT_GILT[e.it].replace('%', nm)}.`;
+      return `${lead} Drin war ${it.key === 'plush' ? `ein ${nm}!` : it.say}`;
+    }
+
+    // Eine Seite: Einträge { t, part, icon, text, … } in Reihenfolge, Zähler (chips) und der Satz oben
+    _diaryModel(start, end, R, extra, today, fail) {
+      const now = this._haNow();
+      const day = new Date(start);
+      const [ws, we] = this._wakeDay(day);
+      const fr = this._frName();
+      const T = DIARY_TXT;
+      const tx = (list, k, t) => diaryPick(list, k, Math.floor(t / 60000)).replace('{n}', fr);
+      const hourPart = (t) => {
+        const h = new Date(t).getHours();
+        return h < 4 ? 'Nachts' : h < 11 ? 'Morgens' : h < 14 ? 'Mittags' : h < 18 ? 'Nachmittags' : 'Abends';
+      };
+      const partOf = (t) => (t < ws || t > we ? 'Nachts' : hourPart(t));
+      const out = [];
+      const put = (t, icon, text, x) => out.push({ t, icon, text, ...x });
+      const house = this._cfg.diary_house !== false;
+      const until = Math.min(end, now);
+
+      if (ws >= start && ws <= until) {
+        const favs = this._tagesform(ws).fav.map((a) => T.actNoun[a]).join(' und ');
+        put(ws, 'wake', `${tx(T.wake, 'wake', ws)} Heute hab ich Lust auf ${favs}.`);
+        // Festtage (wie sie mittags gelten)
+        const f = this._festToday(start + 8 * 36e5);
+        const fl = ['witch', 'martin', 'xmas', 'sticks', 'karneval', 'ostern', 'maibaum', 'sommer'].filter((k) => f[k]).map((k) => T.fest[k]);
+        if (f.boot?.full) fl.push(T.fest.boot);
+        if (f.advent && day.getDay() === 0) fl.push(`Der ${f.advent.candles}. Advent! Am Kranz brennt eine Kerze mehr.`);
+        if (f.birthday) {
+          const n = f.birthday.names;
+          fl.push(`Alles Gute, ${n.length > 1 ? `${n.slice(0, -1).join(', ')} und ${n.at(-1)}` : n[0]}! Es gibt Kuchen.`);
+        }
+        fl.forEach((text, i) => put(ws + 1 + i, 'fest', text, { tm: 'Heute ist ein besonderer Tag' }));
+      }
+
+      const mine = [...R.ev, ...extra].filter((e) => e.t >= start && e.t < end).sort((a, b) => a.t - b.t);
+      const one = new Set(); // manches steht nur einmal am Tag da
+      const once = (k) => !one.has(k) && !!one.add(k);
+      const acts = [];
+      const cnt = { feed: 0, clean: 0 };
+      let gather = null;
+      for (const e of mine) {
+        const t = e.t;
+        if (e.k === 'act') acts.push(e);
+        else if (e.k === 'feed') cnt.feed++;
+        else if (e.k === 'clean') {
+          cnt.clean += e.n;
+          if (e.all && once('clean')) put(t, 'clean', tx(T.clean, 'clean', t));
+        } else if (e.k === 'gather') {
+          if (gather) gather.c++;
+          else out.push((gather = { t, icon: 'gather', c: 1 }));
+        } else if (e.k === 'mem') {
+          if (['pino', 'bird', 'plane', 'bfly', 'heart'].includes(e.b) || (e.b === 'coffee' && house)) put(t, e.b, tx(T[e.b], e.b, t));
+        } else if (e.k === 'parcel') {
+          one.add('parcel');
+          put(t, 'parcel', this._diaryParcel(e, t), { svg: GIFT_ITEMS[e.it]?.svg });
+        } else if (e.k === 'earn') {
+          if (once('earn')) put(t, 'parcel', tx(T.earn, 'earn', t));
+        } else if (e.k === 'earnGold') put(t, 'parcel', tx(T.earnGold, 'gold', t));
+        else if (e.k === 'streak') {
+          if (once('streak')) put(t, 'parcel', tx(T.streak, 'streak', t), { dim: true });
+        } else if (e.k === 'flower') {
+          // verwelkt steht nur einmal am Tag da
+          const wilt = !e.taken && now > e.id + FLGIFT.life;
+          if (!wilt || once('wilt')) put(t, 'flower', tx(e.taken ? T.flowerTaken : wilt ? T.flowerWilt : T.flowerWait, 'flower', t));
+        } else if (e.k === 'hungry') {
+          if (once('hungry')) put(t, 'hungry', tx(e.eaten ? T.hungry : T.hungryNow, 'hungry', t));
+        } else if (e.k === 'bote' && house && T.bote[e.type]) put(t, e.type, tx(T.bote[e.type], 'bote', t), { tm: `${diaryTime(t)} · ${e.name}` });
+      }
+      if (gather) gather.text = gather.c > 1 ? tx(T.gatherN, 'gather', gather.t).replace('{c}', gather.c) : T.gather1[0];
+
+      // Beschäftigungen: je Tageszeit die wichtigsten ausführlich (gemaltes Bild, Frühsport, Lieblinge des Tages zuerst),
+      // der Rest in einer Zeile. Ein Tablet, das den ganzen Tag an ist, sähe sonst drei Dutzend Einträge.
+      const fav = this._tagesform(start + 8 * 36e5).fav;
+      const rank = (a) => (a === 'paint' ? 0 : a === 'sport' ? 1 : fav.includes(a) ? 2 : 3);
+      const parts = new Map();
+      for (const e of acts) {
+        if (!T.act[e.a]) continue;
+        const p = partOf(e.t);
+        if (!parts.has(p)) parts.set(p, []);
+        parts.get(p).push(e);
+      }
+      for (const list of parts.values()) {
+        const names = [...new Set(list.map((e) => e.a))].sort((a, b) => rank(a) - rank(b));
+        for (const a of names.slice(0, DIARY.acts)) {
+          const all = list.filter((e) => e.a === a);
+          const e = all.find((x) => x.v) || all[0];
+          let text = tx(T.act[a], a, e.t);
+          const motif = T.motif[e.v];
+          if (a === 'paint') text = motif ? text.replace('{m}', motif.replace('{n}', fr)) : 'Ein Bild gemalt. Was drauf ist, verrate ich nicht.';
+          put(all[0].t, a, text, { n: all.length, pic: a === 'paint' && motif ? diaryPainting(e.v) : '' });
+        }
+        const rest = names.slice(DIARY.acts).map((a) => T.actShort[a]);
+        if (rest.length) {
+          const text = `Außerdem: ${rest.length > 1 ? `${rest.slice(0, -1).join(', ')} und ${rest.at(-1)}` : rest[0]}.`;
+          put(list.at(-1).t + 1, 'more', text, { sub: true, tm: '', last: true });
+        }
+      }
+
+      // Lange nichts im Verlauf, obwohl er wach war: Dann hat ihn kein Gerät gezeigt (oder es gab nichts zu tun).
+      // Die längste solche Lücke wird sein Geheimnis.
+      const a0 = Math.max(ws, start);
+      const b0 = Math.min(we, until);
+      if (!fail && R.data && b0 - a0 >= DIARY.gap) {
+        const ts = [a0, ...R.stamps.filter((t) => t > a0 && t < b0), b0];
+        let bi = 1;
+        for (let i = 2; i < ts.length; i++) if (ts[i] - ts[i - 1] > ts[bi] - ts[bi - 1]) bi = i;
+        if (ts[bi] - ts[bi - 1] >= DIARY.gap) {
+          put(ts[bi - 1] + 2, 'secret', tx(T.secret, 'secret', ts[bi - 1]), { dim: true, tm: `${diaryTime(ts[bi - 1])} bis ${diaryTime(ts[bi])}` });
+        }
+      }
+      if (we > start && we <= until) put(we, 'sleep', tx(T.sleep, 'sleep', we), { part: hourPart(we) });
+
+      for (const e of out) e.part ??= partOf(e.t);
+      // „Außerdem: …“ steht am Ende seiner Tageszeit
+      for (const m of out.filter((e) => e.last)) m.t = Math.max(...out.filter((e) => e.part === m.part && !e.last).map((e) => e.t), m.t) + 1;
+      out.sort((a, b) => a.t - b.t);
+
+      const pet = Math.max(R.pets[pikaDay(start + 36e5)] || 0, today ? this._cuteToday().n : 0);
+      const chips = [];
+      if (cnt.feed) chips.push([ICON_LEAF, `${cnt.feed}× gefüttert`]);
+      if (pet) chips.push([ICON_HEART, `${pet >= PET_CAP ? `über ${PET_CAP - 1}` : pet}× gestreichelt`]);
+      if (cnt.clean) chips.push([ICON_SPARK, `${cnt.clean}× geputzt`]);
+
+      let fazit;
+      if (today) {
+        const s = this._get('s');
+        const g = this._get('g');
+        const c = this._poops().clean;
+        fazit = this._sleepTime() ? 'Psst, ich schlafe gerade. Blättere ruhig leise.'
+          : s < 30 ? 'Liebes Tagebuch, mein Bauch knurrt gerade ein bisschen.'
+            : c < 30 ? 'Liebes Tagebuch, auf meiner Wiese müsste mal jemand sauber machen.'
+              : g < 30 ? 'Liebes Tagebuch, ich hätte gern ein paar Streicheleinheiten.'
+                : one.has('parcel') ? 'Liebes Tagebuch, heute ist ein aufregender Tag: Es gab ein Päckchen!'
+                  : Math.min(s, g, c) >= 70 ? 'Liebes Tagebuch, heute geht es mir richtig gut.'
+                    : 'Liebes Tagebuch, heute ist ein gemütlicher Tag.';
+      } else {
+        fazit = !mine.length ? 'Liebes Tagebuch, über gestern weiß ich leider nichts mehr.'
+          : one.has('parcel') ? 'Liebes Tagebuch, gestern war ein aufregender Tag: Es gab ein Päckchen!'
+            : one.has('hungry') && pet >= 10 ? 'Liebes Tagebuch, gestern hat mein Bauch mal geknurrt. Aber gestreichelt wurde ich ganz viel.'
+              : one.has('hungry') ? 'Liebes Tagebuch, gestern hat mein Bauch mal geknurrt. Sonst war es schön.'
+                : pet >= 10 ? 'Liebes Tagebuch, gestern wurde ich ganz viel gestreichelt. Das war schön.'
+                  : 'Liebes Tagebuch, gestern war ein schöner Tag.';
+      }
+      return { start, entries: out, chips, fazit, early: today && ws > now };
+    }
+
+    _diaryPage(M, today, fail, none) {
+      let h = `<p class="fazit">${esc(M.fazit)}</p>`;
+      if (M.chips.length) h += `<div class="chips">${M.chips.map(([i, t]) => `<span><i>${i}</i>${esc(t)}</span>`).join('')}</div>`;
+      let part = null;
+      for (const e of M.entries) {
+        if (e.part !== part) {
+          part = e.part;
+          h += `<h3>${part}</h3>`;
+        }
+        const tm = e.tm ?? `${diaryTime(e.t)}${e.n > 1 ? ` · ${e.n}×` : ''}`;
+        h += `<div class="e${e.dim ? ' dim' : ''}${e.sub ? ' sub' : ''}"><i class="ic">${e.svg || DIARY_ICON[e.icon] || ''}</i>`
+          + `<div>${tm ? `<span class="tm">${esc(tm)}</span>` : ''}<p>${esc(e.text)}</p>${e.pic || ''}</div></div>`;
+      }
+      if (!M.entries.length) {
+        h += `<p class="none">${M.early ? 'Der Tag hat noch nicht angefangen.' : today ? 'Hier steht noch nichts. Das kommt noch!' : 'Diese Seite ist leer geblieben.'}</p>`;
+      } else h += `<div class="sign">${esc(this._cfg.name)}<i>${DIARY_PAW}</i></div>`;
+      if (fail) h += '<p class="note">Ich finde nicht alle Seiten: Der Verlauf von Home Assistant antwortet gerade nicht.</p>';
+      else if (none) h += '<p class="note">Ich finde nicht alle Seiten: Home Assistant zeichnet für meine Helfer keinen Verlauf auf (Recorder).</p>';
+      return h;
+    }
+
+    // Reiter „Schätze“ (früher das Album am Päckchen-Knopf): alle acht mit Stufe, Päckchen, Serie, Vorrat
+    _diaryTreasures() {
+      const I = this._giftOn() ? this._giftInfo() : null;
+      const fr = this._frName();
+      const row = (svg, title, text, warn) => `<div class="row"><i>${svg}</i><div><b>${esc(title)}</b><span${warn ? ' class="w"' : ''}>${text}</span></div></div>`;
+      let h = '';
+      if (I) {
+        const G = I.G;
+        h += `<p class="fazit">${!I.have ? 'Noch hab ich keine Schätze. Sie stecken in den Päckchen.'
+          : I.have === GIFT_TRE ? 'Das sind meine Schätze. Ich hab alle acht!' : `Das sind meine Schätze. ${I.have} von ${GIFT_TRE} hab ich schon.`}</p>`;
+        h += `<div class="tre">${GIFT_ITEMS.slice(0, GIFT_TRE).map((it, t) => {
+          const lv = I.lvs[t];
+          const nm = it.key === 'plush' ? `Plüsch-${fr}` : it.name;
+          const sub = !lv ? 'noch ein Geheimnis' : lv >= 3 ? `golden · Trick: ${GIFT_TRICK[t]}` : lv === 2 ? `Trick: ${GIFT_TRICK[t]}` : DIARY_TXT.treasure[t];
+          return `<div class="t ${['miss', '', 'lv2', 'lv2 gilt'][lv]}"><i>${it.svg}</i><div><b>${esc(lv ? nm : '???')}</b><span>${esc(sub)}</span></div></div>`;
+        }).join('')}</div>`;
+        const n = G.n + G.y;
+        h += row(GIFT_PARCEL, 'Päckchen', esc(`${n ? `${n} im Vorrat${G.y ? ` (${G.y === n ? 'golden' : `${G.y} golden`})` : ''}` : 'gerade keins da'} · ${I.next}`), I.warn);
+        h += row(ICON_HEART, 'Pflege-Serie', esc(I.days === 1 ? '1 Tag am Stück' : `${I.days} Tage am Stück`));
+      } else h += '<p class="fazit">Hier sammle ich, was mir gehört.</p>';
+      const dots = this._blooms.map((b) => `<u style="background:${esc(b.color)}"></u>`).join('');
+      const k = this._blooms.length;
+      h += row(DIARY_ICON.gather, 'Mein Vorrat', `${k ? `${k} ${k === 1 ? 'Blüte' : 'Blüten'} gesammelt` : 'noch keine Blüten gesammelt'}${dots ? `<span class="dots">${dots}</span>` : ''}`);
+      return h;
+    }
+
+    // Fenster über dem Dashboard öffnen (tab: 'heute', 'gestern', 'schatz'). Lang drücken auf den Päckchen-Knopf
+    // schlägt gleich die Schätze auf.
+    _diaryOpen(tab = 'heute') {
+      if (!this._el) return;
+      if (this._dia) return this._diaryTab(tab);
+      const n = String(this._cfg.name || 'Pika');
+      const title = `${/[sßxz]$/i.test(n) ? `${n}’` : `${n}s`} Tagebuch`;
+      const host = document.createElement('div');
+      host.className = 'pika-pet-diary';
+      const root = host.attachShadow({ mode: 'open' });
+      root.innerHTML = `<style>${STYLE_DIARY}</style>
+        <div class="bd${this._el.scene.classList.contains('night') ? ' night' : ''}">
+          <div class="sheet" role="dialog" aria-modal="true" aria-label="${esc(title)}" tabindex="-1">
+            <div class="hd"><span class="bk">${DIARY_BOOK}</span><div class="ht"><b>${esc(title)}</b><span class="dt"></span></div>
+              <button class="x" aria-label="Schließen" title="Schließen">✕</button></div>
+            <div class="tabs" role="tablist">
+              <button role="tab" data-tab="heute">Heute</button><button role="tab" data-tab="gestern">Gestern</button><button role="tab" data-tab="schatz">Schätze</button>
+            </div>
+            <div class="page" role="tabpanel" tabindex="0"></div>
+          </div>
+        </div>`;
+      document.body.appendChild(host);
+      const D = (this._dia = { host, root, tab, data: null, t: null });
+      const bd = root.querySelector('.bd');
+      bd.addEventListener('click', (e) => e.target === bd && this._diaryClose());
+      root.querySelector('.x').addEventListener('click', () => this._diaryClose());
+      root.querySelectorAll('[data-tab]').forEach((b) => b.addEventListener('click', () => this._diaryTab(b.dataset.tab)));
+      host.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') {
+          e.stopPropagation();
+          this._diaryClose();
+        } else if (e.key === 'Tab') {
+          // der Fokus bleibt im Fenster
+          const f = [...root.querySelectorAll('button, .page')];
+          const i = f.indexOf(root.activeElement);
+          e.preventDefault();
+          f[(i + (e.shiftKey ? -1 : 1) + f.length) % f.length].focus();
+        }
+      });
+      // Wand-Tablet: nach DIARY.close ohne Berührung von selbst wieder zu
+      const poke = () => {
+        clearTimeout(D.t);
+        D.t = setTimeout(() => this._diaryClose(), DIARY.close);
+      };
+      for (const t of ['pointerdown', 'keydown', 'wheel', 'touchmove']) host.addEventListener(t, poke, { passive: true });
+      root.querySelector('.page').addEventListener('scroll', poke, { passive: true });
+      poke();
+      this._diaryRender();
+      root.querySelector('.sheet').focus();
+      try {
+        localStorage.setItem(`pika-pet-diary-seen:${this._cfg.name}`, this._diarySig());
+      } catch (e) { /* egal */ }
+      this._diaryDot();
+      this._diaryBuild().then((data) => {
+        if (this._dia !== D) return;
+        D.data = data;
+        this._diaryRender();
+      }).catch((e) => {
+        console.warn('pika-pet-card: Tagebuch', e);
+        if (this._dia !== D) return;
+        D.data = { fail: true, days: [] };
+        this._diaryRender();
+      });
+    }
+
+    _diaryTab(tab) {
+      if (!this._dia) return;
+      this._dia.tab = tab;
+      this._diaryRender();
+    }
+
+    _diaryRender() {
+      const D = this._dia;
+      if (!D) return;
+      const pg = D.root.querySelector('.page');
+      D.root.querySelectorAll('[data-tab]').forEach((b) => b.setAttribute('aria-selected', String(b.dataset.tab === D.tab)));
+      const dt = D.root.querySelector('.dt');
+      const today = D.tab === 'heute';
+      if (D.tab === 'schatz') {
+        dt.textContent = 'Was mir gehört';
+        pg.innerHTML = this._diaryTreasures();
+      } else {
+        const M = D.data?.days[today ? 0 : 1];
+        const raw = { ...(this._wxRaw || {}), ...(this._dbgWeather || {}) };
+        const wx = today ? [DIARY_TXT.wx[raw.cond], raw.temp != null ? `${Math.round(raw.temp)} °C` : ''].filter(Boolean).join(', ') : '';
+        const date = new Date(this._diaryDay(today ? 0 : 1)).toLocaleDateString('de-DE', { weekday: 'long', day: 'numeric', month: 'long' });
+        dt.textContent = `${date}${wx ? ` · ${wx}` : ''}`;
+        pg.innerHTML = !D.data ? '<p class="wait">Ich blättere …</p>'
+          : M ? this._diaryPage(M, today, D.data.fail, D.data.none) : '<p class="none">Mein Tagebuch klemmt gerade. Versuch es gleich noch einmal.</p>';
+      }
+      pg.scrollTop = 0;
+    }
+
+    _diaryClose() {
+      const D = this._dia;
+      if (!D) return;
+      this._dia = null;
+      clearTimeout(D.t);
+      D.host.remove();
+      const back = this._el?.stats.hidden ? this._el.tbbtn : this._el?.stats;
+      if (back?.isConnected && !back.hidden) back.focus({ preventScroll: true });
+    }
+    // ==================== Ende Tagebuch ====================
 
     // ==================== Aktivitäten: Methoden ====================
     // Tagesplan der Beschäftigungen (ACT_WIN, Helfer plan_entity), Tagesform, Begrüßung, wenn die Karte sichtbar
@@ -14560,6 +15331,7 @@
           try {
             localStorage.setItem(this._planLsKey(), v);
           } catch (e) { /* privat/gesperrt: dann nur bis zum Neuladen */ }
+          this._diaryLog('p', v);
           this._planAck = this._haNow(); // lokal gibt es kein Echo
         }
         this._planBase = P;

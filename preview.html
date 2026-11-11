@@ -276,6 +276,18 @@
 </div>
 <!-- ==================== Ende Päckchen ==================== -->
 
+<!-- ==================== Vorschau-Knöpfe Tagebuch ==================== -->
+<div class="bar" id="bar-diary"><b>Tagebuch</b>
+  <button id="diary-open">öffnen (links)</button>
+  <button id="diary-tre">Schätze</button>
+  <button id="diary-demo">Beispieltage an/aus</button>
+  <button id="diary-3h">Verlauf −3 Std.</button>
+  <button id="diary-1d">Verlauf −1 Tag</button>
+  <button id="diary-stats">Leiste an/aus</button>
+  <button id="diary-hist">Verlauf zeigen</button>
+</div>
+<!-- ==================== Ende Tagebuch ==================== -->
+
 <div class="wrap">
   <div class="slot" style="width:600px;height:248px"><pika-pet-card id="a"></pika-pet-card></div>
   <div class="slot" style="width:380px;height:184px"><pika-pet-card id="b"></pika-pet-card></div>
@@ -301,11 +313,27 @@
     'input_text.pika_plan': { state: '', attributes: { max: 255 } },
   };
   const cards = [document.getElementById('a'), document.getElementById('b')];
+  // Verlauf wie der Recorder von HA: jede Änderung mit Zeitstempel. Daraus liest die Karte ihr Tagebuch
+  // (history/history_during_period, Antwort je Entity [{ s, lu }]).
+  const hist = {};
+  const histAdd = (id, s) => (hist[id] ||= []).push({ s, lu: Date.now() / 1000 });
   const hass = {
     states,
     config: { latitude: 50.06, longitude: 8.69 },
+    callWS(msg) {
+      if (msg.type !== 'history/history_during_period') return Promise.reject(new Error('unknown_command'));
+      const from = Date.parse(msg.start_time) / 1000;
+      const out = {};
+      for (const id of msg.entity_ids) {
+        const all = hist[id] || [];
+        const before = all.filter((r) => r.lu < from).pop();
+        out[id] = [...(before ? [{ ...before, lu: from }] : []), ...all.filter((r) => r.lu >= from)];
+      }
+      return Promise.resolve(out);
+    },
     callService(domain, service, data) {
       states[data.entity_id] = { state: data.value, attributes: states[data.entity_id]?.attributes || {} };
+      histAdd(data.entity_id, data.value);
       log(`${domain}.${service} → ${data.value}`);
       setTimeout(push, 50);
       return Promise.resolve();
@@ -634,6 +662,7 @@
     const o = states[id];
     const same = o && o.state === state && min === 0;
     states[id] = { state, attributes, last_changed: same ? o.last_changed : hbAgo(min), last_updated: hbAgo(min) };
+    if (!same) histAdd(id, state);
   };
   const HB_PCT = { unit_of_measurement: '%' };
   const HB_TS = { device_class: 'timestamp' };
@@ -895,7 +924,7 @@
     try { localStorage.removeItem('pika-pet-gift:Pika'); } catch (e) { /* egal */ }
     giftLog();
   });
-  document.getElementById('gift-album').addEventListener('click', () => cards.forEach((c) => c._album(true)));
+  document.getElementById('gift-album').addEventListener('click', () => cards[0]._diaryOpen('schatz'));
   document.querySelectorAll('[data-gift]').forEach((b) => b.addEventListener('click', () => cards.forEach((c) => cuteGo(c, b.dataset.gift))));
   document.getElementById('gift-bell').addEventListener('click', () => cards.forEach((c) => c._giftBell()));
   document.getElementById('gift-hot').addEventListener('click', () => {
@@ -921,6 +950,50 @@
   });
   document.getElementById('gift-rbow').addEventListener('click', () => cards.forEach((c) => cuteGo(c, 'giftWater')));
   // ==================== Ende Päckchen ====================
+
+  // ==================== Tagebuch ====================
+  // Echt: Füttern, Streicheln, Putzen, Päckchen und Beschäftigungen aus dem Plan („Uhr vor“) landen im Verlauf oben und
+  // erscheinen unter Heute. „Verlauf −3 Std.“ / „−1 Tag“ schiebt alles Bisherige zurück (nach gestern).
+  document.getElementById('diary-open').addEventListener('click', () => cards[0]._diaryOpen());
+  document.getElementById('diary-tre').addEventListener('click', () => cards[0]._diaryOpen('schatz'));
+  const histShift = (sec) => {
+    Object.values(hist).forEach((a) => a.forEach((r) => (r.lu -= sec)));
+    log(`Verlauf um ${sec / 3600} Std. zurückgeschoben`);
+  };
+  document.getElementById('diary-3h').addEventListener('click', () => histShift(3 * 3600));
+  document.getElementById('diary-1d').addEventListener('click', () => histShift(24 * 3600));
+  document.getElementById('diary-hist').addEventListener('click', () =>
+    log(Object.entries(hist).map(([id, a]) => `${id}: ${a.length} Stände${a.length ? `, zuletzt ${new Date(a.at(-1).lu * 1000).toLocaleTimeString()}` : ''}`).join(' · ') || 'noch kein Verlauf'));
+  document.getElementById('diary-stats').addEventListener('click', () => cards.forEach((c) => c.setConfig({ ...c._cfg, show_stats: !c._cfg.show_stats })));
+  // Beispieltage: fertige Roh-Ereignisse statt des Verlaufs (zwei volle Tage, um die Seite zu beurteilen)
+  const diaryDemo = (d0, d1, now) => {
+    const at = (day, h, m = 0) => new Date(day).setHours(h, m, 0, 0);
+    const pd = (t) => Math.floor((t - new Date(t).getTimezoneOffset() * 6e4 - 4 * 36e5) / 864e5);
+    const ev = [];
+    [d1, d0].forEach((day, i) => {
+      ev.push(
+        { t: at(day, 8, 20), k: 'act', a: 'sport', v: '' }, { t: at(day, 8, 50), k: 'mem', b: 'coffee' }, { t: at(day, 9, 5), k: 'feed' },
+        { t: at(day, 9, 30), k: 'act', a: 'read', v: '' }, { t: at(day, 9, 50), k: 'act', a: 'game', v: '' }, { t: at(day, 10, 10), k: 'act', a: 'read', v: '' },
+        { t: at(day, 10, 30), k: 'act', a: 'tablet', v: '' }, { t: at(day, 10, 40), k: 'mem', b: 'bird' },
+        { t: at(day, 11, 40), k: 'hungry', eaten: true }, { t: at(day, 12, 5), k: 'feed' },
+        { t: at(day, 12, 30), k: 'act', a: 'paint', v: i ? 'pino' : 'regenbogen' }, { t: at(day, 13, 10), k: 'parcel', it: i ? 1 : 9, what: i ? 'new' : 'treat', gold: false },
+        { t: at(day, 13, 30), k: 'bote', type: 'washer', name: 'Waschmaschine' }, { t: at(day, 13, 45), k: 'clean', n: 2 }, { t: at(day, 13, 50), k: 'clean', n: 1, all: true },
+        { t: at(day, 14, 20), k: 'mem', b: 'pino' }, { t: at(day, 14, 50), k: 'gather' }, { t: at(day, 15, 20), k: 'gather' },
+        { t: at(day, 15, 40), k: 'flower', id: at(day, 15, 40), taken: !!i }, { t: at(day, 16, 0), k: 'act', a: 'music', v: '' },
+        { t: at(day, 16, 20), k: 'mem', b: 'plane' }, { t: at(day, 16, 30), k: 'mem', b: 'heart' }, { t: at(day, 16, 40), k: 'feed' },
+      );
+    });
+    const live = ev.filter((e) => e.t <= now);
+    return { ev: live, stamps: live.map((e) => e.t), pets: { [pd(d1 + 36e5)]: 23, [pd(d0 + 36e5)]: 14 } };
+  };
+  document.getElementById('diary-demo').addEventListener('click', (e) => {
+    const c = cards[0];
+    c._dbgDiary = c._dbgDiary ? null : diaryDemo;
+    e.target.style.borderColor = c._dbgDiary ? '#6bb152' : '';
+    c._diaryClose();
+    c._diaryOpen();
+  });
+  // ==================== Ende Tagebuch ====================
 </script>
 </body>
 </html>
