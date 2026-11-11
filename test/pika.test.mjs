@@ -9,9 +9,11 @@ import vm from 'node:vm';
 const src = fs.readFileSync(new URL('../pika-pet-card.js', import.meta.url), 'utf8');
 let T = null;
 const warned = [];
+// document der Karte: Tests mit Attrappen hängen hier ihr createElement ein (siehe Att)
+const DOK = { hidden: false, addEventListener() {}, removeEventListener() {} };
 vm.runInNewContext(src, {
   window: { matchMedia: () => ({ matches: false }), customCards: [] },
-  document: { hidden: false, addEventListener() {}, removeEventListener() {} },
+  document: DOK,
   HTMLElement: class {},
   customElements: { get: () => null, define() {} },
   console: { info() {}, log() {}, warn: (...a) => warned.push(a) },
@@ -1092,4 +1094,1140 @@ test('Areal alpin: die Wintersonne steht über dem Grat, sonst bleibt der Himmel
     assert.ok(y <= vor && vor - y < 2.5, `Sprung bei ${a}°`);
     vor = y;
   }
+});
+
+// ---------- 0.32 Sauberer Auftritt ----------
+
+test('Häufchen: Kleinigkeiten bricht es ab, eine Beschäftigung wartet es ab, zu alt liegt es einfach da', () => {
+  const jung = 20000;
+  assert.equal(T.poopWhen(jung, null), 'go');
+  for (const a of ['idle', 'look', 'wander', 'groom', 'lookout']) assert.equal(T.poopWhen(jung, a), 'go', a);
+  // bisher brach es Malen, Musik, Seilspringen und Auspacken ab (gesperrt waren nur fünf Aktionen)
+  for (const a of ['paint', 'music', 'rope', 'weights', 'read', 'sport', 'giftOpen', 'eatFood', 'coffee', 'chaseFriend', 'wakeUp', 'greet']) {
+    assert.equal(T.poopWhen(jung, a), 'wait', a);
+  }
+  // eine schon anstehende Aktion (Berührung, Vorschau-Knopf) geht ebenfalls vor
+  assert.equal(T.poopWhen(jung, 'idle', true), 'wait');
+  // geht er schlafen oder ist es älter als POOP.live Minuten, liegt es ohne Vorführung da
+  assert.equal(T.poopWhen(jung, 'goSleep'), 'lay');
+  assert.equal(T.poopWhen(T.POOP.live * 6e4, 'idle'), 'lay');
+  assert.equal(T.poopWhen(T.POOP.live * 6e4 - 1, 'paint'), 'wait');
+  // die längste Beschäftigung (Fernsehen, gut zwei Minuten) passt in die Frist
+  const lang = Math.max(...['read', 'game', 'tablet', 'kite', 'tv', 'music', 'paint', 'bubbles'].map((a) => T.ACT_LEN[a](() => 1)));
+  assert.ok(lang + T.ACT_WALK + 15000 < T.POOP.live * 6e4, `längste Beschäftigung ${lang} ms`);
+});
+
+test('Hinlaufen: Tempo aus der Strecke, auf breiten Karten pünktlich, nie langsamer als bisher', () => {
+  const dauer = (dist, pW, v) => dist / (pW * 0.85 * v);
+  // Karte 1000 × 200: Pika 96 px breit, 700 px Weg, fünf Sekunden Zeit. Mit Tempo 0,8 waren es 10,7 s.
+  assert.ok(dauer(700, 96, 0.8) > 10);
+  const v = T.walkSpeed(700, 96, T.ACT_WALK, 0.8);
+  assert.ok(Math.abs(dauer(700, 96, v) - 5) < 1e-9, `Tempo ${v}`);
+  // Karte 600 × 248: 150 px Weg schafft er mit dem alten Tempo, es bleibt dabei
+  assert.equal(T.walkSpeed(150, 119, T.ACT_WALK, 0.8), 0.8);
+  assert.equal(T.walkSpeed(150, 119, T.ACT_WALK, 0.9), 0.9);
+  // zu weit für die Zeit: so schnell wie erlaubt, nie schneller
+  assert.equal(T.walkSpeed(5000, 96, T.ACT_WALK, 0.8), T.WALK_MAX);
+  assert.equal(T.walkSpeed(5000, 96, 1000, 0.8), T.WALK_MAX);
+});
+
+test('Hinlaufen: beim Wiedereinstieg kurze Wege im Grundtempo, weite zügig, aber ohne große Hopser', () => {
+  const dauer = (dist, pW, v) => (dist / (pW * 0.85 * v)) * 1000;
+  // Die Beschäftigung läuft schon (nach dem Füttern, einer Aufgabe des Haus-Boten): bisher immer Höchsttempo
+  for (const ms of [0, -1, -3000, -60000]) {
+    assert.equal(T.walkSpeed(10, 119, ms, 0.8), 0.8, `10 px, ${ms} ms`);
+    assert.equal(T.walkSpeed(150, 119, ms, 0.9), 0.9, `150 px, ${ms} ms`);
+    // was er im Grundtempo in WALK_LATE schafft, geht er im Grundtempo
+    const nah = 119 * 0.85 * 0.8 * (T.WALK_LATE / 1000);
+    assert.equal(T.walkSpeed(nah - 1, 119, ms, 0.8), 0.8);
+    // weiter weg: so, dass er nach WALK_LATE da ist
+    const v = T.walkSpeed(250, 119, ms, 0.8);
+    assert.ok(v > 0.8 && v < T.WALK_REJOIN && Math.abs(dauer(250, 119, v) - T.WALK_LATE) < 1e-6, `Tempo ${v}`);
+    // ganz weit: gedeckelt, unter der Schwelle der großen Hopser (1,8 in _walkTo)
+    assert.equal(T.walkSpeed(900, 96, ms, 0.8), T.WALK_REJOIN);
+  }
+  assert.ok(T.WALK_REJOIN < 1.8 && T.WALK_REJOIN < T.WALK_MAX);
+  // knapp vor dem Beginn (noch 300 ms): kein Sprint für ein paar Pixel, der Weg bekommt WALK_LATE
+  assert.equal(T.walkSpeed(100, 119, 300, 0.8), 0.8);
+  // Unsinn hält er aus
+  assert.equal(T.walkSpeed(0, 96, 5000, 0.8), 0.8);
+  assert.equal(T.walkSpeed(100, 96, NaN, 0.8), 0.8);
+  assert.equal(T.walkSpeed(0, 0, 5000, 0.8), 0.8);
+});
+
+test('Hopser: ein Weg dauert ganze Hopser, die Dauern stimmen mit den Animationen überein', () => {
+  for (const [gait, ms] of Object.entries(T.HOP_MS)) {
+    for (const d of [10, 130, 500, 777, 5049, 12345]) {
+      const r = T.hopRound(d, ms);
+      assert.equal(r % ms, 0, `${gait} ${d}`);
+      assert.ok(r >= ms && (r === ms || Math.abs(r - d) <= ms / 2), `${gait} ${d} → ${r}`);
+    }
+  }
+  // dieselben Dauern stehen im Stil (hop, hops, hopb) und bei den Sprüngen auf der Stelle (jump, binky)
+  const css = (re) => Math.round(Number(src.match(re)?.[1]) * 1000);
+  assert.equal(css(/\.walking \.hop \{ animation: hop (\.\d+)s/), T.HOP_MS.hop);
+  assert.equal(css(/\.walking\.trip \.hop \{ animation: hops (\.\d+)s/), T.HOP_MS.trip);
+  assert.equal(css(/\.walking\.bighop \.hop \{ animation: hopb (\.\d+)s/), T.HOP_MS.bighop);
+  assert.equal(css(/\.jump\.hop1 \{ animation: jump (\.\d+)s/), T.JUMPS.hop1.ms);
+  assert.equal(css(/\.jump\.binky \{ animation: binky (\.\d+)s/), T.JUMPS.binky.ms);
+});
+
+test('Sprung: ein neuer beginnt nicht, solange der letzte in der Luft ist', () => {
+  assert.equal(T.jumpBusy('hop1', 0), false); // noch am Boden (Anlauf): darf neu beginnen
+  assert.equal(T.jumpBusy('hop1', 200), true);
+  assert.equal(T.jumpBusy('hop1', 449), true);
+  assert.equal(T.jumpBusy('hop1', 450), false); // gelandet
+  assert.equal(T.jumpBusy('binky', 500), true);
+  assert.equal(T.jumpBusy('binky', 740), false);
+  assert.equal(T.jumpBusy('unbekannt', 200), false);
+});
+
+test('Einsteigen ohne Hinlaufen: nur frisch geladen oder im selben Augenblick wie das Sichtbarwerden', () => {
+  const lange = 60000; // die Beschäftigung läuft seit einer Minute
+  assert.equal(T.jumpInOk(lange, 50, false), true); // Bildschirm an, Stand frisch: steht sofort dort
+  assert.equal(T.jumpInOk(lange, 1500, false), false); // hat erst auf den Stand gewartet: hoppelt hin
+  assert.equal(T.jumpInOk(lange, 2300, false), false); // ist eben erst aufgewacht
+  assert.equal(T.jumpInOk(lange, 1500, true), true); // frisch geladen: die Seite baut sich noch auf
+  assert.equal(T.jumpInOk(lange, T.JUMP_IN.first + 1, true), false);
+  assert.equal(T.jumpInOk(3000, 50, true), false); // eben erst begonnen: er läuft ganz normal hin
+});
+
+test('Plan unbekannt: die Schleife wartet kurz, statt zu grüßen, aber nicht ewig', () => {
+  const c = Object.create(T.PikaPetCard.prototype);
+  c._cfg = { plan_entity: 'input_text.pika_plan' };
+  c._planOk = false;
+  c._blindAt = Date.now();
+  assert.equal(c._planWait(), true); // Helfer noch nicht gelesen
+  c._planOk = true;
+  assert.equal(c._planWait(), false);
+  c._planStale = true; // nach langer Pause veraltet
+  assert.equal(c._planWait(), true);
+  c._blindAt = Date.now() - T.JUMP_IN.first - 100; // keine Verbindung: er lebt trotzdem weiter
+  assert.equal(c._planWait(), false);
+  c._cfg = {};
+  c._planStale = false;
+  c._planOk = false; // ohne Helfer gibt es nichts abzuwarten
+  c._blindAt = Date.now();
+  assert.equal(c._planWait(), false);
+});
+
+// Eine Karte, deren Schleife von Hand Schritt für Schritt läuft: _run merkt sich nur, was gewählt wurde
+const schrittKarte = (mehr = {}) => {
+  const c = Object.create(T.PikaPetCard.prototype);
+  const ran = [];
+  Object.assign(c, {
+    _cfg: {}, _g: {}, _foods: [], _lift: 0, _asleep: false, _inside: false, _running: true, _wx: {}, _blindAt: Date.now(), _dbgShift: 0,
+    _coffeeDue: () => false, _sleepTime: () => false, _slotArm() {}, _slotNow: () => null, _friendUrgent: () => null,
+    _run(name) {
+      ran.push(name);
+      this._action = name;
+      return this._wait(30);
+    },
+  }, mehr);
+  c._ac = new AbortController();
+  return [c, ran];
+};
+const schritt = (c) => {
+  c._ac = new AbortController();
+  return c._step().then(() => 'fertig', (e) => `abgebrochen (${e.constructor.name})`);
+};
+
+test('Plan unbekannt: der frische Stand weckt nur die wartende Schleife, er bricht keine fremde Aktion ab', async () => {
+  // Die Schleife wartet auf den Plan: Kommt der frische Stand, geht es sofort weiter
+  {
+    const [c, ran] = schrittKarte({ _planStale: true });
+    const p = schritt(c);
+    assert.equal(c._planWaiting, true);
+    c._planFresh();
+    assert.equal(await p, 'abgebrochen (Cancel)');
+    assert.deepEqual(ran, []);
+  }
+  // a) Schritt 1 wartet. In der Wartezeit wird ein Kaffee fällig, Schritt 2 holt ihn: Der frische Stand bricht ihn nicht ab
+  {
+    let kaffee = false;
+    const [c, ran] = schrittKarte({ _planStale: true, _coffeeDue: () => kaffee });
+    assert.equal(await schritt(c), 'fertig');
+    assert.equal(c._planWaiting, true);
+    kaffee = true;
+    const p = schritt(c);
+    assert.deepEqual(ran, ['coffee']);
+    assert.equal(c._planWaiting, false);
+    c._planFresh();
+    assert.equal(await p, 'fertig');
+  }
+  // dasselbe, wenn der Helfer des Tagesplans erst jetzt gelesen ist (_planReady)
+  {
+    let kaffee = false;
+    const [c, ran] = schrittKarte({ _cfg: { plan_entity: 'input_text.pika_plan' }, _planOk: false, _planCompose() {}, _coffeeDue: () => kaffee });
+    assert.equal(await schritt(c), 'fertig');
+    assert.equal(c._planWaiting, true);
+    kaffee = true;
+    const p = schritt(c);
+    c._planReady();
+    assert.equal(await p, 'fertig');
+    assert.deepEqual(ran, ['coffee']);
+  }
+  // b) App nach langer Pause geöffnet und gleich wieder geschlossen (_stop); am nächsten Morgen wacht er auf
+  {
+    const [c, ran] = schrittKarte({ _planStale: true });
+    assert.equal(await schritt(c), 'fertig');
+    assert.equal(c._planWaiting, true);
+    c._stop();
+    assert.equal(c._planWaiting, false);
+    Object.assign(c, { _running: true, _asleep: true, _planStale: true });
+    const p = schritt(c);
+    assert.deepEqual(ran, ['wakeUp']);
+    c._planFresh();
+    assert.equal(await p, 'fertig');
+  }
+  // ein von den Festen eingeschobener Schritt (_festForce ersetzt _step einmal) wartet ebenfalls nicht
+  {
+    const [c, ran] = schrittKarte({ _planStale: true });
+    assert.equal(await schritt(c), 'fertig');
+    c._festForce('festConfetti');
+    const p = schritt(c);
+    assert.deepEqual(ran, ['festConfetti']);
+    c._planFresh();
+    assert.equal(await p, 'fertig');
+  }
+});
+
+test('Geräteuhr zurückgestellt: die Schleife wartet nicht, bis die Uhr den alten Stand wieder erreicht', () => {
+  const c = Object.create(T.PikaPetCard.prototype);
+  c._cfg = {};
+  c._planStale = true;
+  c._blindAt = Date.now() + 3600000; // gesetzt, bevor die Uhr eine Stunde zurückging
+  assert.ok(c._sinceBlind() < 0);
+  assert.equal(c._planWait(), false);
+  assert.equal(c._jumpIn({ k: 1, start: -1e9 }), false);
+});
+
+test('Häufchen: ein zurückgehaltenes wird nicht Stunden später vorgeführt, und es zählt erst, wenn es daliegt', async () => {
+  const now = Date.now();
+  const alt = { k: 0, due: now - 5 * 36e5, r: 0.5, slot: 0 };
+  const neu = { k: 1, due: now - 30000, r: 0.5, slot: 1 };
+  const stand = { piles: [alt, neu], clean: T.poopClean([alt, neu], now) };
+  const karte = (mehr) => {
+    const gelegt = [];
+    const [c, ran] = schrittKarte({
+      _stats: {}, _pileEls: new Map(), _giftDue: () => 'giftCatch', _raw: () => 100,
+      _poops: () => stand,
+      _pileKey: (p) => `k${p.k}`,
+      _addPile(p, key) {
+        gelegt.push(key);
+        this._pileEls.set(key, {});
+      },
+      ...mehr,
+    });
+    c._pileEls.set('k0', {});
+    return [c, ran, gelegt];
+  };
+  // frisch fällig, er war beschäftigt: jetzt macht er es vor den Augen
+  {
+    const [c, ran, gelegt] = karte({ _poopPending: { ...neu, key: 'k1' } });
+    assert.equal(await schritt(c), 'fertig');
+    assert.deepEqual(ran, ['poop']);
+    assert.deepEqual(gelegt, []);
+  }
+  // a) seit zwei Stunden fällig (die Karte war so lange weg): Es liegt einfach da, er macht weiter
+  {
+    const [c, ran, gelegt] = karte({ _poopPending: { ...neu, due: now - 2 * 36e5, key: 'k1' } });
+    assert.equal(await schritt(c), 'fertig');
+    assert.deepEqual(ran, ['giftCatch']);
+    assert.deepEqual(gelegt, ['k1']);
+    assert.equal(c._poopPending, null);
+  }
+  // die Schleife hält an (Bildschirm aus, Ansicht gewechselt): Es wird nichts Altes mitgeschleppt
+  {
+    const [c, , gelegt] = karte({ _poopPending: { ...neu, key: 'k1' }, _next: 'poop', _el: {}, _pressFx() {}, _cleanup() {} });
+    c._stop();
+    assert.deepEqual(gelegt, ['k1']);
+    assert.equal(c._poopPending, null);
+    assert.equal(c._next, null);
+  }
+  // b) Solange es zurückgehalten wird, ist es nicht zu sehen: Es zählt hier noch nicht bei Sauberkeit und Glück
+  {
+    const [c] = karte({ _poopPending: { ...neu, key: 'k1' } });
+    const alle = c._poops();
+    const sicht = c._poopsSeen();
+    assert.deepEqual(sicht.piles.map((p) => p.k), [0]);
+    assert.ok(sicht.clean - alle.clean >= 10, `${sicht.clean} / ${alle.clean}`);
+    assert.ok(Math.abs(c._get('g') - (60 + 0.4 * sicht.clean)) < 1e-3);
+    assert.equal(alle.piles.length, 2); // der geteilte Stand bleibt, wie er ist
+    c._layPending();
+    assert.equal(c._poopsSeen(), c._poops()); // liegt es da, zählt es
+  }
+  assert.equal(T.poopClean([], now), 100);
+  assert.equal(T.poopClean([{ due: now }], now), 90);
+  assert.equal(T.poopClean(Array.from({ length: 8 }, () => ({ due: now - 30 * 36e5 })), now), 0);
+});
+
+test('Pino: wird die Uhr nach seiner Ankunft gestellt, geht er trotzdem zur Zeit aus dem Besuchsplan', async () => {
+  const c = Object.create(T.PikaPetCard.prototype);
+  let weg = 0;
+  c._friendLeave = () => weg++;
+  const fr = { planned: true, leaving: false };
+  c._fr = fr;
+  const ende = Date.now() + 60000;
+  c._friendUntil(fr, ende);
+  // die Uhr von HA ist 20 s weiter, als das Gerät bei seiner Ankunft annahm: Er geht 20 s früher
+  c._clockMoved(20000);
+  assert.equal(fr.until, ende - 20000);
+  c._clockMoved(-5000);
+  assert.equal(fr.until, ende - 15000);
+  // ein Besuch aus der Vorschau hat eine feste Dauer; im Gehen wird nichts mehr gestellt
+  fr.planned = false;
+  c._clockMoved(5000);
+  fr.planned = true;
+  fr.leaving = true;
+  c._clockMoved(5000);
+  assert.equal(fr.until, ende - 15000);
+  // die Zeit ist nach der neuen Uhr schon um: Er geht gleich
+  fr.leaving = false;
+  c._clockMoved(60000);
+  await new Promise((r) => setTimeout(r, 20));
+  assert.equal(weg, 1);
+  clearTimeout(fr.untilT);
+  // die Uhr meldet, um wie viel sie gestellt wurde
+  const d = Object.create(T.PikaPetCard.prototype);
+  const um = [];
+  d._clockMoved = (by) => um.push(by);
+  const t = Date.now();
+  d._clockSample(t + 20000, t);
+  d._clockSample(t + 20100, t); // unter der Schwelle: bleibt
+  d._clockSample(t + 23000, t);
+  assert.deepEqual(um, [20000, 3000]);
+});
+
+test('Drachen: die Schnur beginnt an der Pfote, auch wenn er sich gegen den Zug lehnt', () => {
+  const [pW, pH] = [120, 100];
+  assert.deepEqual(plain(T.kitePaw(pW, pH, 0)), [45, -50]); // viewBox 105/50, ab der Mitte der Unterkante
+  // dieselbe Rechnung wie der Stil: rotate(−a) scale(sx, sy) um die Füße
+  const css = (deg, sx = 1, sy = 1) => {
+    const a = (-deg * Math.PI) / 180;
+    const [x, y] = [45 * sx, -50 * sy];
+    return [x * Math.cos(a) - y * Math.sin(a), x * Math.sin(a) + y * Math.cos(a)];
+  };
+  const L = T.KITE_LEAN;
+  const ruhe = T.kitePaw(pW, pH, L.rest);
+  const ruck = T.kitePaw(pW, pH, L.tug, L.sx, L.sy);
+  for (const [ist, soll] of [[ruhe, css(L.rest)], [ruck, css(L.tug, L.sx, L.sy)]]) {
+    assert.ok(Math.abs(ist[0] - soll[0]) < 1e-9 && Math.abs(ist[1] - soll[1]) < 1e-9);
+  }
+  // gegen den Zug: nach hinten und etwas nach oben, beim Ruck weiter
+  assert.ok(ruhe[0] < 45 && ruhe[1] < -50 && ruck[0] < ruhe[0] && ruck[1] < ruhe[1]);
+  // der Stil lehnt ihn um dieselben Winkel
+  assert.ok(src.includes('.kiting .hop { transform: rotate(-${KITE_LEAN.rest}deg)'));
+  assert.ok(src.includes('.kiting.ktug .hop { transform: rotate(-${KITE_LEAN.tug}deg) scale(${KITE_LEAN.sx}, ${KITE_LEAN.sy})'));
+});
+
+test('Ohren: das Nachschwingen am Sprung kommt zur Haltung dazu und verdrängt keine andere Ohr-Regel', () => {
+  const c = Object.create(T.PikaPetCard.prototype);
+  const liste = [];
+  const ohr = (seite) => ({
+    classList: { contains: (k) => k === `ear-${seite}` },
+    animate(frames, opt) {
+      const a = { frames, opt, aus: false, cancel() { this.aus = true; } };
+      liste.push(a);
+      return a;
+    },
+  });
+  const kl = new Set();
+  const root = { classList: { contains: (k) => kl.has(k) }, querySelectorAll: () => [ohr('l'), ohr('r')] };
+  c._earSwing(root, 'hop1');
+  assert.equal(liste.length, 2);
+  const [l, r] = liste;
+  // nur rotate (eigene Eigenschaft): transform bleibt den Regeln für Haltung, Flappen, Zucken und Wippen
+  for (const f of l.frames) assert.deepEqual(Object.keys(f).filter((k) => !['offset', 'easing'].includes(k)), ['rotate']);
+  assert.equal(l.frames[0].rotate, '0deg');
+  assert.equal(l.frames.at(-1).rotate, '0deg');
+  assert.equal(l.opt.duration, T.EAR_SWING.hop1.ms);
+  assert.equal(r.opt.delay - l.opt.delay, 50);
+  // bei der Landung (JUMPS.air[1]) schlagen die Ohren nach vorn: der größte Ausschlag liegt dort
+  for (const kind of ['hop1', 'binky']) {
+    const S = T.EAR_SWING[kind];
+    const [wann] = S.k.reduce((m, k) => (k[1] > m[1] ? k : m));
+    assert.ok(Math.abs(wann * S.ms - T.JUMPS[kind].air[1]) < 60, kind);
+    assert.ok(S.k.every(([o], i) => o > 0 && o < 1 && (i === 0 || o > S.k[i - 1][0])), kind);
+  }
+  // ein neuer Sprung beendet das alte Schwingen; im Hoppeln (da wippen sie schon) gibt es keins
+  c._earSwing(root, 'binky');
+  assert.ok(l.aus && r.aus);
+  assert.equal(liste.length, 4);
+  kl.add('walking');
+  c._earSwing(root, 'hop1');
+  assert.equal(liste.length, 4);
+  assert.ok(liste[2].aus && liste[3].aus);
+  // der Stil setzt am Sprung keine Ohr-Animation mehr (sie schlug jede andere Regel)
+  assert.doesNotMatch(src, /\.jump\.(hop1|binky) \.ear/);
+});
+
+test('Fangen: der Läufer rennt vom Fänger weg, nur ohne Platz an ihm vorbei', () => {
+  const [lo, hi, pW] = [150, 550, 100];
+  // Läufer links vom Fänger, beide in der linken Hälfte: bisher rannte er nach rechts durch den Fänger
+  assert.equal(T.chaseFar(250, 300, lo, hi, pW), false);
+  assert.equal(T.chaseFar(350, 300, lo, hi, pW), true);
+  assert.equal(T.chaseFar(400, 450, lo, hi, pW), false);
+  // am Rand kein Platz: auf die andere Seite
+  assert.equal(T.chaseFar(180, 300, lo, hi, pW), true);
+  assert.equal(T.chaseFar(520, 400, lo, hi, pW), false);
+  // spätere Runden: Der neue Läufer steht hinter dem alten (der am Rand ankam) und rennt zurück
+  assert.equal(T.chaseFar(430, 500, lo, hi, pW), false);
+  // stehen beide gleich: zur Seite mit mehr Platz
+  assert.equal(T.chaseFar(200, 200, lo, hi, pW), true);
+});
+
+test('Feste: Mitternacht und „Helau!“ kommen nach der Uhr, der Takt stellt nur den Wecker', () => {
+  const y = 2026;
+  const M = T.festMoments(new Date(y, 11, 31, 23, 59, 40).getTime());
+  assert.equal(M.mid, new Date(y + 1, 0, 1).getTime());
+  assert.equal(T.festMoments(new Date(y, 10, 11, 11, 10, 50).getTime()).helau, new Date(y, 10, 11, 11, 11).getTime());
+  assert.ok(T.FEST_AHEAD > 2 * 20000, 'jede Phase des 20-Sekunden-Takts muss den Wecker rechtzeitig stellen');
+  // Zwei Geräte, deren Takt 13 s auseinanderliegt, stellen den Wecker auf denselben Augenblick
+  const wecker = (jetzt) => {
+    const c = Object.create(T.PikaPetCard.prototype);
+    const gestellt = [];
+    c._festNow = () => jetzt;
+    c._festLater = (fn, ms) => gestellt.push(jetzt + ms);
+    c._festArm();
+    c._festArm(); // der nächste Takt stellt ihn nicht noch einmal
+    return gestellt;
+  };
+  const a = wecker(M.mid - 19000);
+  const b = wecker(M.mid - 6000);
+  assert.equal(a.length, 1);
+  assert.deepEqual(a, b);
+  assert.ok(a[0] >= M.mid && a[0] - M.mid < 100);
+  assert.equal(wecker(M.mid - T.FEST_AHEAD - 1000).length, 0); // noch zu früh
+  assert.equal(wecker(new Date(y, 5, 1).getTime()).length, 0);
+});
+
+test('Feste: die Halloween-Nacht endet am Morgen, nicht um Mitternacht', () => {
+  const c = Object.create(T.PikaPetCard.prototype);
+  c._cfg = { festive: true };
+  const am = (...d) => c._festToday(new Date(2026, ...d).getTime());
+  assert.equal(am(9, 31, 23, 30).witch, true);
+  const nacht = am(10, 1, 3, 0);
+  assert.equal(nacht.halloween, true);
+  assert.equal(nacht.witch, true);
+  const morgen = am(10, 1, 6, 0);
+  assert.equal(morgen.halloween, undefined);
+  assert.equal(morgen.witch, undefined);
+  assert.equal(am(9, 23, 12, 0).halloween, undefined);
+  assert.equal(am(9, 24, 12, 0).halloween, true);
+});
+
+test('Requisiten: hervorkramen und wegräumen über .kram und .stow, beim Abbruch sind sie sofort weg', async () => {
+  const kl = new Set();
+  const folge = [];
+  const merke = () => folge.push([...kl].sort().join(' '));
+  const pika = {
+    classList: {
+      add: (...k) => (k.forEach((x) => kl.add(x)), merke()),
+      remove: (...k) => (k.forEach((x) => kl.delete(x)), merke()),
+      contains: (k) => kl.has(k),
+    },
+  };
+  const c = Object.create(T.PikaPetCard.prototype);
+  c._el = { pika };
+  c._ac = new AbortController();
+  const warte = (ms) => new Promise((r) => setTimeout(r, ms));
+  // hervorkramen: Requisit und .kram zugleich, .kram geht nach der Animation von selbst
+  c._propOn('reading');
+  assert.equal(folge.at(-1), 'kram reading');
+  await warte(T.KRAM.in + 120);
+  assert.equal(folge.at(-1), 'reading');
+  // wegräumen: erst .stow (das Requisit ist noch da), nach KRAM.out alles weg; was nicht da war (doze), stört nicht
+  kl.add('doze');
+  const t0 = Date.now();
+  const p = c._propOff('reading', 'doze');
+  assert.equal(folge.at(-1), 'doze reading stow');
+  await p;
+  assert.ok(Date.now() - t0 >= T.KRAM.out - 20);
+  assert.equal(folge.at(-1), '');
+  // nichts in der Hand: nichts zu tun, auch kein .stow
+  const n = folge.length;
+  await c._propOff('music');
+  assert.equal(folge.length, n);
+  // gleich nach dem Hervorkramen wieder weg: .kram und .stow liegen nie zugleich an, der Zeitgeber von .kram ist gelöscht
+  c._propOn('gaming');
+  const q = c._propOff('gaming');
+  assert.equal(folge.at(-1), 'gaming stow');
+  // Abbruch mitten im Wegräumen (Regen, Schlafenszeit): sofort weg, der Abbruch läuft weiter nach oben
+  c._ac.abort();
+  await assert.rejects(q, (e) => e.constructor.name === 'Cancel');
+  assert.equal(folge.at(-1), '');
+  await warte(T.KRAM.in + 120);
+  assert.equal(folge.at(-1), '');
+  assert.ok(folge.every((f) => !(f.includes('kram') && f.includes('stow'))));
+  // hervorkramen direkt nach einem Wegräumen nimmt .stow wieder ab
+  kl.add('stow');
+  c._propOn('lifting', 'lift-gnd');
+  assert.equal(folge.at(-1), 'kram lift-gnd lifting');
+  clearTimeout(c._kramT);
+  // jede Klasse, mit der eine Beschäftigung ihr Requisit zeigt, räumt das Aufräumen der Schleife ab (_cleanup)
+  const gezeigt = [...src.matchAll(/this\._propOn\(([^)]*)\)/g)].flatMap((m) => m[1].split(',').map((x) => x.trim().replace(/'/g, '')));
+  assert.ok(gezeigt.length >= 9);
+  const raeumt = src.match(/const all = \['walking'([\s\S]*?)\];/)[1] + src.match(/const ACT_CLS = \[([\s\S]*?)\];/)[1];
+  for (const k of [...gezeigt, 'kram', 'stow']) assert.ok(raeumt.includes(`'${k}'`), k);
+});
+
+// ---------- Kleine Beschäftigungen ab 0.32 ----------
+
+const LAGE = { wet: false, rain: 0, storm: false, shelter: false, snowcover: false, cold: false, wind: 10, hayFull: false, winter: false };
+const TROCKEN = ['rope', 'weights', 'gather', 'hula', 'yoyo', 'puste', 'purzel', 'stones', 'juggle', 'crown', 'glider'];
+const SCHNEE = ['weights', 'hula', 'yoyo', 'purzel', 'juggle', 'glider', 'snowpika'];
+// Die Kette mit den festen Zahlen der Karte (wie _miniAct); has: in welchen Fenstern es eine kleine gibt
+const kette = (m, L, has = () => true) => T.miniChain(m, { ...LAGE, ...L }, has, (j) => T.seedRnd('mini', j, 2), (j) => T.seedRnd('mini', j, 3),
+  (j, k) => T.seedRnd('mini', j, 4 + k));
+
+// Attrappen für Methoden, die am DOM hängen: ein Element mit Klassen, Stil und Kindern, mehr brauchen sie nicht
+class Kl {
+  constructor() { this.s = new Set(); }
+  add(...k) { k.forEach((x) => this.s.add(x)); }
+  remove(...k) { k.forEach((x) => this.s.delete(x)); }
+  toggle(k, an) { const v = an === undefined ? !this.s.has(k) : !!an; if (v) this.s.add(k); else this.s.delete(k); return v; }
+  contains(k) { return this.s.has(k); }
+}
+class Att {
+  constructor() {
+    this.classList = new Kl();
+    this.style = { setProperty(k, v) { this[k] = v; } };
+    this.children = [];
+    this.parentElement = null;
+    this.offsetLeft = 0;
+    this.offsetWidth = 0;
+  }
+  set className(v) { this.classList = new Kl(); v.split(/\s+/).filter(Boolean).forEach((k) => this.classList.add(k)); }
+  set innerHTML(v) { this.html = v; }
+  appendChild(k) { k.parentElement = this; this.children.push(k); return k; }
+  remove() { this.parentElement = null; }
+  animate() { return { cancel() {} }; }
+}
+DOK.createElement = () => new Att();
+// Eine Karte mit der Geometrie von _layout (W × Hs, Areal), ohne Schleife: _interrupt zählt nur mit (c.abbr)
+const buehne = (W, Hs, areal = 'huegel') => {
+  const c = Object.create(T.PikaPetCard.prototype);
+  const scene = new Att();
+  Object.assign(scene, { clientWidth: W, clientHeight: Hs });
+  const leer = () => {};
+  Object.assign(c, {
+    _el: new Proxy({ scene }, { get: (t, k) => (t[k] ??= new Att()) }), _g: { pW: 1 }, _W: 0, _Hs: 0, _inside: true, _cfg: {}, _arealKey: areal,
+    _planes: new Map(), _lift: 0, _poseName: 'out', _dir: 1, abbr: 0,
+    _btnFit: leer, _setX(x) { this._x = x; }, _pose: leer, _layoutSky: leer, _layoutFest: leer, _layoutFriend: leer, _layoutBote: leer,
+    _layoutGift: leer, _planeSnap: leer, _placePiles: leer, _restartCritters: leer, _flowerGiftPlace: leer, _interrupt() { this.abbr++; },
+    _poops: () => ({ piles: [] }), _bote: null, _festPos: {}, _gtEls: null,
+  });
+  c._layout();
+  c._inside = false;
+  c._x = c._g.home + c._g.pW;
+  return c;
+};
+const GROESSEN = [[600, 248], [380, 184], [340, 248], [320, 400], [1000, 200]];
+
+test('Kleine Beschäftigungen: jede wählbare hat Methode, Länge, Wetter-Abbruch und räumt ihre Klassen ab', () => {
+  assert.equal(T.MINI_ACTS.length, 14);
+  const raeumt = src.match(/const all = \['walking'([\s\S]*?)\];/)[1] + src.match(/const ACT_CLS = \[([\s\S]*?)\];/)[1]
+    + src.match(/const CUTE_CLS = \[([\s\S]*?)\];/)[1];
+  for (const a of T.MINI_ACTS) {
+    assert.equal(typeof T.PikaPetCard.prototype[`_${a}`], 'function', `Methode _${a}`);
+    assert.ok(T.hasKey(T.ACT_LEN, a), `ACT_LEN.${a}`);
+    for (const v of [0, 0.5, 0.999]) {
+      const len = T.ACT_LEN[a](() => v);
+      assert.ok(len >= 5000 && len <= 30000, `${a}: Hauptteil ${len} ms`);
+    }
+    assert.ok(T.WX_STOP.includes(a), `WX_STOP: ${a}`);
+    // was die Methode dem Pika an Klassen gibt (direkt, über _propOn oder aus einer Liste in Großbuchstaben)
+    const body = src.match(new RegExp(`\\n    async _${a}\\(\\) \\{([\\s\\S]*?)\\n    \\}\\n`))[1];
+    const kl = [...body.matchAll(/(?:p\.classList\.add|this\._propOn)\(([^)]*)\)|const [A-Z]+ = \[([^\]]*)\]/g)]
+      .flatMap((m) => [...(m[1] || m[2]).matchAll(/'([^']+)'/g)].map((x) => x[1]));
+    for (const k of kl) assert.ok(raeumt.includes(`'${k}'`), `${a}: Klasse ${k} räumt _cleanup nicht ab`);
+  }
+  // Pfütze, Schiffchen und Schnee-Pika laufen nach der Planzeit: Ein später geladenes Gerät steigt ein
+  for (const a of ['puddle', 'boat', 'snowpika']) assert.equal(T.ACT_NOJOIN.has(a), false, a);
+  // jedes Requisit in der Pika-Grafik, das eine Klasse einblendet, wird hervorgekramt (PROP_SEL)
+  for (const s of ['.hoop', '.yo', '.pbl', '.jug', '.dchain', '.dcrown', '.pgl', '.peb', '.sboat']) {
+    assert.ok(T.PROP_SEL.includes(s), s);
+    assert.ok(src.includes(`class="${s.slice(1)}`), `Gruppe ${s}`);
+  }
+});
+
+test('Kleine Beschäftigungen: Auswahl nach Wetter, bei Regen und Schnee das eigene Programm', () => {
+  const geht = (L) => T.MINI_ACTS.filter((a) => T.miniOk(a, { ...LAGE, ...L }));
+  assert.deepEqual(plain(geht({})), TROCKEN);
+  assert.deepEqual(plain(geht({ wet: true, rain: 40 })), ['puddle', 'boat']);
+  assert.deepEqual(plain(geht({ wet: true, rain: 95, storm: true, shelter: true })), []); // Starkregen: er bleibt im Bau
+  assert.deepEqual(plain(geht({ wet: true, storm: true, shelter: true })), []); // Gewitter ohne Regen
+  assert.deepEqual(plain(geht({ snowcover: true, cold: true })), SCHNEE);
+  assert.deepEqual(plain(geht({ snowcover: true, wet: true, rain: 25 })), []); // Regen auf Schnee: weder Pfütze noch Schnee-Pika
+  assert.equal(geht({ hayFull: true }).includes('gather'), false);
+  for (const L of [{ cold: true }, { winter: true }]) assert.equal(geht(L).includes('crown'), false, JSON.stringify(L));
+  assert.equal(geht({ wind: 45 }).includes('glider'), false);
+  // die Windgrenze des Papierfliegers gilt auch, wenn Schnee liegt
+  assert.equal(geht({ snowcover: true, cold: true, wind: 45 }).includes('glider'), false);
+  assert.deepEqual(plain(geht({ snowcover: true, cold: true, wind: 45 })), SCHNEE.filter((a) => a !== 'glider'));
+  assert.equal(geht({ snowcover: true, cold: true, wind: 39 }).includes('glider'), true);
+  // Wie bis 0.31: Seil nur trocken und ohne Schnee, Hantel auch im Schnee, die Blüte nur, solange Platz im Vorrat ist
+  assert.equal(T.miniOk('rope', { ...LAGE, snowcover: true }), false);
+  assert.equal(T.miniOk('weights', { ...LAGE, snowcover: true }), true);
+  // Jedes Wetter hat sein Programm; was bei einer Lage geht, steht immer in ihrem Programm
+  assert.deepEqual(plain(T.MINI_PROG), { dry: TROCKEN, rain: ['puddle', 'boat'], snow: SCHNEE });
+  const lagen = [{}, { wet: true, rain: 40 }, { snowcover: true }, { snowcover: true, wet: true, rain: 25 }, { wet: true, rain: 95, storm: true, shelter: true },
+    { wet: true, storm: true, shelter: true }, { hayFull: true, cold: true, winter: true, wind: 50 }, { snowcover: true, wind: 50, hayFull: true }];
+  assert.deepEqual(lagen.map((L) => T.miniProg({ ...LAGE, ...L })), ['dry', 'rain', 'snow', null, null, null, 'dry', 'snow']);
+  for (const L of lagen) {
+    const prog = T.miniProg({ ...LAGE, ...L });
+    for (const a of geht(L)) assert.ok(prog && T.MINI_PROG[prog].includes(a), `${a} bei ${JSON.stringify(L)}`);
+  }
+  // Grundwahl: aus dem ganzen Programm, nie dieselbe wie davor
+  for (let i = 0; i < 200; i++) {
+    const u = i / 200;
+    const a = T.miniBase('dry', null, u);
+    assert.ok(TROCKEN.includes(a));
+    assert.notEqual(T.miniBase('dry', a, u, (u * 7) % 1), a);
+    // ein anderer Vorgänger ändert die Wahl nicht: Sie hängt nur am Fenster
+    assert.equal(T.miniBase('dry', TROCKEN.find((x) => x !== a), u, 0.3), a);
+    assert.ok(SCHNEE.includes(T.miniBase('snow', null, u)));
+    assert.ok(['puddle', 'boat', null].includes(T.miniBase('rain', null, u)));
+  }
+  // Ersatz: nur was geht und weder davor noch danach dran ist; bleibt nichts übrig, keine
+  const voll = { ...LAGE, hayFull: true, cold: true, wind: 50 };
+  for (let i = 0; i < 200; i++) {
+    const a = T.miniSwap('dry', voll, ['hula', 'yoyo', null], (k) => ((i + 1) * (k + 3) * 0.137) % 1);
+    assert.ok(TROCKEN.includes(a) && !['gather', 'crown', 'glider', 'hula', 'yoyo'].includes(a), `${a}`);
+  }
+  assert.equal(T.miniSwap('dry', voll, TROCKEN, () => 0.4), null);
+  // kein Programm: keine
+  assert.equal(kette(1234, { shelter: true, wet: true, rain: 95 }), null);
+  assert.equal(kette(1234, { hayFull: true, snowcover: true, wet: true, rain: 25 }), null);
+  assert.equal(kette(1234, {}, (j) => j !== 1234), null); // in diesem Fenster gibt es keine kleine
+});
+
+test('Kleine Beschäftigungen: ein Schalter ändert nur die Fenster, die er trifft, und nie folgt dieselbe auf sich selbst', () => {
+  // Wind ab 40 km/h ersetzt allein den Papierflieger, ein voller Vorrat allein die Blüte, Kälte allein den Kranz.
+  // Alle anderen Fenster bleiben, wie sie waren (bis hierher verschob jeder Schalter ein Drittel bis die Hälfte)
+  const N = 1500;
+  const folge = (L) => Array.from({ length: N }, (_, i) => kette(1000 + i, L));
+  const trocken = folge({});
+  for (const [grund, L, weg] of [[trocken, { wind: 45 }, 'glider'], [trocken, { hayFull: true }, 'gather'], [trocken, { cold: true }, 'crown'],
+    [folge({ snowcover: true }), { snowcover: true, wind: 45 }, 'glider']]) {
+    const mit = folge(L);
+    let n = 0;
+    for (let i = 1; i < N; i++) {
+      const [a, b] = [grund[i], mit[i]];
+      assert.notEqual(b, weg, `Fenster ${i}`);
+      if (a === weg) n++;
+      else assert.equal(b, a, `Fenster ${i} bei ${JSON.stringify(L)}`);
+      // springt der Schalter zwischen zwei Fenstern um (an oder aus), folgt trotzdem nie dieselbe auf sich selbst
+      assert.notEqual(b, grund[i - 1], `Fenster ${i}: Schalter an`);
+      assert.notEqual(a, mit[i - 1], `Fenster ${i}: Schalter aus`);
+      assert.notEqual(b, mit[i - 1], `Fenster ${i}: Schalter bleibt`);
+    }
+    assert.ok(n > 70 && n < 300, `${weg}: ${n} Fenster betroffen`);
+  }
+  // ein zweiter Schalter (Winter, dazu Wind): nur Fenster, deren Grundwahl Kranz oder Flieger war, können sich ändern
+  const winter = folge({ winter: true });
+  const sturm = folge({ winter: true, wind: 45 });
+  let anders = 0;
+  for (let i = 0; i < N; i++) {
+    if (winter[i] === sturm[i]) continue;
+    anders++;
+    assert.ok(['crown', 'glider'].includes(trocken[i]), `Fenster ${i}`);
+  }
+  assert.ok(anders > 70 && anders < 200, `${anders}`);
+  // Die Lage kennt keinen Festtagshut: Er hängt an der Konfiguration der einzelnen Karte (festive, birthdays). Zwei
+  // Dashboards wählen deshalb auch am Geburtstag dasselbe; auf dem mit Hut fällt nur der Blumenkranz aus.
+  const c = Object.create(T.PikaPetCard.prototype);
+  Object.assign(c, { _wx: {}, _hay: 0, _wind: 5, _seasonK: 'summer', _fest: {} });
+  assert.equal('hat' in c._lage(), false);
+  assert.equal(c._actOk('crown'), true);
+  const m0 = Math.floor(NOW / T.ACT_WIN.mini);
+  const ohne = Array.from({ length: 200 }, (_, i) => c._miniAct(m0 + i));
+  for (const f of [{ birthday: { names: ['Mia'] } }, { witch: true }, { xmas: true }, { karneval: true }]) {
+    c._fest = f;
+    assert.equal(c._actOk('crown'), false, JSON.stringify(f));
+    assert.equal(c._actOk('hula'), true);
+    assert.deepEqual(Array.from({ length: 200 }, (_, i) => c._miniAct(m0 + i)), ohne);
+  }
+  assert.ok(ohne.includes('crown'));
+});
+
+test('Kleine Beschäftigungen: dicht an einer großen gibt es keine, und die Kette beginnt danach neu', () => {
+  const c = Object.create(T.PikaPetCard.prototype);
+  Object.assign(c, { _wx: {}, _hay: 0, _wind: 5, _seasonK: 'summer', _fest: {} });
+  const u = (j) => T.seedRnd('mini', j, 2);
+  const m0 = Math.floor(NOW / T.ACT_WIN.mini);
+  let neu = 0;
+  for (let m = m0; m < m0 + 20000; m++) {
+    if (!T.miniHas(m) || c._nearBig(T.miniStart(m))) continue;
+    // das Fenster davor hätte eine kleine, liegt aber dicht an einer großen: Dort lief keine, also gibt es keinen
+    // Vorgänger, und dieses Fenster nimmt seine erste Wahl, auch wenn es dieselbe wäre wie die (ausgefallene) davor
+    if (!T.miniHas(m - 1) || !c._nearBig(T.miniStart(m - 1))) continue;
+    const erste = T.miniBase('dry', null, u(m));
+    if (T.miniBase('dry', null, u(m - 1)) !== erste) continue;
+    neu++;
+    assert.equal(c._miniAct(m), erste, `Fenster ${m}`);
+    assert.equal(c._miniAt(T.miniStart(m - 1) + 1000), null); // und im Fenster davor läuft wirklich keine
+  }
+  assert.ok(neu >= 3, `${neu} Fälle`);
+});
+
+test('Kleine Beschäftigungen: über den Tag beherrscht keine das Bild, Seil und Hantel sind selten geworden', () => {
+  // 3000 Fenster hintereinander (jedes besetzt), mit den festen Zahlen der Karte
+  const zaehl = (L) => {
+    const n = {};
+    let prev = null;
+    for (let m = 1000; m < 4000; m++) {
+      const a = kette(m, L);
+      assert.ok(a === null || a !== prev, `Fenster ${m}: zweimal ${a}`);
+      prev = a;
+      n[a] = (n[a] || 0) + 1;
+    }
+    return n;
+  };
+  const trocken = zaehl({});
+  for (const a of TROCKEN) assert.ok(trocken[a] / 3000 > 0.04 && trocken[a] / 3000 < 0.14, `${a}: ${trocken[a]}`);
+  assert.ok((trocken.rope + trocken.weights) / 3000 < 0.18, `Seil und Hantel: ${trocken.rope + trocken.weights} von 3000`);
+  assert.equal(Object.keys(trocken).length, TROCKEN.length);
+  // Regen: nur Pfütze und Schiffchen, gut die Hälfte der Fenster bleibt leer
+  const regen = zaehl({ wet: true, rain: 40 });
+  assert.deepEqual(Object.keys(regen).sort(), ['boat', 'null', 'puddle']);
+  assert.ok(regen.null / 3000 > 0.45 && regen.null / 3000 < 0.65, `leer ${regen.null}`);
+  assert.ok(regen.puddle > 500 && regen.boat > 400);
+  // Schnee: der Schnee-Pika am häufigsten, aber nicht jedes zweite Mal
+  const schnee = zaehl({ snowcover: true, cold: true, winter: true });
+  assert.ok(schnee.snowpika / 3000 > 0.15 && schnee.snowpika / 3000 < 0.3, `Schnee-Pika ${schnee.snowpika}`);
+  assert.ok(Object.entries(schnee).every(([a, v]) => a === 'snowpika' || v < schnee.snowpika));
+  // mit Schaltern (Winter, voller Vorrat, Sturm): nie zweimal dieselbe, keine der gesperrten, die übrigen teilen sich den Tag
+  const karg = zaehl({ winter: true, cold: true, hayFull: true, wind: 50 });
+  assert.deepEqual(Object.keys(karg).sort(), TROCKEN.filter((a) => !['gather', 'crown', 'glider'].includes(a)).sort());
+  for (const [a, v] of Object.entries(karg)) assert.ok(v / 3000 > 0.07 && v / 3000 < 0.18, `${a}: ${v}`);
+});
+
+test('Wetterwechsel: Pfütze und Schiffchen gehen nur bei Regen, der Schnee-Pika nur bei Schnee, das Übrige wie bisher', () => {
+  const c = Object.create(T.PikaPetCard.prototype);
+  Object.assign(c, { _hay: 0, _fest: {}, _seasonK: 'summer', _wind: 8, _kiteWind: () => false });
+  const bei = (wx, act) => ((c._wx = wx), c._actOk(act));
+  const regen = { wet: true, rain: 40 };
+  const schnee = { snowcover: true, cold: true };
+  for (const a of ['puddle', 'boat']) {
+    assert.equal(bei(regen, a), true, a);
+    assert.equal(bei({}, a), false, `${a} nach dem Regen`);
+    assert.equal(bei({ wet: true, rain: 95, storm: true, shelter: true }, a), false, `${a} bei Starkregen`);
+  }
+  assert.equal(bei(schnee, 'snowpika'), true);
+  assert.equal(bei({}, 'snowpika'), false); // getaut
+  for (const a of ['hula', 'yoyo', 'puste', 'purzel', 'stones', 'juggle', 'crown', 'glider', 'rope', 'weights', 'gather', 'read', 'music']) {
+    assert.equal(bei({}, a), true, a);
+    assert.equal(bei(regen, a), false, `${a} bei Regen`);
+  }
+  assert.equal(bei(regen, 'tv'), true);
+  assert.equal(bei(schnee, 'rope'), false);
+  assert.equal(bei(schnee, 'weights'), true);
+  assert.equal(bei(schnee, 'read'), true);
+  assert.equal(bei(schnee, 'bubbles'), false);
+  c._hay = T.HAY_MAX;
+  assert.equal(bei({}, 'gather'), false);
+});
+
+test('Requisit am Boden: Platz aus der festen Zahl, neben den Sperren, auf jeder Kartenbreite dieselbe Stelle', () => {
+  const nah = (a, b) => assert.ok(Math.abs(a - b) < 1e-6, `${a} statt ${b}`);
+  // zwischen 200 und 500 ganz auf der Wiese: Mitte von 250 bis 450
+  nah(T.groundSpot(0, 100, 200, 500).x, 250);
+  nah(T.groundSpot(1, 100, 200, 500).x, 450);
+  nah(T.groundSpot(0.5, 100, 200, 500).x, 350);
+  nah(T.groundSpot(0.5, 100, 200, 500).w, 100);
+  // ein Gerät des Haus-Boten oder ein Häufchen im Weg: daneben, an die nähere freie Kante
+  const s = T.groundSpot(0.5, 100, 200, 500, [[340, 370]]);
+  nah(s.x, 290);
+  assert.ok(s.x + 50 <= 340);
+  nah(T.groundSpot(0.5, 100, 200, 500, [[600, 700]]).x, 350); // Sperre woanders stört nicht
+  // schmale Karte: zu wenig Platz, dann schmaler (bis 60 %) und mittig, egal welche Zahl
+  for (const u of [0, 0.3, 1]) {
+    const n = T.groundSpot(u, 100, 200, 240);
+    nah(n.x, 220);
+    nah(n.w, 60);
+  }
+  nah(T.groundSpot(0.2, 100, 200, 280).w, 80);
+  // kMin 1 (Requisit mit dem Pika daneben): die Breite bleibt, es liegt mittig über der Lücke
+  nah(T.groundSpot(0.7, 100, 200, 240, [], 1).w, 100);
+  nah(T.groundSpot(0.7, 100, 200, 240, [], 1).x, 220);
+  // doppelt so große Karte: dieselbe Stelle, doppelt so weit
+  for (const u of [0.1, 0.5, 0.9]) nah(T.groundSpot(u, 200, 400, 1000).x, 2 * T.groundSpot(u, 100, 200, 500).x);
+});
+
+const etwa = (a, b, tol = 1e-6, was = '') => assert.ok(Math.abs(a - b) <= tol, `${was} ${a} statt ${b}`);
+
+test('Requisit am Boden an der Karte: Sperren von Haus-Bote, Festdeko, Schätzen und Häufchen, das Wollknäuel zählt nicht', () => {
+  const c = buehne(600, 248);
+  const { rock, pW } = c._g;
+  const H = c._H;
+  assert.deepEqual(plain(c._groundBlocks()), []);
+  const frei = c._groundSpot(0.4, 60).x;
+  // Ein Gerät des Haus-Boten mitten auf der Wiese: Das Requisit rückt daneben
+  c._bote = { list: [{ el: {}, spec: {}, w: 40, l: frei - 20 }, { el: null, spec: {}, w: 40, l: 10 }] };
+  const pad = H * 0.015;
+  assert.deepEqual(plain(c._groundBlocks()), [[frei - 20 - pad, frei + 20 + pad]]);
+  const neben = c._groundSpot(0.4, 60).x;
+  assert.ok(neben + 30 <= frei - 20 - pad + 1e-6 || neben - 30 >= frei + 20 + pad - 1e-6, `${neben} liegt auf dem Gerät bei ${frei}`);
+  c._bote = null;
+  // Festdeko mit festem Platz sperrt, Ostereier und Stöckchen nicht
+  c._festPos = { tree: { l: 300, w: 30 }, egg2: { l: 350, w: 8 }, stick1: { l: 380, w: 8 } };
+  assert.deepEqual(plain(c._groundBlocks()), [[300 - pad, 330 + pad]]);
+  c._festPos = {};
+  // Schätze auf der Wiese sperren (nicht, was im Bau oder im Arm liegt). Das Wollknäuel nicht: Nach einem Tipp liegt
+  // es auf jedem Gerät woanders, die Pfütze läge sonst auf zwei Geräten an verschiedenen Stellen
+  const keys = [...src.matchAll(/\{ key: '(\w+)', name: /g)].map((m) => m[1]);
+  const schatz = (l, w, top) => {
+    const el = new Att();
+    Object.assign(el, { offsetLeft: l, offsetWidth: w, parentElement: c._el.gifts });
+    if (top) el.style.top = top;
+    return el;
+  };
+  c._gtEls = new Map([[keys.indexOf('yarn'), schatz(320, 20)], [keys.indexOf('hammock'), schatz(360, 50)], [keys.indexOf('bell'), schatz(100, 10, '12px')]]);
+  assert.ok(keys.indexOf('yarn') >= 0 && keys.indexOf('hammock') >= 0);
+  assert.deepEqual(plain(c._groundBlocks()), [[360 - pad, 410 + pad]]);
+  c._gtEls = null;
+  // Häufchen in der Klo-Ecke am Steinfuß
+  c._poops = () => ({ piles: [{ slot: 0 }] });
+  const b = plain(c._groundBlocks());
+  assert.equal(b.length, 1);
+  etwa((b[0][0] + b[0][1]) / 2, rock.l + rock.w * 0.04);
+  c._poops = () => ({ piles: [] });
+  // Schnee-Pika und Steintürmchen mit dem Pika daneben: Abstand bleibt, auf breiten Karten steht beides auf der Wiese
+  for (const [W, Hs] of GROESSEN) {
+    for (const areal of ['huegel', 'fels', 'stumpf', 'alpin']) {
+      const k = buehne(W, Hs, areal);
+      const g = k._g;
+      for (const w of [g.pH * 0.7, g.pH * 0.44]) {
+        for (const [u, v] of [[0, 0.2], [0.999, 0.8], [0.5, 0.2]]) {
+          const U = k._besideSpot(u, v, w);
+          const wo = `${areal} ${W}×${Hs}`;
+          etwa(Math.abs(U.px - U.x) - w / 2, g.pW * 0.45, 1e-6, wo); // er verdeckt nicht, was er baut
+          assert.ok(U.px - w / 2 >= g.hayR - 1e-6, `${wo}: Requisit über dem Vorrat`);
+          assert.ok(U.x - g.pW / 2 >= g.hole.r - 1e-6, `${wo}: Pika vor der Tür`);
+          // enge Karte (380 × 184): links von der Klo-Ecke am Steinfuß; auf den schmalsten ragt es höchstens noch gut zur
+          // Hälfte vor den Stein (bisher stand es ganz davor)
+          const ecke = g.rock.l - g.rock.w * 0.08 - k._H * 0.05;
+          if (W === 380) assert.ok(U.px + w / 2 <= ecke + 1e-6, `${wo}: Requisit in der Klo-Ecke`);
+          if (W < 380) assert.ok(U.px + w / 2 - g.rock.l <= w * 0.6, `${wo}: Requisit weit vor dem Stein`);
+        }
+      }
+    }
+  }
+});
+
+test('Papierflieger: beide Würfe landen in der Karte und neben Vorrat und Tür, auf schmalen Karten steil vor den Füßen', () => {
+  for (const areal of ['huegel', 'fels', 'stumpf', 'alpin']) {
+    for (const [W, Hs] of GROESSEN) {
+      const c = buehne(W, Hs, areal);
+      const g = c._g;
+      const wo = `${areal} ${W}×${Hs}`;
+      for (const u of [0, 0.25, 0.5, 0.75, 0.999]) {
+        for (const r of [0, 0.5, 0.999]) {
+          const wuerfe = plain(T.gliderThrows(c._hobbySpot(u), [r, 1 - r], { W, ...g }));
+          assert.equal(wuerfe.length, 2);
+          assert.equal(wuerfe[1].dir, -wuerfe[0].dir); // der zweite geht zurück
+          for (const t of wuerfe) {
+            assert.ok(t.land - t.gw / 2 >= g.hayR - 1e-6, `${wo}: landet über dem Vorrat (${t.land})`);
+            assert.ok(t.land - t.gw / 2 >= g.hole.r, `${wo}: landet vor der Tür (${t.land})`);
+            assert.ok(t.land + t.gw / 2 <= W, `${wo}: landet hinter dem Kartenrand (${t.land})`);
+            assert.ok(t.to >= g.pW * 0.45 - 1e-6 && t.to <= g.xR + 1e-6, `${wo}: er läuft aus dem Bild (${t.to})`);
+            // nach dem Hinterherlaufen liegt der Flieger vor seiner Nase (außer er steht schon am Rand)
+            if (t.to > g.pW * 0.45 + 1 && t.to < g.xR - 1) etwa((t.land - t.to) * t.dir, g.pW * (122 / 120 - 0.56), 1e-6, wo);
+            assert.equal(t.steep, Math.abs(t.land - t.ox) < g.pW * 0.6);
+          }
+          // der zweite Wurf beginnt dort, wo er den ersten aufgehoben hat
+          etwa(wuerfe[1].ox, wuerfe[0].to + wuerfe[1].dir * g.pW * (122 / 120 - 0.5), 1e-6, wo);
+        }
+      }
+      const mitte = T.gliderThrows(c._hobbySpot(0.5), [0.5, 0.5], { W, ...g });
+      // schmal (die Wiese ist kürzer als ein Wurf): steil, er landet vor den Füßen; breit: ein weiter Wurf
+      if (W <= 340) assert.ok(mitte.every((t) => t.steep), `${wo}: nicht steil`);
+      // 380 × 184, Standplatz am rechten Ende der Wiese: Bis vor den Stein ist weniger als ein halber Wurf Platz. Er
+      // wirft steil und genau so weit, wie Platz ist (keine Mindestweite mehr, die den Flieger hinaustrüge)
+      if (W === 380) {
+        const [eng] = T.gliderThrows(c._hobbySpot(0.999), [0.5, 0.5], { W, ...g });
+        assert.equal(eng.steep, true, `${wo}: am Rand nicht steil`);
+        assert.ok(eng.land + eng.gw <= g.xR + g.pW * 0.3 + 1e-6, `${wo}: landet dichter am Rand als seine Breite`);
+      }
+      if (W >= 600) assert.ok(mitte.every((t) => !t.steep && Math.abs(t.land - t.ox) > g.pW), `${wo}: kein weiter Wurf`);
+    }
+  }
+  // Karten ab 3:2 wie bisher: auf 600 × 248 fliegt er rechts bis vor den Stein und zurück bis zum Vorrat
+  const c = buehne(600, 248);
+  const [hin, her] = T.gliderThrows(c._hobbySpot(0), [0.999, 0.999], { W: 600, ...c._g });
+  assert.deepEqual([hin.dir, Math.round(hin.land), Math.round(hin.to), her.dir, Math.round(her.land), Math.round(her.to)], [1, 548, 493, -1, 253, 307]);
+  // beide Würfe und das Hinterherlaufen passen in die Länge des Fensters
+  assert.equal(T.ACT_LEN.glider(() => 0.5), 700 + 2 * T.GLIDER_STEP);
+});
+
+test('Papierschiffchen: wo es ist, steht mit der Planzeit fest; wer später einsteigt, sieht es nicht eine Etappe voraus', () => {
+  const B = T.BOAT_T;
+  for (const K of [3, 4]) {
+    const tk = (k) => B.launch + k * B.puff;
+    const t1 = tk(K);
+    assert.equal(T.ACT_LEN.boat((n) => (n === 1 ? (K - 3) / 2 : 0)), t1 + B.back);
+    assert.equal(T.boatPos(0, K), 0);
+    assert.equal(T.boatPos(B.launch - 1, K), 0);
+    for (let k = 0; k < K; k++) {
+      // Etappe begonnen, er holt noch Luft: Das Schiffchen liegt noch, wo es war (bisher stand es schon eine weiter)
+      etwa(T.boatPos(tk(k) + 100, K), k / K, 1e-3);
+      etwa(T.boatPos(tk(k) + B.blow, K), k / K, 1e-3);
+      // gepustet: Es gleitet (erst schnell, dann langsamer) und ist zum Ende der Etappe angekommen
+      const halb = T.boatPos(tk(k) + B.blow + B.glide / 2, K);
+      assert.ok(halb > (k + 0.6) / K && halb < (k + 0.98) / K, `Etappe ${k}: ${halb}`);
+      etwa(T.boatPos(tk(k) + B.puff - 1, K), (k + 1) / K, 1e-3);
+    }
+    // hinüber nie zurück, auf der Rückfahrt nie vor; immer auf der Pfütze
+    let vor = 0;
+    for (let t = 0; t <= t1; t += 25) {
+      const f = T.boatPos(t, K);
+      assert.ok(f >= vor - 1e-3 && f <= 1, `t ${t}: ${f} nach ${vor}`);
+      vor = f;
+    }
+    etwa(T.boatPos(t1, K), 1);
+    for (let t = t1; t <= t1 + B.back + 500; t += 25) {
+      const f = T.boatPos(t, K);
+      assert.ok(f <= vor + 1e-9 && f >= 0, `t ${t}: ${f} nach ${vor}`);
+      vor = f;
+    }
+    etwa(T.boatPos(t1 + (B.back - B.home) / 2, K), 0.5, 1e-6);
+    assert.equal(T.boatPos(t1 + B.back - B.home, K), 0);
+  }
+  // die Zeitkurven wie im Browser: linear, ease-in-out (symmetrisch), ease (bei halber Zeit gut 80 %)
+  etwa(T.bezAt(0, 0, 1, 1, 0.3), 0.3);
+  etwa(T.bezAt(0.42, 0, 0.58, 1, 0.5), 0.5);
+  etwa(T.bezAt(0.42, 0, 0.58, 1, 0.25) + T.bezAt(0.42, 0, 0.58, 1, 0.75), 1);
+  etwa(T.bezAt(0.25, 0.1, 0.25, 1, 0.5), 0.8024, 1e-3);
+  assert.equal(T.bezAt(0.2, 0.7, 0.3, 1, -1), 0);
+  assert.equal(T.bezAt(0.2, 0.7, 0.3, 1, 2), 1);
+  // die Karte nimmt dieselbe Kurve und dieselben Zeiten wie die Rechnung
+  assert.ok(src.includes('cubic-bezier(${BOAT_EASE.join(\', \')})'));
+  assert.ok(src.includes("trip(1, 0, T1, BOAT_T.back - BOAT_T.home, 'ease-in-out')"));
+});
+
+// Eine kleine Beschäftigung aus dem Tagesplan (Fenster 7001) auf einer Karte, die schon am Platz steht (_goSpot ist
+// sofort fertig) und früh dran ist. log schreibt mit, worauf sie wartet: ['at', Planzeit] oder ['wait', ms].
+const taktKarte = (act, r = (n) => T.seedRnd('mini', 7001, 10 + n)) => {
+  const c = buehne(600, 248);
+  const start = NOW;
+  const log = [];
+  Object.assign(c, {
+    log, _slot: { id: 'm7001', kind: 'mini', k: 7001, act, start, end: start + T.ACT_WALK + T.ACT_LEN[act](r), r },
+    _planNow: () => start + 1200, _goSpot: async () => {}, _face() {}, _propOn() {}, _propOff: async () => {}, _happy() {}, _say() {},
+    _aprop: () => new Att(), _mimik() {}, _cls() {}, _puff() {}, _seeds() {}, _hearts() {}, _blush() {}, _jump() {}, _hopTo: async () => {},
+    _wait: async (ms) => { log.push(['wait', ms]); },
+    _at: async (t) => { log.push(['at', t]); throw new Error('halt'); },
+  });
+  return c;
+};
+
+test('Gemeinsamer Takt: jede kleine Beschäftigung aus dem Plan beginnt zur Planzeit, nicht bei der Ankunft', async () => {
+  for (const act of ['rope', 'hula', 'yoyo', 'puste', 'purzel', 'stones', 'juggle', 'glider']) {
+    const c = taktKarte(act);
+    await c[`_${act}`]().catch((e) => assert.equal(e.message, 'halt', `${act}: ${e.stack}`));
+    // Wer schon am Platz steht, wartet bis ACT_WALK nach Fensterbeginn (und nicht erst seine eigene Pause ab)
+    assert.deepEqual(c.log[0], ['at', NOW + T.ACT_WALK], `${act}: beginnt mit ${JSON.stringify(c.log[0])}`);
+  }
+  // Aus der Vorschau erzwungen (kein Fenster): gleich los, es gibt keine Planzeit
+  for (const act of ['yoyo', 'puste', 'purzel']) {
+    const c = taktKarte(act);
+    c._slot = null;
+    await c[`_${act}`]().catch((e) => assert.equal(e.message, 'halt', `${act}: ${e.stack}`));
+    assert.equal(c.log[0][0], 'wait', act);
+  }
+  // Hula-Hoop: „schneller!“ und die Ausrufe kommen zu festen Planzeiten aus den Zahlen des Fensters. Zwei Geräte,
+  // eines früh am Platz, eines erst im letzten Augenblick: dieselben Zeitpunkte
+  const hula = async (spaet) => {
+    const r = (n) => (n === 1 ? 0.8 : n === 6 ? 0.9 : n === 7 ? 0.1 : T.seedRnd('hula', n));
+    const c = taktKarte('hula', r);
+    const gesagt = [];
+    const zeiten = () => c.log.filter((e) => e[0] === 'at').map((e) => e[1]);
+    Object.assign(c, {
+      _planNow: () => NOW + spaet, _at: async (t) => { c.log.push(['at', t]); },
+      _say: (text) => gesagt.push([text, zeiten().at(-1), c._el.pika.classList.contains('hula-x')]),
+    });
+    await c._hula();
+    return { zeiten: zeiten(), gesagt, S: c._slot };
+  };
+  const a = await hula(1200);
+  const b = await hula(4900);
+  assert.deepEqual(a.zeiten, b.zeiten);
+  const { S } = a;
+  const T0 = S.start + T.ACT_WALK;
+  const mid = S.end - (S.end - T0) * 0.4;
+  assert.equal(a.zeiten[0], T0);
+  assert.equal(a.zeiten.at(-1), S.end);
+  assert.ok(a.zeiten.every((t, i) => i === 0 || t > a.zeiten[i - 1]), 'Zeitpunkte nicht aufsteigend');
+  assert.ok(a.zeiten.length >= 3, `${a.zeiten.length} Zeitpunkte`);
+  // „schneller!“ genau bei 60 % des Hauptteils, in dem Augenblick dreht der Reifen schneller
+  assert.deepEqual(a.gesagt.filter((g) => g[0] === 'schneller!'), [['schneller!', mid, true]]);
+  assert.ok(a.gesagt.filter((g) => g[1] < mid).every((g) => g[2] === false));
+});
+
+test('Wetterwechsel am Gerät: endet der Regen oder taut der Schnee, packt er Pfütze, Schiffchen und Schnee-Pika ein', () => {
+  const c = Object.create(T.PikaPetCard.prototype);
+  const leer = () => {};
+  Object.assign(c, {
+    _el: { scene: new Att(), clouds: [], pika: new Att() }, _cfg: { rain_min: 0.3 }, _wx: {}, _wxLog: [], _haNow: () => NOW, _viewN: () => false,
+    _setPrecip: leer, _light: leer, _bowSync: leer, _cloudWind: leer, _asleep: false, _inside: false, _hay: 0, _fest: {}, _seasonK: 'summer',
+    abbr: 0, _interrupt() { this.abbr++; },
+  });
+  // Wetter setzen (wie die Schalter der Vorschau), während er tut beschäftigt ist: Wie oft wurde abgebrochen?
+  const wetter = (cond, schnee = 0, tut = null) => {
+    c.abbr = 0;
+    c._action = tut;
+    c._dbgWeather = { cond, wind: 5, temp: schnee ? -2 : 12 };
+    c._dbgSnow = schnee;
+    c._applyWeather();
+    return c.abbr;
+  };
+  // der Regen hört auf: Pfütze und Schiffchen sind vorbei (bis 0.31 brach nur beginnender Regen etwas ab)
+  for (const act of ['puddle', 'boat']) {
+    wetter('rainy');
+    assert.equal(c._wx.wet, true);
+    assert.equal(wetter('cloudy', 0, act), 1, `${act} nach dem Regen`);
+  }
+  wetter('rainy');
+  assert.equal(wetter('cloudy', 0, 'tv'), 0); // Fernsehen geht weiter
+  // der Schnee ist getaut: kein Schnee-Pika auf der grünen Wiese; Gewichtheben geht mit und ohne Schnee
+  wetter('cloudy', 1);
+  assert.equal(c._wx.snowcover, true);
+  assert.equal(wetter('cloudy', 0, 'snowpika'), 1);
+  wetter('cloudy', 1);
+  assert.equal(wetter('cloudy', 0, 'weights'), 0);
+  // Regen oder Schnee beginnt: wie bisher
+  wetter('cloudy');
+  assert.equal(wetter('rainy', 0, 'yoyo'), 1);
+  wetter('cloudy');
+  assert.equal(wetter('cloudy', 1, 'rope'), 1);
+  wetter('cloudy');
+  assert.equal(wetter('cloudy', 1, 'weights'), 0);
+  // es regnet weiter (nur der Wind dreht): Die Pfütze bleibt
+  wetter('rainy');
+  c._dbgWeather = { cond: 'rainy', wind: 25, temp: 12 };
+  c._action = 'puddle';
+  c._applyWeather();
+  assert.equal(c.abbr, 0);
+});
+
+test('Aufräumen: Requisiten am Boden verschwinden, mitten im Purzelbaum bleibt er stehen, wo er ist', () => {
+  const karte = (...klassen) => {
+    const c = Object.create(T.PikaPetCard.prototype);
+    const leer = () => {};
+    const pika = new Att();
+    pika.classList.add(...klassen);
+    Object.assign(c, {
+      _el: { pika, think: new Att() }, _mimik: leer, _tvOn: leer, _kiteAway: leer, _easelAway: leer, _mouth: leer, _bubble: leer,
+      eingefroren: 0, _freeze() { this.eingefroren++; }, _action: 'purzel',
+    });
+    return c;
+  };
+  // Purzelbaum: Die Rolle trägt ihn über eine Transition weiter. Ohne Anhalten glitte er nach dem Abbruch zum Ziel
+  const c = karte('purzel', 'crosseye');
+  c._cleanup();
+  assert.equal(c.eingefroren, 1);
+  assert.equal(c._el.pika.classList.contains('purzel'), false);
+  assert.equal(c._action, null);
+  const w = karte('walking');
+  w._cleanup();
+  assert.equal(w.eingefroren, 1);
+  const s = karte('hula', 'hula-go');
+  s._cleanup();
+  assert.equal(s.eingefroren, 0); // steht er, gibt es nichts anzuhalten
+  assert.deepEqual([...s._el.pika.classList.s], []);
+  // Pfütze, Schnee-Pika, Steintürmchen, fliegender Papierflieger: blenden aus und sind aus der Liste
+  const d = karte('sniff');
+  const pfuetze = new Att();
+  const flieger = new Att();
+  for (const el of [pfuetze, flieger]) el.classList.add('aprop', 'on');
+  d._aprops = new Set([pfuetze, flieger]);
+  d._cleanup();
+  assert.equal(d._aprops.size, 0);
+  for (const el of [pfuetze, flieger]) assert.deepEqual([...el.classList.s].sort(), ['aprop', 'off']);
+});
+
+test('Größe der Karte ändert sich: was mit festen Pixeln rechnet, wird abgebrochen, alles andere läuft weiter', () => {
+  const c = buehne(600, 248);
+  const neu = (W, Hs, tut, requisit = false) => {
+    c.abbr = 0;
+    c._action = tut;
+    c._aprops = requisit ? new Set([new Att()]) : new Set();
+    Object.assign(c._el.scene, { clientWidth: W, clientHeight: Hs });
+    c._layout();
+    return c.abbr;
+  };
+  // Papierflieger zwischen den Würfen und Purzelbaum: kein Requisit am Boden, aber Wege in Pixeln
+  assert.equal(neu(500, 248, 'glider'), 1);
+  assert.equal(neu(600, 248, 'purzel'), 1);
+  // derselbe Aufruf ohne Größenänderung (ResizeObserver meldet sich auch so): nichts
+  assert.equal(neu(600, 248, 'glider'), 0);
+  assert.equal(neu(600, 248, 'purzel'), 0);
+  // ein Requisit am Boden (Pfütze, Schnee-Pika, Steintürmchen, fliegender Papierflieger)
+  assert.equal(neu(500, 248, 'puddle', true), 1);
+  assert.equal(neu(600, 248, 'stones', true), 1);
+  assert.equal(neu(600, 248, 'puddle', true), 0);
+  // was auf der Stelle steht und zur Grafik des Pikas gehört, läuft weiter
+  for (const act of ['hula', 'yoyo', 'juggle', 'crown', 'puste', 'rope', 'weights', 'read', null]) assert.equal(neu(c._W === 600 ? 500 : 600, 248, act), 0, `${act}`);
+  assert.deepEqual([...T.ACT_PX].sort(), ['glider', 'purzel']);
+  // die Geometrie ist danach die der neuen Größe
+  assert.equal(neu(340, 248, 'glider'), 1);
+  assert.equal(c._W, 340);
+  assert.ok(c._g.rock.l + c._g.rock.w <= 340);
+});
+
+test('Späteinstieg nach einem Wetterumschwung: ein Fenster, das trocken begann, bekommt nachträglich keine Pfütze', () => {
+  const log = [{ t: NOW - 36e5, c: 'cloudy', T: 10 }, { t: NOW - 20000, c: 'rainy', T: 10 }];
+  assert.equal(T.wxProgThen(log, NOW - 30000), 'dry');
+  assert.equal(T.wxProgThen(log, NOW - 20000), 'rain');
+  assert.equal(T.wxProgThen(log, NOW), 'rain');
+  assert.equal(T.wxProgThen(log, NOW - 2 * 36e5), '?'); // der Verlauf beginnt erst danach: Es galt eine andere Lage
+  assert.equal(T.wxProgThen([], NOW), null);
+  assert.equal(T.wxProgThen(undefined, NOW), null);
+  assert.equal(T.wxProgThen([{ t: NOW - 5000, c: 'pouring', T: 10 }], NOW), 'none');
+  assert.equal(T.wxProgThen([{ t: NOW - 5000, c: 'unavailable', T: null }], NOW), null);
+  // Schnee: sofort, wenn es schneit; danach, solange die Decke liegt; Regen darauf: kein Programm
+  const winter = [{ t: NOW - 3 * 36e5, c: 'cloudy', T: -2 }, { t: NOW - 2 * 36e5, c: 'snowy', T: -2 }, { t: NOW - 36e5, c: 'cloudy', T: -2 },
+    { t: NOW - 60000, c: 'rainy', T: 1 }];
+  assert.equal(T.wxProgThen(winter, NOW - 2.5 * 36e5), 'dry');
+  assert.equal(T.wxProgThen(winter, NOW - 2 * 36e5 + 1000), 'snow');
+  assert.equal(T.wxProgThen(winter, NOW - 0.5 * 36e5), 'snow');
+  assert.equal(T.wxProgThen(winter, NOW), 'none');
+
+  // An der Karte: Pfützenspringen läuft seit 6 s (ein Gerät, das jetzt dazukommt, stiege mittendrin ein)
+  const c = Object.create(T.PikaPetCard.prototype);
+  const S = { id: 'm5', kind: 'mini', k: 5, act: 'puddle', start: NOW - 6000, end: NOW + 8000, r: () => 0.5 };
+  Object.assign(c, {
+    _g: {}, _asleep: false, _watched: () => true, _plan: {}, _planOk: true, _planStale: false, _planNow: () => NOW, _bigAt: () => null,
+    _miniAt: () => S, _wx: { wet: true, rain: 40 }, _hay: 0, _fest: {}, _seasonK: 'summer', _wind: 5,
+  });
+  // es regnet seit einer Stunde: einsteigen
+  c._wxLog = [{ t: NOW - 36e5, c: 'rainy', T: 10 }];
+  assert.equal(c._slotNow(), S);
+  // der Regen begann erst im Fenster: Die anderen Geräte haben dort schon etwas Trockenes gezeigt, also nichts mehr
+  c._wxLog = [{ t: NOW - 36e5, c: 'cloudy', T: 10 }, { t: NOW - 3000, c: 'rainy', T: 10 }];
+  assert.equal(c._slotNow(), null);
+  // dasselbe auf einem frisch geladenen Gerät, dem der Recorder noch nicht geantwortet hat: Sein Verlauf beginnt
+  // mit der Lage von jetzt (last_changed), und die ist jünger als das Fenster
+  c._wxLog = [{ t: NOW - 3000, c: 'rainy', T: 10 }];
+  assert.equal(c._slotNow(), null);
+  // … außer das Fenster hat eben erst begonnen: Dann beginnen alle Geräte gemeinsam mit der Pfütze
+  S.start = NOW - 3500;
+  assert.equal(c._slotNow(), S);
+  S.start = NOW - 6000;
+  // kein Verlauf (keine Wetter-Entität) oder Wetter aus der Vorschau: wie bisher einsteigen
+  c._wxLog = [];
+  assert.equal(c._slotNow(), S);
+  c._wxLog = [{ t: NOW - 36e5, c: 'cloudy', T: 10 }, { t: NOW - 3000, c: 'rainy', T: 10 }];
+  c._dbgWeather = { cond: 'rainy' };
+  assert.equal(c._slotNow(), S);
+  c._dbgWeather = null;
+  // Schnee-Pika: Lag der Schnee schon, als das Fenster begann (auch wenn es inzwischen aufgehört hat zu schneien)?
+  Object.assign(S, { act: 'snowpika', end: NOW + 20000 });
+  c._wx = { snowcover: true, cold: true };
+  c._wxLog = [{ t: NOW - 2 * 36e5, c: 'snowy', T: -2 }, { t: NOW - 3000, c: 'cloudy', T: -2 }];
+  assert.equal(c._slotNow(), S);
+  c._wxLog = [{ t: NOW - 36e5, c: 'cloudy', T: -2 }, { t: NOW - 3000, c: 'snowy', T: -2 }];
+  assert.equal(c._slotNow(), null);
 });

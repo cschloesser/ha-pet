@@ -57,7 +57,7 @@
  * werden aus Datum und Standort (hass.config) berechnet.
  */
 (() => {
-  const VERSION = '0.31.0';
+  const VERSION = '0.32.0';
 
   // screen_entity gehört zu einem Gerät (dem Kiosk-Tablet), dasselbe Dashboard öffnen aber auch andere. Ein Rechner mit
   // Maus ist sicher nicht dieser Bildschirm, Fully Kiosk mit JS-Schnittstelle dagegen schon.
@@ -167,7 +167,8 @@
   const CRIT_BACK = 45000;
   const critJoin = (kind, pk) => Math.max(CRIT_LATE, kind === 'bird' ? pk.stay - 5000 : kind === 'frog' ? pk.stay - 3000
     : kind === 'snail' ? 30000 : 0);
-  const POOP = { every: 80, spread: 60, morning: [10, 20], max: 8, latrine: 3, idx: 24, fly: 4 };
+  // live: so viele Minuten nach der Fälligkeit macht er es noch selbst vor den Augen, danach liegt es einfach da
+  const POOP = { every: 80, spread: 60, morning: [10, 20], max: 8, latrine: 3, idx: 24, fly: 4, live: 3 };
   const FLOWER_COLORS = ['#f6c945', '#f28fb1', '#ffffff', '#b99cf0', '#ff9f5a'];
 
   class Cancel extends Error {}
@@ -523,6 +524,22 @@
       d = wxSnows(a) ? Math.min(1, d + dur / SNOW.full) : Math.max(0, d - dur / (snowHours(a.T, a.c) * 36e5));
     }
     return d;
+  };
+
+  // Welches Programm der kleinen Beschäftigungen galt zur Zeit t (wie miniProg: 'dry', 'rain', 'snow', 'none')? Aus
+  // dem Wetterverlauf: der Stützpunkt, der bei t galt, und die Schneedecke bis dahin. null: unbekannt (kein Verlauf,
+  // Aussetzer der Wetter-Entität). '?': Der Verlauf beginnt erst nach t (frisch geladen, der Recorder hat noch nicht
+  // geantwortet: Der erste Stützpunkt ist dann der Beginn der Lage von jetzt), es galt also eine andere Lage, nur
+  // welche, ist offen. Niesel unter rain_min kennt der Verlauf nicht: Er zählt hier als Regen.
+  const wxProgThen = (log, t) => {
+    const cut = (log || []).filter((r) => r.t <= t);
+    const r = cut[cut.length - 1];
+    if (!r) return log?.length ? '?' : null;
+    if (r.c === WX_GAP) return null;
+    const def = WEATHER[r.c] || {};
+    if (def.storm) return 'none';
+    const snow = wxSnows(r) || Math.round(snowDepth(cut, t) * 20) / 20 >= SNOW.show;
+    return def.rain > 0 ? (snow ? 'none' : 'rain') : snow ? 'snow' : 'dry';
   };
 
   // Regenbogen 0…1: nach einem Schauer (die Lage wechselt von Regen auf heiter; der Regen dauerte mindestens drei
@@ -1146,14 +1163,29 @@
   const CUP_FOAM = `<path class="cfoam" d="M85.6 55.6 q1.4 -1.8 3 -.6 q1.2 -1.2 2.4 -.2 q1.2 -1 2.4 .2 q1.6 -1.2 3 .6 q-2.6 1.6 -5.4 1 q-2.8 .6 -5.4 -1z"
           fill="#fffaf2" stroke="rgba(0,0,0,.2)" stroke-width=".4"/>`;
 
-  // ---------- Aktivitäten: Requisiten am Pika (Musik, Malen, Seifenblasen, Frühsport, Seil, Hantel, Winken) ----------
+  // ---------- Aktivitäten: Requisiten am Pika (Musik, Malen, Seifenblasen, Frühsport, Seil, Hantel, Winken; ab 0.32
+  // Reifen, Jo-Jo, Pusteblume, Beeren, Blumenkranz, Papierflieger, Kiesel, Papierschiffchen) ----------
   // Alle in derselben viewBox wie der Pika (120 × 100, Blick nach rechts), sichtbar nur mit der Klasse am .pika.
   const ACT_PAW = (cx, cy, cls = '', rx = 3.8, ry = 4.6) =>
     `<ellipse${cls ? ` class="${cls}"` : ''} cx="${cx}" cy="${cy}" rx="${rx}" ry="${ry}" fill="${PK('paw')}" stroke="${OUT}" stroke-width="1.4"/>`;
+  // Hula-Hoop-Reifen: die hintere Hälfte liegt hinter dem Körper (hoop-b), die vordere davor (hoop-f)
+  const HOOP = (d) => `<path d="${d}" fill="none" stroke="${OUT}" stroke-width="4.4" stroke-linecap="round"/>
+        <path d="${d}" fill="none" stroke="#f28fb1" stroke-width="3" stroke-linecap="round"/>
+        <path d="${d}" fill="none" stroke="#fff" stroke-width="3" stroke-dasharray="6 10" opacity=".9"/>`;
+  // Gänseblümchen (Kranz): fünf Blütenblätter um eine gelbe Mitte
+  const DAISY = (x, y, c = '#fff', s = 1) => `<g fill="${c}" stroke="rgba(0,0,0,.2)" stroke-width=".3">${[0, 72, 144, 216, 288].map((a) =>
+    `<circle cx="${(x + 1.7 * s * Math.sin((a * Math.PI) / 180)).toFixed(2)}" cy="${(y - 1.7 * s * Math.cos((a * Math.PI) / 180)).toFixed(2)}" r="${(1.35 * s).toFixed(2)}"/>`).join('')}</g>
+        <circle cx="${x}" cy="${y}" r="${(1.15 * s).toFixed(2)}" fill="#f6c945"/>`;
+  // Papierschiffchen (30 × 24): in der Pfote und auf der Pfütze dieselbe Zeichnung
+  const BOAT_ART = `<path d="M15 2.5 L22 13.5 H8Z" fill="#fffaf0" stroke="${OUT}" stroke-width="1" stroke-linejoin="round"/>
+          <path d="M15 2.5 V13.5" stroke="#d6d3c4" stroke-width=".7"/>
+          <path d="M1.5 12 L10.5 13.5 H19.5 L28.5 12 L22 21.5 H8Z" fill="#fbf8f0" stroke="${OUT}" stroke-width="1" stroke-linejoin="round"/>
+          <path d="M10.5 13.5 L8 21.5 M19.5 13.5 L22 21.5" stroke="#d6d3c4" stroke-width=".7"/>`;
   // Springseil: dieselbe Schlaufe zweimal, hinter dem Körper (rope-b) und davor (rope-f); hinten ist der Griff verdeckt
   const ROPE_D = 'M24 56 C22 115 110 115 108 56';
   const ACT_BACK = `
-      <g class="rope rope-b"><path d="${ROPE_D}" fill="none" stroke="#d9443a" stroke-width="2.4" stroke-linecap="round" vector-effect="non-scaling-stroke"/></g>`;
+      <g class="rope rope-b"><path d="${ROPE_D}" fill="none" stroke="#d9443a" stroke-width="2.4" stroke-linecap="round" vector-effect="non-scaling-stroke"/></g>
+      <g class="hoop hoop-b">${HOOP('M2 69 A60 11 0 0 1 122 69')}</g>`;
   const ACT_FRONT = `
       <g class="band">
         <path d="M70.5 37.5 q-6.5 -1.6 -9.4 3.4 q4.4 .2 7 2.4z M70.5 38 q-4.6 3.4 -5.6 8.6 q3.8 -2.8 7.6 -4z" fill="#e8584e" stroke="${OUT}" stroke-width=".8" stroke-linejoin="round"/>
@@ -1207,6 +1239,63 @@
           <circle r="1.6" fill="#c9b27a"/></g>`).join('')}
         ${ACT_PAW(84, 65)}${ACT_PAW(98, 65)}
       </g></g>
+      <g class="hoop hoop-f">${HOOP('M2 69 A60 11 0 0 0 122 69')}</g>
+      <g class="yo">
+        <path class="ystr" d="M117 50 V82" stroke="#7a5230" stroke-width=".9" stroke-linecap="round"/>
+        <g class="ydisc">
+          <circle cx="117" cy="54" r="6.2" fill="#d9443a" stroke="${OUT}" stroke-width="1"/>
+          <circle cx="117" cy="54" r="3.4" fill="#f08a7e"/>
+          <circle cx="117" cy="54" r="1.3" fill="#fff"/>
+        </g>
+        ${ACT_PAW(115, 48.6)}
+      </g>
+      <g class="pbl">
+        <path d="M104 65 Q109 58.6 118.4 52.4" stroke="#6bab4c" stroke-width="1.7" fill="none" stroke-linecap="round"/>
+        <circle cx="120.4" cy="50" r="2" fill="#c9b27a" stroke="rgba(0,0,0,.2)" stroke-width=".4"/>
+        <g class="pb1">
+          <path d="M120.4 50 L125 43.6 M120.4 50 L116 43.4 M120.4 50 L127.6 50.6" stroke="#d6d3c4" stroke-width=".7" stroke-linecap="round"/>
+          <g fill="#fbfaf3" stroke="#d6d3c4" stroke-width=".4"><circle cx="125.4" cy="43" r="1.6"/><circle cx="115.7" cy="42.8" r="1.6"/><circle cx="128.3" cy="50.7" r="1.6"/></g>
+        </g>
+        <g class="pb2">
+          <path d="M112.6 51 A7.9 7.9 0 0 1 128.2 51 Q120.4 54.4 112.6 51Z" fill="#fbfaf3" stroke="#d6d3c4" stroke-width=".8" stroke-linejoin="round"/>
+          <path d="M120.4 43.6 V50.6 M114.8 45.8 L120.4 50.6 M126 45.8 L120.4 50.6" stroke="#e2dfd0" stroke-width=".6"/>
+          <circle cx="120.4" cy="50.2" r="1.6" fill="#c9b27a"/>
+        </g>
+        <g class="pb3">
+          <circle cx="120.4" cy="49.6" r="8.6" fill="#fbfaf3" stroke="#d6d3c4" stroke-width=".8"/>
+          <path d="M120.4 42.2 V57 M113 49.6 H127.8 M115.2 44.4 L125.6 54.8 M115.2 54.8 L125.6 44.4" stroke="#e2dfd0" stroke-width=".6"/>
+          <circle cx="120.4" cy="49.6" r="1.8" fill="#c9b27a"/>
+        </g>
+        ${ACT_PAW(104, 64.4)}
+      </g>
+      <g class="jug">
+        <g class="jb jb1"><circle cx="69" cy="37.6" r="3.9" fill="#e8584e" stroke="${OUT}" stroke-width=".7"/></g>
+        <g class="jb jb2"><circle cx="69" cy="37.6" r="3.9" fill="#4f86c6" stroke="${OUT}" stroke-width=".7"/></g>
+        <g class="jb jb3"><circle cx="69" cy="37.6" r="3.9" fill="#f6c945" stroke="${OUT}" stroke-width=".7"/></g>
+      </g>
+      <g class="dchain">
+        <path d="M79.6 63.6 Q91 77 102.6 62.8" stroke="#5fae4a" stroke-width="1.4" fill="none" stroke-linecap="round"/>
+        ${DAISY(84.4, 68.2, '#fff', 1.4)}${DAISY(91.2, 70.6, '#f28fb1', 1.4)}${DAISY(98, 67.8, '#fff', 1.4)}
+        ${ACT_PAW(79.6, 63, 'dpl')}${ACT_PAW(102.6, 62, 'dpr')}
+      </g>
+      <g class="hd"><g class="dcrown">
+        <path d="M74.5 34.5 Q89 22.5 104.5 32.5" stroke="#5fae4a" stroke-width="1.4" fill="none" stroke-linecap="round"/>
+        ${DAISY(76.5, 33, '#fff', 1.2)}${DAISY(82.8, 29.2, '#f28fb1', 1.2)}${DAISY(89.6, 27.4, '#fff', 1.2)}${DAISY(96.4, 28.4, '#f28fb1', 1.2)}${DAISY(102.6, 31.3, '#fff', 1.2)}
+      </g></g>
+      <g class="pgl">
+        <path d="M108 37.4 L133 27.2 L117.2 41Z" fill="#fffaf0" stroke="${OUT}" stroke-width=".8" stroke-linejoin="round"/>
+        <path d="M133 27.2 L113.4 38.8 L115.2 44.4 L117.2 41" fill="#ead2a2" stroke="${OUT}" stroke-width=".8" stroke-linejoin="round"/>
+        ${ACT_PAW(113.4, 40.6)}
+      </g>
+      <g class="peb">
+        <ellipse cx="116" cy="54.6" rx="6.4" ry="4.2" fill="#b9c0c8" stroke="#5a6470" stroke-width="1"/>
+        <path d="M112.4 53.2 q3 -1.8 6.2 -.8" stroke="#f4f6f8" stroke-width=".9" fill="none" stroke-linecap="round"/>
+        ${ACT_PAW(110.6, 58)}
+      </g>
+      <g class="sboat">
+        <g transform="translate(64 51) scale(.64)">${BOAT_ART}</g>
+        ${ACT_PAW(79, 66)}
+      </g>
       ${ACT_PAW(107, 40, 'wpaw')}`;
 
   // Päckchen: Zwille, Fernrohr und Gießkanne in den Pfoten, Sonnenbrille auf der Nase (Stil im Abschnitt "Päckchen")
@@ -1324,7 +1413,7 @@
           <ellipse cx="79.5" cy="66.5" rx="3.6" ry="4.5"/><ellipse cx="102.6" cy="65" rx="3.6" ry="4.5"/>
         </g>
       </g>
-      <g class="gb" transform="rotate(-6 91 68)">
+      <g class="gb"><g transform="rotate(-6 91 68)">
         <rect x="82" y="56.5" width="18" height="24" rx="2.2" fill="#cfccc4" stroke="${OUT}" stroke-width="1.2"/>
         <rect x="84.2" y="58.6" width="13.6" height="10.6" rx="1" fill="#6d6f76"/>
         <rect x="85.6" y="59.8" width="10.8" height="8.2" fill="#9bbc0f"/>
@@ -1336,7 +1425,7 @@
         <g fill="${PK('paw')}" stroke="${OUT}" stroke-width="1.4">
           <ellipse class="th1" cx="83" cy="73.4" rx="3.6" ry="4.4"/><ellipse class="th2" cx="99.4" cy="72.4" rx="3.6" ry="4.4"/>
         </g>
-      </g>
+      </g></g>
       <g class="tab">
         <ellipse class="tglow" cx="95" cy="66" rx="17" ry="11" fill="#bfe3ff"/>
         <path d="M81 70 L113 70 L118 84 L76 84Z" fill="#2f3440" stroke="${OUT}" stroke-width="1" stroke-linejoin="round"/>
@@ -1674,6 +1763,14 @@
   };
   // 1. Advent: vierter Sonntag vor dem 25. 12. (Tagesnummer)
   const festAdvent1 = (y) => festDay(y, 12, 25) - (new Date(y, 11, 25).getDay() || 7) - 21;
+  // Augenblicke, die auf allen Geräten in derselben Sekunde kommen sollen (Ortszeit, ms): der nächste Jahreswechsel
+  // und 11:11 Uhr am 11. 11. dieses Jahres. Der 20-Sekunden-Takt jedes Geräts hat seine eigene Phase: Er stellt nur
+  // den Zeitgeber, ausgelöst wird nach der Uhr von HA.
+  const FEST_AHEAD = 45000;
+  const festMoments = (t) => {
+    const y = new Date(t).getFullYear();
+    return { mid: new Date(y + 1, 0, 1).getTime(), helau: new Date(y, 10, 11, 11, 11).getTime() };
+  };
   // Geburtsdatum → [Monat, Tag] oder null. Als Text "MM-TT", "JJJJ-MM-TT" (auch mit Uhrzeit), "TT.MM." oder
   // "TT.MM.JJJJ". Ohne Anführungszeichen macht YAML daraus andere Typen: 1990-03-14 → Date-Objekt (Tag aus dem
   // Datumsteil, UTC); 14.03 → Zahl 14.03, 14.10 → Zahl 14.1. Eine Nachkommastelle: ",1" kann nur der Oktober
@@ -2112,6 +2209,9 @@
   // ersten 20 Minuten, Dauer 3–6 Minuten (spread + Dauer < Fenster), Seite links/rechts – alles aus
   // seedRnd('friend', fenster, n). Bis 0.14 waren es 45-Minuten-Fenster mit 1,5–4 Minuten: kaum je zu sehen.
   const FRIEND_WIN = { win: 30 * 6e4, p: 1, spread: 20 * 6e4, stay: [3, 6] };
+  // So lange vor dem Ende des Besuchs beginnen die beiden kein neues Spiel mehr (ms). Die meisten Spiele sind dann
+  // vorbei, wenn Pino geht; ein längeres (Zusammensitzen, Fangen auf breiten Karten) bricht der Abschied ab.
+  const FRIEND_LAST = 25000;
   const FRIEND_SVG = [
     ['id="fur"', 'id="fur2"'], ['url(#fur)', 'url(#fur2)'],
     ['id="bodyclip"', 'id="bodyclip2"'], ['url(#bodyclip)', 'url(#bodyclip2)'],
@@ -2979,8 +3079,10 @@
   // und ein neu geladenes Gerät mitten in die laufende einsteigt.
   // - Groß (Lesen, Gameboy, Tablet, Drachen, TV, Musik, Malen, Seifenblasen, Frühsport; 1–2,5 Min): die Uhr ist in
   //   Fenster von ACT_WIN.big geteilt, in jedem beginnt eine in den ersten ACT_WIN.spread. Abstand also 9–19 Min.
-  // - Klein (Seilspringen, Gewichtheben, Blüte für den Vorrat sammeln; 10–30 s): Fenster ACT_WIN.mini, mit
-  //   Wahrscheinlichkeit ACT_WIN.miniP, nie dicht an einer großen.
+  // - Klein (Seilspringen, Gewichtheben, Blüte für den Vorrat sammeln, Hula-Hoop, Jo-Jo, Pusteblume, Purzelbaum,
+  //   Steintürmchen, Jonglieren, Blumenkranz, Papierflieger; bei Regen Pfützenspringen und Papierschiffchen, bei
+  //   Schnee der Schnee-Pika; 10–30 s): Fenster ACT_WIN.mini, mit Wahrscheinlichkeit ACT_WIN.miniP, nie dicht an
+  //   einer großen. Auswahl und Gewichte: MINI_W, MINI_PROG, miniOk, miniChain.
   // - Welche es wird, hängt am Wetter (auf allen Geräten dasselbe), an der Tagesform und am Verlauf: Die letzten
   //   ACT_RECENT großen kommen nicht gleich wieder dran. Der Verlauf liegt im Helfer plan_entity; wer ein Fenster
   //   zuerst beginnt, trägt es dort ein, die anderen übernehmen die Wahl (auch wenn sich das Wetter inzwischen änderte).
@@ -3005,12 +3107,24 @@
     rope: (r) => 600 + ropeJumps(r) * (620 + r(4) * 100),
     weights: (r) => 600 + (1 + Math.floor(r(1) * 3)) * WEIGHT_REP,
     gather: () => 9000,
+    hula: (r) => 8000 + r(1) * 6000,
+    yoyo: (r) => 600 + yoyoThrows(r) * YOYO_MS + (yoyoDead(r) > 0 ? YOYO_DEAD : 0),
+    puste: () => 800 + 3 * PUSTE_MS,
+    purzel: (r) => 600 + purzelRolls(r) * PURZEL_MS,
+    stones: () => 400 + 4 * STONE_MS + 500,
+    juggle: (r) => 7000 + r(1) * 5000,
+    crown: (r) => 9000 + r(1) * 3000,
+    glider: () => 700 + 2 * GLIDER_STEP,
+    puddle: (r) => 800 + puddleJumps(r) * PUDDLE_MS,
+    boat: (r) => BOAT_T.launch + boatPuffs(r) * BOAT_T.puff + BOAT_T.back,
+    snowpika: (r) => 20000 + r(1) * 6000,
   };
   const ropeJumps = (r) => 12 + Math.floor(r(5) * 18);
   // Einsteigen nach Neuladen oder Bildschirm an: bis so viele ms vor dem Ende des Hauptteils. Die kleinen nur gleich
-  // zu Beginn (sie sind schnell vorbei).
+  // zu Beginn (sie sind schnell vorbei); Pfütze, Schiffchen und Schnee-Pika laufen nach der Planzeit und lassen
+  // sich mittendrin aufnehmen.
   const ACT_JOIN_END = 4000;
-  const ACT_NOJOIN = new Set(['gather', 'rope', 'weights']);
+  const ACT_NOJOIN = new Set(['gather', 'rope', 'weights', 'hula', 'yoyo', 'puste', 'purzel', 'stones', 'juggle', 'crown', 'glider']);
   // Beginn der großen im Fenster k bzw. der kleinen im Fenster m (Planzeit, ms)
   const bigStart = (k) => k * ACT_WIN.big + Math.floor(seedRnd('big', k, 0) * ACT_WIN.spread);
   const miniStart = (m) => m * ACT_WIN.mini + Math.floor(seedRnd('mini', m, 1) * (ACT_WIN.mini - ACT_WIN.miniRoom));
@@ -3022,14 +3136,248 @@
     'haySnack', 'hideout', 'watchBird', 'watchMouse', 'watchFrog', 'watchSnail', 'watchPlane', ...CUTE_SMALL];
   const ACT_BIG = ['read', 'game', 'tablet', 'kite', 'tv', 'music', 'paint', 'bubbles', 'sport'];
   const ACT_MOOD = ['read', 'game', 'tablet', 'music', 'paint', 'bubbles'];
-  // Beschäftigungen, die beginnender Regen oder Schnee abbricht, wenn sie bei diesem Wetter nicht gehen (_actOk)
-  const WX_STOP = [...ACT_BIG, 'rope', 'weights', 'gather'];
+  // Ein fälliges Häufchen und das, was er gerade tut: 'go' = eine Kleinigkeit (ACT_SMALL) abbrechen und es gleich
+  // machen; 'wait' = erst zu Ende bringen, was läuft (Beschäftigung, Fressen, Kaffee, Auspacken, Spiel mit Pino,
+  // eine schon anstehende Aktion: queued), es kommt danach; 'lay' = es liegt einfach da (älter als POOP.live Minuten,
+  // oder er geht gerade schlafen). Wo es liegt, steht im Zustand: Warten ändert nur den Augenblick.
+  const POOP_GO = new Set(ACT_SMALL);
+  // Sauberkeit 0–100 aus den liegenden Häufchen: jedes kostet 10, dazu 2 je Stunde, die es schon liegt (höchstens 20 h)
+  const poopClean = (piles, now) => clamp(100 - piles.reduce((d, p) => d + (10 + 2 * Math.min(20, (now - p.due) / 36e5)), 0), 0, 100);
+  const poopWhen = (age, action, queued = false) => (age >= POOP.live * 6e4 || action === 'goSleep' ? 'lay'
+    : !queued && (action == null || POOP_GO.has(action)) ? 'go' : 'wait');
+  // Hinlaufen zu einer Beschäftigung: Tempo so, dass er nach ms am Platz ist (nie langsamer als base, höchstens max).
+  // Tempo 1 sind 0,85 Pika-Breiten je Sekunde (_walkTo). Auf breiten Karten käme er mit festem Tempo Sekunden zu
+  // spät, der Hampelmann zählte dann ab „6!“. Ist die Zeit knapp oder schon um (Wiedereinstieg nach dem Füttern, einer
+  // Aufgabe des Haus-Boten, einem Layout-Wechsel), bekommt der Weg WALK_LATE ms: Was er im Grundtempo in dieser Zeit
+  // schafft, geht er wie immer, nur für Weiteres eilt er. Läuft die Beschäftigung schon (ms ≤ 0), höchstens mit
+  // WALK_REJOIN: zügig, aber ohne die großen Hopser (ab 1,8, _walkTo), mit denen er sonst jedes Mal zurückrannte.
+  const WALK_MAX = 2.6;
+  const WALK_LATE = 2000;
+  const WALK_REJOIN = 1.6;
+  const walkSpeed = (dist, pW, ms, base = 0.8, max = WALK_MAX) =>
+    clamp(dist / (pW * 0.85 * ((ms > WALK_LATE ? ms : WALK_LATE) / 1000)) || 0, base, Math.max(base, ms > 0 ? max : Math.min(max, WALK_REJOIN)));
+  // Ein Hopser dauert je Gangart so lange (ms, wie die Animationen hop, hops und hopb). Ein Weg dauert immer ganze
+  // Hopser: Sonst endete er mitten in der Luft, und der Pika schnappte auf den Boden.
+  const HOP_MS = { hop: 360, trip: 240, bighop: 420 };
+  // Drachen: So weit lehnt er sich gegen den Zug der Schnur (Grad; rest: die ganze Zeit, tug: ms lang bei einem Ruck,
+  // dabei leicht gestaucht sx/sy). Der Stil dreht dafür .hop um die Füße, kitePaw rechnet aus, wo die Pfote
+  // (viewBox 105/50 von 120 × 100) dann ist: [dx, dy] in px ab der Mitte der Unterkante der Pika-Grafik, Blick
+  // nach rechts. Daran hängt die Schnur, beim Ruck läuft sie mit (.kpull).
+  const KITE_LEAN = { rest: 2.5, tug: 8, sx: 1.02, sy: 0.98, ms: 650 };
+  const kitePaw = (pW, pH, deg, sx = 1, sy = 1) => {
+    const a = (deg * Math.PI) / 180;
+    const x = (105 / 120 - 0.5) * pW * sx;
+    const y = -0.5 * pH * sy;
+    return [x * Math.cos(a) + y * Math.sin(a), y * Math.cos(a) - x * Math.sin(a)];
+  };
+  const hopRound = (ms, cycle) => Math.max(1, Math.round(ms / cycle)) * cycle;
+  // Sprünge auf der Stelle (ms: Dauer, air: von wann bis wann er in der Luft ist). Ein neuer Sprung, während er
+  // noch in der Luft ist, finge am Boden an: Der laufende wird dann zu Ende gesprungen.
+  const JUMPS = { hop1: { ms: 600, air: [90, 450] }, binky: { ms: 900, air: [108, 738] } };
+  // Ohren bei einem Sprung auf der Stelle (auch Pino): Beim Absprung bleiben sie zurück, im Fallen stehen sie hoch,
+  // bei der Landung (hop1 nach 0,45 s, binky nach 0,74 s) klappen sie nach vorn und pendeln aus. ms: Dauer,
+  // k: [Anteil der Dauer, Grad], gedreht wird zusätzlich zur Haltung, die sie gerade haben (_earSwing).
+  const EAR_SWING = {
+    hop1: { ms: 1050, k: [[0.09, 3], [0.24, -11], [0.36, -3], [0.46, 11], [0.62, -6], [0.78, 3], [0.9, -1]] },
+    binky: { ms: 1150, k: [[0.09, 3], [0.28, -13], [0.5, -4], [0.66, 12], [0.78, -6], [0.88, 3], [0.95, -1]] },
+  };
+  const jumpBusy = (kind, since) => !!JUMPS[kind] && since >= JUMPS[kind].air[0] && since < JUMPS[kind].air[1];
+  // Darf er ohne Hinlaufen mitten in einer laufenden Beschäftigung stehen? Nur wenn ihn vorher niemand woanders
+  // sah: late = so lange läuft sie schon; since = ms, seit die Karte (wieder) zu sehen ist; first = frisch geladen
+  // (die Seite baut sich noch auf, der Helfer kommt gleich). Sonst hoppelt er hin.
+  const JUMP_IN = { late: 6000, first: 5000, again: 300 };
+  const jumpInOk = (late, since, first) => late > JUMP_IN.late && since >= 0 && since < (first ? JUMP_IN.first : JUMP_IN.again);
+  // Fangen: Läuft der Läufer (bei rx) nach rechts davon? Weg vom Fänger (cx); stehen beide gleich, zur Seite mit
+  // mehr Platz. Ist auf der Fluchtseite keine Pika-Breite Platz mehr, geht es an ihm vorbei auf die andere.
+  const chaseFar = (rx, cx, lo, hi, pW) => {
+    const far = rx === cx ? cx < (lo + hi) / 2 : rx > cx;
+    return Math.abs((far ? hi : lo) - rx) < pW ? !far : far;
+  };
+  // ---------- Kleine Beschäftigungen: Auswahl nach Wetter, Takt, Platz am Boden ----------
+  // Grundgewichte. Bis 0.31 wechselten sich Seil und Hantel rund 40-mal am Tag ab; jetzt teilen sich elf den Tag,
+  // und Regen und Schnee haben ihr eigenes Programm (Pfützenspringen, Papierschiffchen; Schnee-Pika). Die Reihenfolge
+  // ist Teil der Wahl (weightedR): nicht umsortieren, sonst wählen Geräte mit altem und neuem Stand Verschiedenes.
+  const MINI_W = {
+    rope: 0.7, weights: 0.6, gather: 1, hula: 0.9, yoyo: 0.9, puste: 0.9, purzel: 0.8, stones: 0.8, juggle: 0.8, crown: 0.6,
+    glider: 0.8, puddle: 1.5, boat: 1.2, snowpika: 1.3,
+  };
+  const MINI_ACTS = Object.keys(MINI_W);
+  // Bei liegendem Schnee geht nur, was keinen freien Boden und keine Blumen braucht
+  const MINI_SNOW = new Set(['weights', 'hula', 'yoyo', 'purzel', 'juggle', 'glider']);
+  // Jedes Wetter hat sein Programm: trocken (dry), Regen (rain), Schnee liegt (snow). Gewählt wird aus der ganzen
+  // Liste des Programms, mit den Gewichten aus MINI_W (miniChain).
+  const MINI_PROG = {
+    dry: MINI_ACTS.filter((a) => !['puddle', 'boat', 'snowpika'].includes(a)),
+    rain: ['puddle', 'boat'],
+    snow: MINI_ACTS.filter((a) => MINI_SNOW.has(a) || a === 'snowpika'),
+  };
+  // Bei Regen bleibt gut die Hälfte der Fenster leer (Gewicht für „nichts“): Pfütze und Schiffchen wechselten sich
+  // an einem Regentag sonst so oft ab wie früher Seil und Hantel
+  const MINI_REST = 3;
+  // Welches Programm gilt bei der Lage L? null: keines (Starkregen und Gewitter: er bleibt im Bau; Regen auf Schnee)
+  const miniProg = (L) => (L.shelter ? null : L.rain > 0 && !L.snowcover ? 'rain' : L.wet || L.storm ? null : L.snowcover ? 'snow' : 'dry');
+  // Geht die kleine Beschäftigung act bei dieser Lage? L: { wet, rain, storm, shelter, snowcover, cold, wind, hayFull,
+  // winter } (_lage). Bei Starkregen und Gewitter (shelter) bleibt er im Bau; bei Regen hält eine Pfote das Blatt,
+  // da gehen nur Pfütze und Schiffchen. Innerhalb eines Programms sperren nur drei Schalter etwas: voller Vorrat
+  // (Blüte sammeln), Kälte und Winter (Blumenkranz), Wind ab 40 km/h (Papierflieger, auch im Schnee). Der
+  // Festtagshut gehört nicht dazu: Er hängt an der Konfiguration der einzelnen Karte (_actOk).
+  const miniOk = (act, L) => {
+    if (L.shelter) return false;
+    if (act === 'puddle' || act === 'boat') return L.rain > 0 && !L.snowcover;
+    if (act === 'gather') return !L.wet && !L.snowcover && !L.hayFull;
+    if (L.wet || L.storm) return false;
+    if (act === 'snowpika') return !!L.snowcover;
+    if (act === 'glider') return (L.wind || 0) < 40;
+    if (L.snowcover) return MINI_SNOW.has(act);
+    if (act === 'crown') return !L.cold && !L.winter; // Gänseblümchen
+    return true;
+  };
+  // Grundwahl eines Fensters im Programm prog: mit festen Gewichten aus allen Beschäftigungen des Programms (feste
+  // Zahl u), ohne auf Wind, Kälte oder Vorrat zu schauen. Nur wenn das dieselbe wäre wie die Grundwahl davor (prev),
+  // neu aus den übrigen (u2). Bei Regen ist „nichts“ (null) eine der Möglichkeiten.
+  const miniBase = (prog, prev, u, u2 = u) => {
+    const list = (skip) => [...MINI_PROG[prog].map((a) => [a !== skip ? MINI_W[a] : 0, a]), [prog === 'rain' ? MINI_REST : 0, null]];
+    const a = weightedR(list(null), u);
+    return a === null || a !== prev ? a : weightedR(list(prev), u2);
+  };
+  // Ersatz, wenn die Grundwahl bei der Lage L gerade nicht geht: wieder mit den festen Gewichten des ganzen
+  // Programms ziehen (feste Zahlen un(0), un(1) …), bis eine kommt, die geht und nicht in skip steht (das Fenster
+  // davor und danach); nach MINI_TRIES − 1 Fehlgriffen aus denen, die übrig sind. null: es bleibt nichts übrig.
+  // So ändert auch ein zweiter Schalter nur die Fenster, in deren Zügen die gesperrte vorkommt.
+  const MINI_TRIES = 6;
+  const miniSwap = (prog, L, skip, un) => {
+    const ok = (a) => !skip.includes(a) && miniOk(a, L);
+    const all = MINI_PROG[prog].map((a) => [MINI_W[a], a]);
+    for (let k = 0; k < MINI_TRIES - 1; k++) {
+      const a = weightedR(all, un(k));
+      if (ok(a)) return a;
+    }
+    return weightedR(all.map(([w, a]) => [ok(a) ? w : 0, a]), un(MINI_TRIES - 1));
+  };
+  // Welche kleine kommt im Fenster m bei der Lage L dran? null: keine.
+  // 1. Die Grundfolge des Programms (miniBase) hängt nur an den festen Zahlen der Fenster: Sie beginnt nach dem
+  //    letzten Fenster ohne kleine (dort steht fest: keine), höchstens MINI_BACK Fenster zurück, und enthält nie
+  //    dieselbe zweimal hintereinander. Jedes Fenster sieht seinen Vorgänger so wie der Nachfolger ihn, auf jedem
+  //    Gerät und bei jeder Lage. (Bis 0.31 begann die Kette fest vier Fenster vorher: Zwei Fenster konnten sich
+  //    über ihren gemeinsamen Vorgänger uneins sein.)
+  // 2. Nur wo die Grundwahl gerade nicht geht (miniOk: Wind, Kälte, voller Vorrat), kommt ein Ersatz (miniSwap):
+  //    nicht die Grundwahl davor oder danach und nicht, was im Fenster davor bei dieser Lage wirklich dran war.
+  // Ein Schalter ändert so nur die Fenster, die er trifft, statt die ganze Folge zu verschieben. Zweimal dieselbe
+  // hintereinander gibt es bei gleichbleibender Lage nie und auch nicht, wenn ein einzelner Schalter umspringt;
+  // möglich bleibt es, wenn zwischen zwei Fenstern das Programm wechselt (trocken ↔ Schnee) oder beide Fenster
+  // bei verschiedener Lage Ersatz brauchen.
+  // has(j): Gibt es im Fenster j eine kleine? u(j), u2(j): seine festen Zahlen für die Grundwahl; u3(j, k): für
+  // den k-ten Zug des Ersatzes.
+  const MINI_BACK = 24;
+  const miniChain = (m, L, has, u, u2 = u, u3 = (j) => u2(j)) => {
+    const prog = miniProg(L);
+    if (!prog || !has(m)) return null;
+    let s = m;
+    while (s > m - MINI_BACK && has(s - 1)) s--;
+    const base = [];
+    for (let j = s; j <= m + 1; j++) base.push(j <= m || has(j) ? miniBase(prog, base[base.length - 1] ?? null, u(j), u2(j)) : null);
+    let act = null;
+    for (let j = s; j <= m; j++) {
+      const b = base[j - s];
+      act = b === null || miniOk(b, L) ? b : miniSwap(prog, L, [act, base[j - s - 1] ?? null, base[j - s + 1]], (k) => u3(j, k));
+    }
+    return act;
+  };
+  // Takt und Länge der neuen kleinen (ms), aus den festen Zahlen r des Fensters
+  const PUDDLE_MS = 1150; // ein Sprung in die Pfütze
+  const puddleJumps = (r) => 5 + Math.floor(r(1) * 5);
+  // Papierschiffchen: zu Wasser lassen (launch), je Etappe (puff), Rückfahrt (back). In jeder Etappe holt er blow ms
+  // lang Luft und pustet, dann gleitet das Schiffchen glide ms lang ein Stück weiter (Kurve BOAT_EASE); home ms vor
+  // dem Ende ist es zurück an seinem Ufer.
+  const BOAT_T = { launch: 2000, puff: 2400, back: 4200, blow: 650, glide: 1800, home: 200 };
+  const BOAT_EASE = [0.2, 0.7, 0.3, 1];
+  const boatPuffs = (r) => 3 + Math.floor(r(1) * 2);
+  // Wert der CSS-Zeitkurve cubic-bezier(x1, y1, x2, y2) beim Anteil x der Dauer
+  const bezAt = (x1, y1, x2, y2, x) => {
+    if (!(x > 0)) return 0;
+    if (x >= 1) return 1;
+    const f = (a, b, t) => 3 * a * t * (1 - t) ** 2 + 3 * b * t * t * (1 - t) + t ** 3;
+    let lo = 0;
+    let hi = 1;
+    for (let i = 0; i < 30; i++) {
+      const t = (lo + hi) / 2;
+      if (f(x1, x2, t) < x) lo = t;
+      else hi = t;
+    }
+    return f(y1, y2, (lo + hi) / 2);
+  };
+  // Wo ist das Schiffchen t ms nach Beginn des Hauptteils (Planzeit) bei K Etappen? 0 = an seinem Ufer, 1 = drüben.
+  // Eine begonnene Etappe zählt erst, wenn er gepustet hat (blow), und dann nur so weit, wie das Schiffchen schon
+  // geglitten ist: Ein Gerät, das später einsteigt, setzt es genau dorthin, wo es auf den anderen gerade ist.
+  const boatPos = (t, K) => {
+    const t1 = BOAT_T.launch + K * BOAT_T.puff;
+    if (t >= t1) return 1 - bezAt(0.42, 0, 0.58, 1, (t - t1) / (BOAT_T.back - BOAT_T.home)); // ease-in-out
+    const k = Math.floor((t - BOAT_T.launch) / BOAT_T.puff);
+    if (k < 0) return 0;
+    return (k + bezAt(...BOAT_EASE, (t - BOAT_T.launch - k * BOAT_T.puff - BOAT_T.blow) / BOAT_T.glide)) / K;
+  };
+  const YOYO_MS = 1000; // einmal hinunter und wieder hoch
+  const YOYO_DEAD = 3200; // es bleibt unten hängen und wird aufgewickelt
+  const yoyoThrows = (r) => 8 + Math.floor(r(1) * 6);
+  const yoyoDead = (r) => (r(6) < 0.35 ? 3 + Math.floor(r(7) * (yoyoThrows(r) - 4)) : -1);
+  const PUSTE_MS = 2700; // einmal Luft holen und pusten
+  const PURZEL_MS = 2600; // ein Purzelbaum mit Anlauf und Schwindel
+  const PURZEL_ROLL = 760; // die Rolle selbst, wie die Animation purzel
+  const purzelRolls = (r) => 2 + Math.floor(r(1) * 2);
+  const STONE_MS = 2300; // ein Stein aufs Türmchen
+  const GLIDER_FLY = 2300; // Flug des Papierfliegers
+  const GLIDER_WALK = 2000; // so lange hat er, um hinterherzulaufen (bei weiten Würfen auf breiten Karten eilt er)
+  // Von Wurf zu Wurf: ducken, Flug, nachschauen, hinterher (ganze Hopser), aufheben, wieder zur Hand
+  const GLIDER_STEP = 380 + GLIDER_FLY + 300 + GLIDER_WALK + 150 + 450 + 600;
+  const GLIDER_PAW = 122 / 120 - 0.5; // die Pfote mit dem Flieger, in Pika-Breiten vor seiner Mitte
+  // Papierflieger: die Würfe ab dem Standplatz x, je Wurf eine feste Zahl aus us (Weite). G: { W, pW, pH, xR, hayR }.
+  // Er fliegt über die Wiese, zuerst dorthin, wo mehr Platz ist, der nächste Wurf geht zurück. Landen darf er rechts
+  // bis vor dem Stein (dort hebt der Pika ihn auf), links nur bis zum Vorrat, nicht vor der Tür; die Mitte des
+  // Fliegers (Breite gw) bleibt in diesem Streifen, also auch in der Karte. Ist dafür kaum Platz (schmale Karte),
+  // wirft er steil (steep): Der Flieger steigt und landet vor seinen Füßen. Ergebnis je Wurf: { dir, ox: Abwurf,
+  // land: Mitte des gelandeten Fliegers, gw, steep, to: dorthin läuft er zum Aufheben }.
+  const gliderThrows = (x, us, { W, pW, pH, xR, hayR }) => {
+    const gw = pH * 0.3;
+    const lo = Math.max(pW * 0.45, hayR);
+    const hi = xR + pW * 0.3;
+    let dir = x - lo < hi - x ? 1 : -1;
+    return us.map((u) => {
+      const ox = x + dir * pW * GLIDER_PAW;
+      const room = (dir > 0 ? hi - x : x - lo) - pW * 0.52 - gw;
+      const land = clamp(ox + dir * clamp(room, 0, W * (0.26 + u * 0.12)), lo + gw / 2, hi - gw / 2);
+      const T = { dir, ox, land, gw, steep: Math.abs(land - ox) < pW * 0.6, to: clamp(land - dir * pW * (GLIDER_PAW - 0.06), pW * 0.45, xR) };
+      x = T.to;
+      dir = -dir;
+      return T;
+    });
+  };
+  // Beschäftigungen, die mit Wegen in Pixeln rechnen, ohne dass ein Requisit am Boden steht: Ändert sich die Größe
+  // der Karte, werden sie abgebrochen (_layout)
+  const ACT_PX = new Set(['glider', 'purzel']);
+  // Platz eines Requisits am Boden (Pfütze, Schnee-Pika, Steintürmchen): Mitte aus der festen Zahl u so zwischen a
+  // und b, dass es mit seiner Breite w ganz dazwischen liegt. Ist dort zu wenig Platz (schmale Karte), wird es
+  // schmaler (bis kMin · w) und liegt notfalls mittig. Sperren [l, r] (Geräte des Haus-Boten, Festdeko, Schätze,
+  // Häufchen) weicht es über clearSpot aus. Ergebnis: { x: Mitte, w: Breite }. Relativ zur Wiese überall dieselbe Stelle.
+  const groundSpot = (u, w, a, b, blocks = [], kMin = 0.6) => {
+    const k = clamp((b - a) / w, kMin, 1);
+    const m = (w * k) / 2;
+    const lo = Math.min(a + m, (a + b) / 2);
+    const hi = Math.max(b - m, (a + b) / 2);
+    return { x: clearSpot(lo + u * (hi - lo), w * k, lo, hi, blocks), w: w * k };
+  };
+
+  // Beschäftigungen, die ein Wetterwechsel abbricht, wenn sie beim neuen Wetter nicht gehen (_actOk): Regen oder
+  // Schnee beginnt (Seil, Tablet …), der Regen hört auf (Pfütze, Schiffchen), der Schnee ist getaut (Schnee-Pika)
+  const WX_STOP = [...ACT_BIG, ...MINI_ACTS];
   const ACT_RECENT = 3;
   // Wird die Karte sichtbar (Bildschirm an, App geöffnet, Ansicht gewechselt), winkt er; höchstens alle 5 Minuten.
   const ACT_SHOW_COOL = 5 * 6e4;
   const ACT_GREET = ['Hallo!', 'Hi!', 'Da bist du ja!', 'iiep!', 'Hallöchen!', 'Huhu!'];
   const ACT_CLS = ['waving', 'music', 'sing', 'painting', 'dab', 'mix', 'blowing', 'blow', 'sport', 'jjack', 'knee',
-    'roping', 'rope-hold', 'rdbl', 'lifting', 'lift-gnd', 'lift-lo', 'lift-hi', 'strain', 'stretch', 'bowing', 'smudge'];
+    'roping', 'rope-hold', 'rdbl', 'lifting', 'lift-gnd', 'lift-lo', 'lift-hi', 'strain', 'stretch', 'bowing', 'smudge',
+    'kram', 'stow', 'ktug', 'tvturn',
+    'hula', 'hula-go', 'hula-x', 'hula-dn', 'yoyo', 'yo-go', 'yo-dead', 'puste', 'pu-in', 'pu-2', 'pu-1', 'pu-0', 'purzel',
+    'pebble', 'juggle', 'jug-go', 'plait', 'crowned', 'gliding', 'boating', 'spat'];
   // Frühsport nur morgens: 10–180 Minuten nach dem Aufwachen, einmal am Tag (im Helfer plan_entity vermerkt)
   const SPORT_WIN = [10, 180];
   const SPORT_INTRO = 1700;
@@ -3116,6 +3464,60 @@
     <path d="M6 6 L1 2 M6 6 L3 .8 M6 6 L6 0 M6 6 L9 .8 M6 6 L11 2" stroke="#fff" stroke-width=".7" stroke-linecap="round"/>
     <ellipse cx="6" cy="15" rx=".9" ry="1.3" fill="#8a6a4a"/></svg>`;
   const DROP_SVG = '<svg viewBox="0 0 10 14" aria-hidden="true"><path d="M5 0 Q10 8 5 13.4 Q0 8 5 0Z" fill="#9fdcff" stroke="#5a9cc8" stroke-width=".7"/></svg>';
+  // Requisiten der kleinen Beschäftigungen am Boden (_aprop): Pfütze (100 × 16, liegt vorn auf dem Wiesenstreifen),
+  // Papierschiffchen darauf, Schnee-Pika (60 × 72, wächst in vier Schichten .sp1 … .sp4), Steintürmchen (40 × 56,
+  // vier Steine .st1 … .st4) und der fliegende Papierflieger (26 × 14, Nase rechts).
+  const PUDDLE_SVG = `<svg viewBox="0 0 100 16" aria-hidden="true">
+      <path d="M5 8.6 C3 4 18 1.6 36 2.2 C50 .4 76 .8 89 4 C98 6.2 97 12 86 13.6 C68 16 30 16 15 14 C8 13 5.6 11 5 8.6Z"
+            fill="#8fb4c9" stroke="#4f86b8" stroke-width="1"/>
+      <path d="M16 6.4 Q32 3.6 50 4.2" stroke="#dff1ff" stroke-width="1.1" fill="none" stroke-linecap="round" opacity=".85"/>
+      <path d="M60 11.8 Q72 12.8 81 10.6" stroke="#dff1ff" stroke-width=".9" fill="none" stroke-linecap="round" opacity=".6"/>
+      <ellipse class="pd-rip" cx="50" cy="8" rx="30" ry="5" fill="none" stroke="#fff" stroke-width="1"/>
+      <ellipse class="pd-dot" cx="24" cy="9.8" rx="5" ry="1.5" fill="none" stroke="#dff1ff" stroke-width=".7"/>
+      <ellipse class="pd-dot pd-d2" cx="74" cy="6.4" rx="5" ry="1.5" fill="none" stroke="#dff1ff" stroke-width=".7"/>
+    </svg>`;
+  const BOAT_SVG = `<svg viewBox="0 0 30 24" aria-hidden="true">${BOAT_ART}</svg>`;
+  const SNOWPIKA_SVG = `<svg viewBox="0 0 60 72" aria-hidden="true">
+      <g class="spl sp1">
+        <ellipse cx="30" cy="51" rx="21" ry="19" fill="#f4f6f8" stroke="#9aa3ad" stroke-width="1.2"/>
+        <path d="M13.5 56 Q20 67 35 67.4" stroke="#bccbd8" stroke-width="2.6" fill="none" stroke-linecap="round"/>
+      </g>
+      <g class="spl sp3">
+        <circle cx="20.5" cy="12" r="6.4" fill="#f4f6f8" stroke="#9aa3ad" stroke-width="1.1"/><circle cx="20.5" cy="12.6" r="3.2" fill="#bccbd8"/>
+        <circle cx="43" cy="11" r="6.4" fill="#f4f6f8" stroke="#9aa3ad" stroke-width="1.1"/><circle cx="43" cy="11.6" r="3.2" fill="#bccbd8"/>
+      </g>
+      <g class="spl sp2">
+        <circle cx="32" cy="24.5" r="14.5" fill="#f4f6f8" stroke="#9aa3ad" stroke-width="1.2"/>
+        <path d="M21 29 Q24.5 36.4 33.5 37" stroke="#bccbd8" stroke-width="2.2" fill="none" stroke-linecap="round"/>
+      </g>
+      <g class="spl sp4">
+        <circle cx="27" cy="22.6" r="1.9" fill="#2a1a12"/><circle cx="38.4" cy="22.6" r="1.9" fill="#2a1a12"/>
+        <path d="M30.8 27 q2 -1 4 0 q-.6 1.7 -2 2.2 q-1.4 -.5 -2 -2.2z" fill="#7a4438"/>
+        <path d="M25.4 29.4 L17.4 27.6 M25.4 31 L17.6 32.8 M40.2 29.4 L48.2 27.6 M40.2 31 L48 32.8" stroke="#8a5a32" stroke-width=".8" stroke-linecap="round"/>
+        <circle cx="30" cy="45" r="1.5" fill="#8e9196"/><circle cx="30.4" cy="53" r="1.5" fill="#8e9196"/>
+      </g>
+    </svg>`;
+  const STONES_SVG = `<svg viewBox="0 0 40 56" aria-hidden="true">
+      <g class="stn st1"><ellipse cx="20" cy="47.6" rx="15" ry="7.4" fill="#9aa3ad" stroke="#5a6470" stroke-width="1.1"/>
+        <path d="M9.4 45.4 q7 -4 16 -3" stroke="#cfccc4" stroke-width="1.2" fill="none" stroke-linecap="round"/></g>
+      <g class="stn st2"><ellipse cx="21.4" cy="35.4" rx="11.6" ry="5.8" fill="#c9b27a" stroke="#7a5230" stroke-width="1.1"/>
+        <path d="M13.4 33.6 q5 -2.8 12 -2.2" stroke="#ead2a2" stroke-width="1.1" fill="none" stroke-linecap="round"/></g>
+      <g class="stn st3"><ellipse cx="18.8" cy="26" rx="8.6" ry="4.6" fill="#8fb4c9" stroke="#4d6878" stroke-width="1.1"/>
+        <path d="M13 24.6 q4 -2 8.6 -1.6" stroke="#dff1ff" stroke-width="1" fill="none" stroke-linecap="round"/></g>
+      <g class="stn st4"><ellipse cx="20.6" cy="18.2" rx="6.2" ry="4" fill="#f4f6f8" stroke="#5a6470" stroke-width="1"/></g>
+    </svg>`;
+  const GLIDER_SVG = `<svg viewBox="0 0 26 14" aria-hidden="true">
+      <path d="M1 3 L25 6 L9 9Z" fill="#fffaf0" stroke="${OUT}" stroke-width=".9" stroke-linejoin="round"/>
+      <path d="M25 6 L9 9 L11 13 L13.6 8.4" fill="#ead2a2" stroke="${OUT}" stroke-width=".9" stroke-linejoin="round"/>
+    </svg>`;
+
+
+  // Requisiten der Beschäftigungen in der Pika-Grafik, die hervorgekramt und weggeräumt werden (_propOn, _propOff).
+  // Eine neue Beschäftigung trägt ihre Gruppe hier ein, mehr braucht der Stil nicht.
+  const PROP_SEL = ['.book', '.gb', '.tab', '.uke', '.brush', '.wand', '.band', '.rope', '.rgrip', '.bar',
+    '.hoop', '.yo', '.pbl', '.jug', '.dchain', '.dcrown', '.pgl', '.peb', '.sboat'];
+  const PROPS = (pre) => PROP_SEL.map((s) => `${pre} ${s}`).join(', ');
+  const KRAM = { in: 240, out: 200 }; // ms, wie die Animationen kram und kramweg
 
   const STYLE_ACT = `
   .acts { position: absolute; inset: 0; pointer-events: none; transition: filter 2.5s; }
@@ -3124,6 +3526,25 @@
   .band, .arms, .uke, .brush, .wand, .rope, .rgrip, .bar, .wpaw { display: none; }
   .music .uke, .painting .brush, .blowing .wand, .sport .band, .jjack .arms, .roping .rope, .roping .rgrip,
   .rope-hold .rope, .rope-hold .rgrip, .lifting .bar, .waving .wpaw { display: inline; }
+
+  /* Hervorkramen und Wegräumen: Requisiten kommen aus dem Fell, statt hart zu erscheinen (in 240 ms, klein und etwas
+     tiefer beginnend, leicht überschwingend), und verschwinden auf demselben Weg. Das Skript setzt dazu kurz .kram
+     bzw. .stow an den Pika (_propOn, _propOff); die Staffelei neben ihm nimmt dieselben Bilder. translate und scale
+     als eigene Eigenschaften: Die transform der Requisiten (Seil, Hantel, eingenicktes Buch) bleibt unberührt, und
+     ein alter Browser, der sie nicht kennt, blendet einfach ein. */
+  ${PROPS('.pika.kram')} { transform-box: fill-box; transform-origin: 50% 70%; animation: kram ${KRAM.in}ms ease-out both; }
+  ${PROPS('.pika.stow')} { transform-box: fill-box; transform-origin: 50% 70%; animation: kramweg ${KRAM.out}ms ease-in both; }
+  @keyframes kram {
+    0% { opacity: 0; scale: .3; translate: 0 5px; }
+    70% { opacity: 1; scale: 1.1; translate: 0 -1px; }
+    100% { opacity: 1; scale: 1; translate: 0 0; }
+  }
+  @keyframes kramweg {
+    0% { opacity: 1; scale: 1; translate: 0 0; }
+    100% { opacity: 0; scale: .3; translate: 0 5px; }
+  }
+  @keyframes kramfade { from { opacity: 0; } }
+  @keyframes kramfadeweg { to { opacity: 0; } }
 
   /* Winken (Begrüßung) */
   .wpaw { transform-box: view-box; transform-origin: 103px 52px; }
@@ -3157,8 +3578,10 @@
   /* Farbklecks auf der Nase (--nsm = die Farbe, mit der er gerade malte) */
   .nsm { display: none; }
   .smudge .nsm { display: inline; }
-  .easel { position: absolute; opacity: 0; transition: opacity .6s; }
-  .easel.on { opacity: 1; }
+  /* Die Staffelei stellt er hin wie ein hervorgekramtes Requisit (von den Füßen aus) und räumt sie so auch weg */
+  .easel { position: absolute; opacity: 0; transform-origin: 50% 100%; }
+  .easel.on { opacity: 1; animation: kram ${KRAM.in}ms ease-out backwards; }
+  .easel.off { animation: kramweg ${KRAM.out}ms ease-in forwards; }
   .easel svg { display: block; width: 100%; height: 100%; overflow: visible; }
   .easel .cvl { opacity: 0; transition: opacity .6s; }
   .cv-sky { fill: #9fd6f7; }
@@ -3189,18 +3612,27 @@
   @keyframes bpop { to { transform: scale(1.45); opacity: 0; } }
 
   /* Frühsport: Stirnband, Hampelmann, Kniebeugen, Schweißtropfen */
-  .jjack .paws { display: inline; animation: jpaws var(--jj, .7s) steps(1) infinite; }
-  .jjack .arms { animation: jarms var(--jj, .7s) steps(1) infinite; }
+  /* --jd (negativ): Steigt er mitten in der Übung ein, beginnen die Animationen im Takt der Planzeit. So landet jeder
+     Sprung auf der gezählten Zahl, und die Übung endet am Boden. */
+  .jjack .paws { display: inline; animation: jpaws var(--jj, .7s) steps(1) var(--jd, 0s) infinite; }
+  .jjack .arms { animation: jarms var(--jj, .7s) steps(1) var(--jd, 0s) infinite; }
   @keyframes jarms { 0% { opacity: 1; } 50%, 100% { opacity: 0; } }
   @keyframes jpaws { 0% { opacity: 0; } 50%, 100% { opacity: 1; } }
-  .jjack .jump { animation: jjump var(--jj, .7s) ease-in-out infinite; }
+  .jjack .jump { animation: jjump var(--jj, .7s) ease-in-out var(--jd, 0s) infinite; }
   .jjack .ear { transform: translateY(-1.5px); }
+  .jjack .ear-l { animation: ejj var(--jj, .7s) ease-in-out var(--jd, 0s) infinite; }
+  .jjack .ear-r { animation: ejj var(--jj, .7s) ease-in-out calc(var(--jd, 0s) + .04s) infinite; }
+  @keyframes ejj {
+    0%, 50%, 100% { transform: translateY(-1.5px) rotate(5deg); }
+    22% { transform: translateY(-1.5px) rotate(-6deg); }
+    75% { transform: translateY(-1.5px); }
+  }
   @keyframes jjump {
     0%, 50%, 100% { transform: translateY(0) scale(1.04, .96); }
     25% { transform: translateY(-14%); }
     75% { transform: translateY(0); }
   }
-  .knee .hop { animation: knee 1.4s ease-in-out infinite; }
+  .knee .hop { animation: knee 1.4s ease-in-out var(--jd, 0s) infinite; }
   @keyframes knee { 50% { transform: scale(1.1, .8); } }
   .knee .paws { display: inline; transform: translate(5px, 1px); }
   .sweat { position: absolute; width: calc(var(--ph) * .07); animation: sweat 1.1s ease-in forwards; pointer-events: none; }
@@ -3259,8 +3691,20 @@
     10% { transform: none; opacity: 1; animation-timing-function: cubic-bezier(.2, .65, .45, 1); }
     50% { transform: scale(.7); opacity: .45; animation-timing-function: cubic-bezier(.55, 0, .8, .35); }
   }
-  .jjack .shadow { animation: sh-jj var(--jj, .7s) ease-in-out infinite; }
+  .jjack .shadow { animation: sh-jj var(--jj, .7s) ease-in-out var(--jd, 0s) infinite; }
   @keyframes sh-jj { 0%, 50%, 100% { transform: none; opacity: 1; } 25% { transform: scale(.82); opacity: .6; } }
+  /* Ohren wippen bei jedem Seilsprung mit: in der Luft bleiben sie zurück, bei der Landung klappen sie nach vorn */
+  .roping .ear-l { animation: erope var(--rp, .66s) ease-in-out infinite; }
+  .roping .ear-r { animation: erope var(--rp, .66s) .04s ease-in-out infinite; }
+  @keyframes erope { 0%, 28%, 100% { transform: none; } 46% { transform: rotate(-7deg); } 72% { transform: rotate(7deg); } 88% { transform: rotate(-2deg); } }
+  .rdbl .ear-l, .rdbl .ear-r { animation-name: erope2; }
+  @keyframes erope2 { 0%, 100% { transform: none; } 8% { transform: rotate(3deg); } 40% { transform: rotate(-10deg); } 70% { transform: rotate(-3deg); } 93% { transform: rotate(8deg); } }
+  /* Bewegung reduzieren: Requisiten blenden ein und aus, ohne Überschwingen; die Ohren schwingen nicht nach */
+  @media (prefers-reduced-motion: reduce) {
+    ${PROPS('.pika.kram')}, .easel.on { animation-name: kramfade; }
+    ${PROPS('.pika.stow')}, .easel.off { animation-name: kramfadeweg; }
+    .roping .ear-l, .roping .ear-r, .jjack .ear-l, .jjack .ear-r { animation: none; }
+  }
 
   /* Gewichtheben: Pusteblumen-Hantel vom Boden über den Kopf */
   .barm { transform-box: view-box; transition: transform .5s cubic-bezier(.4, 0, .3, 1); }
@@ -3277,6 +3721,162 @@
     0% { transform: translate(0, 0) rotate(0); opacity: 0; }
     10% { opacity: 1; }
     100% { transform: translate(var(--dx), calc(var(--ph) * -.8)) rotate(var(--rt)); opacity: 0; }
+  }
+
+  /* ---- Kleine Beschäftigungen ab 0.32: Hula-Hoop, Jo-Jo, Pusteblume, Purzelbaum, Steintürmchen, Jonglieren,
+     Blumenkranz, Papierflieger; bei Regen Pfützenspringen und Papierschiffchen, bei Schnee der Schnee-Pika ---- */
+  .hoop, .yo, .pbl, .jug, .dchain, .dcrown, .pgl, .peb, .sboat { display: none; }
+  .hula .hoop, .hula .arms, .yoyo .yo, .puste .pbl, .juggle .jug, .juggle .arms, .plait .dchain, .crowned .dcrown,
+  .gliding .pgl, .pebble .peb, .boating .sboat { display: inline; }
+
+  /* Requisiten am Boden (_aprop): hinter dem Pika in .acts, die Pfütze vorn auf dem Wiesenstreifen in .actsf */
+  .actsf { position: absolute; inset: 0; pointer-events: none; z-index: var(--z-stage); transition: filter 2.5s; }
+  .shade .actsf { filter: brightness(var(--lbp, 1)) saturate(var(--ls, 1)); }
+  .aprop { position: absolute; opacity: 0; transition: opacity .45s; }
+  .aprop.on { opacity: 1; }
+  .aprop > svg { display: block; width: 100%; height: 100%; overflow: visible; }
+
+  /* Hula-Hoop: Der Reifen kreist (kippt und wandert im Kreis), die Hüfte schwingt gegenläufig, Pfoten oben */
+  .hoop { transform-box: view-box; transform-origin: 62px 69px; }
+  .hula-go .hoop { animation: hoop var(--hu, .74s) linear infinite; }
+  @keyframes hoop {
+    0%, 100% { transform: translate(-3.4px, 0) rotate(-6deg); }
+    25% { transform: translate(0, 1.6px) rotate(0deg); }
+    50% { transform: translate(3.4px, 0) rotate(6deg); }
+    75% { transform: translate(0, -1.6px) rotate(0deg); }
+  }
+  .hula-go .hop { animation: hsway var(--hu, .74s) ease-in-out infinite; }
+  @keyframes hsway { 0%, 100% { transform: translateX(1.6%) rotate(1.6deg); } 50% { transform: translateX(-1.6%) rotate(-1.6deg); } }
+  .hula-x { --hu: .48s; }
+  .hula .face { transform: translate(.6px, -1px); }
+  /* heruntergerutscht: Der Reifen liegt um die Füße */
+  .hula-dn .hoop { transform: translateY(21px) scaleY(.5); transition: transform .3s ease-in; }
+  /* Wegräumen des heruntergerutschten Reifens: .stow stellte Bezugsrahmen und Ursprung um (fill-box, 50% 70%),
+     während Verschieben und Stauchen noch gelten: Der Reifen sprang. Hier bleibt beides, wie es ist. */
+  .pika.stow.hula-dn .hoop { transform-box: view-box; transform-origin: 62px 69px; }
+  .hula-dn .arms { display: none; }
+  .hula-dn .face { transform: translate(-.6px, 2.6px); }
+
+  /* Jo-Jo: Scheibe und Schnur laufen über dieselbe Dauer --yo; unten dreht es kurz frei, dann kommt es zurück */
+  .ystr { transform-box: view-box; transform-origin: 117px 50px; transform: scaleY(.1); transition: transform 1.1s ease-in-out; }
+  .ydisc { transform-box: view-box; transition: transform 1.1s ease-in-out; }
+  .yo-go .ydisc { animation: yod var(--yo, 1s) infinite; }
+  .yo-go .ystr { animation: yos var(--yo, 1s) infinite; }
+  @keyframes yod {
+    0%, 100% { transform: translateY(0); animation-timing-function: cubic-bezier(.5, 0, .9, .6); }
+    42% { transform: translateY(27px); animation-timing-function: linear; }
+    56% { transform: translateY(27px); animation-timing-function: cubic-bezier(.1, .5, .4, 1); }
+  }
+  @keyframes yos {
+    0%, 100% { transform: scaleY(.1); animation-timing-function: cubic-bezier(.5, 0, .9, .6); }
+    42% { transform: scaleY(1); animation-timing-function: linear; }
+    56% { transform: scaleY(1); animation-timing-function: cubic-bezier(.1, .5, .4, 1); }
+  }
+  .yo-dead .ydisc { transform: translateY(27px); transition: none; }
+  .yo-dead .ystr { transform: scaleY(1); transition: none; }
+  .yoyo .face { transform: translate(2.2px, 1.4px); }
+
+  /* Pusteblume: Luft holen (.pu-in), pusten (.blow, wie beim Seifenblasenring), die Kugel wird in drei Stufen kahl */
+  .pu-in .hop { transform: scale(.97, 1.05); transition: transform .5s ease-out; }
+  .pu-in .face { transform: translate(.6px, -1.6px); }
+  .pu-2 .pb3, .pu-1 .pb2, .pu-0 .pb1 { display: none; }
+
+  /* Purzelbaum: einmal vornüber um die Körpermitte, dabei trägt ihn das Skript ein Stück weiter (PURZEL_ROLL) */
+  .purzel .hop { transform-origin: 50% 60%; animation: purzel ${PURZEL_ROLL}ms linear; }
+  @keyframes purzel {
+    0% { transform: rotate(0deg); animation-timing-function: ease-in; }
+    14% { transform: translateY(-3%) rotate(38deg) scale(.96); animation-timing-function: linear; }
+    50% { transform: translateY(-9%) rotate(180deg) scale(.93); }
+    86% { transform: translateY(-3%) rotate(322deg) scale(.96); animation-timing-function: ease-out; }
+    100% { transform: rotate(360deg); }
+  }
+  .purzel .shadow { animation: sh-purzel ${PURZEL_ROLL}ms ease-in-out; }
+  @keyframes sh-purzel { 50% { transform: scale(.78); opacity: .55; } }
+
+  /* Steintürmchen: Jeder Stein fällt ein kleines Stück und federt; ab dem dritten wackelt der Turm, manchmal fällt er */
+  .stn { transform-box: fill-box; transform-origin: 50% 100%; opacity: 0; transform: translateY(-9px); transition: transform .28s cubic-bezier(.3, 1.6, .5, 1), opacity .12s; }
+  .n1 .st1, .n2 .st2, .n3 .st3, .n4 .st4 { opacity: 1; transform: none; }
+  .stonep > svg { transform-origin: 50% 100%; }
+  .stonep.wob > svg { animation: stwob .7s ease-in-out; }
+  @keyframes stwob { 25% { transform: rotate(3.4deg); } 60% { transform: rotate(-2.6deg); } 85% { transform: rotate(1deg); } }
+  .stonep.fall .stn { transition: transform .5s cubic-bezier(.5, 0, .9, .6); }
+  .stonep.fall .st4 { transform: translate(15px, 31px) rotate(74deg); }
+  .stonep.fall .st3 { transform: translate(-14px, 22px) rotate(-52deg); }
+  .stonep.fall .st2 { transform: translate(8px, 9px) rotate(16deg); }
+
+  /* Jonglieren: drei Beeren im Bogen von Pfote zu Pfote über den Kopf. x läuft gleichmäßig hin und zurück (jbx),
+     y steigt und fällt je Bogen (jby), jede Beere um ein Drittel versetzt. */
+  .jb { transform-box: view-box; }
+  .jb2 { transform: translate(47px, -2px); }
+  .jb3 { transform: translate(2.4px, -5.4px); }
+  .jug-go .jb { animation: jbx var(--jg, .62s) linear infinite alternate; }
+  .jug-go .jb circle { animation: jby var(--jg, .62s) infinite; }
+  .jug-go .jb2, .jug-go .jb2 circle { animation-delay: calc(var(--jg, .62s) * -.667); }
+  .jug-go .jb3, .jug-go .jb3 circle { animation-delay: calc(var(--jg, .62s) * -1.333); }
+  @keyframes jbx { from { transform: translateX(0); } to { transform: translateX(47px); } }
+  @keyframes jby {
+    0%, 100% { transform: translateY(0); animation-timing-function: cubic-bezier(.1, .5, .5, 1); }
+    50% { transform: translateY(-37px); animation-timing-function: cubic-bezier(.5, 0, .9, .5); }
+  }
+  .jug-go .arms ellipse { transform-box: fill-box; animation: jgpaw var(--jg, .62s) ease-in-out infinite; }
+  .jug-go .arms ellipse + ellipse { animation-delay: calc(var(--jg, .62s) * -.5); }
+  @keyframes jgpaw { 0%, 100% { transform: translateY(1.6px); } 30% { transform: translateY(-2px); } }
+
+  /* Blumenkranz: flechten (Pfoten wechseln sich ab, Blick nach unten), dann sitzt er auf dem Kopf */
+  .plait .dpl { transform-box: fill-box; animation: plait .5s ease-in-out infinite alternate; }
+  .plait .dpr { transform-box: fill-box; animation: plait .5s -.5s ease-in-out infinite alternate-reverse; }
+  @keyframes plait { from { transform: translate(0, 1px); } to { transform: translate(1.6px, -1.6px); } }
+  .plait .face { transform: translate(.6px, 2.6px); }
+
+  /* Papierflieger: in der Pfote (.gliding), geworfen fliegt er als eigenes Element (.glid, _glider) */
+  .gliding .face { transform: translate(1.6px, -1px); }
+  .glid { will-change: transform; transition-duration: .15s; }
+
+  /* Pfütze: Ring bei jedem Platscher (.rip), dazu zwei kleine Tropfenringe vom Regen; Tropfen spritzen (.splash) */
+  .puddle { transition-duration: .9s; }
+  .pd-rip { opacity: 0; transform-box: fill-box; transform-origin: 50% 50%; }
+  .puddle.rip .pd-rip { animation: pdrip .6s ease-out; }
+  @keyframes pdrip { 0% { opacity: .95; transform: scale(.3); } 100% { opacity: 0; transform: scale(1.3); } }
+  .pd-dot { opacity: 0; transform-box: fill-box; transform-origin: 50% 50%; animation: pddot 1.7s ease-out infinite; }
+  .pd-d2 { animation-delay: -.8s; }
+  @keyframes pddot { 0% { opacity: 0; transform: scale(.2); } 20% { opacity: .9; } 70%, 100% { opacity: 0; transform: scale(1.2); } }
+  .splash { position: absolute; width: calc(var(--ph) * .075); margin-left: calc(var(--ph) * -.037); animation: splash .72s linear forwards; pointer-events: none; }
+  .splash svg { display: block; width: 100%; height: auto; }
+  @keyframes splash {
+    0% { transform: translate(0, 0) scale(.5); opacity: 0; animation-timing-function: cubic-bezier(.2, .6, .4, 1); }
+    12% { opacity: 1; }
+    52% { transform: translate(calc(var(--dx) * .55), var(--dy)) scale(1); opacity: 1; animation-timing-function: cubic-bezier(.6, 0, .8, .4); }
+    100% { transform: translate(var(--dx), 0) scale(.8); opacity: 0; }
+  }
+  /* Papierschiffchen auf der Pfütze: Das Skript schiebt es (transform), die Zeichnung darin schaukelt */
+  .pboat { position: absolute; bottom: 38%; opacity: 0; will-change: transform; }
+  .pboat.afloat { opacity: 1; }
+  .pboat svg { display: block; width: 100%; height: auto; overflow: visible; transform-origin: 50% 85%; animation: pbob 1.5s ease-in-out infinite alternate; }
+  @keyframes pbob { from { transform: rotate(-5deg) translateY(1px); } to { transform: rotate(5deg); } }
+
+  /* Schnee-Pika: Schnee festklopfen (.spat), jede Schicht wächst über --sg von unten heran; .now: schon gebaut */
+  .spat .paws { display: inline; transform-box: fill-box; animation: spat .34s ease-in-out infinite alternate; }
+  @keyframes spat { from { transform: translate(12px, 4px); } to { transform: translate(15px, -1.5px); } }
+  .spat .face { transform: translate(2.4px, 1.2px); }
+  .spl { transform-box: fill-box; transform-origin: 50% 100%; transform: scale(0); transition: transform var(--sg, 1.2s) cubic-bezier(.3, 1.15, .5, 1); }
+  .sp4 { transform-origin: 50% 35%; }
+  .snowp.now .spl { transition: none; }
+  .snowp.s1 .sp1, .snowp.s2 .sp2, .snowp.s3 .sp3, .snowp.s4 .sp4 { transform: none; }
+  .snowp { transform-origin: 50% 100%; }
+  .snowp.off { transform: scaleY(.35); transition: opacity .6s, transform .6s ease-in; }
+
+  /* Bewegung reduzieren: Nichts kreist, pendelt oder schaukelt von selbst; man sieht trotzdem, was er tut (Reifen
+     schräg um den Bauch, Jo-Jo an halber Schnur, drei Beeren im Bogen). Steine und Schnee erscheinen ohne Federn. */
+  @media (prefers-reduced-motion: reduce) {
+    .hula-go .hoop { animation: none; transform: rotate(-6deg); }
+    .hula-go .hop, .plait .dpl, .plait .dpr, .pd-dot, .pboat svg, .jug-go .arms ellipse, .stonep.wob > svg, .spat .paws { animation: none; }
+    .spat .paws { transform: translate(13px, 2px); }
+    .yo-go .ydisc { animation: none; transform: translateY(15px); }
+    .yo-go .ystr { animation: none; transform: scaleY(.56); }
+    .jug-go .jb, .jug-go .jb circle { animation: none; }
+    .jug-go .jb2 { transform: translate(23.5px, -37px); }
+    .jug-go .jb3 { transform: translate(47px, -4px); }
+    .stn, .stonep.fall .stn, .spl { transition-timing-function: ease-out; }
   }
   `;
   // ==================== Ende Aktivitäten ====================
@@ -4167,7 +4767,9 @@
   /* Drachen: Schnur und Drachen hängen an der Pfote (Ursprung), steigen auf und schwanken im Wind */
   .kites { position: absolute; inset: 0; pointer-events: none; transition: filter 2.5s; }
   .shade .kites { filter: brightness(var(--lb, 1)) saturate(var(--ls, 1)); }
-  .kite { position: absolute; width: 0; height: 0; transition: opacity .6s; }
+  .kite { position: absolute; width: 0; height: 0; transition: opacity .6s, transform .35s ease-out; }
+  /* Ruck: Die Pfote geht mit dem Pika nach hinten (.ktug), der Anfang der Schnur im selben Takt mit (--ktx, --kty) */
+  .kite.kpull { transform: translate(var(--ktx, 0px), var(--kty, 0px)); transition: opacity .6s, transform .18s ease-out; }
   .kite.gone { opacity: 0; }
   .kite svg { position: absolute; left: 0; top: 0; overflow: visible; }
   .kite .kl { transform-box: view-box; transform-origin: 0 0; transform: rotate(var(--k0, 0deg)) scale(.25); transition: transform 3s ease-out; }
@@ -4324,8 +4926,10 @@
     z-index: var(--z-stage); cursor: pointer; will-change: transform; touch-action: pan-y; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none;
     transform-origin: 50% 94.5%; /* Füße: auf dem Stein ist er etwas kleiner (weiter hinten) */
   }
+  /* Unter den Füßen (y 90,5 von 100), 5 % über der Unterkante: Tiefer läge er zur Hälfte unter dem Boden des
+     Grasstreifens, und man sähe kaum, wie er bei jedem Hopser schrumpft. */
   .shadow {
-    position: absolute; left: 12%; right: 12%; bottom: 0; height: 10%; border-radius: 50%;
+    position: absolute; left: 12%; right: 12%; bottom: 5%; height: 10%; border-radius: 50%;
     background: radial-gradient(closest-side, rgba(0, 0, 0, .22), transparent);
   }
   .flip, .jump, .hop, .clipw, .depth { position: absolute; inset: 0; transform-origin: 50% 100%; }
@@ -4588,6 +5192,8 @@
   .lnd:not(.walking) .ear-l { animation: eswing .55s ease-out; }
   .lnd:not(.walking) .ear-r { animation: eswing .55s .06s ease-out; }
   @keyframes eswing { 25% { transform: rotate(10deg); } 55% { transform: rotate(-5deg); } 80% { transform: rotate(2deg); } }
+  /* Das Nachschwingen bei einem Sprung auf der Stelle steht nicht hier: Es läuft als eigene Animation von rotate
+     (EAR_SWING, _earSwing) und kommt so zu Haltung und Bewegung der Ohren dazu, statt deren Regeln zu verdrängen. */
   /* Im Schlaf zucken (Ohren bleiben dabei angelegt) */
   .sleeping.stw .hop { animation: stw .45s ease-out; }
   @keyframes stw { 30% { transform: scale(1.03, .96) translateY(1%); } }
@@ -4786,6 +5392,13 @@
   .kiting .ear { transform: translateY(-1.5px); }
   .tv .all { display: none; }
   .tv .bk { display: inline; }
+  /* Umdrehen im Bau (_tvFace): schmal werden, in der Mitte tauscht das Skript Vorder- und Rückansicht */
+  .pika.tvturn .br { animation: tvturn .28s ease-in-out !important; }
+  @keyframes tvturn { 0%, 100% { transform: scaleX(1); } 46%, 54% { transform: scaleX(.06); } }
+  /* Drachen: Er lehnt sich leicht gegen den Zug der Schnur, bei einem Ruck deutlich (er schaut zum Drachen). Die
+     Schnur beginnt an der mitgedrehten Pfote (KITE_LEAN, kitePaw). */
+  .kiting .hop { transform: rotate(-${KITE_LEAN.rest}deg) scale(1, 1); }
+  .kiting.ktug .hop { transform: rotate(-${KITE_LEAN.tug}deg) scale(${KITE_LEAN.sx}, ${KITE_LEAN.sy}); transition: transform .18s ease-out; }
   .tv .bk .rim { animation: tvflk 1.3s linear infinite; }
 
   /* Sprech-Ebene: Blasen, zzz und Zeichen über dem Kopf hängen nicht am Pika selbst (seine Ebene liegt unter Regen
@@ -5169,6 +5782,23 @@
        nur über drift herein), angehalten stehen sie dank des negativen Versatzes --dl verteilt */
     .cloud { animation-play-state: paused !important; }
     .precip { opacity: .6; }
+    /* Ebenso ruhen: das Flackern des Fernsehers (er leuchtet ruhig, die Farbe wechselt seltener, _tvOn), der Drachen
+       (steht still im Wind), was an den Geräten des Haus-Boten von selbst läuft (Schaum, Blasen, Tropfen, Trommel,
+       Wäsche im Wind, Ausrufezeichen, wandernder Balken, Rührstock, Tellerpolieren), Rotoren und Propeller, die Fliege
+       am Häufchen und die aufsteigenden zzz (sie stehen als drei feste Zeichen da). */
+    .tv-on .tvl .tvg, .tv-on .tvw, .tv .bk .rim, .kite .kr, .kite .kb, .kite .kt,
+    .hb-a, .hb-run .hb-foam, .hb-bubs circle, .hb-drip, .hb-cs, .hb-run .hb-rot, .hb-run .hb-sock, .hb-run .hb-dip,
+    .hb-bar.ind b, .hb-stick, .hb-ring, .hb-bbl, .hb-soap:not(.pop) i, .hb-carry.hb-shine > i,
+    .plane .rotor, .plane .prop, .plane .trotor, .fly, .fly::after, .zzz span {
+      animation: none !important;
+    }
+    .tv-on .tvl .tvg, .tv .bk .rim { opacity: .6; }
+    .zzz span { opacity: .9; }
+    .zzz span:nth-child(1) { transform: translate(calc(var(--ph) * .05), calc(var(--ph) * -.1)) scale(.7); }
+    .zzz span:nth-child(2) { transform: translate(calc(var(--ph) * .16), calc(var(--ph) * -.28)) scale(.9); }
+    .zzz span:nth-child(3) { transform: translate(calc(var(--ph) * .28), calc(var(--ph) * -.47)) scale(1.1); }
+    /* Die Ohren schwingen nach der Landung nicht nach (nach einem Sprung lässt es das Skript, _earSwing) */
+    .lnd:not(.walking) .ear-l, .lnd:not(.walking) .ear-r { animation: none; }
     /* Finger setzt auf: Bäckchen und Blick reichen als Antwort, er wird nicht gestaucht */
     .pressed .jump { transform: none; }
     /* Blitz: nur ein sanftes, einmaliges Aufhellen statt Flackern über die ganze Karte */
@@ -5520,8 +6150,20 @@
       this._timers.push(setInterval(() => this._tick(), 20000));
       this._timers.push(setInterval(() => this._regrow(), 150000));
       this._layout();
+      // Wieder eingehängt (Ansicht aus dem Zwischenspeicher von HA): Der Stand ist so alt wie die Trennung, den frischen
+      // setzt HA erst gleich nach dem Einhängen. Bis dahin (höchstens 0,6 s) wählt die Schleife keine Beschäftigung,
+      // sonst zeigte dieses Gerät gelegentlich eine andere als die übrigen.
+      if (this._g && this._detachAt) {
+        this._blindAt = Date.now();
+        this._blindFirst = false;
+        // (auch wenn beim Abhängen noch auf einen frischen Stand gewartet wurde: dessen Frist ist mit abgeräumt)
+        if (this._hass && (this._planStale || Date.now() - this._detachAt > 2000)) this._planStaleArm(600);
+      }
       this._showReq();
       this._start();
+      // Wie beim Sichtbarwerden (_visSync → _tick) gleich den Stand zeigen: Häufchen, die während der Trennung fällig
+      // wurden, liegen da, statt erst mit dem nächsten Takt (bis 20 s später) zu erscheinen
+      if (this._g && this._detachAt && this._stats) this._renderStats();
       this._startCritters();
       this._readFlights(this._lastFlights); // Flieger, die während der Trennung gemeldet wurden
       this._planeLoop();
@@ -5535,6 +6177,7 @@
     _detach() {
       if (!this._attached) return;
       this._attached = false;
+      this._detachAt = Date.now();
       this._stop();
       this._stopCritters();
       this._ro?.disconnect();
@@ -5635,6 +6278,7 @@
             <div class="fore"><div class="hay">${HAY_SVG}</div></div>
             <div class="fest-f"></div>
             <div class="grass">${TUFTS_SVG()}</div>
+            <div class="actsf"></div>
             <div class="poops"></div>
             <div class="precip"></div>
             <div class="fog"><i></i><i></i></div>
@@ -5671,7 +6315,7 @@
         skyDusk: $('.sky-dusk'), skyNight: $('.sky-night'), skyGrey: $('.sky-grey'), skyStorm: $('.sky-storm'), rbow: $('.rbow'),
         burrow: $('.burrow'), lights: $('.lights'), clipw: $('.clipw'), depth: $('.depth'), rock: $('.lookout'),
         meteors: $('.meteors'), ff: $('.ff'), festB: $('.fest-b'), festF: $('.fest-f'), props: $('.props'), friends: $('.friends'),
-        acts: $('.acts'), gifts: $('.gifts'), gbtn: $('.gbtn'), tbbtn: $('.tbbtn'),
+        acts: $('.acts'), actsf: $('.actsf'), gifts: $('.gifts'), gbtn: $('.gbtn'), tbbtn: $('.tbbtn'),
       };
       this._el.psay = $('.psay');
       this._el.held = $('.held');
@@ -5866,6 +6510,9 @@
         this._updateSky();
         this._placePiles(); // neues Areal: schon liegende Häufchen an die neuen Stellen
         this._renderStats();
+        // Frisch geladen: Noch hat ihn niemand gesehen, in eine laufende Beschäftigung steigt er ohne Hinlaufen ein
+        this._blindAt = Date.now();
+        this._blindFirst = true;
         this._start();
       } else if (this._inside) {
         this._setX(this._g.home, true);
@@ -5891,8 +6538,11 @@
         this._placePiles();
         // Besucher sitzen an festen Pixeln: bei Größenänderung lieber neu kommen lassen
         if (CRIT_KINDS.some((k) => this['_' + k])) this._restartCritters();
-        // Staffelei und Drache stehen an festen Pixeln: abbrechen (räumt sie weg), er steigt gleich wieder ein
-        if (this._easelEl || this._kiteEl) this._interrupt();
+        // Staffelei, Drache und die Requisiten am Boden (Pfütze, Schnee-Pika …) stehen an festen Pixeln, Papierflieger
+        // und Purzelbaum rechnen mit Wegen in Pixeln (ACT_PX): abbrechen, das räumt auf. Was nach der Planzeit läuft
+        // (Malen, Drachen, Pfütze, Schiffchen, Schnee-Pika), nimmt er gleich wieder auf; Steintürmchen, Papierflieger
+        // und Purzelbaum sind für dieses Fenster vorbei (ACT_NOJOIN). Ohne Größenänderung kommt _layout nicht bis hier.
+        if (this._easelEl || this._kiteEl || this._aprops?.size || ACT_PX.has(this._action)) this._interrupt();
         if (this._giftEl) this._flowerGiftPlace(this._giftEl); // Blumengeschenk an seiner relativen Stelle
       } else {
         this._flowerFromPlan(); // lag schon eins (anderes Gerät, Neuladen)
@@ -5934,7 +6584,8 @@
     }
 
     // Sichtbarkeit hat sich geändert: unsichtbar ruht alles (Schleife, Besucher, Animationen), sichtbar geht es weiter
-    _visSync() {
+    // fresh: Der Anlass kam mit einem frischen Stand aus HA (screen_entity meldet „an“): nicht erst auf einen warten
+    _visSync(fresh = false) {
       const away = this._away();
       if (!this._attached || away === this._away0) return;
       this._away0 = away;
@@ -5945,6 +6596,10 @@
         this._goneAt ??= Date.now(); // für das Wiedersehen
         this._flush();
         this._stop();
+        // Ein Sprung auf der Stelle stünde mit .paused in der Luft still, gezählt wird aber weiter (jumpBusy, _jumpT):
+        // Er endet jetzt, ungesehen, am Boden
+        this._jumpOn = null;
+        for (const el of [this._el.jump, this._el.shadow]) el.classList.remove('hop1', 'binky');
         this._stopCritters();
         this._hiddenFeatures(true);
         this._giftFromPlan(); // woanders schon ausgepackt: hier schaut jetzt keiner mehr zu, dann ist es weg
@@ -5952,9 +6607,15 @@
       }
       // Länger versteckt: Der Stand aus HA (Tagesplan, Wetter) ist wohl veraltet, die Verbindung baut sich gerade neu
       // auf. Beschäftigungen erst wählen, wenn ein frischer Stand da ist, sonst zeigte dieses Gerät eine andere.
+      // Geht der Bildschirm über screen_entity an, kam die Meldung über dieselbe Verbindung wie Tagesplan und Wetter:
+      // Der Stand ist frisch, der Pika steht im selben Augenblick mitten in der laufenden Beschäftigung.
       const long = !!this._hidAt && Date.now() - this._hidAt > 30000;
-      if (long) this._planStaleArm();
+      if (long && !fresh) this._planStaleArm();
       this._hidAt = null;
+      // Wieder zu sehen: Nur jetzt gleich darf er ohne Hinlaufen an einem anderen Platz stehen (_jumpIn). Muss er erst
+      // auf den frischen Stand warten, hat man ihn inzwischen gesehen, dann hoppelt er hin.
+      this._blindAt = Date.now();
+      this._blindFirst = false;
       // Über die Pause wurde es Schlafenszeit (Bildschirm abends aus, nachts an): Er liegt längst im Bett, statt jetzt erst
       // hinzulaufen. Das Aufwachen am Morgen spielt dagegen die Schleife (_wakeUp), danach begrüßt er (_showReq).
       if (long && this._g && !this._asleep && this._sleepTime()) {
@@ -5986,7 +6647,7 @@
       }
     }
 
-    _planStaleArm() {
+    _planStaleArm(ms = 4000) {
       this._planStale = true;
       this._staleStates = this._hass?.states;
       clearTimeout(this._staleT);
@@ -5995,20 +6656,29 @@
         if (this._hass?.connected === false) this._staleT = setTimeout(check, 2000);
         else this._planFresh();
       };
-      this._staleT = setTimeout(check, 4000);
+      this._staleT = setTimeout(check, ms);
+    }
+
+    // Weiß die Schleife noch nicht, was gerade läuft (Stand nach langer Pause veraltet, Helfer des Tagesplans noch
+    // nicht gelesen)? Dann wartet sie kurz, statt zu grüßen oder etwas anzufangen: Sonst winkte er an einer Stelle
+    // und stünde gleich darauf samt Requisit an einer anderen. Höchstens JUMP_IN.first ms, danach lebt er weiter.
+    _planWait() {
+      // since < 0: Die Geräteuhr wurde zurückgestellt. Dann nicht warten (wie jumpInOk), sonst wartete er, bis die Uhr
+      // den alten Stand wieder erreicht.
+      const since = this._sinceBlind();
+      return (this._planStale || (!!this._cfg.plan_entity && !this._planOk)) && since >= 0 && since < JUMP_IN.first;
     }
 
     _planFresh() {
       if (!this._planStale) return;
       this._planStale = false;
       clearTimeout(this._staleT);
-      if (this._running && ACT_SMALL.includes(this._action) && this._slotNow()) this._interrupt();
+      if (this._running && (this._planWaiting || (ACT_SMALL.includes(this._action) && this._slotNow()))) this._interrupt();
     }
 
     _start() {
       if (this._running || !this.isConnected || this._away() || !this._g) return;
       this._running = true;
-      this._loopAt = Date.now(); // frisch gestartet: in eine laufende Beschäftigung ohne Hinlaufen einsteigen
       this._slotArm();
       const run = ++this._runId;
       (async () => {
@@ -6078,6 +6748,7 @@
     _stop() {
       this._running = false;
       this._waitDue = 0;
+      this._planWaiting = false; // sonst bräche der nächste frische Stand ab, was nach dem Wiederanlaufen gerade läuft
       clearTimeout(this._slotT);
       this._slotT = null;
       this._runId++;
@@ -6089,6 +6760,9 @@
       if (this._el) {
         this._pressFx(null);
         this._cleanup();
+        // Ein zurückgehaltenes Häufchen liegt jetzt einfach da: Bis die Schleife wieder läuft (Bildschirm an, Ansicht
+        // wieder da), kann es Stunden her sein, er führte es sonst vor, obwohl es überall längst liegt
+        this._layPending();
       }
     }
 
@@ -6111,7 +6785,8 @@
     // (PET_HOLD) stehen, bis _step sie zusammen mit den neuen Klassen tauscht.
     _cleanup(hold = false) {
       const p = this._el.pika;
-      if (p.classList.contains('walking')) this._freeze();
+      // Mitten im Laufen oder im Purzelbaum: stehen bleiben, wo er gerade ist (sonst glitte er zum Ziel weiter)
+      if (p.classList.contains('walking') || p.classList.contains('purzel')) this._freeze();
       const all = ['walking', 'eating', 'groom', 'carry', 'look-f', 'look-b', 'look-up', 'happy', 'calling', 'crouch', 'squat', 'sniff',
         'reading', 'doze', 'gaming', 'meh', 'lying', 'tablet', 'tplane', 'swipe', 'kiting', 'tv',
         'coffee', 'sip', 'hot', 'foam', 'lick', ...COFFEE_CLS, ...ACT_CLS, ...CUTE_CLS, ...GIFT_CLS];
@@ -6124,12 +6799,16 @@
       this._tvOn(false);
       this._kiteAway();
       this._easelAway();
+      this._apropsAway();
       this._mouth(null);
       this._bubble(this._el.think, false);
       this._action = null;
     }
 
     async _step() {
+      // Der Merker gilt nur für diesen Schritt: Biegt er vor der Wartezeile ab (herunter vom Stein, Kaffee, Schlafen,
+      // Aufwachen, Traum), bräche der frische Stand sonst die fremde Aktion ab (_planFresh, _planReady)
+      this._planWaiting = false;
       // Über das Aufräumen gehaltene Streichel-Mimik: jetzt weg, im selben Atemzug setzt die nächste Aktion ihre eigene
       if (this._petHeld) {
         this._petHeld = false;
@@ -6160,6 +6839,10 @@
       const next = this._next;
       this._slot = null;
       this._slotArm();
+      // Noch unklar, was gerade läuft: kurz stillhalten (Berührung und Futter gehen vor). Kommt der Stand, weckt
+      // _planFresh bzw. _planReady die Schleife sofort.
+      this._planWaiting = !next && !food && this._planWait();
+      if (this._planWaiting) return this._wait(100);
       const fu = next || food || this._inside ? null : this._friendUrgent();
       if (fu) return this._run(fu);
       // Beschäftigung aus dem Tagesplan: läuft gerade eine, macht er mit (Futter und Vorschau-Knöpfe gehen vor)
@@ -6186,6 +6869,12 @@
         return this._run(next);
       }
       this._forced = false;
+      // Ein Häufchen wurde fällig, während er beschäftigt war, und hat gewartet (_renderPiles): jetzt ist Zeit dafür.
+      // Nur solange es frisch ist: Ein älteres liegt auf den anderen Geräten längst da, hier dann auch.
+      if (this._poopPending) {
+        if (this._canPoopLive() && this._now() - this._poopPending.due < POOP.live * 6e4) return this._run('poop');
+        this._layPending();
+      }
       if (food) return this._run('eatFood', food);
       // Päckchen am Ballon: herunterschießen, dann auspacken (nach Futter und Beschäftigungen aus dem Plan)
       const gd = this._giftDue();
@@ -6374,7 +7063,7 @@
       this._lift = lift;
       this._lane = 0;
       this._setX(x);
-      this._jump('hop1');
+      this._jump('hop1', true);
       await this._wait(620);
     }
 
@@ -6539,23 +7228,17 @@
 
     // Eine Blüte für den Vorrat holen (kleine Beschäftigung aus dem Tagesplan). Die Farbe steht mit dem Fenster
     // fest, damit alle Geräte dieselbe Blüte in die Nische legen; hat dieses Gerät keine Blume der Farbe auf der
-    // Wiese, nimmt er die nächste und sie bekommt die Farbe.
+    // Wiese, pflückt er die nächste. Sie behält auf der Wiese ihre Farbe (früher färbte sie sich um, während er noch
+    // hinlief); erst die gepflückte Blüte im Maul hat die Farbe des Fensters.
     async _gather() {
       const S = this._slotFor('gather');
       const pal = this._flowerPal();
       const ci = Math.floor(S.r(2) * pal.length);
       const color = pal[ci];
       if (this._inside) await this._comeOut();
-      let f = this._flowers.filter((o) => o.color === color)
-        .sort((a, b) => Math.abs(a.xf * this._W - this._x) - Math.abs(b.xf * this._W - this._x))[0];
-      if (!f) {
-        f = this._nearestFlower();
-        if (f) {
-          f.color = color;
-          f.el.innerHTML = FLOWER_SVG(color);
-          this._flowerTint(f);
-        }
-      }
+      const f = this._flowers.filter((o) => o.color === color)
+        .sort((a, b) => Math.abs(a.xf * this._W - this._x) - Math.abs(b.xf * this._W - this._x))[0]
+        || this._nearestFlower();
       if (f) {
         await this._approach(f.xf * this._W);
         await this._sniffPick(f);
@@ -6652,6 +7335,7 @@
 
     async _hungry() {
       this._announce('hat Hunger');
+      this._thinkReset(true);
       this._bubble(this._el.think, true);
       this._el.pika.classList.add('look-up');
       this._mimik('sad');
@@ -6855,12 +7539,21 @@
         return;
       }
       if (this._inside) await this._comeOut();
-      await this._walkTo(x, speed);
+      // Tempo aus der Strecke: Der Hauptteil beginnt ACT_WALK nach dem Fensterbeginn. Mit festem Tempo käme er auf
+      // breiten Karten Sekunden zu spät (walkSpeed). Ist die Zeit schon um (Wiedereinstieg), geht er kurze Wege im
+      // Grundtempo und eilt nur für weite, ohne große Hopser.
+      await this._walkTo(x, walkSpeed(Math.abs(x - this._x), this._g.pW, S.start + ACT_WALK - this._planNow(), speed));
     }
 
-    // Steigt er in ein schon laufendes Fenster ein, ohne dass man ihn vorher sah?
+    // Steigt er in ein schon laufendes Fenster ein, ohne dass man ihn vorher sah? Nur dann steht er gleich am Platz;
+    // hat man ihn schon woanders gesehen (er wartete auf den frischen Stand, wachte eben auf), hoppelt er hin.
     _jumpIn(S) {
-      return S.k >= 0 && this._planNow() - S.start > 6000 && Date.now() - (this._loopAt || 0) < 5000;
+      return S.k >= 0 && jumpInOk(this._planNow() - S.start, this._sinceBlind(), this._blindFirst);
+    }
+
+    // ms, seit die Karte (wieder) zu sehen ist: gesetzt beim ersten Aufbau, beim Sichtbarwerden und beim Wiedereinhängen
+    _sinceBlind() {
+      return Date.now() - (this._blindAt || 0);
     }
 
     // Bis zur Planzeit t warten (gleich weiter, wenn sie vorbei ist)
@@ -6884,6 +7577,31 @@
       const e = this._dbgElev ?? this._elev;
       const w = this._wind || 0;
       return w >= 20 && w < 65 && !this._wx.wet && !this._wx.storm && (e == null || e > 3);
+    }
+
+    // Requisit hervorkramen: Die Klassen cls zeigen es (z. B. 'reading' das Buch), dazu kurz .kram: Es kommt in
+    // KRAM.in ms aus dem Fell, leicht überschwingend (Stil: kram, PROP_SEL). Für alle Beschäftigungen dasselbe.
+    _propOn(...cls) {
+      const p = this._el.pika;
+      p.classList.remove('stow');
+      p.classList.add(...cls, 'kram');
+      clearTimeout(this._kramT);
+      this._kramT = setTimeout(() => p.classList.remove('kram'), KRAM.in + 60);
+    }
+
+    // Requisit wegräumen: erst zurück ins Fell (KRAM.out ms, Stil: kramweg), dann die Klassen cls weg. Wird die
+    // Aktion dabei abgebrochen, sind sie sofort weg (wie beim Aufräumen in _cleanup).
+    async _propOff(...cls) {
+      const p = this._el.pika;
+      if (!cls.some((c) => p.classList.contains(c))) return;
+      clearTimeout(this._kramT);
+      p.classList.remove('kram');
+      p.classList.add('stow');
+      try {
+        await this._wait(KRAM.out);
+      } finally {
+        p.classList.remove('stow', ...cls);
+      }
     }
 
     // Kleiner Ton über dem Kopf (Gameboy)
@@ -6914,7 +7632,7 @@
       await this._goSpot(S, S.r(2) < 0.6 ? stand + pW * 0.16 : home + pW * 0.7);
       this._face(1);
       const p = this._el.pika;
-      p.classList.add('reading');
+      this._propOn('reading');
       const h = new Date(S.start).getHours();
       const now0 = this._planNow();
       const doze = this._dbgDoze ? [now0 + 2500, now0 + 14000]
@@ -6943,7 +7661,8 @@
         else if (r < 0.65) this._say(pick(['hihi', 'hihi!', 'oh!', 'hm…']), 1100);
         else if (r < 0.75) this._twitch();
       }
-      await this._wait(600);
+      await this._wait(400);
+      await this._propOff('reading', 'doze');
     }
 
     // Gameboy: Daumen tippen, Piepser steigen auf; nach jeder Runde Freudensprung oder hängende Ohren
@@ -6953,7 +7672,7 @@
       await this._goSpot(S, this._hobbySpot(S.r(2)));
       this._face(S.r(3) < 0.5 ? -1 : 1);
       const p = this._el.pika;
-      p.classList.add('gaming');
+      this._propOn('gaming');
       const t0 = S.start + ACT_WALK;
       const rounds = 2 + Math.floor(S.r(4) * 3);
       const L = (S.end - t0) / rounds;
@@ -6975,7 +7694,8 @@
         }
         await this._at(t0 + (i + 1) * L);
       }
-      await this._wait(400);
+      await this._wait(200);
+      await this._propOff('gaming');
     }
 
     // Auf dem Bauch mit dem Tablet: wischt, kichert. Fliegt gerade ein echtes Flugzeug vorbei,
@@ -6987,7 +7707,7 @@
       const p = this._el.pika;
       p.classList.add('lying');
       await this._wait(400);
-      p.classList.add('tablet');
+      this._propOn('tablet');
       while (this._planNow() < S.end) {
         const plane = [...this._planes.values()].find((pl) => pl.show && !pl.gone);
         p.classList.toggle('tplane', !!plane);
@@ -7007,8 +7727,9 @@
           this._say(pick(['hihi', 'oh!', '♥']), 1000);
         }
       }
-      p.classList.remove('tablet', 'tplane');
-      await this._wait(300);
+      await this._propOff('tablet');
+      p.classList.remove('tplane');
+      await this._wait(100);
       p.classList.remove('lying');
       await this._wait(400);
     }
@@ -7024,9 +7745,11 @@
       this._face(kd);
       const p = this._el.pika;
       p.classList.add('kiting');
-      // Pfote (viewBox 105/50) in px; der Drache steht schräg oben im Wind
-      const px = this._x + kd * pW * (105 / 120 - 0.5);
-      const py = gy - pH * 0.945 + pH * 0.5 - this._lift;
+      // Pfote in px, mit ihm gegen den Zug gelehnt (kitePaw, ab den Füßen); der Drache steht schräg oben im Wind
+      const [rx, ry] = kitePaw(pW, pH, KITE_LEAN.rest);
+      const [tx, ty] = kitePaw(pW, pH, KITE_LEAN.tug, KITE_LEAN.sx, KITE_LEAN.sy);
+      const px = this._x + kd * rx;
+      const py = gy + pH * 0.055 - this._lift + ry;
       const K = H * 0.12;
       const kx = clamp(px + kd * W * (0.26 + S.r(2) * 0.12), K, W - K) - px;
       const ky = this._sy(0.1 + S.r(3) * 0.07) - py;
@@ -7035,6 +7758,9 @@
       el.style.left = `${px.toFixed(1)}px`;
       el.style.top = `${py.toFixed(1)}px`;
       el.style.setProperty('--k0', `${kd * 60}deg`);
+      // so weit wandert die Pfote bei einem Ruck
+      el.style.setProperty('--ktx', `${(kd * (tx - rx)).toFixed(2)}px`);
+      el.style.setProperty('--kty', `${(ty - ry).toFixed(2)}px`);
       el.style.setProperty('--kd', `${clamp(4.5 - (this._wind || 30) / 20, 1.6, 4).toFixed(2)}s`);
       el.innerHTML = KITE_SVG(kx, ky, K);
       this._kiteAway();
@@ -7050,6 +7776,11 @@
           el.classList.remove('tug');
           void el.offsetWidth;
           el.classList.add('tug');
+          // er stemmt sich gegen den Ruck, der Anfang der Schnur geht mit der Pfote mit
+          this._cls('ktug', KITE_LEAN.ms, true);
+          el.classList.add('kpull');
+          clearTimeout(this._kpullT);
+          this._kpullT = setTimeout(() => el.classList.remove('kpull'), KITE_LEAN.ms);
         } else if (r < 0.5) {
           this._say(pick(['wuiii!', 'hihi', 'iiep!']), 1100);
         } else if (r < 0.6) {
@@ -7090,8 +7821,9 @@
         // nach dem Streicheln wieder zum Fernseher drehen
         if (!p.classList.contains('tv')) {
           await this._wait(1200);
-          p.classList.add('tv');
-          await this._to('tv', 500);
+          this._pose('tv', 500);
+          await this._tvFace(true);
+          await this._wait(220);
           continue;
         }
         const r = Math.random();
@@ -7101,22 +7833,42 @@
           this._twitch();
         } else if (r < 0.57) {
           // dreht sich kurz um und schaut heraus
-          p.classList.remove('tv');
           this._pose('peek', 400);
-          await this._wait(500);
+          await this._tvFace(false);
+          await this._wait(220);
           if (Math.random() < 0.5) this._say(pick(['mip?', 'iiep!']), 900);
           await this._wait(rnd(1400, 2400));
-          p.classList.add('tv');
-          await this._to('tv', 500);
+          this._pose('tv', 500);
+          await this._tvFace(true);
+          await this._wait(220);
         } else if (r < 0.65) {
           this._jump('hop1');
           this._say('!', 800);
         }
       }
       this._tvOn(false);
-      await this._wait(500);
-      p.classList.remove('tv');
+      await this._wait(300);
+      await this._tvFace(false);
       await this._to('hidden', 500);
+    }
+
+    // Vorder- und Rückansicht im Bau wechseln (back: Rücken zu uns) als Drehung statt als Schnitt: Er wird schmal,
+    // in der Mitte tauscht die Ansicht, dann wird er wieder breit (Stil: tvturn, 280 ms). Bewegung reduzieren: Schnitt.
+    async _tvFace(back) {
+      const p = this._el.pika;
+      if (p.classList.contains('tv') === back) return;
+      if (calmMotion()) {
+        p.classList.toggle('tv', back);
+        return;
+      }
+      p.classList.add('tvturn');
+      try {
+        await this._wait(130);
+        p.classList.toggle('tv', back);
+        await this._wait(150);
+      } finally {
+        p.classList.remove('tvturn');
+      }
     }
 
     _tvOn(on) {
@@ -7128,7 +7880,8 @@
       const next = () => {
         const c = pick(TV_COLORS);
         for (const el of [this._el.tvl, this._el.lights, this._el.pika]) el.style.setProperty('--tvc', c);
-        this._tvT = setTimeout(next, rnd(600, 2600));
+        // Bewegung reduzieren: Das Bild wechselt seltener (und flackert nicht, siehe Stil)
+        this._tvT = setTimeout(next, calmMotion() ? rnd(4000, 9000) : rnd(600, 2600));
       };
       next();
     }
@@ -7191,20 +7944,22 @@
     // ---------- Bausteine ----------
 
     // lane (Prototyp Tiefe): 1 = hintere Spur. Alle anderen Wege führen auf die vordere Spur zurück.
-    async _walkTo(x, speed = 1, steady = false, lane = 0) {
+    // back: rückwärts, er dreht sich nicht in Laufrichtung (ein paar Schritte vom Bild zurücktreten)
+    async _walkTo(x, speed = 1, steady = false, lane = 0, back = false) {
       const { pW, xR } = this._g;
       x = clamp(x, pW * 0.45, xR);
       const dx = x - this._x;
       lane = this._cfg.depth ? lane : 0;
       const dl = lane !== (this._lane || 0);
       if (Math.abs(dx) < 4 && !dl) return;
-      if (Math.abs(dx) >= 4) this._face(dx > 0 ? 1 : -1);
+      if (Math.abs(dx) >= 4 && !back) this._face(dx > 0 ? 1 : -1);
       // Der Spurwechsel zählt wie ein kurzes Stück Weg
       const dist = Math.max(Math.abs(dx), dl ? pW * 0.6 : 0);
-      const dur = dist / (pW * 0.85 * speed);
       const p = this._el.pika;
       // Gangart: kurze Wege trippelt er, eilig macht er große Hopser
       const gait = dist < pW * 0.8 && speed <= 1.2 ? 'trip' : speed >= 1.8 ? 'bighop' : null;
+      // Der Weg dauert ganze Hopser (das Tempo gibt dafür ein wenig nach): Er kommt am Boden an statt mitten im Sprung
+      const dur = hopRound((dist / (pW * 0.85 * speed)) * 1000, HOP_MS[gait || 'hop']) / 1000;
       // Beim Herumhoppeln stolpert er selten über die eigenen Füße
       const stumble = !steady && !dl && this._action === 'wander' && Math.abs(dx) > pW * 1.5 && Math.random() < 0.05;
       p.style.transition = `transform ${dur.toFixed(2)}s linear`;
@@ -7334,14 +8089,38 @@
       m.classList.toggle('item', !!svg && !!it);
     }
 
-    _jump(kind) {
+    // fresh: der Sprung trägt ihn woandershin (_hopTo), er beginnt in jedem Fall neu
+    _jump(kind, fresh = false) {
       if (kind === 'binky' && calmMotion()) kind = 'hop1'; // Bewegung reduzieren: ruhiger Hüpfer statt Luftsprung
+      // Noch in der Luft vom letzten Sprung (schnelle Tipps, Schreck beim Blitz): den zu Ende springen. Ein neuer
+      // finge am Boden an, er schnappte aus der Luft herunter.
+      const J = this._jumpOn;
+      if (!fresh && J && jumpBusy(J.kind, Date.now() - J.at)) return;
+      this._jumpOn = { kind, at: Date.now() };
       const j = [this._el.jump, this._el.shadow]; // der Schatten macht den Sprung mit (wird kleiner)
       for (const el of j) el.classList.remove('hop1', 'binky');
       void j[0].offsetWidth;
       for (const el of j) el.classList.add(kind);
       clearTimeout(this._jumpT);
       this._jumpT = setTimeout(() => j.forEach((el) => el.classList.remove(kind)), 1000);
+      this._earSwing(this._el.pika, kind);
+    }
+
+    // Ohren schwingen bei einem Sprung auf der Stelle nach (EAR_SWING), bei Pika und Pino (root: .pika bzw. .friend).
+    // Als eigene Animation der Eigenschaft rotate statt über den Stil: Die Drehung kommt zur Haltung der Ohren dazu
+    // (hängend bei .sad und .meh, angelegt bei .flat: Sie schwingen um ihre Lage, nicht bis fast senkrecht hoch), und
+    // sie nimmt keiner Ohr-Regel den Platz (Flappen beim Antippen, Zucken, Wippen beim Seilspringen, Verbeugung;
+    // als Regel am Sprung schlug sie alle und wurde beim Fangen auf 0,21 s gekürzt). Nicht mitten im Hoppeln (da
+    // wippen die Ohren schon) und nicht mit „Bewegung reduzieren“. Ein Browser ohne rotate lässt es einfach weg.
+    _earSwing(root, kind) {
+      root._earAn?.forEach((a) => a.cancel());
+      root._earAn = null;
+      const S = EAR_SWING[kind];
+      if (!S || calmMotion() || root.classList.contains('walking')) return;
+      const frames = [{ rotate: '0deg', easing: 'ease-out' },
+        ...S.k.map(([offset, deg]) => ({ offset, rotate: `${deg}deg`, easing: 'ease-out' })), { rotate: '0deg' }];
+      root._earAn = [...root.querySelectorAll('.ear-l, .ear-r')].map((ear) =>
+        ear.animate?.(frames, { duration: S.ms, delay: ear.classList.contains('ear-r') ? 50 : 0 })).filter(Boolean);
     }
 
     _happy(ms = 1200) {
@@ -8737,6 +9516,21 @@
       return DREAM[weighted(opts)];
     }
 
+    // Denkblase nach Traum oder Kaffeeduft wieder mit dem Löwenzahn füllen (für „hat Hunger“): erst, wenn sie
+    // ausgeblendet ist. Sofort getauscht, zeigte sie beim Abbruch (aufgeweckt) im Ausblenden kurz den Löwenzahn in der
+    // bläulichen Traumblase. now: gleich (die Blase wird jetzt gebraucht).
+    _thinkReset(now = false) {
+      clearTimeout(this._thinkT);
+      const think = this._el.think;
+      const reset = () => {
+        think.innerHTML = FOOD.lz.svg;
+        think.classList.remove('dream');
+      };
+      if (now) return reset();
+      this._bubble(think, false);
+      this._thinkT = setTimeout(reset, 350);
+    }
+
     // Im Schlaf: ab und zu ein Traum, Zucken, Schmatzen oder Murmeln
     async _dream() {
       const dbg = this._dbgDream; // Vorschau: gleich träumen
@@ -8747,6 +9541,7 @@
       const r = dbg ? 0 : Math.random();
       if (r < 0.4) {
         const think = this._el.think;
+        clearTimeout(this._thinkT);
         think.innerHTML = this._dreamSvg();
         think.classList.add('dream');
         try {
@@ -8758,8 +9553,7 @@
           this._bubble(think, false);
           await this._wait(400);
         } finally {
-          think.innerHTML = FOOD.lz.svg;
-          think.classList.remove('dream');
+          this._thinkReset();
         }
       } else if (r < 0.6) {
         this._cls('stw', 550, true);
@@ -9033,6 +9827,7 @@
       this._festCakeOut = false;
       this._festT?.forEach((t) => clearTimeout(t));
       this._festT?.clear();
+      this._festArmed = null; // die Wecker für Mitternacht und „Helau!“ sind mit weg
       if (this._festEls) this._festEls.sky.innerHTML = this._festEls.cf.innerHTML = '';
     }
 
@@ -9051,15 +9846,10 @@
       this._festEnsure();
       this._festUpdate();
       const f = this._fest;
-      const now = new Date(this._festNow());
-      // Mitternacht an Neujahr: Finale, und der Pika wacht auf und schaut aus dem Bau. Nur sichtbar: sonst liefe es
-      // ungesehen ab, und wer den Bildschirm um 0:03 einschaltet, bekäme keins mehr
-      if (f.fireworks && !this._away() && this._g && now.getMonth() === 0 && now.getDate() === 1 && now.getHours() === 0 && now.getMinutes() < 5
-        && this._festMidY !== now.getFullYear()) {
-        this._festMidY = now.getFullYear();
-        this._festFinale();
-        this._festForce('festFireworks');
-      }
+      // Jahreswechsel und „Helau!“: Steht einer bevor, wartet ein Zeitgeber genau bis dahin (_festArm). Hier wird nur
+      // nachgeholt, was dieses Gerät verpasst hat (Bildschirm um 0:03 an)
+      this._festArm();
+      this._festMidnight();
       if (this._away() || !this._g) return;
       // Halloween-Nacht: ab und zu flattert eine Fledermaus über den Himmel
       if (f.witch && this._festDark() && Math.random() < 0.35) this._festBat();
@@ -9074,19 +9864,51 @@
           this._festCfNext = t + rnd(2, 5) * 60000;
         }
       } else this._festCfNext = null;
-      // 11. 11. um 11:11: Auftakt der Karnevalszeit, einmal kurz Konfetti und „Helau!“ (der 20-s-Takt trifft das
-      // Fenster bis 11:13 sicher)
-      if (this._cfg?.festive !== false && now.getMonth() === 10 && now.getDate() === 11 && now.getHours() === 11
-        && now.getMinutes() >= 11 && now.getMinutes() < 14 && this._festKickY !== now.getFullYear() && party && !this._wx.shelter) {
-        this._festKickY = now.getFullYear();
-        if (this._inside || this._lift > 0) {
-          this._festConfettiRain();
-          this._say('Helau!', 1500);
-        } else this._festForce('festConfetti');
-      }
+      this._festHelau();
       // Maibaum: Bänder drehen mit dem Wind
       const mai = this._festEls?.back.querySelector('.fmai');
       if (mai) mai.style.setProperty('--wd', this._windDir < 0 ? -1 : 1);
+    }
+
+    // Zeitgeber für die Augenblicke, die überall in derselben Sekunde kommen (festMoments): Der 20-Sekunden-Takt hat
+    // auf jedem Gerät eine andere Phase, Finale und „Helau!“ lagen darum bis zu 20 s auseinander. Jetzt löst die Uhr
+    // von HA aus; der Takt stellt nur rechtzeitig den Wecker. Nach einem Uhrenabgleich wird neu gestellt (_clockMoved),
+    // der alte Wecker prüft die Uhr selbst und tut zur falschen Zeit nichts.
+    _festArm() {
+      const now = this._festNow();
+      const M = festMoments(now);
+      const A = (this._festArmed ??= {});
+      for (const [k, fn] of [['mid', () => this._festMidnight()], ['helau', () => this._festHelau()]]) {
+        const ms = M[k] - now;
+        if (ms <= 0 || ms > FEST_AHEAD || A[k] === M[k]) continue;
+        A[k] = M[k];
+        this._festLater(fn, ms + 30);
+      }
+    }
+
+    // Mitternacht an Neujahr: Finale, und der Pika wacht auf und schaut aus dem Bau. Nur sichtbar: sonst liefe es
+    // ungesehen ab, und wer den Bildschirm um 0:03 einschaltet, bekäme keins mehr (bis 0:05 holt der Takt es nach)
+    _festMidnight() {
+      const d = new Date(this._festNow());
+      if (!this._fest?.fireworks || this._away() || !this._g || this._festMidY === d.getFullYear()
+        || d.getMonth() !== 0 || d.getDate() !== 1 || d.getHours() !== 0 || d.getMinutes() >= 5) return;
+      this._festMidY = d.getFullYear();
+      this._festFinale();
+      this._festForce('festFireworks');
+    }
+
+    // 11. 11. um 11:11: Auftakt der Karnevalszeit, einmal kurz Konfetti und „Helau!“, wenn er wach, es hell und
+    // trocken ist (bis 11:13 holt der Takt es nach)
+    _festHelau() {
+      const d = new Date(this._festNow());
+      if (this._cfg?.festive === false || this._away() || !this._g || this._festKickY === d.getFullYear()
+        || d.getMonth() !== 10 || d.getDate() !== 11 || d.getHours() !== 11 || d.getMinutes() < 11 || d.getMinutes() >= 14) return;
+      if (this._asleep || this._festDark() || this._wx.wet || this._wx.shelter) return;
+      this._festKickY = d.getFullYear();
+      if (this._inside || this._lift > 0) {
+        this._festConfettiRain();
+        this._say('Helau!', 1500);
+      } else this._festForce('festConfetti');
     }
 
     _festActs({ wx, g }) {
@@ -9154,8 +9976,10 @@
       const day = festDay(y, mo, d);
       const f = { year: y };
       if (this._cfg?.festive !== false) {
-        if (md >= 1024 && md <= 1031) f.halloween = true;
-        if (md === 1031) f.witch = true;
+        // Die Halloween-Nacht geht bis zum Morgen: Kürbis, Hexenhut und Fledermäuse bleiben am 1. 11. bis 6 Uhr
+        const hwNight = md === 1101 && h < 6;
+        if ((md >= 1024 && md <= 1031) || hwNight) f.halloween = true;
+        if (md === 1031 || hwNight) f.witch = true;
         if (md === 1111) f.martin = { walk: hm >= this._festEve(now, 16 * 60, 90) };
         const adv = festAdvent1(y);
         if (day >= adv && md <= 1224) f.advent = { candles: Math.min(4, 1 + Math.floor((day - adv) / 7)) };
@@ -9604,6 +10428,7 @@
       if (!this._g) return;
       this._step = () => {
         delete this._step;
+        this._planWaiting = false; // wie in _step: Dieser Schritt wartet nicht auf den Plan
         return this._run(name);
       };
       this._interrupt();
@@ -9880,8 +10705,9 @@
     }
 
     // Die gemeinsame Uhr wurde nachgestellt: wartende Besuche und den Beginn der nächsten Beschäftigung neu planen
-    // (wer gerade zu Besuch ist, bleibt; danach wird ohnehin mit der neuen Uhr geplant)
-    _clockMoved() {
+    // (Vögelchen, Maus, Frosch und Schnecke, die gerade da sind, bleiben; danach wird ohnehin mit der neuen Uhr geplant).
+    // by: um so viele ms wurde die Uhr vorgestellt (negativ: zurück)
+    _clockMoved(by = 0) {
       if (this._critOn && this._critPlan) {
         for (const k of CRIT_KINDS) {
           if (!this._critT[k]) continue;
@@ -9895,6 +10721,16 @@
       }
       // Pinos nächster Besuch wartet noch mit der alten Uhr: Er käme um den Versatz zu spät oder gar nicht
       if (this._frT && !this._fr) this._friendPlan();
+      // Pino ist schon da: Sein Abschied hängt noch an der alten Uhr, er ginge um den Versatz zu früh oder zu spät
+      // (Geräteuhr geht beim Laden falsch, die erste Probe kommt erst nach seiner Ankunft). Ein Besuch aus der
+      // Vorschau (force) hat eine feste Dauer.
+      const fr = this._fr;
+      if (by && fr && fr.planned && !fr.leaving) this._friendUntil(fr, fr.until - by);
+      // Wecker für Mitternacht und „Helau!“ neu stellen (der alte tut zur falschen Zeit nichts, siehe _festArm)
+      if (this._festArmed) {
+        this._festArmed = null;
+        this._festArm();
+      }
     }
 
     // Uhr der Besuche: Uhr von HA (Vorschau: um _dbgShiftMs vorgestellt). Nicht _dbgDate, das steht fest.
@@ -10050,16 +10886,27 @@
           { transform: `translate(${dx * 0.1}px, ${-this._H * 0.07}px)`, offset: 0.85 },
           { transform: 'translate(0, 0)' },
         ], { duration: dur, easing: 'ease-out', fill: 'forwards' });
-        await this._cw(id, dur);
+        // Schon im Anflug lässt er sich verscheuchen (Antippen; der Pika springt auf den Stein): Er dreht dann in der
+        // Luft ab, statt erst noch zu landen. Bisher landete er auch auf einem Stein, auf den der Pika gerade sprang.
+        await this._cw(id, dur, b);
+        let from = 'translate(0, 0)';
+        if (b.scared) {
+          fly.pause();
+          const m = getComputedStyle(el).transform;
+          const M = m && m !== 'none' ? new DOMMatrixReadOnly(m) : null;
+          if (M && (M.m41 || M.m42)) from = `translate(${M.m41.toFixed(1)}px, ${M.m42.toFixed(1)}px)`;
+        }
         fly.cancel();
-        el.classList.remove('flying');
-        el.classList.add('land');
-        b.sitting = true;
-        // zum Pika schauen
-        if (Math.abs(this._x - spot.x) > 4) this._birdFace(b, this._x > spot.x ? 1 : -1);
-        this._noticeCritter(spot.x, true);
-        await this._cw(id, 350, b);
-        el.classList.remove('land');
+        if (!b.scared) {
+          el.classList.remove('flying');
+          el.classList.add('land');
+          b.sitting = true;
+          // zum Pika schauen
+          if (Math.abs(this._x - spot.x) > 4) this._birdFace(b, this._x > spot.x ? 1 : -1);
+          this._noticeCritter(spot.x, true);
+          await this._cw(id, 350, b);
+          el.classList.remove('land');
+        }
         const until = Date.now() + Math.max(4000, pk.stay - late - waited);
         while (!b.scared && Date.now() < until && (force || this._critterWeather('bird'))) {
           await this._cw(id, rnd(900, 2600), b);
@@ -10086,8 +10933,9 @@
         this._birdFace(b, out);
         const dur2 = b.scared ? 900 : rnd(1200, 1600);
         el.animate([
-          { transform: 'translate(0, 0)' },
-          { transform: `translate(${out * this._W * 0.08}px, ${-this._H * 0.08}px)`, offset: 0.25 },
+          { transform: from },
+          // vom Sitzplatz erst ein Stück hoch; in der Luft abgedreht geht es gleich davon
+          ...(from === 'translate(0, 0)' ? [{ transform: `translate(${out * this._W * 0.08}px, ${-this._H * 0.08}px)`, offset: 0.25 }] : []),
           { transform: `translate(${out * this._W * 0.6}px, ${-spot.y - this._H * 0.2}px)` },
         ], { duration: dur2, easing: 'ease-in', fill: 'forwards' });
         await this._cw(id, dur2);
@@ -10620,10 +11468,10 @@
       const fr = this._fr;
       if (!fr || !fr.arrived || fr.leaving) return [];
       if (!fr.greeted) return [[80, 'greetFriend']];
-      // In den letzten 10 s des Besuchs kein neues Spiel mehr: sonst hängte der Pika ein Spiel ans andere, Pinos
-      // Ablauf (prüft fr.until nur zwischen den Spielen) käme nicht zum Gehen, und jedes Gerät verabschiedete
-      // ihn zu einer anderen Zeit
-      if (Date.now() >= fr.until - 10000) return [];
+      // In den letzten 25 s des Besuchs kein neues Spiel mehr: Pino geht pünktlich nach der Uhr (untilT in
+      // _friendUntil), ein eben begonnenes Spiel risse sonst gleich wieder ab. Die meisten sind in der Zeit vorbei;
+      // ein längeres (Zusammensitzen, Fangen auf breiten Karten) bricht der Abschied trotzdem ab.
+      if (Date.now() >= fr.until - FRIEND_LAST) return [];
       // Zusammen zählen sie etwas mehr als alles andere, und die Spiele dauern länger: so verbringt
       // der Pika die meiste Zeit mit Pino, macht aber auch mal Eigenes
       const wet = ctx.wx.wet;
@@ -10767,10 +11615,21 @@
       this._frBye = null;
       const fr = this._friendBuild();
       fr.side = side < 0 ? -1 : 1;
-      fr.until = Date.now() + stayMs;
+      fr.planned = !force; // aus dem Besuchsplan: Das Ende folgt einer Uhrkorrektur (_clockMoved)
       fr.bad0 = force ? this._friendBad() : 0;
       this._fr = fr;
+      // Der Besuch endet nach der Uhr (fr.until kommt aus dem Besuchsplan, also aus der Uhr von HA): Pino geht dann
+      // auf allen Geräten im selben Augenblick, auch mitten in einem Spiel oder einem eigenen Schritt. Bisher wartete
+      // sein Ablauf das Ende des Spiels ab (bis über 20 s), jedes Gerät verabschiedete ihn zu einer anderen Zeit.
+      this._friendUntil(fr, Date.now() + stayMs);
       this._friendVisit(fr);
+    }
+
+    // Ende des Besuchs (Gerätezeit) setzen und den Wecker für den Abschied stellen
+    _friendUntil(fr, until) {
+      fr.until = until;
+      clearTimeout(fr.untilT);
+      fr.untilT = setTimeout(() => this._fr === fr && this._friendLeave(), Math.max(0, until - Date.now()));
     }
 
     _friendBuild() {
@@ -10780,7 +11639,7 @@
       el.setAttribute('aria-label', `${this._frName()} streicheln`);
       el.innerHTML = '<div class="clipw"><div class="shadow"></div><div class="depth"><div class="flip"><div class="jump">'
         + `<div class="hop"><div class="br">${FRIEND_SVG}</div></div></div></div></div></div>`;
-      el.querySelectorAll('.book, .gb, .tab, .kpaw, .bk, .brolly, .cap, .cup, .cfoam, .rope, .band, .arms, .uke, .brush, .wand, .rgrip, .bar, .wpaw, .slg, .gspy, .gcan, .shades').forEach((n) => n.remove());
+      el.querySelectorAll('.book, .gb, .tab, .kpaw, .bk, .brolly, .cap, .cup, .cfoam, .rope, .band, .arms, .uke, .brush, .wand, .rgrip, .bar, .wpaw, .slg, .gspy, .gcan, .shades, .hoop, .yo, .pbl, .jug, .dchain, .dcrown, .pgl, .peb, .sboat').forEach((n) => n.remove());
       // Sprechblase in eigener Hülle in der Sprech-Ebene; sie läuft mit Pino mit (_frSetX, _frFace)
       const sw = document.createElement('div');
       sw.className = 'frsay';
@@ -10801,7 +11660,7 @@
     _friendGone(fr) {
       if (this._fr === fr) this._fr = null;
       this._frTake(fr); // wartende Schritte wecken, sie brechen dann ab
-      for (const t of ['sayT', 'callT', 'jumpT', 'happyT', 'lookT']) clearTimeout(fr[t]);
+      for (const t of ['sayT', 'callT', 'jumpT', 'happyT', 'lookT', 'untilT']) clearTimeout(fr[t]);
       fr.el.remove();
       fr.sw.remove();
       if (FRIEND_ACTS.has(this._action)) this._interrupt();
@@ -11042,7 +11901,8 @@
       const dx = x - fr.x;
       if (Math.abs(dx) < 4) return;
       this._frFace(fr, dx > 0 ? 1 : -1);
-      const dur = Math.abs(dx) / (pW * 0.85 * speed);
+      // ganze Hopser wie beim Pika (_walkTo): Pino landet am Boden
+      const dur = hopRound((Math.abs(dx) / (pW * 0.85 * speed)) * 1000, HOP_MS.hop) / 1000;
       this._frSetX(fr, x, dur * 1000);
       fr.el.classList.add('walking');
       await w(dur * 1000);
@@ -11055,7 +11915,7 @@
       await w(180);
       fr.el.classList.remove('crouch');
       this._frSetX(fr, x, 550, 'cubic-bezier(.3, .6, .4, 1)', lift);
-      this._frJump(fr, 'hop1');
+      this._frJump(fr, 'hop1', true);
       await w(620);
     }
 
@@ -11104,14 +11964,19 @@
       this._bubbleFit(fr.say, fr.x, this._g.pW * FRIEND_SCALE);
     }
 
-    _frJump(fr, kind) {
+    // wie _jump: ein Sprung, der noch in der Luft ist, wird zu Ende gesprungen (fresh: _frHop trägt ihn woandershin)
+    _frJump(fr, kind, fresh = false) {
       if (kind === 'binky' && calmMotion()) kind = 'hop1';
+      const J = fr.jumpOn;
+      if (!fresh && J && jumpBusy(J.kind, Date.now() - J.at)) return;
+      fr.jumpOn = { kind, at: Date.now() };
       const j = [fr.jump, fr.el.querySelector('.shadow')];
       for (const el of j) el.classList.remove('hop1', 'binky');
       void j[0].offsetWidth;
       for (const el of j) el.classList.add(kind);
       clearTimeout(fr.jumpT);
       fr.jumpT = setTimeout(() => j.forEach((el) => el.classList.remove(kind)), 1000);
+      this._earSwing(fr.el, kind);
     }
 
     _frSay(fr, text, ms = 1400) {
@@ -11302,10 +12167,12 @@
           const pinoRuns = i % 2 === 0;
           const rx = pinoRuns ? fr.x : this._x;
           const cx = pinoRuns ? this._x : fr.x;
-          // weg vom Fänger; steht der Läufer schon dort, rennt er an ihm vorbei auf die andere Seite
-          let far = cx < mid;
-          if (Math.abs((far ? hi : lo) - rx) < pW) far = !far;
-          const T = far ? rnd(mid + (hi - mid) * 0.4, hi) : rnd(lo, mid - (mid - lo) * 0.4);
+          // weg vom Fänger (chaseFar): nach der Seite, auf der der Läufer von ihm aus steht. Bisher zählte nur, auf
+          // welcher Hälfte der Fänger stand, die erste Runde führte darum oft mitten durch ihn hindurch. Ist am Rand
+          // kein Platz mehr, rennt der Läufer an ihm vorbei auf die andere Seite.
+          const far = chaseFar(rx, cx, lo, hi, pW);
+          // Ziel im äußeren Drittel der Fluchtseite, mindestens eine Pika-Breite weiter als der Läufer schon steht
+          const T = clamp(far ? rnd(Math.max(rx + pW, mid + (hi - mid) * 0.4), hi) : rnd(lo, Math.min(rx - pW, mid - (mid - lo) * 0.4)), lo, hi);
           const d = T > rx ? 1 : -1;
           const C = clamp(T - d * pW * 0.7, lo, hi);
           const speed = rnd(1.9, 2.4);
@@ -11630,7 +12497,7 @@
     // weiter, nach dem Putzen zeigt der Balken dann den vollen Wert.
     _get(k) {
       const v = this._raw(k);
-      return k === 'g' ? Math.min(v, 60 + 0.4 * this._poops().clean) : v;
+      return k === 'g' ? Math.min(v, 60 + 0.4 * this._poopsSeen().clean) : v;
     }
 
     // Satt durch selbst Gefressenes, höchstens bis SELF_MAX
@@ -11796,9 +12663,15 @@
     _renderStats() {
       if (!this._el) return;
       this._renderPiles();
+      this._renderBars();
+    }
+
+    // Die drei Balken (auch für sich: sobald ein zurückgehaltenes Häufchen daliegt, zählt es, _poopsSeen)
+    _renderBars() {
+      if (!this._el?.barS || !this._stats) return;
       const s = this._get('s');
       const g = this._get('g');
-      const c = this._poops().clean;
+      const c = this._poopsSeen().clean;
       this._el.barS.style.width = `${s}%`;
       this._el.barG.style.width = `${g}%`;
       this._el.barC.style.width = `${c}%`;
@@ -11858,7 +12731,7 @@
       if (Math.abs(this._clockOff - use) < CLOCK_STEP) return;
       this._clockUse = Math.round(this._clockOff);
       this._rawM = null;
-      this._clockMoved();
+      this._clockMoved(this._clockUse - use);
     }
 
     // Fälligkeiten (ms) der Häufchen 0, 1, 2 … seit dem letzten Großputz. Sie zählen nur Wachzeit:
@@ -11938,10 +12811,21 @@
         lying.push(pile);
       }
       res.piles = lying.filter((p) => !(st.m & (1 << p.k)));
-      let dirt = 0;
-      for (const p of res.piles) dirt += 10 + 2 * Math.min(20, (now - p.due) / 36e5);
-      res.clean = clamp(100 - dirt, 0, 100);
+      res.clean = poopClean(res.piles, now);
       return res;
+    }
+
+    // Was davon auf diesem Gerät schon zu sehen ist. Ein zurückgehaltenes Häufchen (_poopPending: Er bringt erst zu
+    // Ende, was er tut, bis gut POOP.live Minuten) liegt hier noch nicht, also zählt es hier auch noch nicht: nicht im
+    // Balken „Sauber“, nicht im Deckel fürs Glück, nicht im Tagebuch. Der Zustand selbst und alles, was geteilt wird
+    // (Putzen, Päckchen), rechnet weiter mit _poops.
+    _poopsSeen() {
+      const res = this._poops();
+      const key = this._poopPending?.key;
+      const held = key && this._stats ? res.piles.find((p) => this._pileKey(p) === key) : null;
+      if (!held) return res;
+      const piles = res.piles.filter((p) => p !== held);
+      return { piles, clean: poopClean(piles, this._now()) };
     }
 
     _pileKey(p) {
@@ -11969,10 +12853,20 @@
       return best;
     }
 
-    // Kann er das neue Häufchen live machen? Nur wenn er draußen ist und nichts Wichtigeres tut.
+    // Kann er das neue Häufchen selbst machen? Nur wach und draußen: Im Bau, im Schlaf und bei Unwetter liegt es
+    // einfach da. Ob gleich oder erst nach dem, was er gerade tut, entscheidet poopWhen.
     _canPoopLive() {
-      return this._running && !this._asleep && !this._inside && !this._wx.shelter && !this._next
-        && !['eatFood', 'goSleep', 'wakeUp', 'poop', 'coffee'].includes(this._action);
+      return this._running && !this._asleep && !this._inside && !this._wx.shelter;
+    }
+
+    // Ein zurückgehaltenes Häufchen (_poopPending) liegt jetzt einfach da, ohne Vorführung
+    _layPending() {
+      const p = this._poopPending;
+      if (!p) return;
+      this._poopPending = null;
+      if (this._next === 'poop') this._next = null;
+      if (!this._pileEls.has(p.key) && this._poops().piles.some((o) => this._pileKey(o) === p.key)) this._addPile(p, p.key, false);
+      this._renderBars(); // jetzt liegt es da und zählt
     }
 
     // Häufchen-Elemente an den berechneten Zustand angleichen
@@ -11994,12 +12888,22 @@
           }
           continue;
         }
-        if (this._poopPending?.key === key) continue;
-        // Gerade fällig und man schaut zu: er macht es vor den Augen
-        if (this._pilesShown && !this._poopPending && now - p.due < 3 * 6e4 && this._canPoopLive()) {
+        if (this._poopPending?.key === key) {
+          // Zurückgehalten, bis er Zeit hat: Dauert das länger als POOP.live Minuten oder kann er gerade nicht (im Bau,
+          // Unwetter, die Schleife ruht), liegt es einfach da. Mitten in der Vorführung bleibt es bei ihr.
+          if (this._action !== 'poop' && (now - p.due >= POOP.live * 6e4 || !this._canPoopLive())) this._layPending();
+          continue;
+        }
+        // Gerade fällig und man schaut zu: Er macht es vor den Augen. Eine Kleinigkeit bricht er dafür ab; eine
+        // Beschäftigung (auch Fressen, Kaffee, Auspacken, ein Spiel mit Pino) bringt er erst zu Ende, das Häufchen
+        // kommt danach (_step). Bisher brach es Malen, Musik und Seilspringen ab.
+        const how = this._pilesShown && !this._poopPending && this._canPoopLive() ? poopWhen(now - p.due, this._action, !!this._next) : 'lay';
+        if (how !== 'lay') {
           this._poopPending = { ...p, key };
-          this._next = 'poop';
-          this._interrupt();
+          if (how === 'go') {
+            this._next = 'poop';
+            this._interrupt();
+          }
           continue;
         }
         this._addPile(p, key, false);
@@ -12040,6 +12944,7 @@
       if (this._pileEls.has(p.key) || !this._poops().piles.some((o) => this._pileKey(o) === p.key)) return;
       this._addPile(p, p.key, true);
       this._puff(this._pileX(p), this._g.gy, 2);
+      this._renderBars(); // jetzt liegt es da und zählt
     }
 
     _placePiles() {
@@ -13275,10 +14180,13 @@
       p.toggle('cold', fx.cold);
       // Wolken zuletzt: Die Animationen zu befragen lässt den Browser alle Stiländerungen von oben sofort durchrechnen
       this._cloudWind();
-      if (fx.shelter && !wasShelter && !this._asleep && this._action !== 'eatFood') this._interrupt();
-      // Fängt es an zu regnen oder zu schneien: eine Beschäftigung, die bei diesem Wetter nicht geht, einpacken
-      // (sonst springt er Seil mit dem Blatt als Schirm oder liegt mit dem Tablet im Regen)
-      else if (((fx.wet && !wasWet) || (fx.snowcover && !wasSnow)) && !this._asleep
+      // Unwetter beginnt: ab in den Bau. Sitzt er dort schon vor dem Fernseher, bleibt er sitzen (der Abbruch schaltete
+      // den Fernseher aus und gleich wieder ein).
+      if (fx.shelter && !wasShelter && !this._asleep && this._action !== 'eatFood' && !(this._action === 'tv' && this._inside)) this._interrupt();
+      // Regen oder Schnee beginnt oder endet: eine Beschäftigung, die beim neuen Wetter nicht geht, einpacken (sonst
+      // springt er Seil mit dem Blatt als Schirm, liegt mit dem Tablet im Regen, hüpft in der Sonne in eine Pfütze
+      // oder baut auf der grünen Wiese am Schnee-Pika weiter)
+      else if ((fx.wet !== wasWet || fx.snowcover !== wasSnow) && !this._asleep
         && WX_STOP.includes(this._action) && !this._actOk(this._action)) this._interrupt();
     }
 
@@ -14069,20 +14977,26 @@
       el.style.setProperty('--cw', `${(this._H * size).toFixed(1)}px`);
       el.innerHTML = `<i>${svg}</i>`;
       this._boteFx(el);
-      const hop = this.shadowRoot.querySelector('.hop');
-      const ty = (e) => {
-        const t = e && getComputedStyle(e).transform;
-        return t && t !== 'none' ? new DOMMatrixReadOnly(t).m42 : 0;
-      };
+      // Gemessen wird je Bild nur das Nötige: die drei Stile (Pika, Hoppeln, Sprung) sind einmal geholt und werden nur
+      // gelesen. Hat sich keiner geändert (er steht, poliert den Teller), wird nichts gerechnet und nichts geschrieben,
+      // der Browser muss dann auch nichts neu durchrechnen. Früher: viermal getComputedStyle und ein Schreiben je Bild.
+      const cs = [this._el.pika, this.shadowRoot.querySelector('.hop'), this._el.jump].map((e) => getComputedStyle(e));
+      const mat = (t) => (t && t !== 'none' ? new DOMMatrixReadOnly(t) : null);
+      let last = '';
       cancelAnimationFrame(this._boteRaf);
       const step = () => {
         if (!el.isConnected || !this._g) return;
-        const { pW, pH, gy } = this._g;
-        const d = this._dir;
-        const x = this._liveX() + d * (rx - 0.5) * pW;
-        const y = gy - 0.945 * pH + ry * pH - this._liveLift() + ty(hop) + ty(this._el.jump);
-        el.style.transform = `translate(${x.toFixed(1)}px, ${y.toFixed(1)}px) scaleX(${d})`;
         this._boteRaf = requestAnimationFrame(step);
+        const [tp, th, tj] = cs.map((c) => c.transform);
+        const d = this._dir;
+        const key = `${tp}|${th}|${tj}|${d}`;
+        if (key === last) return;
+        last = key;
+        const { pW, pH, gy } = this._g;
+        const P = mat(tp);
+        const x = (P ? P.m41 + pW / 2 : this._x) + d * (rx - 0.5) * pW;
+        const y = gy - 0.945 * pH + ry * pH + (P ? P.m42 : -this._lift) + (mat(th)?.m42 || 0) + (mat(tj)?.m42 || 0);
+        el.style.transform = `translate(${x.toFixed(1)}px, ${y.toFixed(1)}px) scaleX(${d})`;
       };
       step();
       return el;
@@ -14568,6 +15482,7 @@
       this._say(pick(['schnupper…', 'hm?', 'riecht gut!']), 1300);
       await this._wait(1300);
       p.classList.remove('look-up');
+      clearTimeout(this._thinkT);
       think.innerHTML = COFFEE_THINK;
       try {
         this._bubble(think, true);
@@ -14575,7 +15490,7 @@
         this._bubble(think, false);
         await this._wait(300);
       } finally {
-        think.innerHTML = FOOD.lz.svg;
+        this._thinkReset();
       }
       // neben die Nische (bzw. den Heuhaufen), mit Blick zur Tür
       await this._walkTo(this._g.stand + this._g.pW * 0.16, 1.2);
@@ -14601,7 +15516,8 @@
         P.rock = !night && !this._wx.wet && P.rockR < 0.5;
       }
       // Neu geladen, während die anderen Geräte schon trinken: gleich am Trinkplatz, das Gefäß so leer wie dort
-      if (P.stage === 'fetch' && this._haNow() - P.t0 > 4000 && Date.now() - (this._loopAt || 0) < 5000) {
+      const since = this._sinceBlind(); // < 0: Geräteuhr zurückgestellt, dann wie gesehen (er läuft hin)
+      if (P.stage === 'fetch' && this._haNow() - P.t0 > 4000 && since >= 0 && since < (this._blindFirst ? JUMP_IN.first : JUMP_IN.again)) {
         P.j = clamp(Math.floor((this._haNow() - P.t0 - COFFEE_FETCH) / P.sip) + 1, 0, sips - 1);
         P.lv = 1 - P.j / sips;
         P.foam = P.j > 0 && COFFEE_FOAM.has(P.kind);
@@ -16284,7 +17200,7 @@
       if (today) {
         const s = this._get('s');
         const g = this._get('g');
-        const c = this._poops().clean;
+        const c = this._poopsSeen().clean;
         fazit = this._sleepTime() ? 'Psst, ich schlafe gerade. Blättere ruhig leise.'
           : s < 30 ? 'Liebes Tagebuch, mein Bauch knurrt gerade ein bisschen.'
             : c < 30 ? 'Liebes Tagebuch, auf meiner Wiese müsste mal jemand sauber machen.'
@@ -16507,8 +17423,10 @@
       this._screenSt = st;
       this._screenWoke = false;
       // Bildschirm aus: wie ein versteckter Tab ruht alles (Schleife, Besuche, Animationen). Geht er an, steigt der Pika
-      // wie nach dem Neuladen gleich mitten in der Beschäftigung ein und winkt (_visSync → _start, _showReq).
-      if (this._el) this._visSync();
+      // wie nach dem Neuladen gleich mitten in der Beschäftigung ein und winkt (_visSync → _start, _showReq). Die Meldung
+      // „an“ kam eben über die Verbindung: Tagesplan und Wetter (weiter oben in set hass schon gelesen) sind so frisch
+      // wie sie, er muss nicht erst an seiner alten Stelle auf einen neuen Stand warten.
+      if (this._el) this._visSync(st === 'on' && hass.connected !== false);
     }
 
     // Schaut jemand hin? Unsichtbar läuft die Schleife ohnehin nicht; mit screen_entity zählt auch der Bildschirm.
@@ -16606,6 +17524,7 @@
         if (!S || this._slotsDone.has(S.id)) continue;
         if (now > S.end - ACT_JOIN_END || (ACT_NOJOIN.has(S.act) && now - S.start > 4000)) continue;
         if (!this._actOk(S.act)) continue;
+        if (S.kind === 'mini' && now - S.start > 4000 && !this._progSince(S)) continue;
         return S;
       }
       return null;
@@ -16673,14 +17592,17 @@
     _actOk(act) {
       const wx = this._wx;
       if (act === 'tv') return true;
-      if (wx.shelter || (wx.wet && act !== 'gather')) return false;
-      const dry = !wx.wet && !wx.storm;
+      // Blumenkranz: nicht, wenn auf dem Kopf schon ein Festtagshut sitzt. Der Hut hängt an der Konfiguration dieser
+      // Karte (festive, birthdays) und gehört deshalb nicht in die Auswahl: Auf einem Gerät mit Hut fällt der Kranz
+      // aus, auf allen Geräten bleiben die Fenster davor und danach dieselben.
+      const f = this._fest || {};
+      if (act === 'crown' && (f.xmas || f.birthday || f.witch || f.karneval)) return false;
+      // die kleinen (auch die für Regen und Schnee) nach derselben Regel wie bei der Auswahl
+      if (hasKey(MINI_W, act)) return miniOk(act, this._lage());
+      if (wx.shelter || wx.wet) return false;
       if (act === 'kite') return this._kiteWind();
       if (act === 'bubbles') return (this._wind || 0) < 40 && !wx.snowcover;
-      if (act === 'rope') return dry && !wx.snowcover;
-      if (act === 'weights') return dry;
-      if (act === 'gather') return !wx.wet && !wx.snowcover && this._hay < HAY_MAX;
-      return dry;
+      return !wx.storm;
     }
 
     // Kleine Beschäftigung im Fenster von now (oder null): nicht in jedem Fenster und nie dicht an einer großen
@@ -16700,21 +17622,24 @@
       return [k - 1, k, k + 1].some((j) => t > bigStart(j) - ACT_GAP[0] && t < bigStart(j) + ACT_GAP[1]);
     }
 
-    // Seilspringen, Gewichtheben oder eine Blüte für den Vorrat; nicht zweimal dieselbe hintereinander. Die Kette
-    // beginnt ein paar Fenster vorher, damit jedes Fenster seinen Vorgänger so sieht wie der Nachfolger ihn.
+    // Welche kleine im Fenster m? Aus dem Programm des Wetters (MINI_PROG, MINI_W), in der Regel nicht zweimal
+    // dieselbe hintereinander (miniChain). Bei Regen Pfütze oder Schiffchen, bei Schnee oft der Schnee-Pika.
+    // Feste Zahlen des Fensters: 2 und 3 für die Grundwahl, 4 bis 9 für den Ersatz (0 und 1: miniHas, miniStart;
+    // ab 10: der Ablauf, S.r).
     _miniAct(m) {
-      const wx = this._wx;
-      const dry = !wx.wet && !wx.storm && !wx.shelter;
-      let act = null;
-      for (let j = m - 4; j <= m; j++) {
-        const prev = act;
-        act = miniHas(j) && !this._nearBig(miniStart(j)) ? weightedR([
-          [dry && !wx.snowcover && prev !== 'rope' ? 1.6 : 0, 'rope'],
-          [dry && prev !== 'weights' ? 1.4 : 0, 'weights'],
-          [!wx.wet && !wx.snowcover && this._hay < HAY_MAX && prev !== 'gather' ? 1.4 : 0, 'gather'],
-        ], seedRnd('mini', j, 2)) : null;
-      }
-      return act;
+      return miniChain(m, this._lage(), (j) => miniHas(j) && !this._nearBig(miniStart(j)), (j) => seedRnd('mini', j, 2), (j) => seedRnd('mini', j, 3),
+        (j, k) => seedRnd('mini', j, 4 + k));
+    }
+
+    // Galt das Programm von jetzt (trocken, Regen, Schnee) schon, als das Fenster S begann? Nur dann steigt ein
+    // Gerät später noch in Pfütze, Schiffchen oder Schnee-Pika ein. Schlug das Wetter erst im Fenster um, haben die
+    // anderen dort schon etwas anderes gezeigt (oder nichts): Ein frisch geladenes Gerät begänne sonst allein. Aus
+    // dem Wetterverlauf (wxProgThen); ist er unbekannt oder das Wetter aus der Vorschau gesetzt, gilt: ja. Beginnt
+    // der Verlauf erst im Fenster (frisch geladen, die Lage von jetzt ist jünger als das Fenster): nein.
+    _progSince(S) {
+      if (this._dbgWeather || this._dbgSnow != null) return true;
+      const then = wxProgThen(this._wxLog, S.start - (this._dbgPlanMs || 0));
+      return then == null || then === (miniProg(this._lage()) || 'none');
     }
 
     // Beim Beginn der nächsten Beschäftigung (groß oder klein) die laufende Kleinigkeit abbrechen, damit alle
@@ -16877,7 +17802,7 @@
       this._planOk = true;
       this._planCompose(true);
       // Jetzt ist klar, was gerade läuft: gleich einsteigen statt die Kleinigkeit zu Ende zu machen
-      if (this._running && ACT_SMALL.includes(this._action) && this._slotNow()) this._interrupt();
+      if (this._running && (this._planWaiting || (ACT_SMALL.includes(this._action) && this._slotNow()))) this._interrupt();
     }
 
     // Plan = letzter bekannter Stand + eigene Änderungen der letzten 15 s. Die kommen auch auf einen fremden Stand
@@ -17042,7 +17967,7 @@
       await this._goSpot(S, S.r(2) < 0.55 ? this._hobbySpot(S.r(3)) : home + pW * 0.75);
       this._face(this._x < this._W * 0.5 ? 1 : -1);
       const p = this._el.pika;
-      p.classList.add('music');
+      this._propOn('music');
       while (this._planNow() < S.end) {
         await this._waitMax(rnd(700, 1500), S.end);
         this._note(pick(['♪', '♫', '♪', '♬']));
@@ -17063,8 +17988,9 @@
           this._twitch();
         }
       }
-      p.classList.remove('music', 'sing');
-      await this._wait(300);
+      p.classList.remove('sing');
+      await this._propOff('music');
+      await this._wait(100);
       p.classList.add('bowing');
       this._say(pick(['Danke! ♥', 'Tadaa!', '♪ ♥']), 1400);
       await this._wait(1600);
@@ -17113,7 +18039,7 @@
       void el.offsetWidth;
       el.classList.add('on');
       const p = this._el.pika;
-      p.classList.add('painting');
+      this._propOn('painting');
       if (!late) {
         this._say(pick(['Malzeit!', 'hmm …', 'Ein Bild!']), 1300);
         await this._wait(900);
@@ -17164,9 +18090,9 @@
         }
         await this._at(lEnd);
       }
-      p.classList.remove('painting');
-      // zurücktreten und anschauen
-      await this._walkTo(this._x - dir * pW * 0.35, 0.6);
+      await this._propOff('painting');
+      // rückwärts zurücktreten, den Blick auf dem Bild, und anschauen
+      await this._walkTo(this._x - dir * pW * 0.35, 0.6, true, 0, true);
       this._face(dir);
       p.classList.add('look-f');
       await this._wait(900);
@@ -17207,8 +18133,8 @@
       const el = this._easelEl;
       if (!el) return;
       this._easelEl = null;
-      el.classList.remove('on');
-      setTimeout(() => el.remove(), 700);
+      el.classList.add('off');
+      setTimeout(() => el.remove(), KRAM.out + 60);
     }
 
     // ---------- Seifenblasen ----------
@@ -17220,7 +18146,7 @@
       await this._goSpot(S, this._hobbySpot(S.r(2)));
       this._face(this._windDir || (S.r(3) < 0.5 ? -1 : 1));
       const p = this._el.pika;
-      p.classList.add('blowing');
+      this._propOn('blowing');
       while (this._planNow() < S.end && (this._forced || (!this._wx.wet && (this._wind || 0) < 40))) {
         await this._waitMax(rnd(1200, 2600), S.end);
         p.classList.add('blow');
@@ -17234,8 +18160,9 @@
         if (Math.random() < 0.3) await this._chaseBubble();
         else if (Math.random() < 0.2) this._say(pick(['oooh!', 'hihi', 'schön!']), 1100);
       }
-      p.classList.remove('blowing', 'blow');
-      await this._wait(500);
+      p.classList.remove('blow');
+      await this._propOff('blowing');
+      await this._wait(300);
     }
 
     _soapBubble() {
@@ -17340,7 +18267,7 @@
       await this._goSpot(S, this._hobbySpot(S.r(2)), 0.9);
       this._face(S.r(3) < 0.5 ? -1 : 1);
       const p = this._el.pika;
-      p.classList.add('sport');
+      this._propOn('sport');
       if (!late) this._say(pick(['Frühsport!', 'Auf geht’s!', 'Fit bleiben!']), 1500);
       await this._at(S.start + ACT_WALK + SPORT_INTRO);
       for (const seg of plan.segs) {
@@ -17349,7 +18276,12 @@
         if (this._planNow() >= t1 + SPORT_PAUSE - 500) continue; // diese Übung ist schon vorbei
         if (this._planNow() < t1) {
           if (seg.ex === 'jjack' || seg.ex === 'knee') {
-            if (seg.ex === 'jjack') p.style.setProperty('--jj', `${(seg.rep / 1000).toFixed(2)}s`);
+            // Dieselbe Periode wie beim Zählen (seg.rep, auf die Mikrosekunde): Auf 10 ms gerundet lief die Animation
+            // dem Zähler über 16 Wiederholungen bis zu 80 ms davon und hörte in der Luft auf
+            if (seg.ex === 'jjack') p.style.setProperty('--jj', `${seg.rep.toFixed(3)}ms`);
+            // Mitten in der Übung eingestiegen: Die Animation beginnt im Takt der Planzeit (--jd), sonst spränge er
+            // neben den gezählten Zahlen her und hörte mitten in der Luft auf
+            p.style.setProperty('--jd', `${(-(Math.max(0, this._planNow() - t0) % seg.rep) / 1000).toFixed(3)}s`);
             p.classList.add(seg.ex);
             for (let i = Math.max(1, Math.ceil((this._planNow() - t0) / seg.rep)); i <= seg.reps; i++) {
               await this._at(t0 + i * seg.rep);
@@ -17357,10 +18289,14 @@
             }
             p.classList.remove(seg.ex);
           } else if (seg.ex === 'jog') {
+            // Laufen auf der Stelle dauert ganze Hopser ab jetzt (wie jeder Weg, hopRound): Er hört am Boden auf statt
+            // irgendwo im Hopser. Das Ende gibt dafür bis zu einem halben Hopser nach, die Pause danach fängt es auf;
+            // der Plan (seg.len) bleibt, wie er ist.
+            const jEnd = Date.now() + hopRound(t1 - this._planNow(), HOP_MS.hop);
             p.classList.add('walking');
-            while (this._planNow() < t1) {
-              await this._waitMax(rnd(1200, 2000), t1);
-              if (Math.random() < 0.5) this._face(-this._dir);
+            while (Date.now() < jEnd) {
+              await this._wait(Math.max(0, Math.min(rnd(1200, 2000), jEnd - Date.now())));
+              if (Date.now() < jEnd && Math.random() < 0.5) this._face(-this._dir);
             }
             p.classList.remove('walking');
           } else {
@@ -17386,8 +18322,8 @@
       this._say(pick(['Geschafft!', 'Stark!', 'Fit! ♥']), 1500);
       this._jump('binky');
       await this._wait(1500);
-      p.classList.remove('sport');
-      await this._wait(300);
+      await this._propOff('sport');
+      await this._wait(100);
     }
 
     _sweat() {
@@ -17416,21 +18352,34 @@
       this._face(S.r(3) < 0.5 ? -1 : 1);
       const p = this._el.pika;
       let rp = 0.62 + S.r(4) * 0.1;
+      // Zähler und Animation laufen auf derselben Uhr: t0 ist der Augenblick, in dem die Animation (neu) beginnt, der
+      // n-te Sprung seitdem landet bei t0 + n · rp. Gewartet wird bis zu diesem Augenblick, nicht jedes Mal rp nach
+      // dem letzten Aufwachen: Sonst sammelten sich die Verspätungen der Zeitgeber, bis er neben den Sprüngen zählte.
+      let t0 = 0;
+      let n = 0;
       const go = (dbl) => {
         p.classList.remove('roping', 'rdbl');
         p.style.setProperty('--rp', `${rp.toFixed(3)}s`);
         void p.offsetWidth;
         p.classList.add('roping');
         if (dbl) p.classList.add('rdbl');
+        t0 = Date.now();
+        n = 0;
       };
-      p.classList.add('rope-hold');
+      const land = (k = 1) => {
+        n += k;
+        return this._wait(Math.max(0, t0 + n * rp * 1000 - Date.now()));
+      };
+      this._propOn('rope-hold');
+      // Alle Geräte beginnen zur selben Planzeit (wer früh am Platz ist, hält das Seil so lange bereit)
+      if (S.k >= 0) await this._at(S.start + ACT_WALK);
       await this._wait(600);
       go(false);
       const total = ropeJumps(S.r);
       const trip = S.r(6) < 0.3 ? 6 + Math.floor(S.r(7) * (total - 6)) : -1;
       let i = 0;
       while (i < total) {
-        await this._wait(rp * 1000);
+        await land();
         i++;
         if (i === trip) break;
         if (i % 2 === 0 || i > total - 3) this._say(`${i}!`, Math.min(900, rp * 1600));
@@ -17441,11 +18390,12 @@
         } else if (i === 14 && S.r(9) < 0.45) {
           go(true);
           this._say('doppelt!', 1000);
-          await this._wait(rp * 2000);
+          await land(2);
           i += 2;
           go(false);
         }
       }
+      // Die Schleife endet mit einer Landung: Er steht am Boden, wenn das Seil ruht
       p.classList.remove('roping', 'rdbl');
       if (i === trip) {
         p.classList.add('meh');
@@ -17457,8 +18407,8 @@
         this._say(S.r(11) < 0.3 ? 'Rekord!' : `${i}! ♥`, 1400);
         await this._wait(1300);
       }
-      p.classList.remove('rope-hold');
-      await this._wait(300);
+      await this._propOff('rope-hold');
+      await this._wait(100);
     }
 
     // ---------- Gewichtheben ----------
@@ -17470,7 +18420,7 @@
       await this._goSpot(S, this._hobbySpot(S.r(2)), 0.9);
       this._face(S.r(3) < 0.5 ? -1 : 1);
       const p = this._el.pika;
-      p.classList.add('lifting', 'lift-gnd');
+      this._propOn('lifting', 'lift-gnd');
       await this._wait(600);
       const reps = 1 + Math.floor(S.r(1) * 3);
       for (let r = 0; r < reps; r++) {
@@ -17509,16 +18459,17 @@
         p.classList.add('lift-gnd');
         await this._wait(800);
       }
-      p.classList.remove('lifting', 'lift-gnd', 'lift-hi', 'strain', 'crouch');
-      await this._wait(300);
+      p.classList.remove('lift-hi', 'strain', 'crouch');
+      await this._propOff('lifting', 'lift-gnd');
+      await this._wait(100);
     }
 
-    // Schirmchen fliegen von den Pusteblumen (oben über dem Kopf) mit dem Wind davon
-    _seeds() {
+    // Schirmchen fliegen von den Pusteblumen der Hantel (oben über dem Kopf) mit dem Wind davon; at: stattdessen von
+    // diesem Punkt der Pika-Grafik (Pusteblume in der Pfote), n Stück, ohne Ausruf
+    _seeds(at = null, n = 2 + Math.floor(rnd(0, 4))) {
       const kd = this._windDir || this._dir;
-      const n = 2 + Math.floor(rnd(0, 4));
       for (let i = 0; i < n; i++) {
-        const o = this._svgPt(pick([67, 115]) + rnd(-4, 4), 11 + rnd(-4, 4));
+        const o = at ? this._svgPt(at[0] + rnd(-3, 3), at[1] + rnd(-4, 4)) : this._svgPt(pick([67, 115]) + rnd(-4, 4), 11 + rnd(-4, 4));
         const s = document.createElement('span');
         s.className = 'seed';
         s.innerHTML = SEED_SVG;
@@ -17530,7 +18481,680 @@
         this._el.fx.appendChild(s);
         setTimeout(() => s.remove(), 3600 + i * 150);
       }
-      this._say(pick(['oh!', 'huch!']), 900);
+      if (!at) this._say(pick(['oh!', 'huch!']), 900);
+    }
+
+    // ==================== Kleine Beschäftigungen ab 0.32 ====================
+    // Hula-Hoop, Jo-Jo, Pusteblume, Purzelbaum, Steintürmchen, Jonglieren, Blumenkranz und Papierflieger bei trockenem
+    // Wetter, Pfützenspringen und Papierschiffchen bei Regen, der Schnee-Pika bei liegendem Schnee. Auswahl: miniChain
+    // (MINI_PROG, MINI_W, miniOk). Alle kommen aus dem Tagesplan (_miniAt) und stehen nicht im Helfer. Die drei für
+    // Regen und Schnee laufen nach der Planzeit: Ein Gerät, das später dazukommt, steigt mitten hinein ein.
+
+    // Lage für die Wahl der kleinen Beschäftigungen (miniProg, miniOk): Wetter, Wind und Kälte kommen von der
+    // Wetter-Entität und sind auf allen Geräten gleich, die Jahreszeit hängt am Datum. Der Vorrat ist nur mit
+    // plan_entity überall derselbe (ohne Helfer zählt jedes Gerät für sich). Was an der Konfiguration der einzelnen
+    // Karte hängt (der Festtagshut: festive, birthdays), steht nicht in der Lage, sondern in _actOk.
+    _lage() {
+      const wx = this._wx;
+      this._seasonK ??= seasonKey(this._festNow(), this._viewN());
+      return {
+        wet: !!wx.wet, rain: wx.rain || 0, storm: !!wx.storm, shelter: !!wx.shelter, snowcover: !!wx.snowcover, cold: !!wx.cold,
+        wind: this._wind || 0, hayFull: this._hay >= HAY_MAX, winter: this._seasonK === 'winter',
+      };
+    }
+
+    // Sperren am Boden für die Requisiten: Geräte des Haus-Boten, Festdeko mit festem Platz, Schätze auf der Wiese
+    // und liegende Häufchen. Das steht in der Regel überall an derselben Stelle; gerechnet wird aber mit dem, was
+    // jetzt da ist: Ein Gerät, das später einsteigt, kann die Pfütze woanders hinlegen, wenn inzwischen ein Gerät des
+    // Haus-Boten fertig wurde oder ein Häufchen dazukam. Das Wollknäuel zählt nicht: Es liegt nach einem Tipp auf
+    // jedem Gerät woanders.
+    _groundBlocks() {
+      const H = this._H;
+      const pad = H * 0.015;
+      const out = [];
+      for (const a of this._bote?.list || []) if (a.el && a.spec && a.w) out.push([a.l - pad, a.l + a.w + pad]);
+      for (const [n, q] of Object.entries(this._festPos || {})) if (!/^(egg|stick)/.test(n)) out.push([q.l - pad, q.l + q.w + pad]);
+      for (const [t, el] of this._gtEls || []) {
+        if (GIFT_ITEMS[t]?.key === 'yarn') continue;
+        if (el.parentElement === this._el.gifts && !el.style.top) out.push([el.offsetLeft - pad, el.offsetLeft + el.offsetWidth + pad]);
+      }
+      for (const q of this._poops().piles) out.push([this._pileX(q) - H * 0.05, this._pileX(q) + H * 0.05]);
+      return out;
+    }
+
+    // Platz für ein Requisit der Breite w auf der Wiese, aus der festen Zahl u des Fensters: zwischen Vorrat und
+    // Stein (Tür, Vorrat und Stein bleiben damit frei), neben allem, was dort schon steht. Ergebnis { x, w }.
+    _groundSpot(u, w, kMin = 0.6) {
+      const g = this._g;
+      return groundSpot(u, w, g.hayR + this._H * 0.03, g.rock.l - this._H * 0.01, this._groundBlocks(), kMin);
+    }
+
+    // Platz für ein Requisit der Breite w, das hinter dem Pika steht (Schnee-Pika, Steintürmchen), und ihn daneben:
+    // { x: wo er steht, px: Mitte des Requisits, dir: sein Blick dorthin }. Auf welcher Seite er steht, steht mit dem
+    // Fenster fest (v). Reicht die Wiese nicht für beide (schmale Karte), bleibt der Abstand trotzdem, sonst
+    // verdeckte er, was er baut: Das Requisit steht dann zum Stein hin, er vor dem Vorrat. Beide rücken dabei so
+    // weit vom Stein weg, dass das Requisit links von der Klo-Ecke am Steinfuß steht (dort liegen die Häufchen
+    // davor, und ein Vogel auf dem Stein säße vor dem Schnee-Pika), höchstens aber, bis der Pika an der Tür steht:
+    // Auf den schmalsten Karten (340 × 248, 320 × 400) reicht das nicht ganz, das Requisit ragt dort noch vor den Stein.
+    _besideSpot(u, v, w) {
+      const { pW, hayR, rock, hole } = this._g;
+      const U = this._groundSpot(u, w + pW * 0.9, 1);
+      const tight = rock.l - hayR - this._H * 0.04 < U.w;
+      const dir = tight || v < 0.5 ? 1 : -1;
+      const x = U.x - dir * (U.w / 2 - pW * 0.45);
+      const px = U.x + dir * (U.w / 2 - w / 2);
+      const d = tight ? clamp(px + w / 2 - (rock.l - rock.w * 0.08 - this._H * 0.05), 0, Math.max(0, Math.min(x - pW * 0.5 - hole.r, px - w / 2 - hayR))) : 0;
+      return { dir, x: x - d, px: px - d };
+    }
+
+    // Requisit am Boden aufstellen: Mitte x, Breite w, Höhe h; die Unterkante liegt sink px unter der Bodenlinie
+    // (bottom über --gb, also von gy aus). front: vorn auf dem Wiesenstreifen vor dem Pika (.actsf), sonst hinter ihm.
+    _aprop(cls, svg, x, w, h, front = false, sink = 0) {
+      const el = document.createElement('div');
+      el.className = `aprop ${cls}`;
+      Object.assign(el.style, {
+        left: `${(x - w / 2).toFixed(1)}px`, width: `${w.toFixed(1)}px`, height: `${h.toFixed(1)}px`,
+        bottom: `calc(var(--gb) - ${sink.toFixed(1)}px)`,
+      });
+      el.innerHTML = svg;
+      (front ? this._el.actsf : this._el.acts).appendChild(el);
+      (this._aprops ??= new Set()).add(el);
+      void el.offsetWidth;
+      el.classList.add('on');
+      return el;
+    }
+
+    // Requisiten am Boden wegräumen (only: nur dieses): ausblenden, dann entfernen. _cleanup räumt alle ab.
+    _apropsAway(only = null) {
+      for (const el of only ? [only] : [...(this._aprops || [])]) {
+        if (!this._aprops?.delete(el)) continue;
+        el.classList.remove('on');
+        el.classList.add('off');
+        setTimeout(() => el.remove(), 950);
+      }
+    }
+
+    // ---------- Regen: Pfützenspringen ----------
+
+    // Die Pfütze liegt vorn auf dem Wiesenstreifen (Platz aus dem Fenster, _groundSpot). Er springt im festen Takt
+    // hinein (PUDDLE_MS ab der Planzeit: Alle Geräte springen gleichzeitig, wer später einsteigt, im selben Takt),
+    // bei jeder Landung spritzt es. Der letzte Sprung ist der größte. Die Schleife endet mit einer Landung.
+    async _puddle() {
+      const S = this._slotFor('puddle');
+      const { pW, pH } = this._g;
+      const P = this._groundSpot(S.r(2), pW * 1.3);
+      const h = P.w * 0.16;
+      const el = this._aprop('puddle', PUDDLE_SVG, P.x, P.w, h, true, h - pH * 0.045);
+      await this._goSpot(S, P.x, 0.9);
+      this._face(S.r(3) < 0.5 ? -1 : 1);
+      const t0 = S.start + ACT_WALK + 800;
+      const n = puddleJumps(S.r);
+      if (this._planNow() < t0 - 300) this._say(pick(['Eine Pfütze!', 'Pfütze!', 'oh!']), 1000);
+      for (let i = Math.max(0, Math.ceil((this._planNow() - t0) / PUDDLE_MS)); i < n; i++) {
+        await this._at(t0 + i * PUDDLE_MS);
+        const big = i === n - 1 && !calmMotion();
+        this._jump(big ? 'binky' : 'hop1', true);
+        await this._wait(JUMPS[big ? 'binky' : 'hop1'].air[1]);
+        this._splash(el, big ? 9 : 5);
+        if (i === n - 1) this._say('PLATSCH!', 1200);
+        else if (i % 2 === 0) this._say(pick(['platsch!', 'plitsch!', 'hihi']), 700);
+      }
+      await this._wait(600);
+      this._happy(1300);
+      await this._wait(1400);
+      this._apropsAway(el);
+      await this._wait(400);
+    }
+
+    // Es spritzt: n Tropfen fliegen von den Füßen im Bogen zur Seite, auf der Pfütze läuft ein Ring nach außen.
+    // Bewegung reduzieren: nur der Ring.
+    _splash(el, n) {
+      if (el?.isConnected) {
+        el.classList.remove('rip');
+        void el.offsetWidth;
+        el.classList.add('rip');
+      }
+      if (calmMotion()) return;
+      const { pW, pH, gy } = this._g;
+      for (let i = 0; i < n; i++) {
+        const side = i % 2 ? 1 : -1;
+        const s = document.createElement('span');
+        s.className = 'splash';
+        s.innerHTML = DROP_SVG;
+        s.style.left = `${(this._x + side * rnd(0.22, 0.46) * pW).toFixed(1)}px`;
+        s.style.top = `${(gy - pH * 0.06).toFixed(1)}px`;
+        s.style.setProperty('--dx', `${(side * rnd(0.1, 0.4) * pW).toFixed(1)}px`);
+        s.style.setProperty('--dy', `${(-rnd(0.2, 0.55) * pH).toFixed(1)}px`);
+        this._el.fx.appendChild(s);
+        setTimeout(() => s.remove(), 800);
+      }
+    }
+
+    // ---------- Regen: Papierschiffchen ----------
+
+    // Er setzt ein Papierschiffchen auf die Pfütze und pustet es Etappe für Etappe hinüber; am anderen Ufer treibt
+    // es von selbst zurück, dann fischt er es heraus. Wo das Schiffchen ist, steht mit der Planzeit fest (BOAT_T):
+    // Wer später einsteigt, sieht es an derselben Stelle. Bei Regen hält die andere Pfote das Blatt.
+    async _boat() {
+      const S = this._slotFor('boat');
+      const { pW, pH } = this._g;
+      // Pfütze und Standplatz daneben als ein Stück; auf welcher Seite er steht, steht mit dem Fenster fest
+      const U = this._groundSpot(S.r(2), pW * 1.95);
+      const dir = S.r(3) < 0.5 ? 1 : -1;
+      const pw = Math.max(pW * 0.6, U.w - pW * 0.62);
+      const h = pw * 0.16;
+      const el = this._aprop('puddle', PUDDLE_SVG, U.x + dir * (U.w / 2 - pw / 2), pw, h, true, h - pH * 0.045);
+      const bw = Math.min(pW * 0.3, pw * 0.4);
+      const boat = document.createElement('div');
+      boat.className = 'pboat';
+      boat.innerHTML = BOAT_SVG;
+      boat.style.width = `${bw.toFixed(1)}px`;
+      boat.style[dir > 0 ? 'left' : 'right'] = '7%';
+      el.appendChild(boat);
+      const span = pw * 0.86 - bw;
+      // f: 0 = an seinem Ufer, 1 = drüben; ms: so lange gleitet es dorthin; skip: so viele ms davon sind schon um
+      // (negative Verzögerung: Die Fahrt läuft mittendrin weiter)
+      const sail = (f, ms, ease, skip = 0) => {
+        boat.style.transition = `transform ${Math.round(ms)}ms ${ease} ${-Math.round(skip)}ms, opacity .25s`;
+        boat.style.transform = `translateX(${(dir * f * span).toFixed(1)}px)`;
+      };
+      // Eine Fahrt von a nach b, die zur Planzeit t0 begann und ms dauert: Wer später dazukommt (oder dessen
+      // Zeitgeber sich verspätet), sieht das Schiffchen dort, wo es auf den anderen Geräten gerade ist
+      const trip = (a, b, t0, ms, ease = `cubic-bezier(${BOAT_EASE.join(', ')})`) => {
+        const late = this._planNow() - t0;
+        if (late >= ms) return sail(b, 0, 'linear');
+        sail(a, 0, 'linear');
+        void boat.offsetWidth;
+        sail(b, ms, ease, Math.max(0, late));
+      };
+      await this._goSpot(S, U.x - dir * (U.w / 2 - pW * 0.36), 0.9);
+      this._face(dir);
+      const p = this._el.pika;
+      const T0 = S.start + ACT_WALK;
+      const K = boatPuffs(S.r);
+      const T1 = T0 + BOAT_T.launch + K * BOAT_T.puff;
+      if (this._planNow() < T0 + 1000) {
+        // hervorkramen, zeigen, bücken und aufs Wasser setzen
+        this._propOn('boating');
+        if (this._planNow() < T0 + 400) this._say(pick(['Ahoi!', 'Schiff ahoi!', 'Leinen los!']), 1300);
+        await this._at(T0 + 900);
+        p.classList.add('sniff');
+        await this._at(T0 + 1300);
+        await this._propOff('boating');
+      }
+      // Späteinstieg: Das Schiffchen liegt dort, wo es nach der Planzeit gerade ist (boatPos), nicht eine Etappe
+      // voraus. Die laufende Etappe nimmt er mittendrin auf.
+      const now = this._planNow();
+      sail(boatPos(now - T0, K), 0, 'linear');
+      void boat.offsetWidth;
+      boat.classList.add('afloat');
+      await this._waitMax(400, T0 + BOAT_T.launch);
+      p.classList.remove('sniff');
+      for (let k = clamp(Math.floor((now - T0 - BOAT_T.launch) / BOAT_T.puff), 0, K); k < K; k++) {
+        // Luft holen, pusten, das Schiffchen gleitet: jeder Schritt zu seiner Planzeit
+        const tk = T0 + BOAT_T.launch + k * BOAT_T.puff;
+        const tb = tk + BOAT_T.blow;
+        await this._at(tk);
+        if (this._planNow() < tk + 450) {
+          p.classList.add('pu-in');
+          await this._at(tk + 450);
+          p.classList.remove('pu-in');
+        }
+        if (this._planNow() < tb + 600) p.classList.add('blow');
+        await this._at(tb);
+        trip(k / K, (k + 1) / K, tb, BOAT_T.glide);
+        await this._at(tb + 600);
+        p.classList.remove('blow');
+        if (k === K - 1 && this._planNow() < tb + 1200) this._say(pick(['drüben!', 'angekommen!', 'geschafft!']), 1100);
+      }
+      await this._at(T1);
+      // Am anderen Ufer dreht es bei und treibt zurück
+      trip(1, 0, T1, BOAT_T.back - BOAT_T.home, 'ease-in-out');
+      p.classList.add('look-f');
+      await this._waitMax(1200, S.end);
+      if (this._planNow() < S.end - 1200) this._say(pick(['es kommt zurück!', 'hui!', 'schön!']), 1200);
+      await this._at(S.end);
+      p.classList.remove('look-f');
+      // herausfischen und wegstecken
+      p.classList.add('sniff');
+      await this._wait(450);
+      boat.classList.remove('afloat');
+      p.classList.remove('sniff');
+      this._propOn('boating');
+      this._happy(1200);
+      await this._wait(1100);
+      await this._propOff('boating');
+      this._apropsAway(el);
+      await this._wait(400);
+    }
+
+    // ---------- Schnee: Schnee-Pika ----------
+
+    // Bei liegendem Schnee baut er sich einen Zwilling: Bauch, Kopf, Ohren, Gesicht. Jede Schicht hat ihr festes
+    // Stück des Fensters (wie beim Malen): Wer später einsteigt, sieht ihn so weit wie die anderen. Er scharrt Schnee
+    // zusammen (Kopf tief) und klopft ihn fest, dabei wächst die Schicht. Am Ende tritt er zurück und ist stolz;
+    // der Schnee-Pika bleibt noch kurz stehen und sackt dann zusammen.
+    async _snowpika() {
+      const S = this._slotFor('snowpika');
+      const late = this._jumpIn(S);
+      const { pW, pH } = this._g;
+      const FH = pH * 0.84;
+      const FW = FH * (60 / 72);
+      const U = this._besideSpot(S.r(2), S.r(3), FW);
+      const dir = U.dir;
+      await this._goSpot(S, U.x);
+      this._face(dir);
+      const p = this._el.pika;
+      const el = this._aprop('snowp', SNOWPIKA_SVG, U.px, FW, FH, false, pH * 0.03);
+      const t0 = S.start + ACT_WALK + 600;
+      const L = (S.end - t0) / 4;
+      if (!late && this._planNow() < t0) this._say(pick(['Schnee!', 'Ein Schnee-Pika!', 'Bauen!']), 1300);
+      for (let i = 0; i < 4; i++) {
+        const lEnd = t0 + (i + 1) * L;
+        if (this._planNow() >= lEnd - 900) {
+          el.classList.add('now', `s${i + 1}`); // schon gebaut
+          continue;
+        }
+        await this._at(t0 + i * L);
+        p.classList.add('sniff');
+        await this._waitMax(800, lEnd - 800);
+        p.classList.remove('sniff');
+        void el.offsetWidth;
+        el.classList.remove('now');
+        el.style.setProperty('--sg', `${Math.max(300, lEnd - 600 - this._planNow()).toFixed(0)}ms`);
+        el.classList.add(`s${i + 1}`);
+        p.classList.add('spat');
+        await this._at(lEnd - 600);
+        p.classList.remove('spat');
+        if (i < 3 && S.r(10 + i) < 0.5) this._say(pick(['klopf, klopf', 'noch mehr!', 'hmm …']), 900);
+        await this._at(lEnd);
+      }
+      // zurücktreten, anschauen, stolz sein
+      await this._walkTo(this._x - dir * pW * 0.3, 0.6, true, 0, true);
+      this._face(dir);
+      p.classList.add('look-f');
+      await this._wait(700);
+      this._happy(1400);
+      this._mimik('proud', 2600);
+      this._say(pick(['Fertig!', 'Hallo, du!', 'Mein Zwilling!', '♥']), 1500);
+      this._jump('hop1');
+      await this._wait(4000 + S.r(7) * 3000);
+      p.classList.remove('look-f');
+      this._apropsAway(el);
+      await this._wait(700);
+    }
+
+    // ---------- Hula-Hoop ----------
+
+    // Der Reifen kreist um den Bauch, die Hüfte schwingt mit. Manchmal wird er zum Schluss schneller, manchmal
+    // rutscht der Reifen herunter. Was passiert, steht mit dem Fenster fest.
+    async _hula() {
+      const S = this._slotFor('hula');
+      await this._goSpot(S, this._hobbySpot(S.r(2)), 0.9);
+      this._face(S.r(3) < 0.5 ? -1 : 1);
+      const p = this._el.pika;
+      this._propOn('hula');
+      // Alle Geräte beginnen zur selben Planzeit (wer früh am Platz ist, hält den Reifen so lange bereit)
+      const T0 = S.start + ACT_WALK;
+      if (S.k >= 0) await this._at(T0);
+      await this._wait(700);
+      p.classList.add('hula-go');
+      const drop = S.r(6) < 0.3;
+      const fast = !drop && S.r(7) < 0.5;
+      const mid = S.end - (S.end - T0) * 0.4;
+      // „schneller!“ und die Ausrufe kommen zu festen Planzeiten aus den Zahlen des Fensters: auf allen Geräten im
+      // selben Augenblick, nicht nach einem eigenen Würfelraster
+      const cues = fast ? [[mid, true]] : [];
+      for (let j = 0, t = T0 + 700; j < 12; j++) {
+        t += 1600 + S.r(20 + j) * 1000;
+        if (t > S.end - 400) break;
+        if (S.r(40 + j) < 0.5 && !(fast && Math.abs(t - mid) < 1000)) cues.push([t, false]);
+      }
+      cues.sort((a, b) => a[0] - b[0]);
+      for (const [t, x] of cues) {
+        await this._at(t);
+        if (x) p.classList.add('hula-x');
+        this._say(x ? 'schneller!' : pick(['huii!', 'hihi', 'und rum!', 'hui!']), 900);
+      }
+      await this._at(S.end);
+      p.classList.remove('hula-go', 'hula-x');
+      if (drop) {
+        p.classList.add('hula-dn', 'meh');
+        this._say(pick(['hoppla!', 'uups', 'gerutscht!']), 1300);
+        await this._wait(1600);
+        p.classList.remove('meh');
+      } else {
+        this._happy(1200);
+        this._say(pick(['Ta-da!', 'Hula! ♥', 'geschafft!']), 1300);
+        await this._wait(1300);
+      }
+      await this._propOff('hula', 'hula-dn');
+      await this._wait(100);
+    }
+
+    // ---------- Jo-Jo ----------
+
+    // Hinunter, kurz frei drehen, wieder hoch. Würfe und Animation laufen auf derselben Uhr (wie beim Seil: t0 ist
+    // der Beginn der Animation, der k-te Wurf ist bei t0 + k · YOYO_MS wieder oben). Manchmal bleibt es unten
+    // hängen: Dann schaut er, und es wickelt sich langsam wieder auf.
+    async _yoyo() {
+      const S = this._slotFor('yoyo');
+      await this._goSpot(S, this._hobbySpot(S.r(2)), 0.9);
+      this._face(S.r(3) < 0.5 ? -1 : 1);
+      const p = this._el.pika;
+      this._propOn('yoyo');
+      // Alle Geräte beginnen zur selben Planzeit (wie beim Seil)
+      if (S.k >= 0) await this._at(S.start + ACT_WALK);
+      await this._wait(600);
+      const n = yoyoThrows(S.r);
+      const dead = yoyoDead(S.r);
+      let t0 = 0;
+      let k = 0;
+      const go = () => {
+        p.classList.remove('yo-go');
+        void p.offsetWidth;
+        p.classList.add('yo-go');
+        t0 = Date.now();
+        k = 0;
+      };
+      const until = (ms) => this._wait(Math.max(0, t0 + ms - Date.now()));
+      go();
+      for (let i = 1; i <= n; i++) {
+        if (i === dead && !calmMotion()) {
+          // unten angekommen dreht es aus: hängt
+          await until((k + 0.49) * YOYO_MS);
+          p.classList.add('yo-dead');
+          p.classList.remove('yo-go');
+          this._say(pick(['hm?', 'oh.', 'hängt!']), 1100);
+          await this._wait(1500);
+          p.classList.remove('yo-dead'); // aufwickeln (1,1 s, Stil)
+          await this._wait(YOYO_DEAD - 1500 - 0.49 * YOYO_MS);
+          go();
+          continue;
+        }
+        k++;
+        await until(k * YOYO_MS);
+        if (i % 3 === 0) this._say(pick(['hui!', 'zack!', 'hopp!']), 700);
+      }
+      // Die Schleife endet oben in der Pfote
+      p.classList.remove('yo-go');
+      this._happy(1100);
+      this._say(pick(['Ta-da!', 'Jo-Jo! ♥', 'gekonnt!']), 1300);
+      await this._wait(1300);
+      await this._propOff('yoyo', 'yo-dead');
+      await this._wait(100);
+    }
+
+    // ---------- Pusteblume ----------
+
+    // Dreimal Luft holen und pusten: Die Schirmchen fliegen mit dem Wind davon, die Kugel wird kahl. Er pustet mit
+    // dem Wind und schaut den letzten Schirmchen nach.
+    async _puste() {
+      const S = this._slotFor('puste');
+      await this._goSpot(S, this._hobbySpot(S.r(2)), 0.9);
+      this._face(this._windDir || (S.r(3) < 0.5 ? -1 : 1));
+      const p = this._el.pika;
+      const LEFT = ['pu-2', 'pu-1', 'pu-0'];
+      this._propOn('puste');
+      // Alle Geräte beginnen zur selben Planzeit (wie beim Seil)
+      if (S.k >= 0) await this._at(S.start + ACT_WALK);
+      await this._wait(800);
+      for (let i = 0; i < 3; i++) {
+        p.classList.add('pu-in');
+        await this._wait(650);
+        p.classList.remove('pu-in');
+        p.classList.add('blow');
+        await this._wait(220);
+        p.classList.add(LEFT[i]);
+        this._seeds([127, 47], 3 + Math.floor(rnd(0, 3)));
+        await this._wait(650);
+        p.classList.remove('blow');
+        if (i < 2) await this._wait(PUSTE_MS - 1520);
+      }
+      p.classList.add('look-up');
+      this._mimik('awe', 1500);
+      this._say(pick(['flieg!', 'oooh!', 'weg sind sie']), 1300);
+      await this._wait(1700);
+      p.classList.remove('look-up');
+      await this._propOff('puste', ...LEFT);
+      await this._wait(100);
+    }
+
+    // ---------- Purzelbaum ----------
+
+    // Anlauf in der Hocke, einmal vornüber (dabei kommt er eine Pika-Breite weiter), kurz schwindlig; der nächste geht
+    // zurück. Bewegung reduzieren: Er hüpft die Strecke, ohne sich zu überschlagen.
+    async _purzel() {
+      const S = this._slotFor('purzel');
+      const { pW, xR, gy } = this._g;
+      const D = pW * 0.95;
+      const x = this._hobbySpot(S.r(2));
+      let dir = S.r(3) < 0.5 ? -1 : 1;
+      // Platz für die Rolle: sonst in die andere Richtung
+      const room = (d) => (d > 0 ? xR - x : x - pW * 0.45) >= D;
+      if (!room(dir) && room(-dir)) dir = -dir;
+      await this._goSpot(S, x, 0.9);
+      // Alle Geräte beginnen zur selben Planzeit (wie beim Seil)
+      if (S.k >= 0) await this._at(S.start + ACT_WALK);
+      const p = this._el.pika;
+      const n = purzelRolls(S.r);
+      for (let i = 0; i < n; i++) {
+        this._face(dir);
+        await this._wait(250);
+        p.classList.add('crouch');
+        await this._wait(350);
+        p.classList.remove('crouch');
+        const to = clamp(this._x + dir * D, pW * 0.45, xR);
+        if (i === 0) this._say(pick(['huiii!', 'Purzelbaum!', 'und hopp!']), 900);
+        if (calmMotion()) await this._hopTo(to, 0, false);
+        else {
+          p.style.transition = `transform ${PURZEL_ROLL}ms cubic-bezier(.4, .1, .5, 1)`;
+          this._setX(to);
+          p.classList.add('purzel');
+          await this._wait(PURZEL_ROLL);
+          p.classList.remove('purzel');
+          this._cls('lnd', 600, true);
+        }
+        this._puff(this._x, gy, 2);
+        // kurz schwindlig
+        p.classList.add('crosseye');
+        await this._wait(750);
+        p.classList.remove('crosseye');
+        await this._wait(Math.max(0, PURZEL_MS - 1350 - PURZEL_ROLL));
+        dir = -dir;
+      }
+      this._happy(1200);
+      this._say(pick(['Ta-da!', 'nochmal!', 'hui! ♥']), 1300);
+      await this._wait(1300);
+    }
+
+    // ---------- Steintürmchen ----------
+
+    // Vier Kiesel übereinander: bücken, Stein in der Pfote, drauf damit. Ab dem dritten wackelt der Turm. Meist hält
+    // er (stolz), manchmal purzeln die Steine herunter. Der Ausgang steht mit dem Fenster fest.
+    async _stones() {
+      const S = this._slotFor('stones');
+      const { pW, pH } = this._g;
+      const TW = pH * 0.44;
+      const TH = TW * 1.4;
+      const U = this._besideSpot(S.r(2), S.r(3), TW);
+      const dir = U.dir;
+      await this._goSpot(S, U.x, 0.9);
+      this._face(dir);
+      const p = this._el.pika;
+      const el = this._aprop('stonep', STONES_SVG, U.px, TW, TH, false, pH * 0.02);
+      // Alle Geräte beginnen zur selben Planzeit (wie beim Seil); bis dahin steht noch kein Stein
+      if (S.k >= 0) await this._at(S.start + ACT_WALK);
+      await this._wait(400);
+      for (let i = 1; i <= 4; i++) {
+        p.classList.add('sniff'); // einen Kiesel aufheben
+        await this._wait(550);
+        p.classList.remove('sniff');
+        this._propOn('pebble');
+        await this._wait(650);
+        p.classList.remove('pebble', 'kram'); // abgelegt
+        el.classList.add(`n${i}`);
+        if (i >= 3) {
+          el.classList.remove('wob');
+          void el.offsetWidth;
+          el.classList.add('wob');
+          p.classList.add('look-f');
+          if (i === 3) this._say(pick(['vorsichtig …', 'wackelt!', 'uii']), 900);
+        }
+        await this._wait(STONE_MS - 1200);
+        p.classList.remove('look-f');
+      }
+      await this._wait(500);
+      if (S.r(6) < 0.3) {
+        el.classList.add('fall');
+        this._say(pick(['oh!', 'och …', 'plumps!']), 1200);
+        this._mimik('sad', 1600);
+        await this._wait(1900);
+      } else {
+        this._happy(1300);
+        this._mimik('proud', 2200);
+        this._say(pick(['Hält!', 'Ta-da!', 'Kunst!']), 1300);
+        await this._wait(2400);
+      }
+      this._apropsAway(el);
+      await this._wait(500);
+    }
+
+    // ---------- Jonglieren ----------
+
+    // Drei Beeren im Bogen über den Kopf, der Blick geht mit. Meist fängt er alle (stolz), manchmal bekommt er eine
+    // auf die Nase. Wie es ausgeht, steht mit dem Fenster fest.
+    async _juggle() {
+      const S = this._slotFor('juggle');
+      await this._goSpot(S, this._hobbySpot(S.r(2)), 0.9);
+      this._face(S.r(3) < 0.5 ? -1 : 1);
+      const p = this._el.pika;
+      this._propOn('juggle');
+      // Alle Geräte beginnen zur selben Planzeit (wie beim Seil)
+      if (S.k >= 0) await this._at(S.start + ACT_WALK);
+      await this._wait(800);
+      p.classList.add('jug-go', 'look-up');
+      while (this._planNow() < S.end) {
+        await this._waitMax(rnd(1800, 3000), S.end);
+        if (this._planNow() < S.end - 800 && Math.random() < 0.5) this._say(pick(['hopp!', 'und hopp!', 'eins, zwei, drei …', 'hui!']), 900);
+      }
+      p.classList.remove('jug-go', 'look-up');
+      if (S.r(6) < 0.3) {
+        // eine landet auf der Nase
+        p.classList.remove('juggle', 'kram');
+        p.classList.add('crosseye');
+        this._cls('lnd', 600, true);
+        this._say(pick(['autsch!', 'plopp!', 'uff!']), 1100);
+        await this._wait(1200);
+        p.classList.remove('crosseye');
+        this._blush(1500);
+        await this._wait(600);
+      } else {
+        this._happy(1300);
+        this._mimik('proud', 1800);
+        this._say(pick(['Ta-da!', 'Gefangen!', 'Zirkus! ♥']), 1300);
+        await this._wait(1400);
+      }
+      await this._propOff('juggle');
+      await this._wait(100);
+    }
+
+    // ---------- Blumenkranz ----------
+
+    // Er flicht eine Kette aus Gänseblümchen, setzt sie sich als Kranz auf den Kopf und zeigt sich von beiden Seiten.
+    async _crown() {
+      const S = this._slotFor('crown');
+      await this._goSpot(S, this._hobbySpot(S.r(2)), 0.9);
+      this._face(S.r(3) < 0.5 ? -1 : 1);
+      const p = this._el.pika;
+      this._propOn('plait');
+      await this._waitMax(1500, S.end - 4500);
+      if (this._planNow() < S.end - 5500) this._say(pick(['Gänseblümchen …', 'eins noch …', 'hmm, hmm ♪']), 1300);
+      await this._at(S.end - 4500);
+      await this._propOff('plait');
+      this._propOn('crowned');
+      await this._wait(500);
+      p.classList.add('tilt');
+      this._mimik('proud', 2600);
+      this._hearts(2);
+      this._say(pick(['Hübsch!', 'Ein Kranz!', 'Krönchen! ♥']), 1400);
+      await this._wait(1500);
+      p.classList.remove('tilt');
+      this._face(-this._dir);
+      await this._wait(300);
+      p.classList.add('tilt-b');
+      await this._wait(1300);
+      p.classList.remove('tilt-b');
+      await this._at(S.end);
+      await this._wait(1200);
+      await this._propOff('crowned');
+      await this._wait(100);
+    }
+
+    // ---------- Papierflieger ----------
+
+    // Zweimal werfen: Der Flieger steigt, gleitet im Bogen und landet auf der Wiese; er hoppelt hinterher und hebt
+    // ihn auf. Der zweite Wurf geht zurück. Wohin er fliegt, steht mit dem Fenster und dem Standplatz fest
+    // (gliderThrows): rechts bis vor den Stein, links nur bis zum Vorrat, immer in der Karte. Auf schmalen Karten
+    // wirft er steil, der Flieger landet vor seinen Füßen. Beide Würfe kommen zur festen Planzeit.
+    async _glider() {
+      const S = this._slotFor('glider');
+      const { pW, pH, gy } = this._g;
+      const H = this._H;
+      await this._goSpot(S, this._hobbySpot(S.r(2)), 0.9);
+      const p = this._el.pika;
+      const throws = gliderThrows(this._x, [S.r(10), S.r(11)], { W: this._W, ...this._g });
+      this._face(throws[0].dir);
+      this._propOn('gliding');
+      // Alle Geräte beginnen zur selben Planzeit (wie beim Seil)
+      const T0 = S.start + ACT_WALK;
+      if (S.k >= 0) await this._at(T0);
+      await this._wait(700);
+      for (const [i, T] of throws.entries()) {
+        // Auch der zweite Wurf: Wer schneller beim Flieger war (kurzer Wurf, schmale Karte), wartet so lange
+        if (i && S.k >= 0) await this._at(T0 + 700 + i * GLIDER_STEP);
+        const { dir, gw } = T;
+        this._face(dir);
+        p.classList.add('crouch');
+        await this._wait(380);
+        p.classList.remove('crouch', 'gliding', 'kram');
+        const o = this._svgPt(122, 34); // dort ist der Flieger in der Pfote
+        const h0 = gy - o.y;
+        const dx = T.land - o.x;
+        const el = this._aprop('glid', GLIDER_SVG, gw / 2, gw, gw * (14 / 26), true);
+        const pt = (f, h, a) => ({
+          transform: `translate(${(o.x - gw / 2 + dx * f).toFixed(1)}px, ${(-h).toFixed(1)}px) rotate(${(dir * a).toFixed(0)}deg) scaleX(${dir})`,
+        });
+        // Bewegung reduzieren: gerade hinübergleiten, ohne Bogen. Steiler Wurf: hoch hinauf, kippen, herunter.
+        const frames = calmMotion() ? [pt(0, h0, 4), pt(1, pH * 0.05, 4)] : T.steep ? [
+          { ...pt(0, h0, -52), easing: 'ease-out' }, { ...pt(0.3, h0 + H * 0.26, -24), offset: 0.3 },
+          { ...pt(0.6, h0 + H * 0.24, 22), offset: 0.52 }, { ...pt(0.9, h0 * 0.5, 46), offset: 0.82, easing: 'ease-out' }, pt(1, pH * 0.05, 3)] : [
+          { ...pt(0, h0, -14), easing: 'ease-out' }, { ...pt(0.3, h0 + H * 0.2, -8), offset: 0.26 },
+          { ...pt(0.56, h0 + H * 0.17, 7), offset: 0.5 }, { ...pt(0.87, h0 * 0.5, 17), offset: 0.82, easing: 'ease-out' }, pt(1, pH * 0.05, 3)];
+        el.style.transform = frames[frames.length - 1].transform;
+        el.animate?.(frames, { duration: GLIDER_FLY, easing: 'linear' });
+        this._say(i === 0 ? pick(['wuiii!', 'flieg!', 'Start!']) : pick(['und zurück!', 'nochmal!', 'hui!']), 1000);
+        p.classList.add('look-up');
+        await this._wait(GLIDER_FLY * 0.55);
+        p.classList.remove('look-up');
+        p.classList.add('look-f');
+        await this._wait(GLIDER_FLY * 0.45 + 300);
+        p.classList.remove('look-f');
+        // hinterher (weite Wege zügig, damit er zum nächsten Wurf zurück ist) und aufheben
+        await this._walkTo(T.to, walkSpeed(Math.abs(T.to - this._x), pW, GLIDER_WALK, 1.2));
+        this._face(dir);
+        p.classList.add('sniff');
+        await this._wait(450);
+        this._apropsAway(el);
+        p.classList.remove('sniff');
+        this._propOn('gliding');
+        await this._wait(600);
+      }
+      this._happy(1200);
+      this._say(pick(['Guter Flug!', 'Ta-da!', 'Pilot Pika! ♥']), 1300);
+      await this._wait(1300);
+      await this._propOff('gliding');
+      await this._wait(100);
     }
     // ==================== Ende Aktivitäten ====================
 
@@ -17560,6 +19184,10 @@
       WEATHER, twilight, wxCover, starOp, hexRgb, seasonPos, seasonKey, seasonPal, landColors, FLOWER_COLORS, FLOWER_SEASON,
       wxLogAdd, wxLogMerge, wxRows, wxTemp, numAttr, WX_HOLD, snowDepth, snowHours, SNOW, rainbow, BOW, skyPos, flightAloft, flightGhost, planeLag,
       planeClock, planeStale, PLANE_OLD,
+      POOP, poopWhen, ACT_SMALL, ACT_WALK, WALK_MAX, walkSpeed, HOP_MS, hopRound, JUMPS, jumpBusy, JUMP_IN, jumpInOk, chaseFar,
+      festMoments, FEST_AHEAD, FRIEND_LAST, KRAM, PROP_SEL, WALK_LATE, WALK_REJOIN, KITE_LEAN, kitePaw, EAR_SWING, poopClean, sportPlan,
+      MINI_W, MINI_ACTS, MINI_REST, MINI_PROG, miniProg, miniOk, miniBase, miniSwap, miniChain, groundSpot, ACT_NOJOIN, WX_STOP, miniHas,
+      miniStart, bigStart, ACT_WIN, ACT_GAP, BOAT_T, boatPos, boatPuffs, bezAt, gliderThrows, GLIDER_STEP, ACT_PX, wxProgThen,
     });
   }
 })();
