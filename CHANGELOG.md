@@ -2,6 +2,22 @@
 
 Jede Version der Pika Pet Card, die neueste zuerst.
 
+## 0.29.0 (2026-11-11)
+
+Freie Sicht: Nichts verdeckt mehr den Pika oder das, was er sagt, und schmale Karten passen.
+
+- Haus-Bote: Die Geräte sparen den Eingang, die Bodendeko der Festtage und den Vorrat (Nische bzw. Heuhaufen) aus. Bisher stand das zweite Gerät vor der Tür und verdeckte den schlafenden Pika, das dritte im Advent den Kranz. Ein drittes Gerät steht jetzt rechts hinter dem Vorrat am Rand der Wiese; Häufchen liegen dann erst rechts davon.
+- Sprech- und Denkblase, „zzz“ und die Zeichen über dem Kopf liegen in einer eigenen Ebene über Regen, Schnee und Nebel, Pinos Sprechblase ebenso. Pino läuft nicht mehr vor der Traumblase vorbei.
+- Ebenen haben Namen (`--z-back` bis `--z-tag`) statt Zahlen und Querverweisen in den Kommentaren der Stilblöcke.
+- Frosch, Schnecke und Maus setzen sich neben Kürbis, Stiefel, Kranz, Kuchen und Geschenk statt dahinter.
+- Plüsch-Pino liegt direkt vor dem Pika statt vor Regen und Geräten. Das rote Ausrufezeichen bei einer Störung bleibt nachts rot. Herzchen steigen über die Knöpfe statt darunter weg.
+- Schmale Karten: Unter einem Seitenverhältnis von 3:2 (Handy im Abschnitts-Layout, Hochformat) bemisst sich die Szene an der Breite statt an der Höhe; bisher passte der Pika dort nicht mehr zwischen Bau und Stein. Karten ab 3:2 bleiben, wie sie waren.
+- Statusleiste: läuft nie mehr unter den Futterknopf. Ein langer Name endet mit „…“, auf schmalen Karten werden erst die Balken kürzer, dann fällt der Name weg. Ohne Weichzeichner (der rechnete hinter ziehenden Wolken jedes Bild neu), dafür etwas deckender.
+- Abschnitts-Layout: mindestens 9 statt 6 Spalten.
+- Tippziele: Futter-, Päckchen- und Buch-Knopf und die Statusleiste lassen sich auf mindestens 44 px antippen (unsichtbarer Rand).
+- Flugzeuge: Die Tippflächen liegen immer unter den Knöpfen (ein offenes Fähnchen hob sie bisher neun Sekunden lang darüber) und reichen Tipps an alles Antippbare darunter durch: Pika, Pino, Vögel, Maus, Frosch, Schnecke, Häufchen, Geräte, Ostereier.
+- Entwicklung: `node --test` prüft zusätzlich die Plätze der Geräte, das Ausweichen der Besucher und die Größeneinheit (25 Tests).
+
 ## 0.28.0 (2026-11-11)
 
 Netz und doppelter Boden: Die Karte hält Fehler aus, zeigt sie an und verliert nichts mehr beim Schließen.

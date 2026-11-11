@@ -235,3 +235,106 @@ test('Engine: der Wachhund startet eine hängende Schleife beim zweiten Tick neu
   c._watchdog();
   assert.equal(neu, 1);
 });
+
+// ---------- Haus-Bote: Plätze der Geräte ----------
+// Maße der Karte 600 × 248 im Areal Erdhügel (in der Vorschau gemessen): Tür 70–121, Nische 182–223, Wiese ab 258
+const HUEGEL = { gap: 5, left: 6, right: 594, door: [68, 123], deko: [], store: [180, 225], meadow: 283 };
+const WASCH = 50;
+const SPUEL = 57;
+// Trifft eine Strecke [l, l + w] die Sperre [a, b]?
+const trifft = (l, w, [a, b]) => l < b && l + w > a;
+const frei = (r, ws, sperren) => r.xs.every((l, i) => sperren.every((b) => !trifft(l, ws[i] * r.k, b)));
+const geordnet = (r, ws, gap) => r.xs.every((l, i) => i === 0 || l >= r.xs[i - 1] + ws[i - 1] * r.k + gap - 1e-6);
+
+test('Haus-Bote: zwei Geräte stehen links und rechts der Tür, Eingang und Nische bleiben frei', () => {
+  const ws = [WASCH, WASCH];
+  const r = T.boteRow(ws, HUEGEL);
+  assert.equal(r.k, 1);
+  assert.equal(r.tier, 1);
+  assert.equal(r.xs[0], 6);
+  assert.equal(r.xs[1], 123);
+  assert.ok(frei(r, ws, [HUEGEL.door, HUEGEL.store]));
+});
+
+test('Haus-Bote: das dritte Gerät rückt hinter die Nische, nur ein Stück auf die Wiese', () => {
+  const ws = [WASCH, WASCH, SPUEL];
+  const r = T.boteRow(ws, HUEGEL);
+  assert.equal(r.tier, 2);
+  assert.ok(frei(r, ws, [HUEGEL.door, HUEGEL.store]));
+  assert.ok(geordnet(r, ws, HUEGEL.gap));
+  assert.ok(r.xs[2] >= 225 && r.xs[2] + SPUEL * r.k <= HUEGEL.meadow);
+});
+
+test('Haus-Bote: Adventskranz neben der Tür bleibt frei, die Geräte weichen aus', () => {
+  const o = { ...HUEGEL, deko: [[119, 173]] };
+  for (const ws of [[WASCH, WASCH], [WASCH, WASCH, SPUEL]]) {
+    const r = T.boteRow(ws, o);
+    assert.ok(frei(r, ws, [o.door, o.store, ...o.deko]), `${ws.length} Geräte: ${JSON.stringify(r)}`);
+    assert.ok(geordnet(r, ws, o.gap));
+    assert.ok(r.xs.at(-1) + ws.at(-1) * r.k <= o.right);
+  }
+});
+
+test('Haus-Bote: Areal mit Heuhaufen, zwei Geräte werden etwas kleiner und bleiben links vom Heu', () => {
+  // Felsen 600 × 248: Tür 62–99, Heuhaufen 143–211, Wiese ab 245
+  const o = { gap: 5, left: 6, right: 594, door: [60, 101], deko: [], store: [141, 213], meadow: 270 };
+  const ws = [WASCH, WASCH];
+  const r = T.boteRow(ws, o);
+  assert.equal(r.tier, 1);
+  assert.ok(r.k >= 0.8 && r.k < 1);
+  assert.ok(frei(r, ws, [o.door, o.store]));
+});
+
+test('Haus-Bote: schmale Karte gibt erst den Vorrat, dann die Deko frei, die Tür zuletzt', () => {
+  // 150 px breit: Tür 40–70, Vorrat 95–120, Kürbis 125–140
+  const o = { gap: 3, left: 6, right: 144, door: [40, 70], deko: [[125, 140]], store: [95, 120], meadow: 130 };
+  const zwei = T.boteRow([30, 30], o);
+  assert.ok(frei(zwei, [30, 30], [o.door]), JSON.stringify(zwei));
+  const drei = T.boteRow([30, 30, 30], o);
+  assert.ok(frei(drei, [30, 30, 30], [o.door]), JSON.stringify(drei));
+  assert.ok(drei.tier >= 4);
+  // gar kein Platz: dicht an dicht wie früher, nie kleiner als 40 %
+  const fuenf = T.boteRow([80, 80, 80, 80, 80], o);
+  assert.equal(fuenf.tier, 6);
+  assert.equal(fuenf.k, 0.4);
+  assert.equal(fuenf.xs[0], 6);
+});
+
+test('Haus-Bote: drei Geräte im Advent werden nur kleiner, wenn die Reihe dadurch deutlich kürzer wird', () => {
+  // Kranz neben der Tür, Stiefel auf der Wiese (316–348)
+  const o = { ...HUEGEL, deko: [[119, 173], [316, 348]] };
+  // kleiner passen die beiden letzten vor den Stiefel: die Reihe endet fast 100 px früher
+  const a = T.boteRow([WASCH, 51, SPUEL], o);
+  assert.equal(a.tier, 3);
+  assert.equal(a.k, 0.75);
+  assert.ok(a.end < 316);
+  // mit einem breiten Handtuchstapel muss das dritte ohnehin hinter den Stiefel: dann lieber groß bleiben
+  const b = T.boteRow([WASCH, 70, SPUEL], o);
+  assert.equal(b.k, 1);
+  assert.ok(frei(b, [WASCH, 70, SPUEL], [o.door, o.store, ...o.deko]));
+});
+
+// ---------- Besucher und Festdeko ----------
+test('Besucher: Ruheplatz neben der Festdeko statt dahinter', () => {
+  // Kürbis 315–349 auf der Wiese 258–403, Frosch 36 px breit
+  const kuerbis = [[315, 349]];
+  assert.equal(T.clearSpot(280, 36, 258, 403, kuerbis), 280); // weit genug weg: bleibt
+  assert.equal(T.clearSpot(340, 36, 258, 403, kuerbis), 367); // näher an der rechten Kante
+  assert.equal(T.clearSpot(320, 36, 258, 403, kuerbis), 297); // näher an der linken Kante
+  // Kante außerhalb des Erlaubten: die andere Seite
+  assert.equal(T.clearSpot(320, 36, 300, 403, kuerbis), 367);
+  // zwei Stücke dicht beieinander: nicht in die Lücke, in die er nicht passt
+  const zwei = [[315, 349], [360, 390]];
+  assert.equal(T.clearSpot(352, 36, 258, 450, zwei), 297);
+  // nirgends Platz: bleibt, wo er hinwollte
+  assert.equal(T.clearSpot(330, 36, 310, 350, kuerbis), 330);
+});
+
+// ---------- Schmale Karten ----------
+test('Größeneinheit: ab 3:2 die Höhe, schmaler die Breite / 1,5', () => {
+  assert.equal(T.sceneUnit(600, 248), 248); // Wand-Tablet: unverändert
+  assert.equal(T.sceneUnit(380, 184), 184);
+  assert.equal(T.sceneUnit(372, 248), 248); // genau 3:2
+  assert.ok(Math.abs(T.sceneUnit(340, 248) - 226.67) < 0.01); // Handy im Abschnitts-Layout
+  assert.ok(Math.abs(T.sceneUnit(320, 400) - 213.33) < 0.01); // Hochformat
+});

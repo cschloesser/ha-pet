@@ -56,7 +56,7 @@
  * werden aus Datum und Standort (hass.config) berechnet.
  */
 (() => {
-  const VERSION = '0.28.0';
+  const VERSION = '0.29.0';
 
   // screen_entity gehört zu einem Gerät (dem Kiosk-Tablet), dasselbe Dashboard öffnen aber auch andere. Ein Rechner mit
   // Maus ist sicher nicht dieser Bildschirm, Fully Kiosk mit JS-Schnittstelle dagegen schon.
@@ -1663,9 +1663,9 @@
 
   const STYLE_FEST = `
   .fest-b, .fest-f, .fest-b > div, .fest-f > div { position: absolute; inset: 0; pointer-events: none; }
-  .fest-f { z-index: 3; }
-  /* liegt auf dem Bau, aber hinter dem Pika (z-index 3) */
-  .fest-b > .fon { z-index: 1; }
+  .fest-f { z-index: var(--z-stage); }
+  /* liegt auf dem Bau, aber hinter dem Pika */
+  .fest-b > .fon { z-index: var(--z-back); }
   .fi { position: absolute; }
   .fi > svg { position: absolute; left: 0; top: 0; width: 100%; height: 100%; overflow: visible; }
   .fi .b { transition: filter 2.5s; }
@@ -1852,12 +1852,12 @@
   .friends { position: absolute; inset: 0; pointer-events: none; }
   .friend {
     position: absolute; left: 0; top: calc(var(--gy) - var(--ph) * .945); width: var(--pw); height: var(--ph);
-    z-index: 3; cursor: pointer; pointer-events: auto; will-change: transform;
+    z-index: var(--z-stage); cursor: pointer; pointer-events: auto; will-change: transform;
   }
-  /* Pinos Sprechblase: gleiche Lage wie .friend, aber über dem Pika (beide z 3, der Pika liegt im DOM dahinter) */
+  /* Pinos Sprechblase: gleiche Lage wie .friend, aber in der Sprech-Ebene über dem Wetter */
   .frsay {
     position: absolute; left: 0; top: calc(var(--gy) - var(--ph) * .945); width: var(--pw); height: var(--ph);
-    z-index: 4; pointer-events: none;
+    z-index: var(--z-talk); pointer-events: none;
   }
   /* Nasenstupsen und Heranrücken: kurz nach vorn zum anderen lehnen (Pika und Pino) */
   .pika.nuzzle .hop, .friend.nuzzle .hop { animation: nuzzle .8s ease-in-out; }
@@ -2015,6 +2015,79 @@
   const BOTE_FRONT = 1.1;
   const BOTE_FRONT_DY = 0.07; // ganz vorn am unteren Rand, der Fortschrittsbalken liegt auf dem Fuß des Requisits
   const BOTE_TALL = 0.55; // die hohe Wäscheleine steht vorn kleiner
+  // Plätze der Requisiten vorn am unteren Rand, von links in der Reihenfolge von ws (Wunschbreiten in px).
+  // o: { gap, left, right, door: [a, b], deko: [[a, b] …], store: [a, b], meadow }. Gesperrt sind der Eingang (dort
+  // schläft der Pika), die Bodendeko der Festtage und der Vorrat (Nische oder Heuhaufen); ein Requisit, das eine
+  // Sperre träfe, rückt hinter sie. Der Reihe nach wird versucht, bis alles Platz hat: 1. links vom Vorrat bleiben
+  // (dafür bis 20 % kleiner), 2. höchstens bis meadow (ein Stück auf die Wiese, bis 25 % kleiner), 3. bis zum rechten
+  // Rand (so kurz wie möglich), 4. der Vorrat darf verdeckt werden, 5. auch die Deko, 6. alles dicht an dicht wie früher (schmale Karte).
+  // Alle Requisiten werden gemeinsam gleich stark kleiner (k). Ergebnis: { k, xs: linke Kanten, tier: 1–6 }.
+  // Größeneinheit der Szene: die Kartenhöhe, auf schmalen Karten (Handy, schmaler als 3:2) die Breite / 1,5. Bau,
+  // Pika, Stein und alles andere bemessen sich daran, sonst passte der Pika nicht mehr zwischen Bau und Stein.
+  // Die Szene steht dann unten in der Karte, darüber ist mehr Himmel.
+  const UNIT_RATIO = 1.5;
+  const sceneUnit = (W, Hs) => Math.min(Hs, W / UNIT_RATIO);
+  // Ruheplatz eines Besuchers (Mitte x, Breite w, erlaubt a..b) neben die Sperren [l, r] rücken statt dahinter: an
+  // die nächste freie Kante. Passt er nirgends ganz hin, bleibt x.
+  const clearSpot = (x, w, a, b, blocks) => {
+    const m = w / 2;
+    const hit = (v) => blocks.some(([l, r]) => v > l - m + 1e-6 && v < r + m - 1e-6);
+    if (!hit(x)) return x;
+    const free = blocks.flatMap(([l, r]) => [l - m, r + m]).filter((v) => v >= a && v <= b && !hit(v));
+    return free.length ? free.reduce((p, v) => (Math.abs(v - x) < Math.abs(p - x) ? v : p)) : x;
+  };
+  const boteRow = (ws, o) => {
+    const place = (k, blocks, end) => {
+      let x = o.left;
+      const xs = [];
+      for (const w0 of ws) {
+        const w = w0 * k;
+        // hinter jede Sperre rücken, die das Requisit träfe (bis nichts mehr im Weg ist: x wächst nur)
+        for (let moved = true; moved;) {
+          moved = false;
+          for (const [a, b] of blocks) {
+            if (x < b && x + w > a) {
+              x = b;
+              moved = true;
+            }
+          }
+        }
+        if (x + w > end + 1e-6) return null;
+        xs.push(x);
+        x += w + o.gap;
+      }
+      return xs;
+    };
+    const tiers = [
+      [[o.door, ...o.deko, o.store], Math.min(o.right, o.store[0]), 0.8],
+      [[o.door, ...o.deko, o.store], Math.min(o.right, o.meadow), 0.75],
+      [[o.door, ...o.deko, o.store], o.right, 0.75],
+      [[o.door, ...o.deko], o.right, 0.6],
+      [[o.door], o.right, 0.5],
+    ];
+    for (let t = 0; t < tiers.length; t++) {
+      const [blocks, end, kMin] = tiers[t];
+      // in Schritten von 5 %, größte passende Größe zuerst. Stufe 3 (weit auf die Wiese, die dem Pika gehört) nimmt
+      // stattdessen die größte, mit der die Reihe höchstens ein halbes Gerät länger wird als die kürzeste.
+      const fits = [];
+      for (let i = 20; i >= Math.round(kMin * 20); i--) {
+        const k = i / 20;
+        const xs = place(k, blocks, end);
+        if (!xs) continue;
+        const r = { k, xs, tier: t + 1, end: xs[xs.length - 1] + ws[ws.length - 1] * k };
+        if (t !== 2) return r;
+        fits.push(r);
+      }
+      if (fits.length) {
+        const short = Math.min(...fits.map((r) => r.end)) + Math.max(...ws) / 2;
+        return fits.find((r) => r.end <= short);
+      }
+    }
+    const sum = ws.reduce((t, w) => t + w, 0);
+    const k = clamp((o.right - o.left - o.gap * (ws.length - 1)) / sum, 0.4, 1);
+    let x = o.left;
+    return { k, tier: 6, xs: ws.map((w) => { const l = x; x += w * k + o.gap; return l; }) };
+  };
   const BOTE_RUN = new Set(['run', 'pause', 'delayedstart', 'actionrequired', 'error', 'aborting']);
   const BOTE_HALT = new Set(['pause', 'delayedstart', 'actionrequired', 'error', 'aborting']);
   const BOTE_IDLE = new Set(['ready', 'inactive', 'off', 'standby']);
@@ -2223,17 +2296,18 @@
   const STYLE_BOTE = `
   .props { position: absolute; inset: 0; pointer-events: none; }
   /* Requisit: left/top/width setzt das Skript, Boden der Grafik knapp unter der Bodenlinie (im Gras) */
-  .hb { position: absolute; left: 0; top: 0; pointer-events: auto; cursor: pointer; transition: filter 2.5s, opacity .5s; }
-  .hb.hb-placed { transition: left .5s ease, top .5s ease, width .5s ease, filter 2.5s, opacity .5s; }
+  .hb { position: absolute; left: 0; top: 0; pointer-events: auto; cursor: pointer; transition: opacity .5s; }
+  .hb.hb-placed { transition: left .5s ease, top .5s ease, width .5s ease, opacity .5s; }
   .hb::after { content: ''; position: absolute; inset: -8px -4px 0; }
   /* Vorn auf dem Wiesenstreifen: näher am Betrachter, also vor Pika, Gras und Heu (unter Regen, Statusleiste, Futterknopf) */
-  .hb.hb-fr, .hb-bar { z-index: 4; }
+  .hb.hb-fr, .hb-bar { z-index: var(--z-front); }
   .hb.hb-bye { opacity: 0; pointer-events: none; }
-  .hb-i { transform-origin: 50% 100%; }
+  /* Der Tageszeit-Filter liegt nur auf der Grafik: Das rote Ausrufezeichen (.hb-a) bleibt auch nachts rot */
+  .hb-i { transform-origin: 50% 100%; transition: filter 2.5s; }
   .hb svg { display: block; width: 100%; height: auto; overflow: visible; }
-  .day.overcast .hb, .day.overcast .hb-carry, .day.overcast .hb-stick, .day.overcast .hb-dipw { filter: brightness(.9) saturate(.8); }
-  .dusk .hb, .dusk .hb-carry, .dusk .hb-stick, .dusk .hb-dipw { filter: brightness(.85) saturate(.85); }
-  .night .hb, .night .hb-carry, .night .hb-stick, .night .hb-dipw { filter: brightness(.5) saturate(.6); }
+  .day.overcast .hb-i, .day.overcast .hb-carry, .day.overcast .hb-stick, .day.overcast .hb-dipw { filter: brightness(.9) saturate(.8); }
+  .dusk .hb-i, .dusk .hb-carry, .dusk .hb-stick, .dusk .hb-dipw { filter: brightness(.85) saturate(.85); }
+  .night .hb-i, .night .hb-carry, .night .hb-stick, .night .hb-dipw { filter: brightness(.5) saturate(.6); }
   /* Fertig: hüpft alle paar Sekunden kurz (Aufmerksamkeit), Antippen durch den Pika wackelt. Einblenden und
      Antippen haben Vorrang (die Regel greift dann nicht), im Schlaf und nachts ruht es. */
   .hb.hb-done:not(.hb-live):not(.hb-boop):not(.hb-in):not(.hb-still) .hb-i { animation: hb-nudge 4s ease-in-out infinite; }
@@ -2317,11 +2391,11 @@
   @keyframes hb-twk { 0%, 100% { transform: scale(0); opacity: 0; } 40% { transform: scale(1) rotate(35deg); opacity: 1; } 70% { transform: scale(.25); opacity: .3; } }
   .hb-plates > g { transition: opacity .6s; }
 
-  /* Ebenen vor dem Pika: Werkzeug und Getragenes (z 4), Fähnchen über Statusleiste und Futterknopf (z 6).
+  /* Ebenen vor dem Pika: Werkzeug und Getragenes, Fähnchen über Statusleiste und Futterknopf.
      Der Fortschrittsbalken liegt wie sein Requisit: hinten unter dem Pika (über dem Gras), vorn davor. */
   .hb-f, .hb-t, .hb-bars { position: absolute; inset: 0; pointer-events: none; }
-  .hb-f { z-index: 4; }
-  .hb-t { z-index: 6; }
+  .hb-f { z-index: var(--z-front); }
+  .hb-t { z-index: var(--z-tag); }
   .hb-bar {
     position: absolute; left: 0; top: 0; height: clamp(3px, calc(var(--H) * .018), 6px); border-radius: 99px; pointer-events: none;
     background: rgba(255, 255, 255, .78); box-shadow: 0 0 0 1px rgba(90, 64, 48, .4); overflow: hidden;
@@ -3038,7 +3112,7 @@
     border-radius: 50%; background: #8e9196; box-shadow: inset -1px -1px 0 rgba(0, 0, 0, .25); }
 
   /* Päckchen am Boden, Auspacken */
-  .gpar { position: absolute; width: calc(var(--H) * .09); margin-left: calc(var(--H) * -.045); bottom: calc(var(--H) - var(--gy) - 3px); transform-origin: 50% 100%; }
+  .gpar { position: absolute; width: calc(var(--H) * .09); margin-left: calc(var(--H) * -.045); bottom: calc(var(--gb) - 3px); transform-origin: 50% 100%; }
   .gpar .gp-bow, .gpar .gp-lid { transform-box: fill-box; transform-origin: 50% 100%; }
   .gpar .gp-bow.off { animation: gbowoff .6s ease-out forwards; }
   .gpar .gp-lid.off { animation: glidoff .7s ease-out forwards; }
@@ -3057,19 +3131,20 @@
 
   /* Schätze in der Szene */
   .gt { position: absolute; }
+  .held { position: absolute; inset: 0; pointer-events: none; z-index: var(--z-stage); }
   .gt.new { animation: grow .7s cubic-bezier(.3, 1.6, .5, 1); transform-origin: 50% 100%; }
-  .gt-wheel { width: calc(var(--H) * .14); bottom: calc(var(--H) - var(--gy) - 2px); margin-left: calc(var(--H) * -.07); }
+  .gt-wheel { width: calc(var(--H) * .14); bottom: calc(var(--gb) - 2px); margin-left: calc(var(--H) * -.07); }
   .gt-wheel .gwhl { transform-box: view-box; transform-origin: 12px 12px; animation: gspin var(--gws, 3s) linear infinite; }
   .wind-w .gt-wheel .gwhl { animation-direction: reverse; }
   @keyframes gspin { to { transform: rotate(360deg); } }
   .gt-bell { width: calc(var(--H) * .05); margin-left: calc(var(--H) * -.025); transform-origin: 50% 8%; }
   .gt-bell.ring { animation: gring .22s ease-in-out 7 alternate; }
   @keyframes gring { from { transform: rotate(-18deg); } to { transform: rotate(18deg); } }
-  .gt-yarn { width: calc(var(--H) * .075); margin-left: calc(var(--H) * -.0375); bottom: calc(var(--H) - var(--gy) - 3px); }
+  .gt-yarn { width: calc(var(--H) * .075); margin-left: calc(var(--H) * -.0375); bottom: calc(var(--gb) - 3px); }
   .gt-yarn svg { transition: transform 1.2s ease-out; }
-  .gt-can { width: calc(var(--H) * .085); margin-left: calc(var(--H) * -.0425); bottom: calc(var(--H) - var(--gy) - 3px); transition: opacity .3s; }
+  .gt-can { width: calc(var(--H) * .085); margin-left: calc(var(--H) * -.0425); bottom: calc(var(--gb) - 3px); transition: opacity .3s; }
   .gt-can.away { opacity: 0; }
-  .gt-ham { width: calc(var(--pw) * 1.25); margin-left: calc(var(--pw) * -.625); bottom: calc(var(--H) - var(--gy) - 2px); }
+  .gt-ham { width: calc(var(--pw) * 1.25); margin-left: calc(var(--pw) * -.625); bottom: calc(var(--gb) - 2px); }
   .gt-ham .gnet { transform-box: view-box; transform-origin: 30px 3px; }
   .gt-ham.sway .gnet { animation: gham 2.8s ease-in-out infinite alternate; }
   @keyframes gham { from { transform: rotate(-2.5deg); } to { transform: rotate(2.5deg); } }
@@ -3129,7 +3204,7 @@
 
   /* Knopf (links neben dem Futterknopf, oben rechts) mit Fortschrittsring, Album */
   .gbtn {
-    position: absolute; right: 52px; top: 6px; z-index: 5; width: 36px; height: 36px; padding: 0;
+    position: absolute; right: 52px; top: 6px; z-index: var(--z-ui); width: 36px; height: 36px; padding: 0;
     border: none; border-radius: 50%; cursor: pointer; background: rgba(255, 255, 255, .75); -webkit-touch-callout: none;
     box-shadow: 0 2px 6px rgba(0, 0, 0, .18); transition: transform .15s, background 2.5s; user-select: none;
   }
@@ -3499,7 +3574,7 @@
     box-shadow: 0 0 0 1.5px rgba(255, 255, 255, .9);
   }
   .tbbtn {
-    position: absolute; left: 8px; top: 6px; z-index: 5; width: 32px; height: 32px; padding: 6px; border: none; border-radius: 50%;
+    position: absolute; left: 8px; top: 6px; z-index: var(--z-ui); width: 32px; height: 32px; padding: 6px; border: none; border-radius: 50%;
     cursor: pointer; background: rgba(255, 255, 255, .75); box-shadow: 0 2px 6px rgba(0, 0, 0, .18); transition: transform .15s, background 2.5s;
   }
   .tbbtn[hidden] { display: none; }
@@ -3522,6 +3597,19 @@
     font-family: var(--ha-font-family-body, var(--paper-font-body1_-_font-family, system-ui, sans-serif));
     --h1: #a9d68f; --h2: #86c46b; --h3: #7ab960;
     --h0: #b4dcc2; /* ferne Hügelkette (depth): --h1 halb mit dem Himmel auf ihrer Höhe gemischt, deckend */
+    /* Ebenen der Szene von hinten nach vorn, für alle Stilblöcke (STYLE, STYLE_FEST, STYLE_FRIEND, STYLE_BOTE,
+       STYLE_GIFT, STYLE_DIARY_BTN). Bei gleichem Wert entscheidet die Reihenfolge im DOM (siehe _build). Was keine
+       Ebene nennt (Himmel, Hügel, Bau, Blumen, Futter, Schätze, Besucher, Geräte hinten), liegt in DOM-Reihenfolge
+       darunter. Zahlen ohne Variable gelten nur innerhalb ihres Elternteils. */
+    --z-back: 1;  /* Deko am Bau; der Pika auf der hinteren Spur */
+    --z-mid: 2;   /* Vögel, Pika im Bau; hintere Spur: Blumen, Futter, Schätze und Mäuse vor ihm */
+    --z-stage: 3; /* Pino, Pika, Plüsch-Pino im Arm, Heu, Festdeko vorn, Gras, Häufchen */
+    --z-front: 4; /* Geräte vorn am Rand mit Balken, Werkzeug und Getragenem */
+    --z-wx: 5;    /* Regen, Schnee, Nebel, Blitz */
+    --z-talk: 6;  /* Sprech- und Denkblasen, zzz, Zeichen über dem Kopf; Tippflächen der Flugzeuge */
+    --z-ui: 7;    /* Statusleiste und Knöpfe */
+    --z-fx: 8;    /* Kurzlebiges: Herzchen, Funken, Noten, Staub, Geschenk */
+    --z-tag: 9;   /* Fähnchen von Flugzeugen und Geräten: die gefragte Auskunft liegt über allem */
   }
   .scene.dusk { --h1: #8fa98a; --h2: #6e9562; --h3: #648c58; --h0: #b4a09e; }
   .scene.night { --h1: #2c4547; --h2: #26433a; --h3: #223d34; --h0: #273a52; }
@@ -3624,17 +3712,17 @@
   .pika .br { transition: filter 1s; }
   .day:not(.overcast) .pika.lane1 .br { filter: saturate(.85) brightness(1.05); }
   /* Hintere Spur (.hinten an der Szene, wechselt auf halbem Weg): Blumen, Futter, Geschenke und Mäuse vorn
-     liegen im DOM vor dem Pika und ohne z-index, sonst stünde er vor ihnen. Darum der Pika unter sie,
-     über Bau, Stein und Festdeko am Bau (z 1, im DOM davor), unter Vögeln (z 2), Pino, Heu und Gras (z 3). */
-  .hinten .pika { z-index: 1; }
-  .hinten .flowers, .hinten .foods, .hinten .gifts, .hinten .mice-f { z-index: 2; }
+     liegen im DOM vor dem Pika und ohne Ebene, sonst stünde er vor ihnen. Darum der Pika unter sie,
+     über Bau, Stein und Festdeko am Bau (gleiche Ebene, im DOM davor), unter Vögeln, Pino, Heu und Gras. */
+  .hinten .pika { z-index: var(--z-back); }
+  .hinten .flowers, .hinten .foods, .hinten .gifts, .hinten .mice-f { z-index: var(--z-mid); }
   /* Die Ebenen füllen die ganze Szene: Tipps zum Pika durchlassen (Antippbares darin setzt selbst auto) */
   .hinten .flowers, .hinten .foods { pointer-events: none; }
   @media (prefers-reduced-motion: reduce) { .tiefe .hills *, .tiefe .clouds { transition: none !important; } }
 
   .land, .flowers, .foods, .birds, .mice, .mice-f { position: absolute; inset: 0; transition: filter 2.5s, opacity 2s; }
   .birds, .mice, .mice-f { pointer-events: none; }
-  .birds { z-index: 2; } /* über der Festdeko am Bau (.fon, z 1), hinter Pika, Pino, Heu und Gras (z 3) */
+  .birds { z-index: var(--z-mid); } /* über der Festdeko am Bau (.fon), hinter Pika, Pino, Heu und Gras */
   .day.overcast .land, .day.overcast .flowers, .day.overcast .hills, .day.overcast .fore,
   .day.overcast .birds, .day.overcast .mice, .day.overcast .mice-f { filter: brightness(.9) saturate(.8); }
   .dusk .land, .dusk .flowers, .dusk .foods, .dusk .fore, .dusk .birds, .dusk .mice, .dusk .mice-f { filter: brightness(.85) saturate(.85); }
@@ -3715,7 +3803,7 @@
      steht, sinkt ein paar Pixel ein und verschwindet unten im Gras. */
   .grass {
     position: absolute; left: 0; right: 0; top: calc(var(--gy) - var(--H) * .045); bottom: 0;
-    pointer-events: none; z-index: 3; transition: filter 2.5s;
+    pointer-events: none; z-index: var(--z-stage); transition: filter 2.5s;
   }
   .grass svg { display: block; width: 100%; height: calc(var(--H) * .06); }
   .grass::after {
@@ -3726,9 +3814,9 @@
   .grass .soil { fill: var(--h2); transition: fill 2.5s; }
   .day.overcast .grass { filter: brightness(.9) saturate(.8); }
   /* Heuhaufen vor dem Pika, damit man sieht, wie er Blüten hineinlegt */
-  .fore { position: absolute; inset: 0; pointer-events: none; z-index: 3; transition: filter 2.5s; }
+  .fore { position: absolute; inset: 0; pointer-events: none; z-index: var(--z-stage); transition: filter 2.5s; }
   .hay {
-    position: absolute; left: var(--hl); width: var(--hw); bottom: calc(var(--H) - var(--gy) - 4px);
+    position: absolute; left: var(--hl); width: var(--hw); bottom: calc(var(--gb) - 4px);
     transform-origin: 50% 100%; transform: scale(var(--hs, .6)); transition: transform .5s cubic-bezier(.3, 1.6, .5, 1);
   }
   .hay.boing { animation: boing .5s ease-out; }
@@ -3740,7 +3828,7 @@
     35% { transform: scale(calc(var(--hs) * 1.1), calc(var(--hs) * .86)); }
     70% { transform: scale(calc(var(--hs) * .96), calc(var(--hs) * 1.06)); }
   }
-  .toss { position: absolute; width: calc(var(--H) * .04); height: calc(var(--H) * .04); margin: calc(var(--H) * -.02); z-index: 4; }
+  .toss { position: absolute; width: calc(var(--H) * .04); height: calc(var(--H) * .04); margin: calc(var(--H) * -.02); z-index: 1; /* innerhalb von .fx */ }
   .toss svg { display: block; width: 100%; height: 100%; }
   .puff {
     position: absolute; width: calc(var(--H) * .05); height: calc(var(--H) * .035); margin-left: calc(var(--H) * -.025);
@@ -3753,7 +3841,7 @@
     to { transform: translate(var(--px), calc(var(--H) * -.03)) scale(1.3); opacity: 0; }
   }
   .flower {
-    position: absolute; left: calc(var(--xf) * var(--W) - var(--fw) / 2); bottom: calc(var(--H) - var(--gy) - 5px);
+    position: absolute; left: calc(var(--xf) * var(--W) - var(--fw) / 2); bottom: calc(var(--gb) - 5px);
     width: var(--fw); transform-origin: 50% 100%; animation: sway 3.6s ease-in-out infinite alternate;
   }
   .flower.grow { animation: grow 1.4s ease-out, sway 3.6s 1.4s ease-in-out infinite alternate; }
@@ -3765,7 +3853,7 @@
   @keyframes sway-wind { from { transform: rotate(var(--sw1, -2deg)); } to { transform: rotate(var(--sw2, 14deg)); } }
 
   /* Regen, Schnee, Nebel, Blitz */
-  .precip { position: absolute; inset: -10% -25%; pointer-events: none; z-index: 4; transform: skewX(var(--slant, 0deg)); }
+  .precip { position: absolute; inset: -10% -25%; pointer-events: none; z-index: var(--z-wx); transform: skewX(var(--slant, 0deg)); }
   /* Tropfen und Flocken fallen nicht einzeln, sondern in drei Ebenen (fern, mitte, nah) mit eigenem Tempo.
      Jede Ebene ist doppelt so hoch wie der Niederschlagsbereich und enthält ihr Muster zweimal übereinander.
      Sie rutscht genau eine Höhe nach unten und beginnt von vorn: nahtlos, ohne Wiederholung im Bild, und statt
@@ -3780,7 +3868,7 @@
     background: linear-gradient(rgba(255, 255, 255, 0), rgba(215, 232, 255, .85));
   }
   .precip .s { border-radius: 50%; background: #fff; }
-  .fog { position: absolute; inset: 0; pointer-events: none; z-index: 4; opacity: 0; transition: opacity 3s; }
+  .fog { position: absolute; inset: 0; pointer-events: none; z-index: var(--z-wx); opacity: 0; transition: opacity 3s; }
   .foggy .fog { opacity: 1; }
   .fog i {
     position: absolute; left: -50%; width: 200%; height: 50%;
@@ -3791,13 +3879,13 @@
   .fog i:nth-child(2) { top: 55%; animation-duration: 55s; animation-delay: -20s; }
   .night .fog i { background: radial-gradient(closest-side, rgba(120, 132, 155, .55), rgba(120, 132, 155, 0)); }
   @keyframes fogdrift { to { transform: translateX(22%); } }
-  .flash { position: absolute; inset: 0; background: #fff; opacity: 0; pointer-events: none; z-index: 4; }
+  .flash { position: absolute; inset: 0; background: #fff; opacity: 0; pointer-events: none; z-index: var(--z-wx); }
   .flash.go { animation: flash .7s; }
   @keyframes flash { 8% { opacity: .75; } 16% { opacity: .1; } 26% { opacity: .55; } }
   @keyframes grow { from { transform: scale(0); } }
   @keyframes picked { to { transform: translateY(-30%) scale(.2); opacity: 0; } }
   .food {
-    position: absolute; left: calc(var(--xf) * var(--W) - var(--dw) / 2); bottom: calc(var(--H) - var(--gy) - 6px);
+    position: absolute; left: calc(var(--xf) * var(--W) - var(--dw) / 2); bottom: calc(var(--gb) - 6px);
     width: var(--dw); transform-origin: 50% 100%;
   }
   .food.drop { animation: drop .8s cubic-bezier(.45, 0, .7, 1) both; }
@@ -3825,7 +3913,7 @@
   /* ---- Pika ---- */
   .pika {
     position: absolute; left: 0; top: calc(var(--gy) - var(--ph) * .945); width: var(--pw); height: var(--ph);
-    z-index: 3; cursor: pointer; will-change: transform; touch-action: pan-y; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none;
+    z-index: var(--z-stage); cursor: pointer; will-change: transform; touch-action: pan-y; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none;
     transform-origin: 50% 94.5%; /* Füße: auf dem Stein ist er etwas kleiner (weiter hinten) */
   }
   .shadow {
@@ -3842,8 +3930,8 @@
     transform: translate(calc(var(--hc) - var(--hh) * var(--hd)), var(--dy)) scale(var(--ds));
   }
   .inside .shadow { opacity: 0; }
-  /* Im Bau liegt er hinter Pino (z 3), der draußen vor dem Eingang vorbeihoppelt; Vögel (z 2) stehen im DOM davor */
-  .pika.inside { z-index: 2; }
+  /* Im Bau liegt er hinter Pino, der draußen vor dem Eingang vorbeihoppelt; Vögel (gleiche Ebene) stehen im DOM davor */
+  .pika.inside { z-index: var(--z-mid); }
   /* In der Luft schrumpft und verblasst der Schatten, im Takt von hop, hops, hopb, jump und binky (--shs, --sho = am Scheitel) */
   .walking .shadow { --shs: .86; --sho: .66; animation: sh-hop .36s linear infinite; }
   .walking.trip .shadow { --shs: .93; --sho: .84; animation: sh-trip .24s linear infinite; }
@@ -4147,7 +4235,7 @@
   .hic .hop { animation: hic .34s ease-out; }
   @keyframes hic { 30% { transform: translateY(-6%) scale(.95, 1.06); } }
   .nodding .hd { transform: translateY(3px) rotate(13deg); transition: transform 1.8s ease-in; }
-  .nodding .zzz { display: block; }
+  .pika.nodding ~ .psay .zzz { display: block; }
   .presneeze .hd { transform: rotate(-11deg) translateY(-1px); transition: transform .5s; }
   .sneezing .hop { animation: sneeze .45s ease-out; }
   @keyframes sneeze { 20% { transform: rotate(9deg) scale(1.06, .92); } 55% { transform: rotate(-2deg); } }
@@ -4240,7 +4328,7 @@
   .doze .face { animation: none; transform: translate(1px, 4px); }
   .doze .eye { display: none; }
   .doze .seye { display: inline; }
-  .doze .zzz { display: block; }
+  .pika.doze ~ .psay .zzz { display: block; }
   .doze .book { transform-box: fill-box; transform-origin: 50% 100%; transform: translateY(3px) rotate(5deg); transition: transform 1.5s; }
   .gaming .face { transform: translate(1.5px, 2.2px); }
   .gaming .th1 { animation: tap .22s ease-in-out infinite alternate; }
@@ -4269,11 +4357,18 @@
   .tv .bk { display: inline; }
   .tv .bk .rim { animation: tvflk 1.3s linear infinite; }
 
+  /* Sprech-Ebene: Blasen, zzz und Zeichen über dem Kopf hängen nicht am Pika selbst (seine Ebene liegt unter Regen
+     und Nebel), sondern an einer Hülle gleicher Lage über dem Wetter. _setX gibt ihr dieselbe Bewegung; die Zustände
+     (left, inside, sleeping …) liest das CSS vom Pika, der im DOM davor steht (.pika.x ~ .psay). Pino: .frsay. */
+  .psay {
+    position: absolute; left: 0; top: calc(var(--gy) - var(--ph) * .945); width: var(--pw); height: var(--ph);
+    z-index: var(--z-talk); pointer-events: none; will-change: transform; transform-origin: 50% 94.5%;
+  }
   .anchor { position: absolute; left: 75%; top: 20%; width: 0; height: 0; }
-  .left .anchor { left: 25%; }
-  .inside .anchor { left: var(--ax); top: var(--ay); }
+  .left .anchor, .pika.left ~ .psay .anchor { left: 25%; }
+  .pika.inside ~ .psay .anchor { left: var(--ax); top: var(--ay); }
   .zzz { display: none; }
-  .sleeping .zzz { display: block; }
+  .pika.sleeping ~ .psay .zzz { display: block; }
   .zzz span {
     position: absolute; left: 0; bottom: 0; font-weight: 800; color: #fff; opacity: 0;
     font-size: calc(var(--ph) * .17); text-shadow: 0 1px 3px rgba(0, 0, 0, .45);
@@ -4307,12 +4402,14 @@
   .think::before { width: 8px; height: 8px; left: clamp(2px, calc(28% - var(--bx, 0px)), calc(100% - 10px)); bottom: -8px; }
   .think::after { width: 4px; height: 4px; left: clamp(2px, calc(22% - var(--bx, 0px)), calc(100% - 6px)); bottom: -14px; }
   /* Im Bau steht die Blase rechts neben dem Eingang (Anker --ax), damit das Schild darüber frei bleibt */
-  .inside .bubble { --bf: 6%; }
-  .inside .say::after { left: clamp(6px, calc(6% - var(--bx, 0px)), calc(100% - 16px)); }
-  .inside .think::before { left: clamp(2px, calc(8% - var(--bx, 0px)), calc(100% - 10px)); }
-  .inside .think::after { left: clamp(2px, calc(2% - var(--bx, 0px)), calc(100% - 6px)); }
+  .pika.inside ~ .psay .bubble { --bf: 6%; }
+  .pika.inside ~ .psay .say::after { left: clamp(6px, calc(6% - var(--bx, 0px)), calc(100% - 16px)); }
+  .pika.inside ~ .psay .think::before { left: clamp(2px, calc(8% - var(--bx, 0px)), calc(100% - 10px)); }
+  .pika.inside ~ .psay .think::after { left: clamp(2px, calc(2% - var(--bx, 0px)), calc(100% - 6px)); }
 
-  .fx { position: absolute; inset: 0; pointer-events: none; z-index: 4; }
+  /* Über Statusleiste und Knöpfen: Herzchen vom Stein steigen sonst darunter weg. Nichts darin fängt Tipps ab
+     (nur das Geschenk im Gras). */
+  .fx { position: absolute; inset: 0; pointer-events: none; z-index: var(--z-fx); }
   /* Ansagen für Bildschirmleser (nur Begrüßung, Wiedersehen, Geschenk, Hunger) */
   .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
   .pika:focus { outline: none; }
@@ -4329,13 +4426,26 @@
   }
 
   .stats {
-    position: absolute; left: 10px; top: 10px; z-index: 5; display: flex; align-items: center; gap: 10px;
+    position: absolute; left: 10px; top: 10px; z-index: var(--z-ui); display: flex; align-items: center; gap: 10px;
     padding: 4px 10px; border-radius: 999px; font-size: 13px; font-weight: 700;
-    background: rgba(255, 255, 255, .6); color: #4a3a2c; backdrop-filter: blur(4px);
+    /* Nie unter den Futterknopf (rechts 8 + 36 px, dazu 8 px Abstand): Der Name gibt nach und endet mit … */
+    max-width: calc(100% - 62px); box-sizing: border-box;
+    /* Ohne Weichzeichner: Dahinter ziehen ständig Wolken und Regen, das Tablet müsste jedes Bild neu rechnen */
+    background: rgba(255, 255, 255, .78); color: #4a3a2c;
     transition: background 2.5s, color 2.5s;
   }
   .stats[hidden] { display: none; }
-  .night .stats { background: rgba(15, 22, 45, .55); color: #e8e6f5; }
+  .night .stats { background: rgba(15, 22, 45, .7); color: #e8e6f5; }
+  .nm { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .st, .stats .tb { flex: none; }
+  /* Kompaktstufen auf schmalen Karten (_btnFit): erst kürzere Balken und engere Abstände, dann ohne Namen */
+  .slim .stats { gap: 7px; padding: 4px 8px; }
+  .slim .st i { width: 24px; }
+  .tiny .nm { display: none; }
+  /* Tippziele mindestens 44 px: unsichtbarer Rand um Leiste und Knöpfe */
+  .stats.dia::after { content: ''; position: absolute; inset: -10px 0; }
+  .feed::after, .gbtn::after { content: ''; position: absolute; inset: -4px; }
+  .tbbtn::after { content: ''; position: absolute; inset: -6px; }
   .st { display: flex; align-items: center; gap: 4px; }
   .st svg { width: 14px; height: 14px; }
   .st i { display: block; width: 34px; height: 6px; border-radius: 3px; background: rgba(0, 0, 0, .14); overflow: hidden; }
@@ -4348,7 +4458,7 @@
   /* Futter- und Päckchen-Knopf oben rechts nebeneinander (unten rechts verdeckten sie Pika, Pino und Wiese). Ist die
      Karte so schmal, dass sie an die Statusleiste stoßen, stehen sie untereinander (.btncol). */
   .feed {
-    position: absolute; right: 8px; top: 6px; z-index: 5; width: 36px; height: 36px; padding: 5px;
+    position: absolute; right: 8px; top: 6px; z-index: var(--z-ui); width: 36px; height: 36px; padding: 5px;
     border: none; border-radius: 50%; cursor: pointer; background: rgba(255, 255, 255, .75);
     box-shadow: 0 2px 6px rgba(0, 0, 0, .18); transition: transform .15s, background 2.5s;
   }
@@ -4356,7 +4466,7 @@
   .feed svg { display: block; width: 100%; height: 100%; }
   .night .feed { background: rgba(15, 22, 45, .55); }
   .feed.no { animation: no .4s; }
-  .btncol .gbtn { right: 8px; top: 48px; }
+  .btncol .gbtn { right: 8px; top: 50px; }
   @keyframes no { 25% { transform: translateX(-4px); } 75% { transform: translateX(4px); } }
   .bar-c { background: #5fb9de; }
 
@@ -4481,12 +4591,12 @@
   @keyframes squeak { 0% { opacity: 0; scale: .4; } 15% { opacity: 1; scale: 1; } 75% { opacity: 1; } 100% { opacity: 0; translate: 0 -6px; } }
 
   /* Häufchen liegen vorn auf dem Boden (vor dem Gras). Die Tippfläche ist größer als die Köttelchen. */
-  .poops { position: absolute; inset: 0; z-index: 3; pointer-events: none; transition: filter 2.5s; }
+  .poops { position: absolute; inset: 0; z-index: var(--z-stage); pointer-events: none; transition: filter 2.5s; }
   .day.overcast .poops { filter: brightness(.9) saturate(.8); }
   .dusk .poops { filter: brightness(.85) saturate(.85); }
   .night .poops { filter: brightness(.55) saturate(.6); }
   .poo {
-    position: absolute; left: calc(var(--px) - 22px); bottom: calc(var(--H) - var(--gy) - var(--H) * .022 - 10px);
+    position: absolute; left: calc(var(--px) - 22px); bottom: calc(var(--gb) - var(--H) * .022 - 10px);
     width: 44px; padding: 14px 0 10px; display: flex; justify-content: center;
     pointer-events: auto; cursor: pointer;
   }
@@ -4553,10 +4663,11 @@
 
   /* Flugzeuge: Position und Größe setzt das Skript jede Sekunde (gleitet 1 s linear). Sie fliegen hinter den
      Hügeln, die Fähnchen liegen in einer eigenen Ebene darüber und sind antippbar. */
-  .planes, .ptags { position: absolute; inset: 0; pointer-events: none; }
-  .ptags { z-index: 4; }
-  /* Offenes Fähnchen ist die wichtigste Info: dann liegt die Ebene vor Statusleiste und Futterknopf */
-  .ptags.top { z-index: 6; }
+  .planes, .ptags, .phits { position: absolute; inset: 0; pointer-events: none; }
+  /* Ein offenes Fähnchen ist die gefragte Auskunft: Es liegt vor Statusleiste und Knöpfen. Geschlossene sind
+     unsichtbar und fangen keine Tipps. Die Tippflächen liegen in einer eigenen Ebene unter den Knöpfen. */
+  .ptags { z-index: var(--z-tag); }
+  .phits { z-index: var(--z-talk); }
   /* Übergänge 5 s = PLANE_STEP; Randausblendung (--pa) auf .pl-f, damit sie mitgleitet statt zu springen */
   .plane { position: absolute; left: 0; top: 0; opacity: 0; transition: transform 5s linear, opacity 2s; will-change: transform; }
   .plane.on { opacity: 1; }
@@ -4922,7 +5033,9 @@
     }
 
     getGridOptions() {
-      return { columns: 12, rows: 4, min_rows: 3, min_columns: 6 };
+      // Mindestens 9 von 12 Spalten: Auf dem Handy (ein Abschnitt, etwa 340–400 px) sind das gut 250 px, darunter
+      // passen Statusleiste und Szene nicht mehr (6 Spalten wären dort nur rund 170 px).
+      return { columns: 12, rows: 4, min_rows: 3, min_columns: 9 };
     }
 
     connectedCallback() {
@@ -5069,6 +5182,9 @@
                 <div class="shadow"></div>
                 <div class="depth"><div class="flip"><div class="jump"><div class="hop"><div class="br">${PIKA_SVG}</div></div></div></div></div>
               </div>
+            </div>
+            <div class="held"></div>
+            <div class="psay">
               <div class="anchor">
                 <div class="zzz"><span>z</span><span>z</span><span>Z</span></div>
                 <div class="bubble say"></div>
@@ -5082,6 +5198,7 @@
             <div class="precip"></div>
             <div class="fog"><i></i><i></i></div>
             <div class="flash"></div>
+            <div class="phits"></div>
             <div class="ptags"></div>
             <div class="fx"></div>
             <div class="stats">
@@ -5105,7 +5222,7 @@
         scene: $('.scene'), pika: $('.pika'), jump: $('.jump'), shadow: $('.pika .shadow'), mfood: $('.mfood'),
         flowers: $('.flowers'), foods: $('.foods'), fx: $('.fx'), hay: $('.hay'),
         stats: $('.stats'), name: $('.nm'), barS: $('.bar-s'), barG: $('.bar-g'),
-        birds: $('.birds'), mice: $('.mice'), miceF: $('.mice-f'), planes: $('.planes'), ptags: $('.ptags'),
+        birds: $('.birds'), mice: $('.mice'), miceF: $('.mice-f'), planes: $('.planes'), ptags: $('.ptags'), phits: $('.phits'),
         tvl: $('.tvl'), kites: $('.kites'), bflip: $('.bflip'),
         stS: $('.st-s'), stG: $('.st-g'), barC: $('.bar-c'), stC: $('.st-c'), poops: $('.poops'), feed: $('.feed'), say: $('.say'), think: $('.think'),
         sun: $('.sun'), moon: $('.moon'), moonLit: $('.moon-lit'), clouds: [...this.shadowRoot.querySelectorAll('.cloud')],
@@ -5114,7 +5231,9 @@
         meteors: $('.meteors'), ff: $('.ff'), festB: $('.fest-b'), festF: $('.fest-f'), props: $('.props'), friends: $('.friends'),
         acts: $('.acts'), gifts: $('.gifts'), gbtn: $('.gbtn'), tbbtn: $('.tbbtn'),
       };
-      this._el.anchor = this._el.pika.querySelector('.anchor');
+      this._el.psay = $('.psay');
+      this._el.held = $('.held');
+      this._el.anchor = this._el.psay.querySelector('.anchor');
       this._el.sr = this.shadowRoot.querySelector('.sr');
       // Tastatur: Enter oder Leertaste streichelt (ohne Stelle: Rücken)
       this._el.pika.addEventListener('keydown', (e) => {
@@ -5198,7 +5317,15 @@
     // Futter- und Päckchen-Knopf oben rechts nebeneinander (Päckchen-Knopf links, 36 px, 8 px Abstand). Stoßen sie an
     // die Statusleiste (schmale Karte, langer Name), stehen sie untereinander.
     _btnFit() {
-      const { scene, stats, tbbtn } = this._el;
+      const { scene, stats, tbbtn, name } = this._el;
+      // Statusleiste: Passt der Name nicht ganz hinein, erst die kompakte Stufe; bleibt dann kaum etwas von ihm übrig
+      // (unter etwa drei Buchstaben), ganz ohne Namen
+      const cl = scene.classList;
+      cl.remove('slim', 'tiny');
+      if (!stats.hidden) {
+        if (name.scrollWidth > name.clientWidth) cl.add('slim');
+        if (name.scrollWidth > name.clientWidth && name.clientWidth < 26) cl.add('tiny');
+      }
       const left = stats.hidden ? tbbtn : stats;
       const sR = left.hidden ? 0 : left.offsetLeft + left.offsetWidth;
       scene.classList.toggle('btncol', sR + 8 > scene.clientWidth - 88);
@@ -5206,20 +5333,24 @@
 
     _layout() {
       const W = this._el.scene.clientWidth;
-      const H = this._el.scene.clientHeight;
-      if (!W || !H) return;
+      const Hs = this._el.scene.clientHeight;
+      if (!W || !Hs) return;
       const first = !this._g;
       // Gleiche Größe (z. B. der erste Aufruf des ResizeObservers gleich nach _attach): nichts zu tun
-      if (!first && W === this._W && H === this._H) return;
+      if (!first && W === this._W && Hs === this._Hs) return;
+      // H ist die Größeneinheit (this._H, --H), nicht immer die Höhe der Karte (this._Hs): siehe sceneUnit. Was am
+      // Boden steht, rechnet von gy aus; nur der Himmel (Flugzeuge, Sternschnuppen, Raketen) nimmt die echte Höhe.
+      const H = sceneUnit(W, Hs);
       // Beim Laufen ist this._x schon das Ziel: echte Stelle merken (noch mit der alten Pika-Breite)
       const liveX = !first && !this._inside && !(this._lift > 0) && this._el.pika.classList.contains('walking') ? this._liveX() : null;
       const ratio = first ? 1 : W / this._W;
       this._W = W;
       this._H = H;
+      this._Hs = Hs;
       this._btnFit();
       const pH = clamp(H * 0.4, 48, 170);
       const pW = pH * 1.2;
-      const gy = H * 0.9;
+      const gy = Hs - H * 0.1;
       // Bau: viewBox-Einheit u, Boden der Grafik liegt auf gy
       const A = this._areal();
       const bW = H * A.w;
@@ -5283,7 +5414,8 @@
       ts.width = `${tw}px`;
       ts.height = `${hole.lip - hole.top}px`;
       ts.borderRadius = `${tw / 2}px ${tw / 2}px 0 0`;
-      const vars = { W, H, pw: pW, ph: pH, gy, hw: hW, hl: hL, fw: H * 0.085, dw: H * 0.13 };
+      // --gb: Abstand der Bodenlinie vom unteren Rand (für alles, was mit bottom am Boden steht)
+      const vars = { W, H, pw: pW, ph: pH, gy, gb: Hs - gy, hw: hW, hl: hL, fw: H * 0.085, dw: H * 0.13 };
       for (const [k, v] of Object.entries(vars)) this._el.scene.style.setProperty(`--${k}`, `${v}px`);
 
       if (first) {
@@ -5914,8 +6046,10 @@
       s.setProperty('--dy', px(hole.lip + pH * ds * (1 - v) - (top + pH)));
       s.setProperty('--hc', px(hole.cx - this._x));
       s.setProperty('--hh', px(0.22 * pW * ds));
-      s.setProperty('--ax', px(hole.r - L + hw * 0.02)); // Sprechblase rechts neben dem Eingang
-      s.setProperty('--ay', px(hole.top - top + pH * 0.02));
+      // Sprechblase rechts neben dem Eingang (die Blasen hängen an der Sprech-Ebene)
+      const ts = this._el.psay.style;
+      ts.setProperty('--ax', px(hole.r - L + hw * 0.02));
+      ts.setProperty('--ay', px(hole.top - top + pH * 0.02));
       p.classList.add('inside');
       this._bubbleRefit();
     }
@@ -6427,7 +6561,7 @@
       const py = gy - pH * 0.945 + pH * 0.5 - this._lift;
       const K = H * 0.12;
       const kx = clamp(px + kd * W * (0.26 + S.r(2) * 0.12), K, W - K) - px;
-      const ky = H * (0.1 + S.r(3) * 0.07) - py;
+      const ky = this._sy(0.1 + S.r(3) * 0.07) - py;
       const el = document.createElement('div');
       el.className = 'kite';
       el.style.left = `${px.toFixed(1)}px`;
@@ -6668,6 +6802,10 @@
       const s = (this._lift > 0 ? 0.9 : 1) * (ly ? LANE_S : 1);
       p.style.transform = `translate(${(x - this._g.pW / 2).toFixed(1)}px, ${(-this._lift - ly).toFixed(1)}px)`
         + (s !== 1 ? ` scale(${s.toFixed(3)})` : '');
+      // Die Sprech-Ebene läuft mit: gleiche Überblendung (gesetzt in _walkTo, _hopTo oder hier), gleiches Ziel
+      const t = this._el.psay.style;
+      t.transition = p.style.transition;
+      t.transform = p.style.transform;
       p.classList.toggle('lane1', !!ly);
       clearTimeout(this._laneZT);
       this._el.scene.classList.toggle('hinten', !!ly);
@@ -6675,6 +6813,12 @@
       if (this._cfg.depth && this._W) this._el.scene.style.setProperty('--plx', clamp(x / this._W * 2 - 1, -1, 1).toFixed(3));
       if (instant) void p.offsetWidth;
       this._bubbleRefit();
+    }
+
+    // y für den Anteil f der Größeneinheit, gemessen ab der Oberkante der Bühne (die unteren H px der Karte): für
+    // alles in der Luft, das zum Pika gehört (Drachen, Ballon, Funkeln am Himmel). Auf normalen Karten H · f.
+    _sy(f) {
+      return this._Hs - this._H + this._H * f;
     }
 
     // Prototyp Tiefe (depth: true): Höhe der hinteren Spur über der Bodenlinie, sonst 0
@@ -6772,7 +6916,8 @@
       if (!this._g || !el.classList.contains('on')) return;
       const w = el.offsetWidth;
       const ax = cx + (el.parentElement.offsetLeft - w0 / 2) * s;
-      const L = ax - w * (el.closest('.inside') ? 0.06 : 0.35);
+      const inside = el.parentElement === this._el.anchor && this._el.pika.classList.contains('inside');
+      const L = ax - w * (inside ? 0.06 : 0.35);
       // Auf gleicher Höhe wie Futter- oder Päckchen-Knopf: links davon bleiben, sonst verdeckt der Knopf die Blase
       let R = this._W - 4;
       const sr = this._el.scene.getBoundingClientRect();
@@ -8248,7 +8393,7 @@
       }
       if (f.maibaum) {
         // hinter dem Bau, die Krone unterhalb der Statusleiste
-        const top = Math.max(44, H * 0.16);
+        const top = Math.max(44, this._sy(0.16));
         const mh = gy - top;
         const mw = mh / 4;
         const x = bur.l + 80 * bur.u;
@@ -8313,7 +8458,7 @@
         el.addEventListener('click', (e) => (e.stopPropagation(), this._festWobble(el)));
         return { el, x: eggX[i] };
       });
-      // Haus-Bote: Geräte weichen der Deko aus
+      // Haus-Bote: Geräte weichen der Bodendeko aus (boteRow)
       this._boteLayout?.();
     }
 
@@ -8355,7 +8500,7 @@
       const sw = Math.max(1.6, H * 0.012);
       const body = `<path d="M${festF1(x2)} ${festF1(y2 - 3)} V${festF1(rock.top0 + 22 * rock.ku)}" stroke="#8a5a3b" stroke-width="${festF1(sw)}" stroke-linecap="round"/>`
         + `<path d="M${festF1(x1)} ${festF1(y1)} Q${festF1(cx)} ${festF1(cy)} ${festF1(x2)} ${festF1(y2)}" stroke="#7a6a5a" stroke-width="1" fill="none"/>${flags}`;
-      return `<div class="fi fwim" style="left:0;top:0;width:${W}px;height:${H}px">${festSvg([W, H], body, 'b')}</div>`;
+      return `<div class="fi fwim" style="left:0;top:0;width:${W}px;height:${this._Hs}px">${festSvg([W, this._Hs], body, 'b')}</div>`;
     }
 
     _festWobble(el) {
@@ -8372,7 +8517,7 @@
       // Bewegung reduzieren: keine Fledermäuse
       if (!sky || !this._g || calmMotion()) return;
       const W = this._W;
-      const H = this._H;
+      const H = this._Hs; // ganzer Himmel
       const el = document.createElement('div');
       el.className = 'fbat';
       el.innerHTML = FEST_BAT;
@@ -8419,7 +8564,7 @@
       const sky = this._festEls?.sky;
       if (!sky || !this._g || this._away()) return;
       const W = this._W;
-      const H = this._H;
+      const H = this._Hs; // ganzer Himmel
       const x0 = rnd(0.3, 0.92) * W;
       const x1 = clamp(x0 + rnd(-0.06, 0.06) * W, 0.28 * W, 0.95 * W);
       const y0 = H * 0.62;
@@ -8902,6 +9047,17 @@
     }
 
     // pk: feste Entscheidungen aus _critNext (ohne: Zufall, Vorschau-Knöpfe); late: so viele ms nach dem Start
+    // Frosch, Schnecke und Maus sitzen knapp hinter dem Pika, die Bodendeko der Festtage vorn (Kürbis, Stiefel, Kranz,
+    // Kuchen, Geschenk) steht eine Ebene davor. Wo sie anhalten, rücken sie darum neben die Deko statt dahinter.
+    // Ostereier und Raketenstäbe sind klein und liegen überall, der Baum steht hinter ihnen: die zählen nicht.
+    _festClear(x, w, a, b) {
+      const pos = this._festPos || {};
+      const pad = this._H * 0.01;
+      const blocks = ['pumpkin', 'boot', 'wreath', 'cake', 'gift'].filter((n) => pos[n])
+        .map((n) => [pos[n].l - pad, pos[n].l + pos[n].w + pad]);
+      return blocks.length ? clearSpot(x, w, a, b, blocks) : x;
+    }
+
     async _visit(kind, id, force = false, pk = null, late = 0) {
       if (!this._g || this['_' + kind]) return;
       if (!force && !this._critterWeather(kind)) return;
@@ -9158,7 +9314,7 @@
               await run(door);
               layer(true);
               m.out = true;
-              await run(rnd(minX, Math.max(minX, door - mw * 0.7)));
+              await run(this._festClear(rnd(minX, Math.max(minX, door - mw * 0.7)), mw, minX, door));
               this._noticeCritter(m.x, false);
               await lookAround(2);
               if (Math.random() < 0.8) {
@@ -9170,7 +9326,7 @@
               await lookAround(2 + Math.floor(rnd(0, 3)));
               // ein, zwei Stückchen weiter über die Wiese, schnuppern
               for (let n = Math.random() < 0.5 ? 2 : 1; n > 0; n--) {
-                await run(clamp(m.x + rnd(-1, 1) * mw * 2.5, minX, door), 0.8);
+                await run(this._festClear(clamp(m.x + rnd(-1, 1) * mw * 2.5, minX, door), mw, minX, door), 0.8);
                 await lookAround(1 + Math.floor(rnd(0, 3)));
               }
               await run(door);
@@ -9285,7 +9441,9 @@
           await hop(door);
           layer(true);
           f.out = true;
-          await hop(free(maxX - pk.x * Math.min(maxX - minX, this._H * 0.7)));
+          // neue Ziele: neben der Festdeko statt dahinter
+          const spot = (x) => free(this._festClear(x, fw, minX, maxX));
+          await hop(spot(maxX - pk.x * Math.min(maxX - minX, this._H * 0.7)));
           this._noticeCritter(f.x, false);
           const until = Date.now() + Math.max(3000, pk.stay - late);
           // angekommen quakt er gleich, danach, was ihm einfällt
@@ -9305,7 +9463,7 @@
               el.classList.add('zap');
               await step(400);
               el.classList.remove('zap');
-            } else await hop(free(clamp(f.x + rnd(0.8, 2) * fw * pick([-1, 1]), minX, maxX)));
+            } else await hop(spot(clamp(f.x + rnd(0.8, 2) * fw * pick([-1, 1]), minX, maxX)));
             act = weighted([[3, 'croak'], [2, 'turn'], [2, 'hop'], [1.5, 'zap']]);
             gap = rnd(900, 2400);
           }
@@ -9456,7 +9614,7 @@
         layer(true);
         s.out = true;
         this._noticeCritter(s.x, false);
-        await crawl(door - (0.3 + 0.6 * pk.far) * Math.min(door - minX, this._H * 0.7));
+        await crawl(this._festClear(door - (0.3 + 0.6 * pk.far) * Math.min(door - minX, this._H * 0.7), sw, minX, door));
         // Fühler recken und umschauen (später eingestiegen: kürzer)
         await rest(Math.max(1500, rnd(5000, 9000) - late));
         await crawl(door);
@@ -9702,7 +9860,7 @@
       el.innerHTML = '<div class="clipw"><div class="shadow"></div><div class="depth"><div class="flip"><div class="jump">'
         + `<div class="hop"><div class="br">${FRIEND_SVG}</div></div></div></div></div></div>`;
       el.querySelectorAll('.book, .gb, .tab, .kpaw, .bk, .brolly, .cap, .cup, .cfoam, .rope, .band, .arms, .uke, .brush, .wand, .rgrip, .bar, .wpaw, .slg, .gspy, .gcan, .shades').forEach((n) => n.remove());
-      // Sprechblase in eigener Hülle über dem Pika (z 4); sie läuft mit Pino mit (_frSetX, _frFace)
+      // Sprechblase in eigener Hülle in der Sprech-Ebene; sie läuft mit Pino mit (_frSetX, _frFace)
       const sw = document.createElement('div');
       sw.className = 'frsay';
       sw.innerHTML = '<div class="anchor"><div class="bubble say"></div></div>';
@@ -10871,7 +11029,8 @@
     _pileX(p) {
       const { rock, fMin, pW } = this._g;
       if (p.slot != null) return rock.l + rock.w * [0.04, 0.16, -0.08][p.slot];
-      const a = fMin * this._W;
+      // nicht hinter einem Gerät des Haus-Boten (Tippfläche 44 px breit, siehe _boteEdge)
+      const a = Math.max(fMin * this._W, (this._boteRowR || 0) + 26);
       const b = Math.max(a + pW * 0.5, rock.l - rock.w * 0.16);
       return a + (b - a) * p.u;
     }
@@ -10976,7 +11135,7 @@
       sc.className = 'scoop';
       sc.innerHTML = SCOOP_SVG;
       sc.style.left = `${x}px`;
-      sc.style.bottom = `${this._H - this._g.gy - this._H * 0.03}px`;
+      sc.style.bottom = `${this._Hs - this._g.gy - this._H * 0.03}px`;
       this._el.fx.appendChild(sc);
       setTimeout(() => sc.remove(), 900);
       setTimeout(() => this._sparkle(x, this._g.gy - this._H * 0.03, 3), 450);
@@ -11213,7 +11372,7 @@
 
     _layoutSky(first) {
       // neue Größe: neue Orte und Wege (die alten lägen sonst über Statusleiste oder Futterknopf)
-      if (this._ffSize !== `${this._W}x${this._H}`) this._ffPlace();
+      if (this._ffSize !== `${this._W}x${this._Hs}`) this._ffPlace();
     }
 
     _tickSky() {
@@ -11295,14 +11454,14 @@
 
     // Jedem Glühwürmchen einen Ort und einen eigenen Driftweg (vier Punkte, px) geben. Gut die Hälfte schwirrt
     // tief über der Wiese, ein Drittel um den Heuhaufen (--hl, --hw), der Rest etwas höher. Kein Weg führt
-    // über die Statusleiste oder die Knöpfe, durchs Heu oder ins Gras (beide liegen vorn, z 3).
+    // über die Statusleiste oder die Knöpfe, durchs Heu oder ins Gras (beide liegen eine Ebene davor, --z-stage).
     _ffPlace() {
       const g = this._g;
       const flies = this._el.ff.children;
       if (!g || !flies.length) return;
       const W = this._W;
       const H = this._H;
-      this._ffSize = `${W}x${H}`;
+      this._ffSize = `${W}x${this._Hs}`;
       const { gy } = g;
       const hw = g.stash ? g.hW : H * 0.26;
       const hl = g.hay - hw / 2;
@@ -11320,7 +11479,7 @@
       const zone = (i) => {
         const z = i % 3 === 0 ? 'hay' : i % 5 === 4 ? 'high' : 'low';
         if (z === 'hay') return [rnd(hl - hw * 0.4, hl + hw * 1.4), rnd(gy - H * 0.32, gy - H * 0.06)];
-        if (z === 'high') return [rnd(W * 0.12, W * 0.95), rnd(H * 0.3, H * 0.55)];
+        if (z === 'high') return [rnd(W * 0.12, W * 0.95), rnd(this._sy(0.3), this._sy(0.55))];
         return [rnd(W * 0.04, W * 0.96), rnd(gy - H * 0.2, gy - H * 0.06)];
       };
       [...flies].forEach((el, i) => {
@@ -11395,7 +11554,7 @@
     _meteor(bolide = false) {
       if (!this._g) return;
       const W = this._W;
-      const H = this._H;
+      const H = this._Hs; // ganzer Himmel
       const dir = Math.random() < 0.5 ? 1 : -1;
       const tilt = rnd(8, 26);
       const len = Math.min(W * rnd(0.15, 0.35), H * 0.9);
@@ -11563,10 +11722,14 @@
       this._planeLoop();
     }
 
-    // Solange ein Fähnchen offen ist, liegt die Fähnchen-Ebene ganz vorne
-    _tagsTop() {
-      const any = [...this._planes.values()].some((p) => p.tag.classList.contains('open'));
-      this._el.ptags.classList.toggle('top', any);
+    // Was an dieser Stelle unter der Tippfläche eines Flugzeugs antippbar ist: Pika, Pino, Häufchen, Besucher, Geräte,
+    // Ostereier, Knöpfe. Es zählt nur das Oberste, wie bei einem Tipp ohne Flugzeug; null: Himmel oder Wiese.
+    _tapBelow(e) {
+      for (const el of this.shadowRoot.elementsFromPoint(e.clientX, e.clientY)) {
+        if (el.closest('.phits, .ptags')) continue;
+        return el.closest('.pika, .friend, .poo, .hb, .stats, button, [role="button"]');
+      }
+      return null;
     }
 
     _newPlane(id, f) {
@@ -11582,9 +11745,8 @@
       hit.setAttribute('role', 'button');
       const p = { id, kind, f, el, tag, hit, s: el.firstElementChild, size: PLANE_SIZE[kind], fresh: true };
       // Flugzeug antippen: Flugnummer, Ziel, Airline, Typ, Strecke, Höhe und Tempo; nochmal tippen schließt
-      // Die Tippfläche eines tiefen Fliegers liegt über Pika und Häufchen: die haben Vorrang
-      const below = (e) => this.shadowRoot.elementsFromPoint(e.clientX, e.clientY)
-        .find((el) => !el.closest('.ptags') && el.closest('.pika, .poo'))?.closest('.pika, .poo');
+      // Die Tippfläche eines tiefen Fliegers liegt über Pika, Pino, Häufchen, Besuchern und Geräten: die haben Vorrang
+      const below = (e) => this._tapBelow(e);
       const toggle = (e) => {
         e.stopPropagation();
         if (e.currentTarget === hit) {
@@ -11600,13 +11762,9 @@
         const open = !tag.classList.contains('open');
         if (open) {
           this._planeText(p);
-          p.openT = setTimeout(() => {
-            tag.classList.remove('open');
-            this._tagsTop();
-          }, 9000);
+          p.openT = setTimeout(() => tag.classList.remove('open'), 9000);
         }
         tag.classList.toggle('open', open);
-        this._tagsTop();
       };
       hit.addEventListener('click', toggle);
       tag.addEventListener('click', toggle);
@@ -11615,7 +11773,8 @@
       hit.addEventListener('pointermove', (e) => this._pressMove(e));
       for (const t of ['pointerup', 'pointercancel']) hit.addEventListener(t, (e) => this._pressEnd(e));
       this._el.planes.appendChild(el);
-      this._el.ptags.append(hit, tag);
+      this._el.phits.appendChild(hit);
+      this._el.ptags.appendChild(tag);
       this._planes.set(id, p);
       return p;
     }
@@ -11673,6 +11832,7 @@
       const now = Date.now();
       const W = this._W;
       const H = this._H;
+      const Hs = this._Hs; // Flughöhe und Fähnchen am ganzen Himmel, Größen in der Einheit
       const R = Number(this._cfg.flight_radius) || 15;
       const vs = this._viewN() ? -1 : 1;
       const shown = [];
@@ -11691,7 +11851,7 @@
         // Höhe logarithmisch: Anflug knapp über den Hügeln, Reiseflughöhe oben; hinter uns (beim Blick nach
         // Süden nördlich) etwas höher
         const af = clamp(Math.log1p(alt / 1000) / Math.log1p(40), 0, 1);
-        const y = (H * clamp(49 - af * 36 - clamp((vs * n) / R, -1, 1) * 4, 13, 49)) / 100;
+        const y = (Hs * clamp(49 - af * 36 - clamp((vs * n) / R, -1, 1) * 4, 13, 49)) / 100;
         const slant = Math.hypot(e, n, alt * 0.0003048);
         const sc = (clamp(1.6 / slant, 0.1, 0.36) / 0.3) * p.size;
         Object.assign(p, { x, y, slant, altNow: alt });
@@ -11705,7 +11865,6 @@
           p.tag.remove();
           p.hit.remove();
           this._planes.delete(id);
-          this._tagsTop();
           continue;
         }
         // nach Osten = im Bild nach links (Blick nach Norden: rechts); erst ab etwa 40 km/h quer, sonst dreht ein
@@ -11732,7 +11891,7 @@
         pos.push({ p, x, y, sc, vis: !out && pa > 0.02 });
       }
 
-      this._planeSpread(pos.filter((o) => o.vis), H);
+      this._planeSpread(pos.filter((o) => o.vis), H, Hs);
       for (const { p, x, y, sc, vis } of pos) {
         if (!vis) p.dy = 0;
         p.y = y; // was man sieht: mit Ausweichen
@@ -11771,7 +11930,7 @@
           if (a.tx < b.tx + b.w && b.tx < a.tx + a.w && a.ty < b.ty + b.h && b.ty < a.ty + a.h) a.ty = a.y - a.half - a.h - 3;
         }
       }
-      for (const t of shown) t.p.tag.style.transform = `translate(${t.tx.toFixed(1)}px, ${clamp(t.ty, 2, Math.max(2, H - t.h - 4)).toFixed(1)}px)`;
+      for (const t of shown) t.p.tag.style.transform = `translate(${t.tx.toFixed(1)}px, ${clamp(t.ty, 2, Math.max(2, Hs - t.h - 4)).toFixed(1)}px)`;
 
       // Neue erst an ihren Platz setzen, dann einblenden
       if (fresh.length) {
@@ -11797,15 +11956,15 @@
     // derselben Linie in gleicher Höhe, die sich begegnen). Wer sich im Bild nahe kommt, weicht senkrecht aus:
     // ab Berührung der Flügelspitzen langsam, ab halber Breite voll, bis die Mitten 0,7 Flugzeughöhen auseinander
     // liegen. Die Reihenfolge oben/unten bleibt wie beim letzten Mal, sonst tauschen gleich hohe die Plätze.
-    _planeSpread(list, H) {
+    _planeSpread(list, H, Hs = H) {
       for (const o of list) {
         o.dy = 0;
         o.hw = H * 0.15 * o.sc;
         o.hh = H * 0.06 * o.sc;
       }
       list.sort((a, b) => a.y + (a.p.dy || 0) - (b.y + (b.p.dy || 0)));
-      const top = H * 0.1;
-      const bot = H * 0.52;
+      const top = Hs * 0.1;
+      const bot = Hs * 0.52;
       for (let k = 0; k < 4; k++) {
         for (let i = 0; i < list.length; i++) {
           for (let j = i + 1; j < list.length; j++) {
@@ -12441,9 +12600,10 @@
       if (relayout && !noLayout) this._boteLayout();
     }
 
-    // Alle Geräte stehen nebeneinander ganz vorn links am unteren Rand (näher am Betrachter, also etwas größer und
-    // vor dem Pika), in der Reihenfolge der Konfiguration. Reicht der Platz bis zum rechten Rand nicht, werden alle
-    // gemeinsam gleich stark kleiner. Setzt nur Positionen und tut nichts, wenn sich nichts ändert.
+    // Alle Geräte stehen vorn am unteren Rand (näher am Betrachter, also etwas größer und vor dem Pika), von links
+    // in der Reihenfolge der Konfiguration. Frei bleiben der Eingang (dort schläft der Pika), die Bodendeko der
+    // Festtage und der Vorrat (Nische bzw. Heuhaufen): siehe boteRow. Reicht der Platz nicht, werden alle gemeinsam
+    // gleich stark kleiner. Setzt nur Positionen und tut nichts, wenn sich nichts ändert.
     _boteLayout() {
       const B = this._bote;
       if (!this._g || !this._el || !B?.list.length) return;
@@ -12452,27 +12612,39 @@
       // gestartet), bekäme das neue Requisit sonst weder Platz noch Größe und läge riesig oben links.
       if (!row.length) {
         B.sig = null;
+        this._boteEdge(0);
         return;
       }
       const H = this._H;
       const W = this._W;
-      const left = 6;
-      const right = W - 6;
+      const { hole, hayL, hayR, fMin } = this._g;
       const gap = 0.02 * H;
+      const m = 0.01 * H;
       // die hohe Wäscheleine steht vorn deutlich kleiner, sonst überragt sie den Pika
       const w1 = row.map((a) => a.spec.vb[2] * BOTE_K * H * BOTE_FRONT * (a.spec.back ? BOTE_TALL : 1));
-      const sum = w1.reduce((t, w) => t + w, 0);
-      const k = clamp((right - left - gap * (row.length - 1)) / sum, 0.4, 1);
-      let x = left;
-      const out = row.map((a, i) => {
-        const p = { a, l: x, w: w1[i] * k };
-        x += p.w + gap;
-        return p;
+      // Bodendeko mit festem Platz (Kürbis, Stiefel, Kranz, Kuchen, Baum, Geschenk); Ostereier und Raketenstäbe sind
+      // über die ganze Wiese verstreut und zählen nicht
+      const deko = Object.entries(this._festPos || {}).filter(([n]) => !/^(egg|stick)/.test(n))
+        .map(([, p]) => [p.l - m, p.l + p.w + m]);
+      const r = boteRow(w1, {
+        gap, left: 6, right: W - 6, door: [hole.l - m, hole.r + m], deko, store: [hayL - m, hayR + m],
+        meadow: fMin * W + 0.1 * H,
       });
-      const sig = `${W}x${H}|${out.map((p) => `${p.a.idx}${p.a.view}:${p.l.toFixed(1)}:${p.w.toFixed(1)}`).join('|')}`;
+      const out = row.map((a, i) => ({ a, l: r.xs[i], w: w1[i] * r.k }));
+      const sig = `${W}x${this._Hs}|${out.map((p) => `${p.a.idx}${p.a.view}:${p.l.toFixed(1)}:${p.w.toFixed(1)}`).join('|')}`;
       if (sig === B.sig) return;
       B.sig = sig;
       for (const p of out) this._botePlace(p.a, p.l, p.w);
+      const last = out[out.length - 1];
+      this._boteEdge(last.l + last.w);
+    }
+
+    // Rechtes Ende der Geräte-Reihe merken: Reicht sie bis auf die Wiese, liegen Häufchen erst rechts davon
+    // (ein Gerät stünde sonst davor, und man käme zum Putzen nicht mehr heran)
+    _boteEdge(x) {
+      if (x === (this._boteRowR || 0)) return;
+      this._boteRowR = x;
+      this._placePiles?.();
     }
 
     // Requisit vorn am unteren Rand setzen
@@ -12500,7 +12672,7 @@
       a.bar.classList.toggle('hb-fr', fr);
       bs.left = `${(this._boteX(a, (u0 + u1) / 2) - bw / 2).toFixed(1)}px`;
       const bottom = Math.max(ground, a.top + sp.vb[3] * k);
-      bs.top = `${(fr ? Math.min(bottom + 0.012 * H, H - bh - 0.02 * H) : gy - 0.03 * H).toFixed(1)}px`;
+      bs.top = `${(fr ? Math.min(bottom + 0.012 * H, this._Hs - bh - 0.02 * H) : gy - 0.03 * H).toFixed(1)}px`;
       bs.width = `${bw.toFixed(1)}px`;
       if (a.tag?.classList.contains('open')) this._boteTagPos(a);
     }
@@ -12553,7 +12725,7 @@
       const w = Math.min(a.tag.offsetWidth, this._W - 8);
       const h = a.tag.offsetHeight;
       ts.left = `${clamp(a.x - w / 2, 4, Math.max(4, this._W - w - 4)).toFixed(1)}px`;
-      ts.top = `${clamp(a.vTop - h - 6, 2, Math.max(2, this._H - h - 4)).toFixed(1)}px`;
+      ts.top = `${clamp(a.vTop - h - 6, 2, Math.max(2, this._Hs - h - 4)).toFixed(1)}px`;
     }
 
     // ---------- Haus-Bote: Aktionen ----------
@@ -13625,7 +13797,7 @@
       const H = this._H;
       const w = H * 0.17;
       const x = this._giftBalloonX(z);
-      const y = H * 0.34;
+      const y = this._sy(0.34);
       const [pp, pr] = gold ? GIFT_GOLD : GIFT_PAPER[z % GIFT_PAPER.length];
       const bc = gold ? '#f2c230' : GIFT_BALLOONS[Math.floor(seedRnd('gbc', z) * GIFT_BALLOONS.length)];
       const el = document.createElement('div');
@@ -13976,8 +14148,9 @@
           el = document.createElement('div');
           el.className = `gt gt-${key === 'hammock' ? 'ham' : key}`;
           el.innerHTML = key === 'wheel' ? GIFT_WHEEL : key === 'hammock' ? GIFT_HAMMOCK : GIFT_ITEMS[t].svg;
-          // Plüsch-Pino liegt vor ihm im Arm, also vor dem schlafenden Pika
-          (key === 'plush' ? this._el.fx : this._el.gifts).appendChild(el);
+          // Plüsch-Pino liegt vor ihm im Arm, also vor dem schlafenden Pika: eigene Ebene gleich nach ihm (unter Heu,
+          // Gras, Geräten und Wetter, nicht in der Effekt-Ebene)
+          (key === 'plush' ? this._el.held : this._el.gifts).appendChild(el);
           E.set(t, el);
         }
         el.classList.toggle('gilt', lvs[t] >= 3);
@@ -14334,7 +14507,7 @@
           this._say(pick(['Flugzeug!', 'da oben!', 'brumm!']), 1300);
         } else if (stars) {
           const sx = clamp(this._x + this._dir * this._W * rnd(0.15, 0.35), 10, this._W - 10);
-          this._sparkle(sx, this._H * rnd(0.08, 0.2), 1);
+          this._sparkle(sx, this._sy(rnd(0.08, 0.2)), 1);
           this._say(pick(['ein Stern!', 'Abendstern!', 'noch einer!', 'funkel!', 'wünsch dir was!']), 1400);
         } else if (Math.random() < 0.5) this._say(pick(['Land in Sicht!', 'ahoi!', 'hmm…', 'ich seh dich!']), 1300);
         await this._wait(rnd(1800, 3000));
@@ -14356,7 +14529,7 @@
       if (key === 'bell') return this._giftTune();
       if (key === 'scope') {
         p.classList.add('spy', 'look-up');
-        this._sparkle(clamp(this._x + this._dir * this._W * 0.2, 10, this._W - 10), this._H * 0.12, 2);
+        this._sparkle(clamp(this._x + this._dir * this._W * 0.2, 10, this._W - 10), this._sy(0.12), 2);
         this._say('Sterne gucken!', 1500);
         await this._wait(2400);
         p.classList.remove('spy', 'look-up');
@@ -14595,6 +14768,7 @@
         else stats.removeAttribute(k);
       }
       tbbtn.hidden = !on || !!this._cfg.show_stats;
+      if (this._W) this._btnFit(); // das Buch in der Leiste braucht Platz
       this._diaryDot();
     }
 
@@ -16089,7 +16263,7 @@
   // __pikaTest, dort passiert nichts.
   if (typeof globalThis !== 'undefined' && typeof globalThis.__pikaTest === 'function') {
     globalThis.__pikaTest({
-      VERSION, PikaPetCard, PLAN_MIN, HAY_MAX, GIFT, ACT_LEN, hasKey,
+      VERSION, PikaPetCard, PLAN_MIN, HAY_MAX, GIFT, ACT_LEN, hasKey, boteRow, clearSpot, sceneUnit,
       planBlank, planSer, planParse, planApply, hayNow, giftLv, pikaDay,
       freshStats, serialize, parseStats, mergeStats, seedRnd, weightedR,
       sunTimes, festDay, festEaster, festAdvent1, festBirthdate,
