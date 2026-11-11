@@ -56,7 +56,7 @@
  * werden aus Datum und Standort (hass.config) berechnet.
  */
 (() => {
-  const VERSION = '0.27.0';
+  const VERSION = '0.27.1';
 
   // Prototyp Tiefe (depth: true): hintere Spur liegt LANE_DY × Kartenhöhe über der Bodenlinie, Pika dort um LANE_S kleiner
   const LANE_DY = 0.075;
@@ -3390,9 +3390,9 @@
     position: fixed; inset: 0; z-index: 9999; display: flex; align-items: center; justify-content: center; padding: 14px;
     box-sizing: border-box; background: rgba(40, 28, 18, .5); animation: tbin .2s; -webkit-tap-highlight-color: transparent;
     font-family: var(--ha-font-family-body, var(--paper-font-body1_-_font-family, Roboto, "Segoe UI", system-ui, sans-serif));
-    --pp: #fbf5e6; --ink: #4a3a2c; --soft: #8a7461; --line: rgba(90, 64, 48, .09); --tab: rgba(90, 64, 48, .08); --acc: #c9853a;
+    --pp: #fbf5e6; --ink: #4a3a2c; --soft: #8a7461; --line: rgba(90, 64, 48, .2); --rand: rgba(232, 88, 78, .32); --tab: rgba(90, 64, 48, .08); --acc: #c9853a;
   }
-  .bd.night { --pp: #262d4a; --ink: #ecebf7; --soft: #a9add0; --line: rgba(255, 255, 255, .07); --tab: rgba(255, 255, 255, .09); --acc: #f2c56b; }
+  .bd.night { --pp: #262d4a; --ink: #ecebf7; --soft: #a9add0; --line: rgba(255, 255, 255, .16); --rand: rgba(255, 150, 150, .3); --tab: rgba(255, 255, 255, .09); --acc: #f2c56b; }
   .sheet {
     position: relative; display: flex; flex-direction: column; width: min(440px, 100%); height: min(640px, 100%);
     box-sizing: border-box; border-radius: 18px; background: var(--pp); color: var(--ink); outline: none;
@@ -3419,7 +3419,6 @@
   .night .tabs button[aria-selected="true"] { color: #2a2238; }
   .page {
     flex: 1; min-height: 120px; overflow-y: auto; overscroll-behavior: contain; padding: 4px 18px 16px; border-radius: 0 0 18px 18px;
-    background: repeating-linear-gradient(transparent 0 31px, var(--line) 31px 32px) local;
     scrollbar-width: thin; scrollbar-color: var(--soft) transparent;
   }
   .fazit { margin: 6px 0 10px; font-size: 16px; line-height: 1.45; font-weight: 600; font-style: italic; }
@@ -3427,7 +3426,11 @@
   .chips span { display: inline-flex; align-items: center; gap: 5px; padding: 4px 10px 4px 7px; border-radius: 999px; font-size: 13px; font-weight: 700; background: var(--tab); }
   .chips i { display: block; width: 15px; height: 15px; }
   h3 { margin: 16px 0 2px; font-size: 13px; font-weight: 800; letter-spacing: .02em; color: var(--acc); }
-  .e { display: grid; grid-template-columns: 40px minmax(0, 1fr); gap: 11px; padding: 8px 0; }
+  /* Heft-Linien: kein Raster hinter dem Inhalt (es passte beim Scrollen nie zu den Zeilen). Jeder Eintrag bringt seine
+     Linie mit: unten gestrichelt, links die rote Randlinie, die über die Einträge einer Tageszeit durchläuft. */
+  .e { display: grid; grid-template-columns: 40px minmax(0, 1fr); gap: 6px; }
+  .e > div { padding: 9px 0 9px 10px; border-left: 1.5px solid var(--rand); border-bottom: 1px dashed var(--line); }
+  .e > .ic { margin-top: 7px; }
   .ic { display: block; width: 40px; height: 40px; box-sizing: border-box; padding: 7px; border-radius: 50%; background: rgba(255, 255, 255, .75);
     box-shadow: 0 1px 3px rgba(90, 64, 48, .22); transform: rotate(-4deg); color: var(--soft); }
   .e:nth-child(even) .ic { transform: rotate(3deg); }
