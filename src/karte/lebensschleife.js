@@ -1,6 +1,8 @@
-// Lebensschleife: Sichtbarkeit, frischer Stand nach einer Pause, Start und Stopp, Wachhund, Warten, Aufräumen, Auswahl des nächsten Schritts, Takt
+// Lebensschleife: Sichtbarkeit, frischer Stand nach einer Pause, Start und Stopp, Wachhund, Warten, Aufräumen,
+// Auswahl des nächsten Schritts, Takt
 
-import { Cancel, calmMotion, rnd, pick, pause, weighted } from '../logik/hilfen.js';
+import { Cancel, rnd, pick, pause, weighted } from '../logik/hilfen.js';
+import { calmMotion } from '../logik/bewegung-reduzieren.js';
 import { screenElsewhere } from '../logik/einstellungen.js';
 import { POOP } from '../logik/zustand.js';
 import { WX_HOLD } from '../logik/wetter.js';
@@ -10,9 +12,6 @@ import { ACT_SMALL, JUMP_IN, ACT_GREET, ACT_CLS } from '../logik/beschaeftigunge
 import { GIFT_CLS } from '../logik/paeckchen.js';
 
 export class Lebensschleife {
-  // ---------- Lebensschleife ----------
-
-  // Sieht gerade niemand die Karte? Tab versteckt (beim Tablet auch: Bildschirm aus) oder außerhalb des Bildes
   // Schaut keiner hin? Tab im Hintergrund, aus dem Bild gescrollt oder (mit screen_entity) Bildschirm aus. Ein dunkler
   // Kiosk-Bildschirm lässt den Tab sichtbar: ohne screen_entity liefe dann alles die ganze Nacht weiter.
   _away() {
@@ -72,6 +71,21 @@ export class Lebensschleife {
     this._hiddenFeatures(false);
     this._planeSnap();
     this._tick();
+  }
+
+  // screen_entity (z. B. der Bildschirm-Schalter von Fully Kiosk): geht er an, ist das wie Sichtbarwerden. Fully
+  // meldet das mit etwas Verzug; kam die Sichtbarkeit schon, verhindert die Sperre eine zweite Begrüßung.
+  _hassAct(hass) {
+    const id = this._cfg.screen_entity;
+    const st = id ? hass.states[id]?.state : undefined;
+    if (st === this._screenSt) return;
+    this._screenSt = st;
+    this._screenWoke = false;
+    // Bildschirm aus: wie ein versteckter Tab ruht alles (Schleife, Besuche, Animationen). Geht er an, steigt der Pika
+    // wie nach dem Neuladen gleich mitten in der Beschäftigung ein und winkt (_visSync → _start, _showReq). Die Meldung
+    // „an“ kam eben über die Verbindung: Tagesplan und Wetter (in set hass vor _hassAct schon gelesen) sind so frisch
+    // wie sie, er muss nicht erst an seiner alten Stelle auf einen neuen Stand warten.
+    if (this._el) this._visSync(st === 'on' && hass.connected !== false);
   }
 
   // .paused hält nur CSS-Animationen an: die Web Animations der Effekte (Seifenblasen, Schmetterling, Blütenwurf)

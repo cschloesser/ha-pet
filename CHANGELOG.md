@@ -2,6 +2,20 @@
 
 Jede Version der Pika Pet Card, die neueste zuerst.
 
+## 0.33.1 (2026-11-11)
+
+Aufgeräumt: Nach dem Schnitt in Module stehen die Kommentare wieder bei dem, was sie beschreiben. Am Verhalten der Karte ändert sich nichts.
+
+- Nur Kommentare und drei reine Umzüge, sonst kein Code: 45 der 57 geänderten Module sind Token für Token gleich geblieben (mit acorn verglichen, Kommentare sind keine Token). In den übrigen zwölf weicht nur ab, was umgezogen ist, und die Versionsnummer. Zustand und Tagesplan in den Helfern bleiben, wie sie sind.
+- Kommentare beim falschen Nachbarn: Beim Schnitt waren einige vor einer fremden Konstante oder Methode gelandet. Sie stehen jetzt bei dem, was sie beschreiben: der Takt der Häufchen bei `POOP` (`src/logik/zustand.js`, stand bei den Besuchern), die Städtenamen bei `CITY_DE` (`src/logik/flugzeuge.js`, stand beim Himmel), die Reihe der Requisiten bei `boteRow` (`src/logik/haus-bote.js`, stand in den Hilfen), die Flüge bei `_readFlights` (`src/karte/flugzeuge.js`, stand beim Himmel), die Besucher bei `_startCritters` (`src/karte/besucher.js`, stand bei den Festtagen) und die Parameter von `_visit` bei `_visit` (standen über `_festClear`). Was Pinos Grafik und die Geräte-Grafiken des Haus-Boten beschreibt, steht bei `FRIEND_SVG` und `BOTE_SVG` unter `src/grafik/` statt bei den Konstanten unter `src/logik/`. Von den zwei Fassungen desselben Kommentars vor `_away` bleibt die genauere.
+- Abschnittsüberschriften der alten Datei: 54 Zeilen sind weg. Das sind alle Schlusszeilen („Ende Festtage“), die Anfangsüberschriften, die nur den Modulkopf wiederholten oder die falsche Schicht nannten („Konstanten, Grafiken und Stil“ in einem Modul unter `src/logik/`, „Methoden“ in einem Teil der Klasse), und die, unter denen nichts mehr stand (etwa „Stil“ in `src/logik/haus-bote.js`). Der erklärende Text darunter ist geblieben. Über `_now` steht statt der Überschrift „Häufchen“, was es ist: die Uhr der Häufchen. Überschriften, die ein Modul gliedern, bleiben (zum Beispiel die einzelnen Beschäftigungen).
+- Verweise auf Orte der alten Datei („siehe Abschnitt …“, „weiter oben in set hass“) nennen jetzt das Modul oder die Methode.
+- Modulköpfe über 120 Zeichen stehen auf zwei Zeilen (14 Module).
+- Neues Modul `src/logik/bewegung-reduzieren.js`: `RED_MOTION` und `calmMotion` sind aus `hilfen.js` dorthin gezogen. `RED_MOTION` fragt beim Laden `window.matchMedia`; solange es in den Hilfen stand, ließen sich in node nur 5 der 16 Logik-Module einzeln laden, jetzt 16 von 17 (alle außer dem neuen). Die neun Teile der Klasse, die `calmMotion` brauchen, importieren es von dort.
+- `_hassAct` (liest `screen_entity`) steht in `src/karte/lebensschleife.js` hinter `_visSync`, das es aufruft, statt bei den Beschäftigungen.
+- `src/index.js` beginnt ohne Leerzeile, die gebaute Datei damit direkt mit dem Kopfkommentar.
+- Entwicklung: 66 Module (`src/logik/` 17), weiterhin 88 Tests. Die README nennt die neuen Zahlen.
+
 ## 0.33.0 (2026-11-11)
 
 Baukasten: Der Quelltext liegt jetzt in 65 Modulen unter `src/`, `pika-pet-card.js` wird daraus gebaut. Am Verhalten der Karte ändert sich nichts.

@@ -129,6 +129,5 @@ const STYLE_DIARY_BTN = `
   .tbbtn svg { display: block; width: 100%; height: 100%; }
   .night .tbbtn { background: rgba(15, 22, 45, .55); }
   `;
-// ==================== Ende Tagebuch ====================
 
 export { STYLE_DIARY, STYLE_DIARY_BTN };

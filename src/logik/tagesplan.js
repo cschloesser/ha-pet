@@ -3,7 +3,6 @@
 import { clamp } from './hilfen.js';
 import { GIFT, GIFT_TRE, giftLv } from './paeckchen.js';
 
-// ---------- Tagesplan (Helfer plan_entity) ----------
 // Was alle Geräte gemeinsam wissen müssen, ohne es aus der Uhr rechnen zu können:
 // - hay: Vorrat (n Bündel, t letzte Änderung, c Blütenfarben als Ziffern der Areal-Palette, m letztes Sammel-Fenster)
 // - sport: Frühsport heute schon (d Kalendertag, k Fenster)

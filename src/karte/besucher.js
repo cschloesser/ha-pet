@@ -111,6 +111,8 @@ export class Besucher {
     await this._wait(rnd(900, 1600));
   }
 
+  // Besucher laufen neben der Pika-Schleife her und sind reine Zierde. Wann sie kommen, folgt aus der Uhrzeit
+  // (seedRnd), darum sehen alle Geräte dieselben Besuche.
   _startCritters() {
     if (!this._attached || this._away() || this._critOn) return;
     this._critOn = true;
@@ -204,7 +206,6 @@ export class Besucher {
     return e == null ? !this._asleep : e > 3;
   }
 
-  // pk: feste Entscheidungen aus _critNext (ohne: Zufall, Vorschau-Knöpfe); late: so viele ms nach dem Start
   // Frosch, Schnecke und Maus sitzen knapp hinter dem Pika, die Bodendeko der Festtage vorn (Kürbis, Stiefel, Kranz,
   // Kuchen, Geschenk) steht eine Ebene davor. Wo sie anhalten, rücken sie darum neben die Deko statt dahinter.
   // Ostereier und Raketenstäbe sind klein und liegen überall, der Baum steht hinter ihnen: die zählen nicht.
@@ -216,6 +217,7 @@ export class Besucher {
     return blocks.length ? clearSpot(x, w, a, b, blocks) : x;
   }
 
+  // pk: feste Entscheidungen aus _critNext (ohne: Zufall, Vorschau-Knöpfe); late: so viele ms nach dem Start
   async _visit(kind, id, force = false, pk = null, late = 0) {
     if (!this._g || this['_' + kind]) return;
     if (!force && !this._critterWeather(kind)) return;

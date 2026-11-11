@@ -426,7 +426,7 @@ Die Karte schont das Gerät: Ist sie nicht zu sehen (Tab im Hintergrund, Bildsch
 
 ## Entwicklung
 
-Der Quelltext liegt in 65 ES-Modulen unter `src/`. `pika-pet-card.js` im Wurzelverzeichnis ist die daraus gebaute Datei (eine IIFE, nicht verkleinert): Sie wird nicht von Hand geändert, bleibt aber im Repo, weil HACS genau diese Datei ausliefert (`filename` in `hacs.json`). Gebraucht werden Node ab Version 20 und einmal `npm install`. Das lädt esbuild (bündelt) und acorn (liest die Teile der Klasse für die Namensprüfung), beide in `package.json` und `package-lock.json` auf eine feste Version gesetzt. Beide braucht nur die Entwicklung, die gebaute Karte kommt ohne sie aus.
+Der Quelltext liegt in 66 ES-Modulen unter `src/`. `pika-pet-card.js` im Wurzelverzeichnis ist die daraus gebaute Datei (eine IIFE, nicht verkleinert): Sie wird nicht von Hand geändert, bleibt aber im Repo, weil HACS genau diese Datei ausliefert (`filename` in `hacs.json`). Gebraucht werden Node ab Version 20 und einmal `npm install`. Das lädt esbuild (bündelt) und acorn (liest die Teile der Klasse für die Namensprüfung), beide in `package.json` und `package-lock.json` auf eine feste Version gesetzt. Beide braucht nur die Entwicklung, die gebaute Karte kommt ohne sie aus.
 
 **Wo was liegt**
 
@@ -434,7 +434,7 @@ Der Quelltext liegt in 65 ES-Modulen unter `src/`. `pika-pet-card.js` im Wurzelv
 - `src/version.js`: `VERSION`. Nur dort steht die Versionsnummer; in `pika-pet-card.js` steht sie nur noch als Ergebnis des Baus.
 - `src/karte.js`: die Klasse `PikaPetCard` mit constructor, `setConfig`, `set hass`, Ein- und Aushängen und dem Fehlernetz (`_guard`), dazu der Zusammenbau: Die Liste `TEILE` hängt die Methoden aller Module aus `src/karte/` an die Klasse. Für die Karte ist es danach eine einzige Klasse, Methoden rufen einander wie bisher über `this` auf.
 - `src/karte/` (26 Module): je ein Gebiet der Klasse als `export class <Name>`, nur Methoden, ohne eigenen Zustand. Zum Beispiel `wetter.js`, `haus-bote.js`, `pino.js`, `tagesplan.js`, `lebensschleife.js`; die Beschäftigungen verteilen sich auf drei Module (`beschaeftigungen.js`, `beschaeftigungen-gross.js`, `beschaeftigungen-klein.js`).
-- `src/logik/` (16 Module): Konstanten und reine Funktionen je Gebiet, zum Beispiel `tagesplan.js`, `zustand.js`, `wetter.js`, `hilfen.js`. Vor allem das prüfen die Tests.
+- `src/logik/` (17 Module): Konstanten und reine Funktionen je Gebiet, zum Beispiel `tagesplan.js`, `zustand.js`, `wetter.js`, `hilfen.js`. Vor allem das prüfen die Tests. Bis auf `bewegung-reduzieren.js` (fragt beim Laden `window.matchMedia` nach der Systemeinstellung) lässt sich jedes dieser Module in node einzeln laden.
 - `src/grafik/` (11 Module): die SVG-Bausteine, zum Beispiel `pika.js`, `areale.js`, `szene.js`.
 - `src/stil/` (9 Module): die Stilblöcke, zum Beispiel `STYLE` in `szene.js` und `STYLE_SKY` in `himmel.js`. In welcher Reihenfolge sie ins Stylesheet der Karte kommen, steht in `_build` (`src/karte/aufbau.js`); bei gleichem Gewicht gewinnt im CSS die spätere Regel. Der Stil des Tagebuchs (`STYLE_DIARY`) gehört zum Fenster des Tagebuchs und wird in `src/karte/tagebuch.js` eingesetzt.
 - `dev/`: `build.mjs` (Bau), `serve.mjs` (Server für die Vorschau), `gleichheit.mjs` (Vergleich mit einem alten Stand).

@@ -28,9 +28,9 @@ const DEFAULTS = {
   max_flights: 2,
   show_stats: true,
   height: 180,
-  // Haus-Bote: Geräte, deren Fortschritt und Fertig-Zustand der Pika zeigt (siehe Abschnitt "Haus-Bote")
+  // Haus-Bote: Geräte, deren Fortschritt und Fertig-Zustand der Pika zeigt (siehe src/karte/haus-bote.js)
   appliances: null,
-  // Kaffee: Kaffeevollautomat, nach jedem Bezug trinkt der Pika mit (siehe Abschnitt "Kaffee")
+  // Kaffee: Kaffeevollautomat, nach jedem Bezug trinkt der Pika mit (siehe src/karte/kaffee.js)
   coffee: null,
   // Festtage: Deko im Jahreslauf und Geburtstage [{ name, date: 'MM-DD' }]
   festive: true,
@@ -41,7 +41,7 @@ const DEFAULTS = {
   // Himmel: Sternschnuppen nachts, Glühwürmchen in Sommernächten
   shooting_stars: true,
   fireflies: true,
-  // Päckchen: für gute Pflege verdient, am Ballon verschenkt (siehe Abschnitt "Päckchen")
+  // Päckchen: für gute Pflege verdient, am Ballon verschenkt (siehe src/karte/paeckchen.js)
   gifts: true,
   // Prototyp: Kulisse mit Parallax, hintere Spur zum Herumhoppeln (nur YAML, nicht im Editor)
   depth: false,

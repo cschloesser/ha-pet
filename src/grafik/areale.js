@@ -1,6 +1,5 @@
 // Areale: Bau je Areal (huegel, fels, stumpf, alpin) mit Eingang, Lichtern und Maßen
 
-// ---------- Areale ----------
 // Jedes Areal hat einen Bau mit Eingang. Grafik in viewBox 0 0 100 vh, der Boden liegt bei vh - sink.
 // w/left: Breite und Lage relativ zur Kartenhöhe bzw. Baubreite. hole: Ausschnitt, in dem der Pika im Bau
 // zu sehen ist (x1..x2, Bogenoberkante top, Vorderkante lip, unterhalb verschwindet er). hay: linke Kante

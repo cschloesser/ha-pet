@@ -2,14 +2,9 @@
 
 import { clamp } from './hilfen.js';
 
-// ---------- Stil ----------
-
-// ==================== Haus-Bote: Konstanten, Grafiken und Stil ====================
 // Waschmaschine, Trockner und Spülmaschine (Home Connect) stehen als kleine Requisiten am Bau. Phasen je
 // Gerät: run (läuft), done (fertig, noch nicht geöffnet), empty (ausgeräumt, 20 Minuten lang).
-// Grafiken in Einheiten von BOTE_K × Kartenhöhe; vb = viewBox, ground = Bodenlinie, vt = sichtbare
-// Oberkante (für das Fähnchen), part = Hauptteil in x (Fortschrittsbalken, Hingehen), back = zu hoch für den
-// vorderen Wiesenstreifen (bleibt hinten).
+// Ihre Grafiken (BOTE_SVG in src/grafik/haus-bote.js) sind in Einheiten von BOTE_K × Kartenhöhe gezeichnet.
 const BOTE_K = 0.004;
 const BOTE_EMPTY_MS = 20 * 60000;
 // Spüler mit AutoOpen öffnen die Tür am Programmende selbst einen Spalt: so lange zählt Tür auf nicht als ausgeräumt
@@ -18,6 +13,13 @@ const BOTE_AUTOOPEN_MS = 2 * 60000;
 const BOTE_FRONT = 1.1;
 const BOTE_FRONT_DY = 0.07; // ganz vorn am unteren Rand, der Fortschrittsbalken liegt auf dem Fuß des Requisits
 const BOTE_TALL = 0.55; // die hohe Wäscheleine steht vorn kleiner
+// Plätze der Requisiten vorn am unteren Rand, von links in der Reihenfolge von ws (Wunschbreiten in px).
+// o: { gap, left, right, door: [a, b], deko: [[a, b] …], store: [a, b], meadow }. Gesperrt sind der Eingang (dort
+// schläft der Pika), die Bodendeko der Festtage und der Vorrat (Nische oder Heuhaufen); ein Requisit, das eine
+// Sperre träfe, rückt hinter sie. Der Reihe nach wird versucht, bis alles Platz hat: 1. links vom Vorrat bleiben
+// (dafür bis 20 % kleiner), 2. höchstens bis meadow (ein Stück auf die Wiese, bis 25 % kleiner), 3. bis zum rechten
+// Rand (so kurz wie möglich), 4. der Vorrat darf verdeckt werden, 5. auch die Deko, 6. alles dicht an dicht wie früher (schmale Karte).
+// Alle Requisiten werden gemeinsam gleich stark kleiner (k). Ergebnis: { k, xs: linke Kanten, tier: 1–6 }.
 const boteRow = (ws, o) => {
   const place = (k, blocks, end) => {
     let x = o.left;

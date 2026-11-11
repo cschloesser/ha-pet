@@ -1,6 +1,5 @@
 // Päckchen: Pflege-Serie (GIFT), Stufen der Schätze im Plan, Zustandsklassen
 
-// ==================== Päckchen: Konstanten, Grafiken und Stil ====================
 // Pflege: Liegt keiner der drei Werte länger als grace (Wachzeit) unter min, läuft die Serie weiter. Je every Wachzeit
 // ohne Unterbrechung gibt es ein Päckchen (höchstens max im Vorrat), nach gold am Stück ein goldenes. Verschenkt schwebt
 // es arrive ms lang an einem Ballon herein, der Pika schießt ihn vom Aussichtsstein mit der Zwille herunter und packt aus.

@@ -22,6 +22,5 @@ const STYLE_FRIEND = `
   .pika.wiggle .ear-r, .friend.wiggle .ear-r { animation: fwiggle .3s .12s ease-in-out 4 alternate-reverse; }
   @keyframes fwiggle { from { transform: rotate(-13deg); } to { transform: rotate(9deg); } }
   `;
-// ==================== Ende Freund-Pika ====================
 
 export { STYLE_FRIEND };

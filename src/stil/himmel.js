@@ -81,6 +81,5 @@ const STYLE_SKY = `
     .mflash { display: none; }
   }
   `;
-// ==================== Ende Himmel-Extras ====================
 
 export { STYLE_SKY };

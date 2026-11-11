@@ -42,8 +42,6 @@ export class Tagebuch {
     } catch (e) { /* kein Speicher: gilt bis zum Neuladen */ }
   }
 
-  // ==================== Tagebuch: Methoden ====================
-
   _diaryOn() {
     return this._cfg?.diary !== false;
   }
@@ -531,5 +529,4 @@ export class Tagebuch {
     const back = this._el?.stats.hidden ? this._el.tbbtn : this._el?.stats;
     if (back?.isConnected && !back.hidden) back.focus({ preventScroll: true });
   }
-  // ==================== Ende Tagebuch ====================
 }

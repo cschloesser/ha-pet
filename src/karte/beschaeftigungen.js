@@ -1,4 +1,5 @@
-// Beschäftigungen: Auswahl aus dem Tagesplan, Fenster, Einstieg, Warten nach Planzeit, Requisit hervorkramen, Begrüßung, Tagesform
+// Beschäftigungen: Auswahl aus dem Tagesplan, Fenster, Einstieg, Warten nach Planzeit, Requisit hervorkramen,
+// Begrüßung, Tagesform
 
 import { rnd, pick, clamp, hasKey, seedRnd, weightedR } from '../logik/hilfen.js';
 import { wxProgThen } from '../logik/wetter.js';
@@ -9,11 +10,9 @@ import {
 import { MINI_W, miniProg, miniOk, miniChain } from '../logik/beschaeftigungen-klein.js';
 
 export class Beschaeftigungen {
-  // ---------- Beschäftigungen ----------
-
-  // Zeitplan, Einstieg und die Beschäftigungen von 0.15 stehen im Abschnitt "Aktivitäten". Alle Beschäftigungen
-  // holen sich ihr Fenster mit _slotFor(name): { k, start, end, r(n) }. end ist das Ende des Hauptteils (Planzeit,
-  // _planNow), r(n) sind feste Zahlen des Fensters, auf allen Geräten gleich.
+  // Die Beschäftigungen selbst stehen in beschaeftigungen-gross.js und beschaeftigungen-klein.js, _slotNow wählt aus
+  // dem Tagesplan. Alle holen sich ihr Fenster mit _slotFor(name): { k, start, end, r(n) }. end ist das Ende des
+  // Hauptteils (Planzeit, _planNow), r(n) sind feste Zahlen des Fensters, auf allen Geräten gleich.
 
   // Zum Platz der Beschäftigung: frisch gestartet (Neuladen, Seite wieder sichtbar) und schon spät dran steht er
   // gleich dort, sonst läuft er hin. Aus dem Bau kommt er vorher heraus.
@@ -90,25 +89,6 @@ export class Beschaeftigungen {
     } finally {
       p.classList.remove('stow', ...cls);
     }
-  }
-
-  // ==================== Aktivitäten: Methoden ====================
-  // Tagesplan der Beschäftigungen (ACT_WIN, Helfer plan_entity), Tagesform, Begrüßung, wenn die Karte sichtbar
-  // wird, und die Beschäftigungen Musik, Malen, Seifenblasen, Frühsport (groß) sowie Seilspringen und Gewichtheben.
-
-  // screen_entity (z. B. der Bildschirm-Schalter von Fully Kiosk): geht er an, ist das wie Sichtbarwerden. Fully
-  // meldet das mit etwas Verzug; kam die Sichtbarkeit schon, verhindert die Sperre eine zweite Begrüßung.
-  _hassAct(hass) {
-    const id = this._cfg.screen_entity;
-    const st = id ? hass.states[id]?.state : undefined;
-    if (st === this._screenSt) return;
-    this._screenSt = st;
-    this._screenWoke = false;
-    // Bildschirm aus: wie ein versteckter Tab ruht alles (Schleife, Besuche, Animationen). Geht er an, steigt der Pika
-    // wie nach dem Neuladen gleich mitten in der Beschäftigung ein und winkt (_visSync → _start, _showReq). Die Meldung
-    // „an“ kam eben über die Verbindung: Tagesplan und Wetter (weiter oben in set hass schon gelesen) sind so frisch
-    // wie sie, er muss nicht erst an seiner alten Stelle auf einen neuen Stand warten.
-    if (this._el) this._visSync(st === 'on' && hass.connected !== false);
   }
 
   // Schaut jemand hin? Unsichtbar läuft die Schleife ohnehin nicht; mit screen_entity zählt auch der Bildschirm.

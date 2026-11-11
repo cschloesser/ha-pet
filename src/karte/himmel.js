@@ -1,6 +1,7 @@
 // Himmel: Sonne, Mond, Sterne, Licht der Szene, Sternschnuppen, Glühwürmchen
 
-import { calmMotion, rnd, pick } from '../logik/hilfen.js';
+import { rnd, pick } from '../logik/hilfen.js';
+import { calmMotion } from '../logik/bewegung-reduzieren.js';
 import { RAD, moonPosition, moonPhase, moonPath, skyPos, SKY } from '../logik/himmel.js';
 import { twilight, seasonPos, seasonKey, seasonPal, landColors } from '../logik/wetter.js';
 import { festDay } from '../logik/feste.js';
@@ -145,13 +146,6 @@ export class Himmel {
     }
   }
 
-  // ---------- Flugzeuge ----------
-  // Echte Flüge aus der Flightradar24-Integration (Attribut flights, Meldung alle 10–30 s). Dazwischen fliegen
-  // sie mit Kurs und Geschwindigkeit weiter. Im Bild: Osten links, Westen rechts (Südhalbkugel umgekehrt, _viewN), der Bildrand liegt bei
-  // flight_radius. Die Flughöhe bestimmt, wie hoch sie am Himmel stehen, die Entfernung ihre Größe.
-
-
-  // ==================== Himmel-Extras: Methoden ====================
   // Sternschnuppen (nur zum Anschauen, kein Zähler): ein Zeitgeber alle 1,5–5 Minuten, der nur nachts bei
   // klarem Himmel eine losschickt. Jede läuft als CSS-Animation in .meteors und entfernt sich danach selbst.
   // Glühwürmchen: ersetzen die sechs Punkte aus _build durch 10–14 eigene; die Ebene .ff blendet je nach
@@ -478,5 +472,4 @@ export class Himmel {
     this._say('oh!', 1100);
     await this._wait(rnd(1400, 2400));
   }
-  // ==================== Ende Himmel-Extras ====================
 }

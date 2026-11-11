@@ -251,8 +251,7 @@ export class Zustand {
     this._el.stC.title = `Sauber: ${Math.round(c)} %`;
   }
 
-  // ---------- Häufchen ----------
-
+  // Uhr der Häufchen: Uhr von HA (Vorschau: um _dbgShift vorgestellt)
   _now() {
     return this._haNow() + this._dbgShift;
   }

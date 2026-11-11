@@ -1,4 +1,3 @@
-
 /*
  * Pika Pet Card – ein kleiner Pika (Pfeifhase) wohnt im Home-Assistant-Dashboard.
  *

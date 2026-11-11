@@ -8,7 +8,6 @@ import {
 import { BOTE_LINE, BOTE_PLATE_SVG, BOTE_TOWEL_SVG, BOTE_SVG } from '../grafik/haus-bote.js';
 
 export class HausBote {
-  // ==================== Haus-Bote: Methoden ====================
   // Waschmaschine, Trockner, Spülmaschine aus `appliances`. Jedes Gerät hat ein Requisit am Bau (.hb in .props),
   // das seine Phase zeigt: run (läuft), done (fertig, noch zu), empty (ausgeräumt, 20 Minuten).
   // "Ausgeräumt" nur nach einem echten Programmende: live (fertig → ready/inactive, oder Tür bei "fertig" auf;
@@ -1038,5 +1037,4 @@ export class HausBote {
     await this._wait(rnd(1400, 2200));
     await this._comeOut();
   }
-  // ==================== Ende Haus-Bote ====================
 }

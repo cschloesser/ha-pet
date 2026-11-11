@@ -1,6 +1,7 @@
 // Festtage: Kalender, Deko, Feuerwerk, Konfetti und die Aktionen dazu
 
-import { calmMotion, rnd, pick, clamp, seeded } from '../logik/hilfen.js';
+import { rnd, pick, clamp, seeded } from '../logik/hilfen.js';
+import { calmMotion } from '../logik/bewegung-reduzieren.js';
 import { festDay, festEaster, festAdvent1, FEST_AHEAD, festMoments, festBirthdate, festNames } from '../logik/feste.js';
 import { OUT } from '../grafik/pika.js';
 import {
@@ -9,12 +10,6 @@ import {
 } from '../grafik/feste.js';
 
 export class Feste {
-  // ---------- Besucher: Vögelchen und Maus ----------
-  // Laufen neben der Pika-Schleife her und sind reine Zierde. Wann sie kommen, folgt aus der Uhrzeit (seedRnd),
-  // darum sehen alle Geräte dieselben Besuche.
-
-
-  // ==================== Festtage: Methoden ====================
   // Welche Feste heute sind, bestimmt _festToday() aus der Ortszeit (Vorschau: _dbgDate). Der 20-s-Takt prüft
   // neu; ändert sich etwas, wird die Deko neu aufgebaut. Alles ist Zierde: nichts kostet Werte, nichts wird gesammelt.
   _hassFest(hass) {
@@ -887,5 +882,4 @@ export class Feste {
     this._jump('binky');
     await this._wait(2400);
   }
-  // ==================== Ende Festtage ====================
 }

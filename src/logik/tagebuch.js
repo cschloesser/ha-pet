@@ -6,7 +6,6 @@ import { MEM_BITS } from './tagesplan.js';
 import { ACT_WIN } from './beschaeftigungen.js';
 import { GIFT_TRE } from './paeckchen.js';
 
-// ==================== Tagebuch ====================
 // Tippt man auf die Statusleiste, geht „Pikas Tagebuch“ auf: was er heute und gestern erlebt hat (aus seiner Sicht),
 // dazu seine Schätze. Gespeichert wird dafür nichts Neues: Die Einträge entstehen beim Öffnen aus dem Verlauf der
 // beiden Helfer in HA (history/history_during_period), also aus den Änderungen von Zustand und Tagesplan samt

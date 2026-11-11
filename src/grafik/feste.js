@@ -1,9 +1,9 @@
-// Festtage: Farben, Lichterkette, Luftschlangen, Kürbis, Laterne, Kranz, Stiefel, Baum, Maibaum, Kuchen, Ei, Fledermaus
+// Festtage: Farben, Lichterkette, Luftschlangen, Kürbis, Laterne, Kranz, Stiefel, Baum, Maibaum, Kuchen, Ei,
+// Fledermaus
 
 import { OUT } from './pika.js';
 import { GLOW_GRAD } from './areale.js';
 
-// ==================== Festtage: Konstanten, Grafiken und Stil ====================
 // Deko im Jahreslauf. Ebenen: .fest-b hinter dem Land (.fsky Himmel: Feuerwerk, Fledermaus; .fback Tannenbaum,
 // Maibaum, Wimpel; .fon liegt auf dem Bau, aber hinter dem Pika: Lichterkette, Luftschlangen, Laterne) und .fest-f
 // vor Pika und Heu (.ffront Kürbis, Kranz, Stiefel, Kuchen, Eier; .fcf Konfetti; .fwl Lichtschein).

@@ -13,6 +13,9 @@ const GAIN = { feed: 25, pet: 8, clean: 10 };
 // wachsen alle 2,5 Min nach, ohne Grenze wäre er immer satt. Über die Hälfte bringt ihn nur das Füttern.
 const SELF = { flower: 3, hay: 2 };
 const SELF_MAX = 50;
+// Häufchen: alle 80–140 Minuten Wachzeit eins, das erste 10–30 Minuten nach dem Aufwachen. Höchstens 8
+// seit dem letzten Großputz (einzeln weggemachte zählen mit), die ersten 3 in der Klo-Ecke am Stein. idx:
+// so viele Fälligkeiten rechnet die Karte höchstens (Bits der Maske für einzeln weggemachte Häufchen).
 // live: so viele Minuten nach der Fälligkeit macht er es noch selbst vor den Augen, danach liegt es einfach da
 const POOP = { every: 80, spread: 60, morning: [10, 20], max: 8, latrine: 3, idx: 24, fly: 4, live: 3 };
 

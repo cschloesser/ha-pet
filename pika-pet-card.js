@@ -1,4 +1,3 @@
-
 /*
  * Pika Pet Card – ein kleiner Pika (Pfeifhase) wohnt im Home-Assistant-Dashboard.
  *
@@ -58,13 +57,11 @@
  */
 (() => {
   // src/version.js
-  var VERSION = "0.33.0";
+  var VERSION = "0.33.1";
 
   // src/logik/hilfen.js
   var Cancel = class extends Error {
   };
-  var RED_MOTION = window.matchMedia?.("(prefers-reduced-motion: reduce)");
-  var calmMotion = () => !!RED_MOTION?.matches;
   var rnd = (a, b) => a + Math.random() * (b - a);
   var pick = (arr) => arr[Math.floor(Math.random() * arr.length)];
   var clamp = (v, a, b) => Math.min(b, Math.max(a, v));
@@ -1543,9 +1540,9 @@
     max_flights: 2,
     show_stats: true,
     height: 180,
-    // Haus-Bote: Geräte, deren Fortschritt und Fertig-Zustand der Pika zeigt (siehe Abschnitt "Haus-Bote")
+    // Haus-Bote: Geräte, deren Fortschritt und Fertig-Zustand der Pika zeigt (siehe src/karte/haus-bote.js)
     appliances: null,
-    // Kaffee: Kaffeevollautomat, nach jedem Bezug trinkt der Pika mit (siehe Abschnitt "Kaffee")
+    // Kaffee: Kaffeevollautomat, nach jedem Bezug trinkt der Pika mit (siehe src/karte/kaffee.js)
     coffee: null,
     // Festtage: Deko im Jahreslauf und Geburtstage [{ name, date: 'MM-DD' }]
     festive: true,
@@ -1556,7 +1553,7 @@
     // Himmel: Sternschnuppen nachts, Glühwürmchen in Sommernächten
     shooting_stars: true,
     fireflies: true,
-    // Päckchen: für gute Pflege verdient, am Ballon verschenkt (siehe Abschnitt "Päckchen")
+    // Päckchen: für gute Pflege verdient, am Ballon verschenkt (siehe src/karte/paeckchen.js)
     gifts: true,
     // Prototyp: Kulisse mit Parallax, hintere Spur zum Herumhoppeln (nur YAML, nicht im Editor)
     depth: false,
@@ -5116,7 +5113,6 @@
 
   // src/karte/aufbau.js
   var Aufbau = class {
-    // ---------- Aufbau ----------
     _build() {
       const stars = Array.from({ length: 3 }, () => "<b>" + Array.from(
         { length: 8 },
@@ -5710,6 +5706,10 @@
     }
   };
 
+  // src/logik/bewegung-reduzieren.js
+  var RED_MOTION = window.matchMedia?.("(prefers-reduced-motion: reduce)");
+  var calmMotion = () => !!RED_MOTION?.matches;
+
   // src/logik/kaffee.js
   var COFFEE_PROG = /beverage|coffee_world/;
   var COFFEE_KIND = [
@@ -5732,8 +5732,6 @@
 
   // src/karte/lebensschleife.js
   var Lebensschleife = class {
-    // ---------- Lebensschleife ----------
-    // Sieht gerade niemand die Karte? Tab versteckt (beim Tablet auch: Bildschirm aus) oder außerhalb des Bildes
     // Schaut keiner hin? Tab im Hintergrund, aus dem Bild gescrollt oder (mit screen_entity) Bildschirm aus. Ein dunkler
     // Kiosk-Bildschirm lässt den Tab sichtbar: ohne screen_entity liefe dann alles die ganze Nacht weiter.
     _away() {
@@ -5781,6 +5779,16 @@
       this._hiddenFeatures(false);
       this._planeSnap();
       this._tick();
+    }
+    // screen_entity (z. B. der Bildschirm-Schalter von Fully Kiosk): geht er an, ist das wie Sichtbarwerden. Fully
+    // meldet das mit etwas Verzug; kam die Sichtbarkeit schon, verhindert die Sperre eine zweite Begrüßung.
+    _hassAct(hass) {
+      const id = this._cfg.screen_entity;
+      const st = id ? hass.states[id]?.state : void 0;
+      if (st === this._screenSt) return;
+      this._screenSt = st;
+      this._screenWoke = false;
+      if (this._el) this._visSync(st === "on" && hass.connected !== false);
     }
     // .paused hält nur CSS-Animationen an: die Web Animations der Effekte (Seifenblasen, Schmetterling, Blütenwurf)
     // ebenso anhalten und beim Wiedersehen weiterlaufen lassen
@@ -6087,7 +6095,6 @@
 
   // src/karte/alltag.js
   var Alltag = class {
-    // ---------- Aktionen ----------
     async _idle() {
       if (this._get("g") > 75 && Math.random() < 0.35) this._el.pika.classList.add("content");
       else if (this._el.pika.classList.contains("sad") && Math.random() < 0.6) this._mimik("sad");
@@ -6534,7 +6541,6 @@
       if (!this._asleep) this._cls("sparkle", 2600);
       setTimeout(land, 800);
     }
-    // ---------- Wiese ----------
     _initFlowers() {
       for (let i = 0; i < 5; i++) this._addFlower(false);
     }
@@ -7173,6 +7179,8 @@
       }
       await this._wait(rnd(900, 1600));
     }
+    // Besucher laufen neben der Pika-Schleife her und sind reine Zierde. Wann sie kommen, folgt aus der Uhrzeit
+    // (seedRnd), darum sehen alle Geräte dieselben Besuche.
     _startCritters() {
       if (!this._attached || this._away() || this._critOn) return;
       this._critOn = true;
@@ -7259,7 +7267,6 @@
       const e = this._dbgElev ?? this._elev;
       return e == null ? !this._asleep : e > 3;
     }
-    // pk: feste Entscheidungen aus _critNext (ohne: Zufall, Vorschau-Knöpfe); late: so viele ms nach dem Start
     // Frosch, Schnecke und Maus sitzen knapp hinter dem Pika, die Bodendeko der Festtage vorn (Kürbis, Stiefel, Kranz,
     // Kuchen, Geschenk) steht eine Ebene davor. Wo sie anhalten, rücken sie darum neben die Deko statt dahinter.
     // Ostereier und Raketenstäbe sind klein und liegen überall, der Baum steht hinter ihnen: die zählen nicht.
@@ -7269,6 +7276,7 @@
       const blocks = ["pumpkin", "boot", "wreath", "cake", "gift"].filter((n) => pos[n]).map((n) => [pos[n].l - pad, pos[n].l + pos[n].w + pad]);
       return blocks.length ? clearSpot(x, w, a, b, blocks) : x;
     }
+    // pk: feste Entscheidungen aus _critNext (ohne: Zufall, Vorschau-Knöpfe); late: so viele ms nach dem Start
     async _visit(kind, id, force = false, pk = null, late = 0) {
       if (!this._g || this["_" + kind]) return;
       if (!force && !this._critterWeather(kind)) return;
@@ -7909,6 +7917,10 @@
       if (Math.random() < 0.55) this._say(pick(["brumm!", "wuiii!", "oh!", "iiep!"]), 1100);
       await this._wait(rnd(1500, 2800));
     }
+    // Echte Flüge aus der Flightradar24-Integration (Attribut flights, Meldung alle 10–30 s). Dazwischen fliegen
+    // sie mit Kurs und Geschwindigkeit weiter. Im Bild: Osten links, Westen rechts (Südhalbkugel umgekehrt, _viewN),
+    // der Bildrand liegt bei flight_radius. Die Flughöhe bestimmt, wie hoch sie am Himmel stehen, die Entfernung
+    // ihre Größe.
     _readFlights(st) {
       const cfg = this._hass?.config;
       if (!this._el || !cfg || !Number.isFinite(cfg.latitude)) return;
@@ -8236,10 +8248,9 @@
 
   // src/karte/beschaeftigungen.js
   var Beschaeftigungen = class {
-    // ---------- Beschäftigungen ----------
-    // Zeitplan, Einstieg und die Beschäftigungen von 0.15 stehen im Abschnitt "Aktivitäten". Alle Beschäftigungen
-    // holen sich ihr Fenster mit _slotFor(name): { k, start, end, r(n) }. end ist das Ende des Hauptteils (Planzeit,
-    // _planNow), r(n) sind feste Zahlen des Fensters, auf allen Geräten gleich.
+    // Die Beschäftigungen selbst stehen in beschaeftigungen-gross.js und beschaeftigungen-klein.js, _slotNow wählt aus
+    // dem Tagesplan. Alle holen sich ihr Fenster mit _slotFor(name): { k, start, end, r(n) }. end ist das Ende des
+    // Hauptteils (Planzeit, _planNow), r(n) sind feste Zahlen des Fensters, auf allen Geräten gleich.
     // Zum Platz der Beschäftigung: frisch gestartet (Neuladen, Seite wieder sichtbar) und schon spät dran steht er
     // gleich dort, sonst läuft er hin. Aus dem Bau kommt er vorher heraus.
     async _goSpot(S, x, speed = 0.8) {
@@ -8304,19 +8315,6 @@
       } finally {
         p.classList.remove("stow", ...cls);
       }
-    }
-    // ==================== Aktivitäten: Methoden ====================
-    // Tagesplan der Beschäftigungen (ACT_WIN, Helfer plan_entity), Tagesform, Begrüßung, wenn die Karte sichtbar
-    // wird, und die Beschäftigungen Musik, Malen, Seifenblasen, Frühsport (groß) sowie Seilspringen und Gewichtheben.
-    // screen_entity (z. B. der Bildschirm-Schalter von Fully Kiosk): geht er an, ist das wie Sichtbarwerden. Fully
-    // meldet das mit etwas Verzug; kam die Sichtbarkeit schon, verhindert die Sperre eine zweite Begrüßung.
-    _hassAct(hass) {
-      const id = this._cfg.screen_entity;
-      const st = id ? hass.states[id]?.state : void 0;
-      if (st === this._screenSt) return;
-      this._screenSt = st;
-      this._screenWoke = false;
-      if (this._el) this._visSync(st === "on" && hass.connected !== false);
     }
     // Schaut jemand hin? Unsichtbar läuft die Schleife ohnehin nicht; mit screen_entity zählt auch der Bildschirm.
     _watched() {
@@ -9339,7 +9337,6 @@
 
   // src/karte/bausteine.js
   var Bausteine = class {
-    // ---------- Bausteine ----------
     // lane (Prototyp Tiefe): 1 = hintere Spur. Alle anderen Wege führen auf die vordere Spur zurück.
     // back: rückwärts, er dreht sich nicht in Laufrichtung (ein paar Schritte vom Bild zurücktreten)
     async _walkTo(x, speed = 1, steady = false, lane = 0, back = false) {
@@ -9667,7 +9664,6 @@
 
   // src/karte/interaktion.js
   var Interaktion = class {
-    // ---------- Interaktion ----------
     // Klick auf den Pika. Den Tipp mit Finger oder Maus löst schon das Loslassen aus (_pressEnd), der Klick des Browsers
     // dazu wird verschluckt. Hier kommt nur an, was ohne Zeiger klickt: der durchgereichte Tipp unter einem Flugzeug
     // (_tapBelow) und Hilfsmittel, die Klicks selbst auslösen.
@@ -10367,7 +10363,6 @@
       } catch (e) {
       }
     }
-    // ==================== Tagebuch: Methoden ====================
     _diaryOn() {
       return this._cfg?.diary !== false;
     }
@@ -10804,12 +10799,10 @@
       const back = this._el?.stats.hidden ? this._el.tbbtn : this._el?.stats;
       if (back?.isConnected && !back.hidden) back.focus({ preventScroll: true });
     }
-    // ==================== Ende Tagebuch ====================
   };
 
   // src/karte/momente.js
   var Momente = class {
-    // ---------- Kleine Momente ----------
     _cuteActs({ s, g, wx, elev, hasFlowers }) {
       const d = new Date(this._dbgDate ?? Date.now());
       const h = d.getHours();
@@ -11435,10 +11428,6 @@
 
   // src/karte/feste.js
   var Feste = class {
-    // ---------- Besucher: Vögelchen und Maus ----------
-    // Laufen neben der Pika-Schleife her und sind reine Zierde. Wann sie kommen, folgt aus der Uhrzeit (seedRnd),
-    // darum sehen alle Geräte dieselben Besuche.
-    // ==================== Festtage: Methoden ====================
     // Welche Feste heute sind, bestimmt _festToday() aus der Ortszeit (Vorschau: _dbgDate). Der 20-s-Takt prüft
     // neu; ändert sich etwas, wird die Deko neu aufgebaut. Alles ist Zierde: nichts kostet Werte, nichts wird gesammelt.
     _hassFest(hass) {
@@ -12210,7 +12199,6 @@
       this._jump("binky");
       await this._wait(2400);
     }
-    // ==================== Ende Festtage ====================
   };
 
   // src/karte/zustand.js
@@ -12425,7 +12413,7 @@
       this._el.stG.title = `Glücklich: ${Math.round(g)} %`;
       this._el.stC.title = `Sauber: ${Math.round(c)} %`;
     }
-    // ---------- Häufchen ----------
+    // Uhr der Häufchen: Uhr von HA (Vorschau: um _dbgShift vorgestellt)
     _now() {
       return this._haNow() + this._dbgShift;
     }
@@ -12479,7 +12467,6 @@
 
   // src/karte/pino.js
   var Pino = class {
-    // ==================== Freund-Pika: Methoden ====================
     // Pino, ein Freund-Pika, kommt ein paarmal am Tag zu Besuch. Er lebt in der Ebene .friends hinter dem Pika
     // und hat einen eigenen Ablauf (_friendVisit: hereinhoppeln, Eigenleben, verabschieden, hinaus). Die
     // gemeinsamen Spiele sind Aktionen des Pikas (_friendActs); solange eine läuft (fr.busy), steuert sie Pino.
@@ -13450,7 +13437,6 @@
       }
       await this._wait(rnd(300, 700));
     }
-    // ==================== Ende Freund-Pika ====================
   };
 
   // src/karte/himmel.js
@@ -13587,11 +13573,6 @@
         el.style.transition = "";
       }
     }
-    // ---------- Flugzeuge ----------
-    // Echte Flüge aus der Flightradar24-Integration (Attribut flights, Meldung alle 10–30 s). Dazwischen fliegen
-    // sie mit Kurs und Geschwindigkeit weiter. Im Bild: Osten links, Westen rechts (Südhalbkugel umgekehrt, _viewN), der Bildrand liegt bei
-    // flight_radius. Die Flughöhe bestimmt, wie hoch sie am Himmel stehen, die Entfernung ihre Größe.
-    // ==================== Himmel-Extras: Methoden ====================
     // Sternschnuppen (nur zum Anschauen, kein Zähler): ein Zeitgeber alle 1,5–5 Minuten, der nur nachts bei
     // klarem Himmel eine losschickt. Jede läuft als CSS-Animation in .meteors und entfernt sich danach selbst.
     // Glühwürmchen: ersetzen die sechs Punkte aus _build durch 10–14 eigene; die Ebene .ff blendet je nach
@@ -13879,7 +13860,6 @@
       this._say("oh!", 1100);
       await this._wait(rnd(1400, 2400));
     }
-    // ==================== Ende Himmel-Extras ====================
   };
 
   // src/karte/wetter.js
@@ -13906,7 +13886,6 @@
       el.style.left = `${(cx - r).toFixed(1)}px`;
       el.style.top = `${(cy - r).toFixed(1)}px`;
     }
-    // ---------- Wetter ----------
     _readWeather(w, pr) {
       this._wxNote(w);
       const dead = !!w && (w.state === "unavailable" || w.state === "unknown");
@@ -14350,7 +14329,6 @@
 
   // src/karte/haus-bote.js
   var HausBote = class {
-    // ==================== Haus-Bote: Methoden ====================
     // Waschmaschine, Trockner, Spülmaschine aus `appliances`. Jedes Gerät hat ein Requisit am Bau (.hb in .props),
     // das seine Phase zeigt: run (läuft), done (fertig, noch zu), empty (ausgeräumt, 20 Minuten).
     // "Ausgeräumt" nur nach einem echten Programmende: live (fertig → ready/inactive, oder Tür bei "fertig" auf;
@@ -15283,12 +15261,10 @@
       await this._wait(rnd(1400, 2200));
       await this._comeOut();
     }
-    // ==================== Ende Haus-Bote ====================
   };
 
   // src/karte/kaffee.js
   var Kaffee = class {
-    // ==================== Kaffee: Methoden ====================
     // Kaffeevollautomat aus `coffee` ({ active, counter, selected }):
     // - active: aktives Programm (select). Ein Getränkeprogramm heißt: gerade wird ein Bezug gemacht. Der Pika
     //   schnuppert dann und denkt an Kaffee. Einschalten mit Spülen und Reinigen setzen kein Programm.
@@ -15574,12 +15550,10 @@
       p.classList.remove("coffee", "hot", ...COFFEE_CLS);
       await this._wait(600);
     }
-    // ==================== Ende Kaffee ====================
   };
 
   // src/karte/paeckchen.js
   var Paeckchen = class {
-    // ==================== Päckchen: Methoden ====================
     // Pflege-Serie (Tagesplan-Feld gift), Knopf mit Fortschrittsring und Album, Ballon mit Zwille, Auspacken, Leckerli und
     // Schätze in der Szene. Was alle Geräte wissen müssen, steht im Plan. Ballon, Zwille und Auspacken zeigt jedes Gerät
     // selbst: Der Ballon schwebt nach fester Zeitleiste ab dem Verschenken (G.x) herein, ausgepackt ist es, sobald es
@@ -16295,7 +16269,6 @@
         days: c.broken ? 0 : Math.floor((this._haNow() - G.k) / 864e5)
       };
     }
-    // ==================== Ende Päckchen ====================
   };
 
   // src/karte/schaetze.js
@@ -16711,7 +16684,6 @@
 
   // src/karte/tagesplan.js
   var Tagesplan = class {
-    // ---------- Tagesplan: Speicher ----------
     // Anderer Helfer oder Name: von vorn. Ohne plan_entity bleibt der Plan im Browser (je Gerät).
     _planReset() {
       clearTimeout(this._planT);
@@ -17555,7 +17527,6 @@
       await this._propOff("gliding");
       await this._wait(100);
     }
-    // ==================== Ende Aktivitäten ====================
   };
 
   // src/karte.js

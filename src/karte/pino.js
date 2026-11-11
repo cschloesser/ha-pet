@@ -1,6 +1,7 @@
 // Pino: Besuchsplan, Kommen und Gehen, eigenes Leben, gemeinsame Spiele
 
-import { Cancel, calmMotion, rnd, pick, clamp, pause, weighted, seedRnd } from '../logik/hilfen.js';
+import { Cancel, rnd, pick, clamp, pause, weighted, seedRnd } from '../logik/hilfen.js';
+import { calmMotion } from '../logik/bewegung-reduzieren.js';
 import { SELF } from '../logik/zustand.js';
 import { FRIEND_SCALE, FRIEND_WIN, FRIEND_LAST, FRIEND_ACTS, FRIEND_YIELD, FRIEND_CLS } from '../logik/besucher.js';
 import { HOP_MS, hopRound, jumpBusy, chaseFar } from '../logik/beschaeftigungen.js';
@@ -8,7 +9,6 @@ import { ICON_HEART } from '../grafik/szene.js';
 import { FRIEND_SVG } from '../grafik/besucher.js';
 
 export class Pino {
-  // ==================== Freund-Pika: Methoden ====================
   // Pino, ein Freund-Pika, kommt ein paarmal am Tag zu Besuch. Er lebt in der Ebene .friends hinter dem Pika
   // und hat einen eigenen Ablauf (_friendVisit: hereinhoppeln, Eigenleben, verabschieden, hinaus). Die
   // gemeinsamen Spiele sind Aktionen des Pikas (_friendActs); solange eine läuft (fr.busy), steuert sie Pino.
@@ -1066,5 +1066,4 @@ export class Pino {
     }
     await this._wait(rnd(300, 700));
   }
-  // ==================== Ende Freund-Pika ====================
 }

@@ -3,8 +3,6 @@
 import { rnd, pick, clamp } from '../logik/hilfen.js';
 
 export class Alltag {
-  // ---------- Aktionen ----------
-
   async _idle() {
     // Glücklich: mit zufriedenem ω-Mund dasitzen
     if (this._get('g') > 75 && Math.random() < 0.35) this._el.pika.classList.add('content');

@@ -10,7 +10,6 @@ import {
 } from '../grafik/paeckchen.js';
 
 export class Paeckchen {
-  // ==================== Päckchen: Methoden ====================
   // Pflege-Serie (Tagesplan-Feld gift), Knopf mit Fortschrittsring und Album, Ballon mit Zwille, Auspacken, Leckerli und
   // Schätze in der Szene. Was alle Geräte wissen müssen, steht im Plan. Ballon, Zwille und Auspacken zeigt jedes Gerät
   // selbst: Der Ballon schwebt nach fester Zeitleiste ab dem Verschenken (G.x) herein, ausgepackt ist es, sobald es
@@ -788,5 +787,4 @@ export class Paeckchen {
       days: c.broken ? 0 : Math.floor((this._haNow() - G.k) / 864e5),
     };
   }
-  // ==================== Ende Päckchen ====================
 }

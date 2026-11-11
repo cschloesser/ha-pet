@@ -31,8 +31,6 @@ import { Schaetze } from './karte/schaetze.js';
 import { Tagesplan } from './karte/tagesplan.js';
 import { BeschaeftigungenKlein } from './karte/beschaeftigungen-klein.js';
 
-// ---------- Karte ----------
-
 class PikaPetCard extends HTMLElement {
   constructor() {
     super();

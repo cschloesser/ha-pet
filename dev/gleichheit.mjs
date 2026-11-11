@@ -12,7 +12,8 @@
 // Verglichen wird Druck gegen Druck. Dass esbuilds Drucker selbst nichts verändert (er schreibt Strings mit
 // doppelten Anführungszeichen, lässt Kommentare und überflüssige Klammern weg), prüft dieses Skript nicht.
 // Erlaubt sind im neuen Druck nur die Pfadkommentare von esbuild, Kopf und Fuß der Klassenteile und der Zusammenbau
-// in src/karte.js.
+// in src/karte.js. Kommentarzeilen (esbuild behält die vor Klassenmitgliedern) werden gezählt, sind aber keine
+// Abweichung: Am Verhalten ändern sie nichts.
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -50,8 +51,9 @@ const disk = fs.readFileSync(path.join(repo, 'pika-pet-card.js'), 'utf8').replac
 const diskBody = disk.slice(disk.indexOf('(() => {'));
 if (diskBody !== N) fail('pika-pet-card.js im Repo ist nicht das Bündel aus src/ (ohne Kopfkommentar verglichen)');
 else note('Bündel im Repo = Bau aus src/ (ohne Kopfkommentar): ja');
-const headOld = aL.slice(0, open).join('\n'), headNew = disk.slice(0, disk.indexOf('(() => {')).replace(/\n$/, '');
-if (headOld !== headNew) fail('Kopfkommentar weicht ab'); else note(`Kopfkommentar: gleich (${open} Zeilen)`);
+// Leerzeilen vor dem Kopfkommentar zählen nicht (bis 0.33.0 begann die Datei mit einer)
+const headOld = aL.slice(0, open).join('\n').trim(), headNew = disk.slice(0, disk.indexOf('(() => {')).trim();
+if (headOld !== headNew) fail('Kopfkommentar weicht ab'); else note(`Kopfkommentar: gleich (${headNew.split('\n').length} Zeilen)`);
 
 // --- 1. Zeilenbilanz
 const count = (t) => { const m = new Map(); for (const l of t.split('\n')) m.set(l, (m.get(l) || 0) + 1); return m; };
@@ -70,8 +72,19 @@ const okNew = (l) => l === '' || /^  \/\/ src\/[\w\/.-]+\.js$/.test(l) || /^  va
   || /^      if \(k !== "constructor"\) Object\.defineProperty\(PikaPetCard\.prototype, k, Object\.getOwnPropertyDescriptor\(Teil\.prototype, k\)\);$/.test(l)
   || /^      if \(!\["length", "name", "prototype"\]\.includes\(k\)\) Object\.defineProperty\(PikaPetCard, k, Object\.getOwnPropertyDescriptor\(Teil, k\)\);$/.test(l)
   || l === '    }' || l === '  }';
-for (const [l] of onlyO) if (!/^  \/\/ .*alt-ohne-huelle\.js$/.test(l)) fail('Zeile fehlt im neuen Druck: ' + l.slice(0, 160));
-for (const [l] of onlyN) if (!okNew(l)) fail('unerwartete neue Zeile: ' + l.slice(0, 160));
+// reine Kommentarzeilen (Zeilen im Inneren von Template-Strings, die so aussehen, fängt der Wertevergleich unten)
+const kommentar = (l) => /^\s*(\/\/|\/\*|\*)/.test(l);
+let kAlt = 0, kNeu = 0;
+for (const [l, d] of onlyO) {
+  if (kommentar(l)) kAlt += d;
+  else fail('Zeile fehlt im neuen Druck: ' + l.slice(0, 160));
+}
+for (const [l, d] of onlyN) {
+  if (okNew(l)) continue;
+  if (kommentar(l)) kNeu += d;
+  else fail('unerwartete neue Zeile: ' + l.slice(0, 160));
+}
+note(`   davon Kommentarzeilen (keine Abweichung): ${kAlt} nur alt, ${kNeu} nur neu`);
 
 // --- beide laden, mit einem Guckloch in die IIFE
 const names = [...new Set([...O.matchAll(/^  var ([A-Za-z_$][\w$]*) = /gm)].map((m) => m[1]))];
@@ -132,8 +145,12 @@ note(`   nur neu (${extra.length}): ${extra.join(', ')}`);
 for (const n of names) if (!namesN.includes(n)) fail(`Name fehlt im neuen Bündel: ${n}`);
 let same = 0, strs = 0, fns = 0, chars = 0;
 const styles = [];
+// Die Teile der Klasse (und ihre Liste) sind keine Werte der Karte: Ihr Text enthält Kommentare, und eine Methode
+// darf von einem Teil in ein anderes ziehen. Verglichen werden sie unter 3. Methode für Methode am Prototyp.
+let teile = [];
+try { teile = ['TEILE', ...B.guck('TEILE').map((t) => t.name)]; } catch { /* alter Stand ohne Teile */ }
 for (const n of names) {
-  if (n === 'PikaPetCard') continue;
+  if (n === 'PikaPetCard' || teile.includes(n)) continue;
   let a, b;
   try { a = A.guck(n); } catch (e) { fail(`alt: ${n} nicht lesbar (${e.message})`); continue; }
   try { b = B.guck(n); } catch (e) { fail(`neu: ${n} nicht lesbar (${e.message})`); continue; }

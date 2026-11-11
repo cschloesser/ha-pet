@@ -1,8 +1,8 @@
-// Kleine Beschäftigungen: Auswahl nach Wetter, Takt, Pfütze, Schiffchen, Jo-Jo, Purzelbaum, Papierflieger, Platz am Boden
+// Kleine Beschäftigungen: Auswahl nach Wetter, Takt, Pfütze, Schiffchen, Jo-Jo, Purzelbaum, Papierflieger,
+// Platz am Boden
 
 import { clamp, weightedR, clearSpot } from './hilfen.js';
 
-// ---------- Kleine Beschäftigungen: Auswahl nach Wetter, Takt, Platz am Boden ----------
 // Grundgewichte. Bis 0.31 wechselten sich Seil und Hantel rund 40-mal am Tag ab; jetzt teilen sich elf den Tag,
 // und Regen und Schnee haben ihr eigenes Programm (Pfützenspringen, Papierschiffchen; Schnee-Pika). Die Reihenfolge
 // ist Teil der Wahl (weightedR): nicht umsortieren, sonst wählen Geräte mit altem und neuem Stand Verschiedenes.

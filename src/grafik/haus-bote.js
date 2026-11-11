@@ -108,6 +108,9 @@ const BOTE_BASIN = (full) => `
 const BOTE_TWINKLE = (pts) => pts.map(([x, y], i) =>
   `<g transform="translate(${x} ${y}) scale(.34) translate(-12 -12)"><path class="hb-tw" style="animation-delay:${(-i * 0.6).toFixed(1)}s" d="${STAR}"/></g>`).join('');
 
+// Geräte-Grafiken je Phase, in Einheiten von BOTE_K × Kartenhöhe (src/logik/haus-bote.js): vb = viewBox,
+// ground = Bodenlinie, vt = sichtbare Oberkante (für das Fähnchen), part = Hauptteil in x (Fortschrittsbalken,
+// Hingehen), back = zu hoch für den vorderen Wiesenstreifen (bleibt hinten).
 const BOTE_SVG = {
   washer(view) {
     if (view === 'empty') return { vb: [0, 0, 84, 112], ground: 110, vt: 8, part: [6, 78], back: true, svg: BOTE_CLOTHESLINE };

@@ -9,7 +9,6 @@ const COFFEE_THINK = `<svg viewBox="0 0 24 24" aria-hidden="true">
     <path d="M3 11 H18 Q18 21.5 10.5 21.5 Q3 21.5 3 11Z" fill="#f6f1ea" stroke="#6b4428" stroke-width="1.2"/>
     <ellipse cx="10.5" cy="11" rx="7.5" ry="1.6" fill="#b07a4c"/></svg>`;
 
-// ---------- Mimik, Streicheln, kleine Momente, Träume, Geschenk ----------
 // Zeichen über dem Kopf (_emote)
 const EMOTE = {
   q: '?',

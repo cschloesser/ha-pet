@@ -31,6 +31,10 @@ export class Flugzeuge {
     await this._wait(rnd(1500, 2800));
   }
 
+  // Echte Flüge aus der Flightradar24-Integration (Attribut flights, Meldung alle 10–30 s). Dazwischen fliegen
+  // sie mit Kurs und Geschwindigkeit weiter. Im Bild: Osten links, Westen rechts (Südhalbkugel umgekehrt, _viewN),
+  // der Bildrand liegt bei flight_radius. Die Flughöhe bestimmt, wie hoch sie am Himmel stehen, die Entfernung
+  // ihre Größe.
   _readFlights(st) {
     const cfg = this._hass?.config;
     if (!this._el || !cfg || !Number.isFinite(cfg.latitude)) return;

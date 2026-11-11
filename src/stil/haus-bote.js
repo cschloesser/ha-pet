@@ -191,6 +191,5 @@ const STYLE_BOTE = `
   .hb-tag .more { font-size: .9em; opacity: .85; }
   .night .hb-tag { color: #e4e9f6; background: rgba(22, 32, 62, .78); }
   `;
-// ==================== Ende Haus-Bote ====================
 
 export { STYLE_BOTE };

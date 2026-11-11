@@ -1,14 +1,13 @@
 // Kleine Momente: neugierig, gähnen, niesen, kratzen, Schluckauf, Schmetterling, Flitzen, Blumengeschenk, Wiedersehen
 
-import { calmMotion, rnd, pick, clamp } from '../logik/hilfen.js';
+import { rnd, pick, clamp } from '../logik/hilfen.js';
+import { calmMotion } from '../logik/bewegung-reduzieren.js';
 import { GAIN } from '../logik/zustand.js';
 import { FLGIFT } from '../logik/tagesplan.js';
 import { ICON_HEART } from '../grafik/szene.js';
 import { BFLY_COLORS, BFLY_SVG, GIFT_SVG } from '../grafik/momente.js';
 
 export class Momente {
-  // ---------- Kleine Momente ----------
-
   _cuteActs({ s, g, wx, elev, hasFlowers }) {
     const d = new Date(this._dbgDate ?? Date.now());
     const h = d.getHours();

@@ -9,6 +9,7 @@ const lonDiff = (a, b) => ((((a - b) % 360) + 540) % 360) - 180;
 // Muss zu den 5s-Übergängen bei .plane, .pl-s, .pl-f, .phit und .ptag passen.
 const PLANE_STEP = 5;
 
+// Städte, wie sie Flightradar24 liefert (englisch), auf Deutsch
 const CITY_DE = {
   Bucharest: 'Bukarest', Warsaw: 'Warschau', Krakow: 'Krakau', Cracow: 'Krakau', Lisbon: 'Lissabon', Rome: 'Rom',
   Milan: 'Mailand', Venice: 'Venedig', Naples: 'Neapel', Florence: 'Florenz', Genoa: 'Genua', Athens: 'Athen',

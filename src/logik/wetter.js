@@ -1,4 +1,5 @@
-// Wetter: Blumenfarben, Wind, Lagen, Dämmerung, Jahreszeiten und Farben des Landes, Wetterverlauf, Schneedecke, Regenbogen
+// Wetter: Blumenfarben, Wind, Lagen, Dämmerung, Jahreszeiten und Farben des Landes, Wetterverlauf, Schneedecke,
+// Regenbogen
 
 import { clamp } from './hilfen.js';
 

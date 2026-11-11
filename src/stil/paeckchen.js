@@ -159,6 +159,5 @@ const STYLE_GIFT = `
   @keyframes gnew { from { transform: scale(0) rotate(-40deg); } }
   .gbtn.no { animation: no .4s; }
   `;
-// ==================== Ende Päckchen ====================
 
 export { STYLE_GIFT };

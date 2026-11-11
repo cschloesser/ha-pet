@@ -1,6 +1,5 @@
 // Kaffee: Programme, Gefäße, Schlucke, Zeitleiste
 
-// ==================== Kaffee: Konstanten und Stil ====================
 // Getränkeprogramme (Home Connect): "…_program_beverage_<name>" bzw. "…_program_coffee_world_<name>".
 // Spülen und Reinigen setzen kein aktives Programm.
 const COFFEE_PROG = /beverage|coffee_world/;

@@ -363,6 +363,5 @@ const STYLE_ACT = `
     .stn, .stonep.fall .stn, .spl { transition-timing-function: ease-out; }
   }
   `;
-// ==================== Ende Aktivitäten ====================
 
 export { STYLE_ACT };

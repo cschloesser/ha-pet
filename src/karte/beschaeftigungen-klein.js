@@ -1,6 +1,8 @@
-// Kleine Beschäftigungen: Pfütze, Schiffchen, Schnee-Pika, Hula-Hoop, Jo-Jo, Pusteblume, Purzelbaum, Steintürmchen, Jonglieren, Blumenkranz, Papierflieger
+// Kleine Beschäftigungen: Pfütze, Schiffchen, Schnee-Pika, Hula-Hoop, Jo-Jo, Pusteblume, Purzelbaum, Steintürmchen,
+// Jonglieren, Blumenkranz, Papierflieger
 
-import { calmMotion, rnd, pick, clamp } from '../logik/hilfen.js';
+import { rnd, pick, clamp } from '../logik/hilfen.js';
+import { calmMotion } from '../logik/bewegung-reduzieren.js';
 import { seasonKey } from '../logik/wetter.js';
 import { HAY_MAX } from '../logik/tagesplan.js';
 import { ACT_WALK, walkSpeed, JUMPS } from '../logik/beschaeftigungen.js';
@@ -684,5 +686,4 @@ export class BeschaeftigungenKlein {
     await this._propOff('gliding');
     await this._wait(100);
   }
-  // ==================== Ende Aktivitäten ====================
 }

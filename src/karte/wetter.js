@@ -34,8 +34,6 @@ export class Wetter {
     el.style.top = `${(cy - r).toFixed(1)}px`;
   }
 
-  // ---------- Wetter ----------
-
   _readWeather(w, pr) {
     this._wxNote(w);
     // Wetter kurz nicht erreichbar (Aussetzer des Dienstes, Integration lädt neu): Das letzte gilt bis zu WX_HOLD

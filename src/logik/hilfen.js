@@ -1,9 +1,7 @@
-// Hilfen: Abbruch-Fehler, Bewegung reduzieren, Zufall (frei und fest), Rechnen, Zeitangaben, Text entschärfen, Größeneinheit und freie Plätze der Szene
+// Hilfen: Abbruch-Fehler, Zufall (frei und fest), Rechnen, Zeitangaben, Text entschärfen, Größeneinheit und freie
+// Plätze der Szene
 
 class Cancel extends Error {}
-// Systemeinstellung „Bewegung reduzieren“; .matches folgt einer Änderung von selbst
-const RED_MOTION = window.matchMedia?.('(prefers-reduced-motion: reduce)');
-const calmMotion = () => !!RED_MOTION?.matches;
 const rnd = (a, b) => a + Math.random() * (b - a);
 const pick = (arr) => arr[Math.floor(Math.random() * arr.length)];
 const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
@@ -48,13 +46,6 @@ const weightedR = (list, u) => {
   for (const [w, v] of list) if (w > 0 && (r -= w) < 0) return v;
   return list.filter(([w]) => w > 0).pop()[1];
 };
-// Plätze der Requisiten vorn am unteren Rand, von links in der Reihenfolge von ws (Wunschbreiten in px).
-// o: { gap, left, right, door: [a, b], deko: [[a, b] …], store: [a, b], meadow }. Gesperrt sind der Eingang (dort
-// schläft der Pika), die Bodendeko der Festtage und der Vorrat (Nische oder Heuhaufen); ein Requisit, das eine
-// Sperre träfe, rückt hinter sie. Der Reihe nach wird versucht, bis alles Platz hat: 1. links vom Vorrat bleiben
-// (dafür bis 20 % kleiner), 2. höchstens bis meadow (ein Stück auf die Wiese, bis 25 % kleiner), 3. bis zum rechten
-// Rand (so kurz wie möglich), 4. der Vorrat darf verdeckt werden, 5. auch die Deko, 6. alles dicht an dicht wie früher (schmale Karte).
-// Alle Requisiten werden gemeinsam gleich stark kleiner (k). Ergebnis: { k, xs: linke Kanten, tier: 1–6 }.
 // Größeneinheit der Szene: die Kartenhöhe, auf schmalen Karten (Handy, schmaler als 3:2) die Breite / 1,5. Bau,
 // Pika, Stein und alles andere bemessen sich daran, sonst passte der Pika nicht mehr zwischen Bau und Stein.
 // Die Szene steht dann unten in der Karte, darüber ist mehr Himmel.
@@ -71,6 +62,5 @@ const clearSpot = (x, w, a, b, blocks) => {
 };
 
 export {
-  Cancel, calmMotion, rnd, pick, clamp, pause, hasKey, weighted, minutes, esc, seeded, seedRnd, weightedR, sceneUnit,
-  clearSpot,
+  Cancel, rnd, pick, clamp, pause, hasKey, weighted, minutes, esc, seeded, seedRnd, weightedR, sceneUnit, clearSpot,
 };

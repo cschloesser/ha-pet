@@ -33,6 +33,5 @@ const STYLE_COFFEE = `
   /* Bei Regen hält die rechte Pfote den Blattschirm */
   .pika.wet:not(.inside) .cup .cpr { display: none; }
   `;
-// ==================== Ende Kaffee ====================
 
 export { STYLE_COFFEE };

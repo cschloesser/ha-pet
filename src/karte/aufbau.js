@@ -19,8 +19,6 @@ import { STYLE_GIFT } from '../stil/paeckchen.js';
 import { STYLE_DIARY_BTN } from '../stil/tagebuch.js';
 
 export class Aufbau {
-  // ---------- Aufbau ----------
-
   _build() {
     // 24 Sterne in drei Ebenen zu je acht: funkeln ebenenweise versetzt, also drei Animationen statt 24
     const stars = Array.from({ length: 3 }, () => '<b>' + Array.from({ length: 8 }, () =>

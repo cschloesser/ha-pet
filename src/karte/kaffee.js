@@ -9,7 +9,6 @@ import { JUMP_IN } from '../logik/beschaeftigungen.js';
 import { COFFEE_THINK } from '../grafik/momente.js';
 
 export class Kaffee {
-  // ==================== Kaffee: Methoden ====================
   // Kaffeevollautomat aus `coffee` ({ active, counter, selected }):
   // - active: aktives Programm (select). Ein Getränkeprogramm heißt: gerade wird ein Bezug gemacht. Der Pika
   //   schnuppert dann und denkt an Kaffee. Einschalten mit Spülen und Reinigen setzen kein Programm.
@@ -322,5 +321,4 @@ export class Kaffee {
     p.classList.remove('coffee', 'hot', ...COFFEE_CLS);
     await this._wait(600);
   }
-  // ==================== Ende Kaffee ====================
 }

@@ -1,8 +1,6 @@
-// Besucher und Pino: Fenster und Fristen der Besuche (Vögelchen, Maus, Frosch, Schnecke); Pino: Größe, Besuchsplan, gemeinsame Spiele, Zustandsklassen
+// Besucher und Pino: Fenster und Fristen der Besuche (Vögelchen, Maus, Frosch, Schnecke); Pino: Größe, Besuchsplan,
+// gemeinsame Spiele, Zustandsklassen
 
-// Häufchen: alle 80–140 Minuten Wachzeit eins, das erste 10–30 Minuten nach dem Aufwachen. Höchstens 8
-// seit dem letzten Großputz (einzeln weggemachte zählen mit), die ersten 3 in der Klo-Ecke am Stein. idx:
-// so viele Fälligkeiten rechnet die Karte höchstens (Bits der Maske für einzeln weggemachte Häufchen).
 // Besucher: Die Uhr ist in feste Fenster geteilt (win, ms). In jedem Fenster kommt mit Wahrscheinlichkeit p
 // höchstens ein Besuch, sein Start liegt in den ersten win − room ms (room: Platz für den Besuch selbst, damit
 // er vor dem nächsten Fenster vorbei ist). Mittlerer Abstand win / p wie früher: Vögelchen 3–7 Min Pause +
@@ -21,11 +19,8 @@ const CRIT_BACK = 45000;
 const critJoin = (kind, pk) => Math.max(CRIT_LATE, kind === 'bird' ? pk.stay - 5000 : kind === 'frog' ? pk.stay - 3000
   : kind === 'snail' ? 30000 : 0);
 
-// ==================== Freund-Pika: Konstanten, Grafiken und Stil ====================
 // Pino ist 0,85-mal so groß wie der Pika, ingwerfarben, mit hellem Fleck auf der Stirn und türkisem Halstuch
-// (so ist er auch auf dem kleinen Tablet gleich zu erkennen). Seine Grafik entsteht aus PIKA_SVG: eigene ids
-// für Fellverlauf und Bauch-Clip (sonst griffe er auf die des Pikas zu), warme Fell-, Bauch- und Ohrenfarben.
-// Zubehör, das er nie braucht, entfernt _friendBuild aus seinem DOM.
+// (so ist er auch auf dem kleinen Tablet gleich zu erkennen).
 const FRIEND_SCALE = 0.85;
 // Besuchsplan wie bei Vögelchen und Maus aus der Uhr: 30-Minuten-Fenster, in jedem ein Besuch (p 1), Start in den
 // ersten 20 Minuten, Dauer 3–6 Minuten (spread + Dauer < Fenster), Seite links/rechts – alles aus

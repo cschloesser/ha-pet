@@ -1,4 +1,5 @@
-// Szene: Vorratsgrenze, Heuhaufen, Gras, Aussichtsstein, Blume, Futter, Symbole der Statusleiste, Häufchen, Kehrschaufel
+// Szene: Vorratsgrenze, Heuhaufen, Gras, Aussichtsstein, Blume, Futter, Symbole der Statusleiste, Häufchen,
+// Kehrschaufel
 
 import { rnd } from '../logik/hilfen.js';
 import { flowerMid } from '../logik/wetter.js';

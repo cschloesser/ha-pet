@@ -1,4 +1,5 @@
-// Beschäftigungen: Fenster des Tagesplans, Dauern, Listen, Häufchen dazwischen, Lauftempo, Hopser und Sprünge, Drachen, Einstieg, Frühsport, Requisiten hervorkramen
+// Beschäftigungen: Fenster des Tagesplans, Dauern, Listen, Häufchen dazwischen, Lauftempo, Hopser und Sprünge,
+// Drachen, Einstieg, Frühsport, Requisiten hervorkramen
 
 import { clamp, seedRnd } from './hilfen.js';
 import { POOP } from './zustand.js';
@@ -8,7 +9,6 @@ import {
   purzelRolls, STONE_MS, GLIDER_STEP,
 } from './beschaeftigungen-klein.js';
 
-// ==================== Aktivitäten: Konstanten, Grafiken und Stil ====================
 // Tagesplan: Beschäftigungen kommen aus der Uhrzeit (seedRnd), damit alle Geräte zur selben Zeit dasselbe zeigen
 // und ein neu geladenes Gerät mitten in die laufende einsteigt.
 // - Groß (Lesen, Gameboy, Tablet, Drachen, TV, Musik, Malen, Seifenblasen, Frühsport; 1–2,5 Min): die Uhr ist in

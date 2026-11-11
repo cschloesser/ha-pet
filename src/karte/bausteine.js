@@ -1,6 +1,8 @@
-// Bausteine: laufen, stellen, schauen, fressen, springen, sprechen, Herzchen, Mimik, Zeichen über dem Kopf, Schriftzug, Funkeln
+// Bausteine: laufen, stellen, schauen, fressen, springen, sprechen, Herzchen, Mimik, Zeichen über dem Kopf,
+// Schriftzug, Funkeln
 
-import { calmMotion, rnd, pick, clamp, hasKey } from '../logik/hilfen.js';
+import { rnd, pick, clamp, hasKey } from '../logik/hilfen.js';
+import { calmMotion } from '../logik/bewegung-reduzieren.js';
 import { LANE_DY, LANE_S } from '../logik/einstellungen.js';
 import { FRIEND_SCALE } from '../logik/besucher.js';
 import { MIMIK, MIMIK_CLS } from '../logik/interaktion.js';
@@ -9,8 +11,6 @@ import { ICON_HEART, STAR } from '../grafik/szene.js';
 import { EMOTE } from '../grafik/momente.js';
 
 export class Bausteine {
-  // ---------- Bausteine ----------
-
   // lane (Prototyp Tiefe): 1 = hintere Spur. Alle anderen Wege führen auf die vordere Spur zurück.
   // back: rückwärts, er dreht sich nicht in Laufrichtung (ein paar Schritte vom Bild zurücktreten)
   async _walkTo(x, speed = 1, steady = false, lane = 0, back = false) {

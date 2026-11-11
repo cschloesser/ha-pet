@@ -1,6 +1,8 @@
-// Große Beschäftigungen: Lesen, Gameboy, Tablet, Drachen, Fernsehen, Musik, Malen, Seifenblasen, Frühsport, Seil, Hantel
+// Große Beschäftigungen: Lesen, Gameboy, Tablet, Drachen, Fernsehen, Musik, Malen, Seifenblasen, Frühsport, Seil,
+// Hantel
 
-import { calmMotion, rnd, pick, clamp, hasKey } from '../logik/hilfen.js';
+import { rnd, pick, clamp, hasKey } from '../logik/hilfen.js';
+import { calmMotion } from '../logik/bewegung-reduzieren.js';
 import {
   ACT_WALK, ropeJumps, HOP_MS, KITE_LEAN, kitePaw, hopRound, SPORT_INTRO, SPORT_PAUSE, sportPlan, KRAM,
 } from '../logik/beschaeftigungen.js';

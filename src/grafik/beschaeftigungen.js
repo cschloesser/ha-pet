@@ -1,4 +1,5 @@
-// Beschäftigungen: Fernsehfarben, Drachen, Staffelei, Schirmchen, Tropfen, Pfütze, Schiffchen, Schnee-Pika, Steine, Papierflieger
+// Beschäftigungen: Fernsehfarben, Drachen, Staffelei, Schirmchen, Tropfen, Pfütze, Schiffchen, Schnee-Pika, Steine,
+// Papierflieger
 
 import { OUT, BOAT_ART } from './pika.js';
 

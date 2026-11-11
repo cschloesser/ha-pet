@@ -1,4 +1,5 @@
-// Päckchen: Hinweise, Inhalte mit Bild, Name und Trick, Papier- und Ballonfarben, Päckchen, Ballon, Hängematte, Windrad, Goldfilter
+// Päckchen: Hinweise, Inhalte mit Bild, Name und Trick, Papier- und Ballonfarben, Päckchen, Ballon, Hängematte,
+// Windrad, Goldfilter
 
 import { OUT } from './pika.js';
 import { ICON_LEAF, ICON_HEART, ICON_SPARK } from './szene.js';

@@ -20,8 +20,6 @@ const sunTimes = (day, lat, lng, elev = 0) => {
   return { rise: ms(transit - w), set: ms(transit + w) };
 };
 
-// ---------- Himmel ----------
-
 // Mondstand nach den vereinfachten Formeln aus "Astronomical Algorithms" (Meeus), auf ~1° genau.
 const RAD = Math.PI / 180;
 const moonPosition = (date, lat, lng) => {
@@ -70,8 +68,6 @@ const skyPos = (az, alt, viewN = false, ridge = false) => {
     y: 56 - up,
   };
 };
-// Städte, wie sie Flightradar24 liefert (englisch), auf Deutsch
-// ==================== Himmel-Extras (Sternschnuppen, Glühwürmchen): Konstanten und Stil ====================
 // Sternschnuppen: alle 1,5–5 Minuten eine Gelegenheit, jede fünfte ein Bolide, jede zehnte mit Nachzügler.
 // Glühwürmchen: 10–14 Stück, gut die Hälfte tief über der Wiese, ein Drittel um den Heuhaufen.
 const SKY = { meteor: [90000, 300000], bolide: 0.2, twin: 0.1, watch: 0.5, watchMs: 4000, ff: [10, 14] };

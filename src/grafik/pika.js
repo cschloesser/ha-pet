@@ -2,8 +2,6 @@
 
 import { clamp } from '../logik/hilfen.js';
 
-// ---------- Grafiken ----------
-
 const OUT = '#5a4030';
 // Fellfarben als CSS-Variablen (Name → Tagesfarbe). Nachts und im Bau setzt der STYLE dunklere Werte,
 // ein CSS-Filter auf dem atmenden Pika müsste sonst jedes Bild neu gerechnet werden.
@@ -48,7 +46,7 @@ const BACK_EAR = (cx, side) => `
       <circle class="rim" cx="${cx}" cy="28" r="11.5" fill="none" stroke="var(--tvc, #9fd0ff)" stroke-width="1.4"/>
     </g>`;
 
-// Kaffee in den Pfoten (Abschnitt "Kaffee"): Glas (Latte, Milch), Tasse mit Schaum (Cappuccino & Co.), Espressotasse,
+// Kaffee in den Pfoten (src/karte/kaffee.js): Glas (Latte, Milch), Tasse mit Schaum (Cappuccino & Co.), Espressotasse,
 // Becher (Kaffee, Tee). .lq sinkt mit --lv (Füllstand 1 … 0), .lqs (Schaum, Crema) verblasst, .cst = Dampf.
 // Gezeichnet in 1:1, dann um 1,35 vergrößert und etwas tiefer an den Bauch gesetzt. .cpr ist die Pfote, die bei Regen den Blattschirm hält.
 const CUP_STEAM = (x, y) => `<g class="cst" fill="none" stroke="#fff" stroke-width="1.2" stroke-linecap="round">
@@ -243,7 +241,7 @@ const ACT_FRONT = `
       </g>
       ${ACT_PAW(107, 40, 'wpaw')}`;
 
-// Päckchen: Zwille, Fernrohr und Gießkanne in den Pfoten, Sonnenbrille auf der Nase (Stil im Abschnitt "Päckchen")
+// Päckchen: Zwille, Fernrohr und Gießkanne in den Pfoten, Sonnenbrille auf der Nase (Stil in src/stil/paeckchen.js)
 const GIFT_FRONT = `
       <g class="slg"><g class="slr">
         <path d="M112 62 L121 37 M121 37 L117 25.5 M121 37 L128.5 27.5" stroke="${OUT}" stroke-width="4.2" stroke-linecap="round" fill="none"/>

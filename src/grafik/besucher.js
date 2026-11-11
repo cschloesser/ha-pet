@@ -2,6 +2,8 @@
 
 import { OUT, PIKA_SVG } from './pika.js';
 
+// Pinos Grafik entsteht aus PIKA_SVG: eigene ids für Fellverlauf und Bauch-Clip (sonst griffe er auf die des Pikas
+// zu), warme Fell-, Bauch- und Ohrenfarben. Zubehör, das er nie braucht, entfernt _friendBuild aus seinem DOM.
 const FRIEND_SVG = [
   ['id="fur"', 'id="fur2"'], ['url(#fur)', 'url(#fur2)'],
   ['id="bodyclip"', 'id="bodyclip2"'], ['url(#bodyclip)', 'url(#bodyclip2)'],

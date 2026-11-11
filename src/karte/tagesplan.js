@@ -5,8 +5,6 @@ import { HAY_MAX, PLAN_MIN, planBlank, planSer, planParse, planApply } from '../
 import { ACT_SMALL } from '../logik/beschaeftigungen.js';
 
 export class Tagesplan {
-  // ---------- Tagesplan: Speicher ----------
-
   // Anderer Helfer oder Name: von vorn. Ohne plan_entity bleibt der Plan im Browser (je Gerät).
   _planReset() {
     clearTimeout(this._planT);

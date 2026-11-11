@@ -1,12 +1,11 @@
 // Interaktion: streicheln (Zonen, Combo), kraulen, wischen, die Welt antwortet
 
-import { calmMotion, rnd, pick, clamp } from '../logik/hilfen.js';
+import { rnd, pick, clamp } from '../logik/hilfen.js';
+import { calmMotion } from '../logik/bewegung-reduzieren.js';
 import { PET_CLING, PET_CAP, pikaDay } from '../logik/tagesplan.js';
 import { PET_FREE, TOUCH_NEXT, petGain, KRAUL, PRESS_SLOP, worldPick } from '../logik/interaktion.js';
 
 export class Interaktion {
-  // ---------- Interaktion ----------
-
   // Klick auf den Pika. Den Tipp mit Finger oder Maus löst schon das Loslassen aus (_pressEnd), der Klick des Browsers
   // dazu wird verschluckt. Hier kommt nur an, was ohne Zeiger klickt: der durchgereichte Tipp unter einem Flugzeug
   // (_tapBelow) und Hilfsmittel, die Klicks selbst auslösen.

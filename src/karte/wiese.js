@@ -208,8 +208,6 @@ export class Wiese {
     setTimeout(land, 800);
   }
 
-  // ---------- Wiese ----------
-
   _initFlowers() {
     for (let i = 0; i < 5; i++) this._addFlower(false);
   }

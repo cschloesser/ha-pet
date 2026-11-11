@@ -100,6 +100,5 @@ const STYLE_FEST = `
     .fpn, .fmai .rb { animation: none !important; }
   }
   `;
-// ==================== Ende Festtage ====================
 
 export { STYLE_FEST };

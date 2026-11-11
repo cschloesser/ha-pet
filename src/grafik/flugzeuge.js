@@ -1,7 +1,5 @@
 // Flugzeuge: Jet, Propeller, Hubschrauber, Größen, Leitwerksfarben der Airlines
 
-// ---------- Flugzeuge ----------
-
 // Seitenansicht mit der Nase nach rechts, viewBox 0 0 100 40. --tail ist die Airline-Farbe.
 // .pl-body wird nachts abgedunkelt, Fenster (.win) leuchten dann, .bcn blinkt rot, .strobe blitzt weiß.
 const PLANE_SVG = {
