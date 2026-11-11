@@ -2,6 +2,22 @@
 
 Jede Version der Pika Pet Card, die neueste zuerst.
 
+## 0.30.0 (2026-11-11)
+
+Fingerspitzengefühl: Der Pika antwortet schon beim Aufsetzen des Fingers, Kraulen klappt auch am Handy, und die Welt um ihn lässt sich antippen.
+
+- Sofortantwort: Setzt der Finger auf, gibt er ein wenig nach, die Bäckchen werden rot, die Augen wandern zum Finger. Das ist nur ein Zustand am Pika, keine Aktion: Was er gerade tut, läuft unverändert weiter. Mit „Bewegung reduzieren“ entfällt das Nachgeben.
+- Lang drücken am Handy: Der Tipp hängt nicht mehr am Klick des Browsers (Android schickt nach langem Drücken keinen), sondern entsteht beim Loslassen. Auf einem beschäftigten Pika zählt langes Drücken jetzt nach gut einer halben Sekunde wie Antippen; bisher blieb es dort ohne Reaktion.
+- Kraulen bricht nicht mehr ab, wenn der Finger ein wenig rutscht: Sobald gekrault wird, rollt die Seite nicht mehr mit. Vorher lässt sie sich über dem Pika wie gewohnt schieben. Meldet der Browser den Zeiger trotzdem ab, läuft das Kraulen weiter, bis der Finger wirklich weg ist. Am Gerät noch nicht nachgeprüft (in der Vorschau nur mit nachgestellten Ereignissen).
+- Nach dem Kraulen lässt er sich sofort wieder kraulen (bisher war er bis zu zwei Sekunden taub).
+- Weiterstreicheln ohne Augenblitzen: Bei schnellen Tipps hintereinander bleiben geschlossene Augen und Lächeln stehen, statt zwischen zwei Reaktionen kurz aufzuspringen.
+- Kraulen lohnt mehr als Dauerfeuer: Glück fürs Streicheln hängt an der Zeit statt an der Zahl der Tipps. Ein Tipp zählt voll (8), wenn seit der letzten Berührung anderthalb Sekunden vergangen sind, schneller anteilig; abgezogen wird nie etwas. Kraulen gibt 6 je Takt (0,9 s) und zählt fürs Tagebuch etwa alle 4,5 s einmal.
+- Tastatur: Eine gehaltene Taste streichelt nur einmal. Häufchen, Blumengeschenk, Pino, Besucher, Geräte, Flugzeuge und Ostereier lassen sich mit Tab anwählen und mit Enter oder Leertaste auslösen (Putzen ging bisher nur mit Zeiger).
+- Die Welt antwortet: Blume staubt (steht er daneben, niest er), Wolke tröpfelt, Stern fällt, an der Tür klopft es (im Bau linst er heraus), das Windrad dreht sich, das Wollknäuel kullert. Alles bleibt auf dem Gerät, nichts steht in den Helfern, Beschäftigungen und Schlaf werden nicht gestört. Vorhandene Tippziele behalten den Vorrang.
+- Mimik: zwei Brauenstriche und ein Mundpfad zeigen Trauer, Trotz, Stolz und Staunen (Hunger, „hmpf!“, fertiges Bild, Sternschnuppe und mehr). Gespiegelt und beim Umschauen sitzen sie mit dem Gesicht, in der Rückansicht und im Schlaf fehlen sie.
+- Tagebuch: neuer Reiter „Entdeckungen“ statt einer Einführung. Er zählt auf, was man mit dem Pika und seiner Welt tun kann; ein Pfotenabdruck steht vor dem, was auf diesem Gerät schon ausprobiert wurde (nur im Browser gemerkt). `diary: false` sperrt auch diese Seite.
+- Entwicklung: `node --test` prüft zusätzlich das Glück fürs Streicheln, die Trefferwahl der Welt-Tipps, Mimik, Entdeckungen und das Wiederaufsetzen beim Kraulen (32 Tests).
+
 ## 0.29.0 (2026-11-11)
 
 Freie Sicht: Nichts verdeckt mehr den Pika oder das, was er sagt, und schmale Karten passen.

@@ -2,7 +2,8 @@
 /*
  * Pika Pet Card – ein kleiner Pika (Pfeifhase) wohnt im Home-Assistant-Dashboard.
  *
- *   Pika antippen      → streicheln (Herzchen, Glück steigt)
+ *   Pika antippen      → streicheln (Herzchen, Glück steigt); lang drücken = kraulen, das lohnt am meisten
+ *   Szene antippen     → die Welt antwortet: Blume staubt, Wolke tröpfelt, Stern fällt, an der Tür klopft es
  *   Löwenzahn-Knopf    → füttern (Futter fällt herunter, er hoppelt hin und frisst)
  *   Nachts             → schläft er mit Zipfelmütze im Bau (Standard: Sonnenuntergang bis -aufgang)
  *   Ab und zu, Gewitter → verschwindet er in seinem Bau und schaut heraus
@@ -23,7 +24,7 @@
  *                         herein, der Pika schießt sie mit der Zwille vom Himmel. Leckerli oder Schätze fürs Album,
  *                         ist es voll, Tricks und Gold für die Schätze.
  *   Tagebuch            → Tipp auf die Statusleiste: was er heute und gestern erlebt hat (aus dem Verlauf der Helfer
- *                         in HA abgeleitet), dazu seine Schätze
+ *                         in HA abgeleitet), dazu seine Schätze und die Entdeckungen (was man alles tun kann)
  *   Besuche (Vögelchen, Maus, Frosch, Schnecke, Pino) werden aus der Uhrzeit berechnet und sind auf allen Geräten gleich.
  *
  * Konfiguration:
@@ -56,7 +57,7 @@
  * werden aus Datum und Standort (hass.config) berechnet.
  */
 (() => {
-  const VERSION = '0.29.0';
+  const VERSION = '0.30.0';
 
   // screen_entity gehört zu einem Gerät (dem Kiosk-Tablet), dasselbe Dashboard öffnen aber auch andere. Ein Rechner mit
   // Maus ist sicher nicht dieser Bildschirm, Fully Kiosk mit JS-Schnittstelle dagegen schon.
@@ -983,6 +984,8 @@
         <path class="blines" d="M75.2 55.4 l1.1 -1.8 M77.4 55.6 l1.1 -1.8 M79.6 55.8 l1.1 -1.8 M101.8 55 l1.1 -1.8 M104 55.2 l1.1 -1.8"
               stroke="#e06a5e" stroke-width=".7" stroke-linecap="round"/>
         ${EYE(82, 'l')}${EYE(99, 'r')}
+        <path class="brow brow-l" d="M78.7 39.2 H85.1" stroke="${OUT}" stroke-width="1.5" fill="none" stroke-linecap="round"/>
+        <path class="brow brow-r" d="M95.9 39.2 H102.3" stroke="${OUT}" stroke-width="1.5" fill="none" stroke-linecap="round"/>
         <path class="wsk" d="M84 56 L70 53.5 M84 57.6 L70 59.8 M98 56 L113 53.5 M98 57.6 L113 59.8"
               stroke="${OUT}" stroke-width=".7" opacity=".45" stroke-linecap="round"/>
         <g class="mouth-g">
@@ -997,6 +1000,8 @@
           <path class="mth" d="M91 54.1 v1.5 M91 55.6 q-1.5 1.7 -3 .4 M91 55.6 q1.5 1.7 3 .4"
                 stroke="${OUT}" stroke-width="1" fill="none" stroke-linecap="round"/>
           <path class="wmouth" d="M91 54.1 v1.2 M87.6 55.2 q1.7 2.6 3.4 .1 q1.7 2.5 3.4 -.1"
+                stroke="${OUT}" stroke-width="1" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+          <path class="mim" d="M91 54.1 v1.6 M88.3 58 q2.7 -2.6 5.4 0"
                 stroke="${OUT}" stroke-width="1" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
           <ellipse class="tongue" cx="91" cy="57.5" rx="1.35" ry="1.8" fill="#ee7f88" stroke="${OUT}" stroke-width=".5"/>
           <ellipse class="omouth" cx="91" cy="57.6" rx="1.8" ry="2.2" fill="#7a3a30" stroke="${OUT}" stroke-width=".6"/>
@@ -2592,14 +2597,62 @@
   // Neue kleine Momente. Leicht genug, dass der Beginn einer Beschäftigung aus dem Tagesplan sie abbricht.
   const CUTE_SMALL = ['curious', 'yawn', 'sneeze', 'earClean', 'scratch', 'hiccup', 'nod', 'butterfly', 'zoomies', 'gift', 'comeHere'];
   // Dabei darf Streicheln eine eigene Reaktion starten (sonst nur Herzchen und Hüpfer obendrauf)
+  // „kraul“ gehört dazu, damit er nach dem Loslassen nicht bis zum Ausklang taub ist; solange der Finger liegt,
+  // sperrt _petFree selbst (_kraulOn)
   const PET_FREE = new Set(['idle', 'look', 'wander', 'groom', 'squeak', 'sniff', 'binky', 'hungry', 'watchBird', 'watchMouse',
-    'watchFrog', 'watchSnail', 'watchPlane', 'curious', 'yawn', 'earClean', 'scratch', 'nod', 'hiccup', 'comeHere', 'petReact', 'stroke', 'gift']);
+    'watchFrog', 'watchSnail', 'watchPlane', 'curious', 'yawn', 'earClean', 'scratch', 'nod', 'hiccup', 'comeHere', 'petReact', 'stroke', 'gift',
+    'kraul']);
   // Reaktionen auf Berührung, die über _next laufen: verfallen nach TOUCH_TTL, wenn Wichtigeres vorging
-  const TOUCH_NEXT = new Set(['petReact', 'kraul', 'stroke', 'comeHere']);
+  const TOUCH_NEXT = new Set(['petReact', 'kraul', 'stroke', 'comeHere', 'worldReact']);
   const TOUCH_TTL = 2000;
+  // Steht schon die nächste Streichel-Reaktion an, bleiben diese Klassen über das Aufräumen hinweg stehen und fallen
+  // erst im selben Atemzug mit den neuen (_step): Sonst blitzten zwischen zwei Tipps die Augen 40 ms lang auf.
+  const PET_NEXT = new Set(['petReact', 'kraul', 'stroke']);
+  const PET_HOLD = ['squint', 'content', 'flat', 'lean', 'tilt', 'melt', 'happy'];
+  // Glück fürs Streicheln hängt an der Zeit, nicht an der Zahl der Tipps: Ein Tipp zählt voll (GAIN.pet), wenn seit der
+  // letzten Berührung mindestens PET_CALM vergangen ist, sonst anteilig. Dauerfeuer bringt so in derselben Zeit nie mehr
+  // als ruhiges Tippen (höchstens GAIN.pet je PET_CALM), es wird aber auch nichts abgezogen. dt: ms seit der letzten
+  // Berührung (beim ersten Mal unendlich).
+  const PET_CALM = 1500;
+  const petGain = (dt) => GAIN.pet * clamp(dt / PET_CALM, 0, 1);
+  // Kraulen (Finger liegt): setzt nach hold ms ein, dann je Takt (beat) gain Glück, höchstens max ms lang; jeder
+  // count-te Takt zählt als einmal gestreichelt (Tagebuch, anhänglich). Je Sekunde bringt das mehr als jedes Tippen.
+  const KRAUL = { hold: 550, beat: 900, gain: 6, max: 20000, count: 5 };
+  // So weit (px) darf der Finger vor dem Einsetzen rutschen, ohne dass aus dem Kraulen nichts wird
+  const PRESS_SLOP = 16;
+  // Glück aus ms Kraulen nach dem Einsetzen (ohne den Einstieg, der wie ein Tipp zählt)
+  const kraulGain = (ms) => KRAUL.gain * Math.floor(clamp(ms, 0, KRAUL.max) / KRAUL.beat);
+  // Mimik: zwei Brauenstriche (.brow, per CSS gedreht und verschoben) und ein Mundpfad (.mim, d je Ausdruck) decken
+  // Trauer, Trotz, Stolz und Staunen ab. Der Mundpfad enthält die Kerbe unter der Nase mit, er ersetzt .mth.
+  const MIMIK = {
+    sad: 'M91 54.1 v1.6 M88.3 58 q2.7 -2.6 5.4 0',
+    defy: 'M91 54.1 v1.3 M88.8 57.1 q2 -2 4.4 -.7',
+    proud: 'M91 54.1 v1.4 M87.3 55.8 q3.7 3.5 7.4 0',
+    awe: 'M91 54.1 v1 M91 55.4 a1.5 1.9 0 1 0 .01 0z',
+  };
+  const MIMIK_CLS = Object.keys(MIMIK).map((k) => `mi-${k}`);
+  // Vorsatz fürs CSS: Mimik ist gesetzt und das Gesicht ist frei (nicht im Schlaf, beim Fressen, Gähnen, Pfeifen …)
+  const MIMIK_ON = '.mi:not(.sleeping):not(.eating):not(.yawning):not(.calling):not(.sip):not(.sneezing)';
   // Zustandsklassen der neuen Momente, die _cleanup zurücksetzt (zeitgesteuerte wie blush, mlem, lnd gehen von selbst)
   const CUTE_CLS = ['tilt', 'tilt-b', 'content', 'squint', 'flat', 'crosseye', 'lean', 'tickle', 'roll', 'melt', 'thump',
     'yawning', 'presneeze', 'sneezing', 'earwash', 'scratching', 'nodding', 'stumble', 'pant', 'trip', 'bighop'];
+  // Die Welt antwortet auf einen Tipp (Blume, Wolke, Stern, Tür, Windrad, Wollknäuel). Was liegt an der Stelle (x, y)?
+  // zones: Flächen { k, l, t, r, b } in Rangfolge der Arten (die Art des ersten Treffers gewinnt), schon um ihren
+  // Tipp-Rand vergrößert. Liegen mehrere derselben Art dort (zwei Sterne), gewinnt die mit der nächsten Mitte.
+  const worldPick = (x, y, zones) => {
+    let best = null;
+    let bd = Infinity;
+    for (const z of zones) {
+      if (best && z.k !== best.k) continue;
+      if (x < z.l || x > z.r || y < z.t || y > z.b) continue;
+      const d = Math.hypot(x - (z.l + z.r) / 2, y - (z.t + z.b) / 2);
+      if (d < bd) {
+        best = z;
+        bd = d;
+      }
+    }
+    return best;
+  };
 
   const STYLE_COFFEE = `
   .cup, .cfoam, .cup > g > g, .cup .ttag, .cup .cst { display: none; }
@@ -3172,6 +3225,8 @@
   .scene.night:not(.windy) .gwhl, .scene.night:not(.windy) .gbob, .scene.night:not(.windy) .gdrift { animation-play-state: paused; }
   /* Pika schläft: Windrad und Ballon halten still (wie .hb-still), das spart das Neuzeichnen unter dem Filter */
   .gifts.still .gwhl, .gifts.still .gbob, .gifts.still .gdrift { animation-play-state: paused; }
+  /* Angetippt dreht es sich kurz, auch wo es sonst ruht (nachts ohne Wind, Pika schläft); nicht, wenn keiner hinsieht */
+  .scene:not(.paused) .gifts .gt-wheel.tapspin .gwhl { animation-play-state: running; }
   @media (prefers-reduced-motion: reduce) { .gwhl, .gbob, .gdrift, .gt-ham .gnet { animation: none !important; } }
 
   /* Pika: Zwille, Fernrohr, Gießkanne, Sonnenbrille */
@@ -3309,6 +3364,45 @@
     coffee: COFFEE_THINK, heart: ICON_HEART, clean: ICON_SPARK, hungry: FOOD.lz.svg, parcel: GIFT_PARCEL,
     pino: GIFT_ITEMS[2].svg, flower: GIFT_ITEMS[11].svg,
   };
+  // Seite „Entdeckungen“: was man mit ihm und seiner Welt tun kann (statt einer Einführung), aus seiner Sicht. k: Kennung
+  // (bleibt fest, sie steht im Browser-Speicher), g: Abschnitt, t: Titel, h: wie es geht, need: nur zeigen, wenn es das
+  // hier gibt (gift: Päckchen an, friend: Freund an, flight und bote: eingerichtet, wheel und yarn: Schatz ausgepackt).
+  // {n} = Name des Freunds. Nichts davon läuft ab oder wird belohnt: Es ist ein Nachschlagen, keine Aufgabenliste.
+  const FIND_GROUPS = ['Streicheln', 'Kümmern', 'Meine Welt'];
+  const FINDS = [
+    { k: 'head', g: 0, t: 'Kopf', h: 'Tipp mir auf den Kopf. Ich lehne mich in deine Hand.' },
+    { k: 'nose', g: 0, t: 'Nase', h: 'Tipp mir auf die Nase. Boop!' },
+    { k: 'ear', g: 0, t: 'Ohr', h: 'Tipp ein Ohr an. Es flappt nach.' },
+    { k: 'belly', g: 0, t: 'Bauch', h: 'Tipp mir auf den Bauch. Das kitzelt!' },
+    { k: 'back', g: 0, t: 'Rücken', h: 'Tipp mir auf den Rücken oder den Po. Ich mache einen Freudensprung.' },
+    { k: 'kraul', g: 0, t: 'Kraulen', h: 'Leg den Finger auf mich und lass ihn liegen. Das mag ich lieber als schnelles Tippen.' },
+    { k: 'stroke', g: 0, t: 'Übers Fell streichen', h: 'Wisch waagerecht über mich. Mein Fell plustert sich auf.' },
+    { k: 'combo', g: 0, t: 'Fünfmal hintereinander', h: 'Tipp mich fünfmal schnell an. Dann gibt es einen Luftsprung.' },
+    { k: 'melt', g: 0, t: 'Achtmal hintereinander', h: 'Noch öfter, und ich schmelze dahin.' },
+    { k: 'pout', g: 0, t: 'Elfmal hintereinander', h: 'Irgendwann reicht es mir. Hmpf! Lange böse bin ich aber nie.' },
+    { k: 'sleep', g: 0, t: 'Im Schlaf', h: 'Streichle mich, wenn ich schlafe. Ich wache nicht auf, aber ich merke es.' },
+    { k: 'meadow', g: 0, t: 'Auf die Wiese tippen', h: 'Ich schaue hin. Hast du mich heute schon oft gestreichelt, komme ich angehoppelt.' },
+    { k: 'feed', g: 1, t: 'Füttern', h: 'Der Löwenzahn-Knopf oben rechts lässt Futter fallen.' },
+    { k: 'clean', g: 1, t: 'Saubermachen', h: 'Tipp ein Häufchen an, dann kommt die Schaufel.' },
+    { k: 'bloom', g: 1, t: 'Mein Geschenk annehmen', h: 'Manchmal lege ich dir eine Blume mit Schleife ins Gras. Tipp sie an.' },
+    { k: 'parcel', g: 1, t: 'Päckchen schenken', h: 'Der Päckchen-Knopf oben rechts schickt mir eins am Ballon.', need: 'gift' },
+    { k: 'album', g: 1, t: 'Schätze aufschlagen', h: 'Drück lange auf den Päckchen-Knopf.', need: 'gift' },
+    { k: 'flower', g: 2, t: 'Blume', h: 'Tipp eine Blume an. Sie staubt, und stehe ich daneben, muss ich niesen.' },
+    { k: 'cloud', g: 2, t: 'Wolke', h: 'Tipp eine Wolke an. Sie tröpfelt.' },
+    { k: 'star', g: 2, t: 'Stern', h: 'Tipp abends oder nachts einen Stern an. Er fällt vom Himmel.' },
+    { k: 'door', g: 2, t: 'Tür', h: 'Klopf an meine Tür. Bin ich im Bau, linse ich heraus.' },
+    { k: 'wheel', g: 2, t: 'Windrad', h: 'Stups mein Windrad an. Es dreht sich ganz schnell.', need: 'wheel' },
+    { k: 'yarn', g: 2, t: 'Wollknäuel', h: 'Stups mein Wollknäuel an. Es kullert davon.', need: 'yarn' },
+    { k: 'visitor', g: 2, t: 'Besuch', h: 'Tipp Vögelchen, Maus, Frosch oder Schnecke an.' },
+    { k: 'pino', g: 2, t: '{n}', h: 'Ist {n} zu Besuch: auch antippen. Das gibt Herzchen.', need: 'friend' },
+    { k: 'bubble', g: 2, t: 'Seifenblase', h: 'Puste ich Seifenblasen, kannst du sie platzen lassen. Plopp!' },
+    { k: 'plane', g: 2, t: 'Flugzeug', h: 'Tipp ein Flugzeug an. Ein Fähnchen zeigt, wohin es fliegt.', need: 'flight' },
+    { k: 'device', g: 2, t: 'Haushaltsgerät', h: 'Tipp ein Gerät am Bau an. Ein Fähnchen zeigt, wie weit es ist.', need: 'bote' },
+  ];
+  const FIND_IDS = new Set(FINDS.map((f) => f.k));
+  // Im Browser gemerkt als „head,nose,…“. Unbekanntes (ältere oder neuere Karte) wird überlesen.
+  const findsParse = (s) => new Set(String(s || '').split(',').filter((k) => FIND_IDS.has(k)));
+  const findsSer = (set) => FINDS.filter((f) => set.has(f.k)).map((f) => f.k).join(',');
   // Das gemalte Bild zum Einkleben (Leinwand der Staffelei ohne Gestell)
   const diaryPainting = (motif) => (!hasKey(EASEL_MOTIF, motif) ? '' : `<svg class="pic" viewBox="9 7 42 44" aria-hidden="true">
     <rect x="9" y="7" width="42" height="44" fill="#bfe3f7"/><circle cx="42" cy="16" r="4.6" fill="#f6c945"/>
@@ -3500,7 +3594,8 @@
   .x { flex: none; width: 40px; height: 40px; border-radius: 50%; font-size: 18px; color: var(--soft); }
   .x:hover { background: var(--tab); }
   .tabs { display: flex; gap: 6px; padding: 6px 16px 10px; }
-  .tabs button { flex: 1; height: 38px; border-radius: 12px; font-size: 14px; font-weight: 700; color: var(--soft); background: var(--tab); }
+  /* Vier Reiter mit verschieden langen Namen: Die Breite folgt dem Text, der Rest wird verteilt */
+  .tabs button { flex: 1 1 auto; min-width: 0; height: 38px; padding: 0 6px; border-radius: 12px; font-size: 14px; font-weight: 700; white-space: nowrap; color: var(--soft); background: var(--tab); }
   .tabs button[aria-selected="true"] { background: var(--acc); color: #fff; }
   .night .tabs button[aria-selected="true"] { color: #2a2238; }
   .page {
@@ -3551,6 +3646,14 @@
   .row .w { color: #d9622b; font-weight: 800; }
   .dots { display: inline-flex; gap: 3px; margin-left: 6px; vertical-align: -1px; }
   .dots u { width: 9px; height: 9px; border-radius: 50%; box-shadow: inset 0 0 0 1px rgba(90, 64, 48, .35); }
+  /* Entdeckungen: eine Zeile je Sache, davor ein leerer Kreis oder (schon ausprobiert) ein Pfotenabdruck */
+  .fd { display: grid; grid-template-columns: 24px minmax(0, 1fr); gap: 10px; padding: 8px 0; border-bottom: 1px dashed var(--line); }
+  .fd > i { display: block; width: 22px; height: 22px; margin-top: 1px; box-sizing: border-box; border-radius: 50%; border: 1.5px dashed var(--soft); opacity: .6; }
+  .fd.ok > i { border: none; padding: 4px; background: var(--acc); color: #fff; opacity: 1; transform: rotate(-10deg); }
+  .night .fd.ok > i { color: #2a2238; }
+  .fd i svg { display: block; width: 100%; height: 100%; }
+  .fd b { display: block; font-size: 14px; font-weight: 800; line-height: 1.25; }
+  .fd span { display: block; margin-top: 1px; font-size: 13px; line-height: 1.4; color: var(--soft); }
   @keyframes tbin { from { opacity: 0; } }
   @keyframes tbup { from { transform: translateY(24px) scale(.96); opacity: 0; } }
   @media (max-width: 520px) {
@@ -3558,6 +3661,11 @@
     .sheet { width: 100%; height: min(640px, 90%); border-radius: 20px 20px 0 0; }
     .page { border-radius: 0; padding-bottom: 24px; }
     .tre { grid-template-columns: 1fr; }
+  }
+  /* Sehr schmale Handys: Die vier Reiter rücken zusammen, damit „Entdeckungen“ ausgeschrieben bleibt */
+  @media (max-width: 340px) {
+    .tabs { gap: 4px; padding-left: 10px; padding-right: 10px; }
+    .tabs button { padding: 0 4px; font-size: 13px; }
   }
   @media (prefers-reduced-motion: reduce) { .bd, .sheet { animation: none; } }
   `;
@@ -4149,6 +4257,29 @@
   .crosseye .eye-l { transform: translate(2.2px, 1px) scale(.82); }
   .crosseye .eye-r { transform: translate(-2.4px, 1px) scale(.82); }
   .presneeze .eye { transform: scaleY(.4); }
+  /* Sofort beim Aufsetzen des Fingers (.pressed, _pressFx): leicht gestaucht, die Augen wandern zum Finger (--ex, --ey),
+     die Bäckchen kommen über .blush. Die Stauchung liegt auf .jump, wo sonst nur die Sprünge laufen (als Animation,
+     die gewinnt): Haltung und Bewegung der laufenden Aktion (.hop, .face, .hd) bleiben unberührt. */
+  .jump { transition: transform .24s cubic-bezier(.3, 1.7, .5, 1); }
+  .pressed .jump { transform: scale(1.045, .94); transition: transform .07s ease-out; }
+  .pressed:not(.blink):not(.crosseye):not(.presneeze):not(.sparkle) .eye { transform: translate(var(--ex, 0px), var(--ey, 0px)); }
+  /* Mimik (_mimik): zwei Brauenstriche und ein Mundpfad für Trauer, Trotz, Stolz und Staunen. Sie liegen in .face,
+     wandern also mit Blick, Kopfneigung und Spiegelung mit und fehlen in der Rückansicht (.tv blendet .all aus). Wo
+     das Gesicht schon belegt ist (Schlaf, Fressen, Gähnen, Pfiff, Schluck, Niesen), bleiben sie weg. */
+  .brow, .mim { display: none; }
+  .brow { transform-box: fill-box; transform-origin: 50% 50%; }
+  ${MIMIK_ON} .brow, ${MIMIK_ON} .mim { display: inline; }
+  ${MIMIK_ON} .mth, ${MIMIK_ON} .wmouth { display: none; }
+  .mi-sad .brow-l { transform: translateY(-.3px) rotate(-21deg); }
+  .mi-sad .brow-r { transform: translateY(-.3px) rotate(21deg); }
+  .mi-defy .brow-l { transform: translateY(1.5px) rotate(24deg); }
+  .mi-defy .brow-r { transform: translateY(1.5px) rotate(-24deg); }
+  .mi-defy .chk { transform: scale(1.25, 1.2); }
+  .mi-proud .brow-l { transform: translateY(-1.6px) rotate(4deg); }
+  .mi-proud .brow-r { transform: translateY(-1.6px) rotate(-4deg); }
+  .mi-awe .brow { transform: translateY(-2.6px); }
+  .mi-awe .mim { fill: #7a3a30; }
+  ${MIMIK_ON}.mi-awe:not(.blink):not(.pressed) .eye { transform: scale(1.1); }
   /* Ohren: flach angelegt, Nachschwingen, angetippt flappen */
   .flat .ear-l { transform: rotate(-36deg); }
   .flat .ear-r { transform: rotate(32deg); }
@@ -4414,6 +4545,9 @@
   .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
   .pika:focus { outline: none; }
   .pika:focus-visible { outline: 2px dashed rgba(255, 255, 255, .9); outline-offset: -2px; border-radius: 14px; }
+  /* Alles andere Antippbare (Häufchen, Geschenk, Pino, Besucher, Geräte, Flugzeuge) mit der Tastatur angewählt */
+  .ktap:focus { outline: none; }
+  .ktap:focus-visible { outline: 2px dashed rgba(255, 255, 255, .9); outline-offset: 1px; border-radius: 10px; }
   .heart {
     position: absolute; width: calc(var(--ph) * .2); margin-left: calc(var(--ph) * -.1);
     animation: heart 1.5s ease-out forwards;
@@ -4737,6 +4871,8 @@
        nur über drift herein), angehalten stehen sie dank des negativen Versatzes --dl verteilt */
     .cloud { animation-play-state: paused !important; }
     .precip { opacity: .6; }
+    /* Finger setzt auf: Bäckchen und Blick reichen als Antwort, er wird nicht gestaucht */
+    .pressed .jump { transform: none; }
     /* Blitz: nur ein sanftes, einmaliges Aufhellen statt Flackern über die ganze Karte */
     .flash.go { animation: flash-soft 1.2s ease-out; }
     @keyframes flash-soft { 15% { opacity: .18; } }
@@ -5235,19 +5371,17 @@
       this._el.held = $('.held');
       this._el.anchor = this._el.psay.querySelector('.anchor');
       this._el.sr = this.shadowRoot.querySelector('.sr');
-      // Tastatur: Enter oder Leertaste streichelt (ohne Stelle: Rücken)
+      this._el.starEls = [...this.shadowRoot.querySelectorAll('.stars i')];
+      // Tastatur: Enter oder Leertaste streichelt (ohne Stelle: Rücken). Eine gehaltene Taste wiederholt sich: Das zählt
+      // nicht (die Leertaste soll trotzdem nicht die Seite rollen).
       this._el.pika.addEventListener('keydown', (e) => {
         if (e.key !== 'Enter' && e.key !== ' ') return;
         e.preventDefault();
-        this._onPet(null);
+        if (!e.repeat) this._pet(null);
       });
       this._el.pika.addEventListener('click', (e) => (e.stopPropagation(), this._onPet(e)));
-      // Lang drücken = kraulen, waagerecht über ihn wischen = übers Fell streichen
-      this._el.pika.addEventListener('pointerdown', (e) => this._pressStart(e));
-      this._el.pika.addEventListener('pointermove', (e) => this._pressMove(e));
-      for (const t of ['pointerup', 'pointercancel', 'pointerleave']) this._el.pika.addEventListener(t, (e) => this._pressEnd(e));
-      // Lang drücken auf Touch (z. B. Windows-Tablet) öffnete sonst das Kontextmenü des Browsers
-      this._el.pika.addEventListener('contextmenu', (e) => e.preventDefault());
+      // Antippen, lang drücken = kraulen, waagerecht über ihn wischen = übers Fell streichen
+      this._pressBind(this._el.pika);
       this._el.feed.addEventListener('click', (e) => (e.stopPropagation(), this._onFeed()));
       // Statusleiste (oder, ist sie ausgeblendet, der Buch-Knopf) öffnet das Tagebuch
       const diary = (e) => {
@@ -5260,7 +5394,7 @@
       this._el.stats.addEventListener('keydown', (e) => {
         if ((e.key !== 'Enter' && e.key !== ' ') || !this._diaryOn()) return;
         e.preventDefault();
-        this._diaryOpen();
+        if (!e.repeat) this._diaryOpen();
       });
       // Päckchen-Knopf: tippen = verschenken, lang drücken = Schätze im Tagebuch (früher das Album)
       const gb = this._el.gbtn;
@@ -5272,6 +5406,7 @@
         clearTimeout(this._albumPT);
         this._albumPT = setTimeout(() => {
           this._albumHeld = true;
+          this._found('album');
           this._diaryOpen('schatz');
         }, 550);
       });
@@ -5586,7 +5721,8 @@
           // Auch das Aufräumen darf die Schleife nicht beenden: Sie liefe nie wieder an (_running bliebe wahr), der Pika
           // stünde auf einem Bildschirm, der immer an ist, bis zum Neuladen still.
           try {
-            this._cleanup();
+            // Wird gleich weitergestreichelt, bleibt die Streichel-Mimik bis zur nächsten Reaktion stehen (PET_HOLD)
+            this._cleanup(PET_NEXT.has(this._next) && Date.now() - (this._nextAt || 0) < TOUCH_TTL);
           } catch (e) {
             this._err('Aufräumen', e);
           }
@@ -5640,7 +5776,14 @@
       this._slotT = null;
       this._runId++;
       this._ac?.abort();
-      if (this._el) this._cleanup();
+      // Ein Finger, der beim Anhalten noch lag: Sein Zeitgeber streichelte sonst die angehaltene Karte
+      clearTimeout(this._pressT);
+      this._press = null;
+      this._kraulOn = false;
+      if (this._el) {
+        this._pressFx(null);
+        this._cleanup();
+      }
     }
 
     _interrupt() {
@@ -5658,12 +5801,20 @@
       });
     }
 
-    _cleanup() {
+    // hold: Die nächste Streichel-Reaktion steht schon an. Dann bleiben geschlossene Augen, Lächeln und Haltung
+    // (PET_HOLD) stehen, bis _step sie zusammen mit den neuen Klassen tauscht.
+    _cleanup(hold = false) {
       const p = this._el.pika;
       if (p.classList.contains('walking')) this._freeze();
-      p.classList.remove('walking', 'eating', 'groom', 'carry', 'look-f', 'look-b', 'look-up', 'happy', 'calling', 'crouch', 'squat', 'sniff',
+      const all = ['walking', 'eating', 'groom', 'carry', 'look-f', 'look-b', 'look-up', 'happy', 'calling', 'crouch', 'squat', 'sniff',
         'reading', 'doze', 'gaming', 'meh', 'lying', 'tablet', 'tplane', 'swipe', 'kiting', 'tv',
-        'coffee', 'sip', 'hot', 'foam', 'lick', ...COFFEE_CLS, ...ACT_CLS, ...CUTE_CLS, ...GIFT_CLS);
+        'coffee', 'sip', 'hot', 'foam', 'lick', ...COFFEE_CLS, ...ACT_CLS, ...CUTE_CLS, ...GIFT_CLS];
+      p.classList.remove(...(hold ? all.filter((c) => !PET_HOLD.includes(c)) : all));
+      // Der kurze Blick vom letzten Tipp (_glance) ist mit weg: sein Zeitgeber nähme sonst der nächsten Aktion den Blick
+      clearTimeout(this._lookT);
+      this._lookC = null;
+      this._petHeld = hold;
+      this._mimik(null);
       this._tvOn(false);
       this._kiteAway();
       this._easelAway();
@@ -5673,6 +5824,11 @@
     }
 
     async _step() {
+      // Über das Aufräumen gehaltene Streichel-Mimik: jetzt weg, im selben Atemzug setzt die nächste Aktion ihre eigene
+      if (this._petHeld) {
+        this._petHeld = false;
+        this._el.pika.classList.remove(...PET_HOLD);
+      }
       if (!this._g) return this._wait(500);
       // Eine Berührung von vor Kaffee, Schlafengehen oder Begrüßung ist vorbei: nicht Minuten später darauf reagieren
       if (TOUCH_NEXT.has(this._next) && Date.now() - (this._nextAt || 0) > TOUCH_TTL) this._next = null;
@@ -5782,6 +5938,7 @@
     async _idle() {
       // Glücklich: mit zufriedenem ω-Mund dasitzen
       if (this._get('g') > 75 && Math.random() < 0.35) this._el.pika.classList.add('content');
+      else if (this._el.pika.classList.contains('sad') && Math.random() < 0.6) this._mimik('sad');
       await this._wait(rnd(2000, 5000));
     }
 
@@ -6190,6 +6347,7 @@
       this._announce('hat Hunger');
       this._bubble(this._el.think, true);
       this._el.pika.classList.add('look-up');
+      this._mimik('sad');
       await this._wait(3500);
     }
 
@@ -6235,6 +6393,7 @@
       await this._wait(300);
       p.classList.remove('sniff');
       this._say(pick(['iih!', 'bäh!', 'iih!']), 1100);
+      this._mimik('defy', 1700);
       this._face(-this._dir);
       this._jump('hop1');
       await this._wait(500);
@@ -6363,6 +6522,7 @@
       }
       p.classList.add('look-up');
       if (Math.random() < 0.4) p.classList.add('tilt-b');
+      this._mimik('awe', 1500);
       await this._wait(rnd(1500, 2500));
       // dreht sich mit, wenn es schon vorbei ist
       this._face(pl.x >= this._x ? 1 : -1);
@@ -6501,6 +6661,7 @@
           this._say(pick(['Juhu!', 'Jaaa!']), 1200);
         } else {
           p.classList.add('meh');
+          this._mimik('sad', 1600);
           this._say(pick(['mööp', 'och…']), 1200);
           await this._wait(1600);
           p.classList.remove('meh');
@@ -7028,20 +7189,40 @@
 
     // ---------- Interaktion ----------
 
+    // Klick auf den Pika. Den Tipp mit Finger oder Maus löst schon das Loslassen aus (_pressEnd), der Klick des Browsers
+    // dazu wird verschluckt. Hier kommt nur an, was ohne Zeiger klickt: der durchgereichte Tipp unter einem Flugzeug
+    // (_tapBelow) und Hilfsmittel, die Klicks selbst auslösen.
     _onPet(e) {
-      // Nach dem Kraulen oder Wischen kommt beim Loslassen noch ein Klick: der zählt nicht extra
+      // Nach dem Tippen, Kraulen oder Wischen kommt beim Loslassen noch ein Klick: der zählt nicht extra
       if (this._eatClick) {
         this._eatClick = false;
         return;
       }
-      this._add('g', GAIN.pet);
+      this._pet(e);
+    }
+
+    // Glück für diese Berührung (petGain): voll nach einer ruhigen Pause, schnell hintereinander nur anteilig
+    _petGainNow() {
+      const now = Date.now();
+      const g = petGain(now - (this._petAt ?? -Infinity));
+      this._petAt = now;
+      return g;
+    }
+
+    // Einmal streicheln. e: Zeiger- oder Mausereignis mit der Stelle (clientX/Y), null: ohne Stelle (Tastatur)
+    _pet(e) {
+      this._add('g', this._petGainNow());
       this._petFriend();
       this._petCount();
       const p = this._el.pika;
-      if (this._asleep) return this._sleepTouch('tap');
+      if (this._asleep) {
+        this._found('sleep');
+        return this._sleepTouch('tap');
+      }
       // Er schmollt gerade („hmpf!“): Das Streicheln zählt fürs Glück, aber er lässt sich nicht stören, und die
       // nächste Combo beginnt erst danach
       if (this._pout) return this._blush(1600);
+      this._mimik(null); // gestreichelt schaut er nicht länger traurig oder trotzig
       // Mehrmals hintereinander: Combo (innerhalb von 6 s)
       const now = Date.now();
       this._combo = (this._combo || []).filter((t) => now - t < 6000);
@@ -7061,8 +7242,12 @@
         p.classList.remove('doze');
         this._say('oh!', 900);
       }
-      // Im Bau: kommt zum Streicheln an den Eingang
-      if (this._inside) return this._pose('peek', 300);
+      // Im Bau: kommt zum Streicheln an den Eingang. War er gar nicht zu sehen, war das ein Klopfen an die Tür (sein
+      // Tippfeld liegt auch im Bau über dem ganzen Eingang, der Klick kommt deshalb hier an und nicht bei _worldTap).
+      if (this._inside) {
+        if (e && ['hidden', 'ears'].includes(this._poseName)) this._knock();
+        return this._pose('peek', 300);
+      }
       if (!p.classList.contains('walking')) this._jump(Math.random() < 0.25 ? 'binky' : 'hop1');
       if (Math.random() < 0.35) this._say(pick(['iiep!', 'mip!', '♥']));
     }
@@ -7073,6 +7258,7 @@
     // schon etwas anderes ansteht (Häufchen, Vorschau-Knopf): das bliebe sonst liegen
     _petFree() {
       return this._running && !!this._g && !this._inside && !(this._lift > 0) && !this._asleep && !this._giftCarry && !this._pout
+        && !this._kraulOn // der Finger liegt noch: ein zweiter Finger oder Klick bricht das Kraulen nicht ab
         && (this._action == null || PET_FREE.has(this._action)) && (!this._next || TOUCH_NEXT.has(this._next));
     }
 
@@ -7106,14 +7292,20 @@
       if (kind === 'kraul') this._cls('content', 2600);
     }
 
+    // Stelle eines Zeigerereignisses in Koordinaten der Pika-Grafik (120 × 100, Blick nach rechts); r: ihr Rechteck
+    // auf dem Bildschirm. null ohne Ereignis oder solange die Grafik keine Fläche hat.
+    _pkPoint(e) {
+      const r = this._el.pika.querySelector('.pk')?.getBoundingClientRect();
+      if (!e || !r?.width || !Number.isFinite(e.clientX)) return null;
+      const x = ((e.clientX - r.left) / r.width) * 120;
+      return { x: this._dir < 0 ? 120 - x : x, y: ((e.clientY - r.top) / r.height) * 100, r };
+    }
+
     // Wo wurde er angetippt? In Koordinaten der Pika-Grafik (120 × 100, Blick nach rechts)
     _petZone(e) {
-      const svg = this._el.pika.querySelector('.pk');
-      const r = svg?.getBoundingClientRect();
-      if (!e || !r?.width) return 'body';
-      let x = ((e.clientX - r.left) / r.width) * 120;
-      const y = ((e.clientY - r.top) / r.height) * 100;
-      if (this._dir < 0) x = 120 - x;
+      const P = this._pkPoint(e);
+      if (!P) return 'body';
+      const { x, y, r } = P;
       const d = (ax, ay) => Math.hypot(x - ax, y - ay);
       // Auf kleinen Karten (Handy) wären Nase und Ohren nur 13–16 px groß: Ohren mindestens 14 px Radius, die Nase
       // (zuerst geprüft) 10 px, sonst schluckte sie auf dem Handy den ganzen Kopf
@@ -7141,6 +7333,7 @@
       if (R.n >= 11) return this._petPout();
       if (R.n >= 8) return this._petMelt();
       if (R.n === 5) {
+        this._found('combo');
         this._jump('binky');
         this._emote('spark', 1500);
         p.classList.add('happy');
@@ -7148,6 +7341,7 @@
         await this._wait(1200);
         return;
       }
+      this._found({ 'ear-l': 'ear', 'ear-r': 'ear', body: 'back' }[R.zone] || R.zone);
       if (R.zone === 'nose') return this._petNose();
       if (R.zone === 'ear-l' || R.zone === 'ear-r') return this._petEar(R.zone.slice(-1));
       if (R.zone === 'belly') return this._petBelly();
@@ -7214,6 +7408,7 @@
 
     // Achtmal: schmilzt zum runden Fellknäuel
     async _petMelt() {
+      this._found('melt');
       this._el.pika.classList.add('melt', 'squint', 'content', 'flat');
       this._say('♥♥♥', 1800);
       this._hearts(4);
@@ -7227,16 +7422,19 @@
       const dir = this._dir;
       // Solange er schmollt, bricht weiteres Tippen das nicht ab (_petFree, _onPet): Wer elfmal tippt, tippt meist weiter
       this._pout = true;
+      this._found('pout');
       try {
         this._face(-dir);
         this._emote('grump', 2400);
         this._say('hmpf!', 1300);
         p.classList.add('look-up', 'squint');
+        this._mimik('defy', 3400); // Trotz: Brauen zusammengezogen, Schmollmund
         await this._wait(2500);
         p.classList.remove('look-up', 'squint');
         p.classList.add('look-b');
         await this._wait(900);
         p.classList.remove('look-b');
+        this._mimik(null);
         this._face(dir);
         this._say(pick(['…na gut', '…na schön', 'hihi']), 1300);
         this._blush(2200);
@@ -7247,66 +7445,151 @@
       }
     }
 
-    // el: wer den Finger festhält (sonst der Pika; die Tippfläche eines tiefen Fliegers reicht ihn durch)
+    // Zeiger und Touch fürs Streicheln an el hängen: der Pika selbst oder die Tippfläche eines tiefen Fliegers, die den
+    // Finger durchreicht (ok(e): liegt der Pika darunter?). leave: pointerleave beendet den Druck (nicht an der
+    // Tippfläche, die unter dem ruhenden Finger weiterzieht).
+    //
+    // Ablauf auf einem Touch-Gerät (Android Chrome und WebView, iOS): touchstart, dann pointerdown. Ruht der Finger,
+    // meldet Android nach 400–500 ms „lang gedrückt“ (contextmenu: wird unterdrückt, zu markieren gibt es hier nichts)
+    // und schickt nach dem Loslassen KEINEN Klick mehr. Darum hängt nichts am Klick: Der Tipp entsteht beim Loslassen
+    // (pointerup), das Kraulen nach KRAUL.hold aus dem Zeitgeber. touch-action: pan-y lässt die Seite senkrecht rollen;
+    // beginnt der Browser damit, meldet er pointercancel, und der Druck ist vorbei. Sobald gekrault wird, darf das
+    // nicht mehr passieren. touch-action lässt sich mitten in der Geste nicht ändern, aber ein touchmove, das
+    // preventDefault bekommt, bevor das Rollen begonnen hat, verhindert es (deshalb passive: false). Bis dahin rollt
+    // die Seite wie gewohnt.
+    _pressBind(el, ok = null, leave = true) {
+      el.addEventListener('pointerdown', (e) => (!ok || ok(e)) && this._pressStart(e, el));
+      el.addEventListener('pointermove', (e) => this._pressMove(e));
+      for (const t of leave ? ['pointerup', 'pointercancel', 'pointerleave'] : ['pointerup', 'pointercancel']) {
+        el.addEventListener(t, (e) => this._pressEnd(e));
+      }
+      // Lang drücken auf Touch (Windows-Tablet, Android) öffnete sonst das Kontextmenü des Browsers
+      el.addEventListener('contextmenu', (e) => (!ok || this._press) && e.preventDefault());
+      el.addEventListener('touchstart', () => (this._finger = true), { passive: true });
+      el.addEventListener('touchmove', (e) => this._press?.kraul && e.cancelable && e.preventDefault(), { passive: false });
+      for (const t of ['touchend', 'touchcancel']) {
+        el.addEventListener(t, (e) => {
+          if (e.targetTouches?.length) return;
+          this._finger = false;
+          // Der Browser hatte den Zeiger schon abgemeldet, der Finger lag aber noch (siehe _pressEnd): jetzt ist er weg
+          if (this._press?.lost) this._pressEnd(null);
+        }, { passive: true });
+      }
+    }
+
+    // Finger oder Maus setzt auf. el: wer den Zeiger festhält (der Pika oder die Tippfläche eines tiefen Fliegers)
     _pressStart(e, el = this._el.pika) {
       // Ein neuer Finger: der Klick zum letzten Drücken ist dann längst durch
       this._eatClick = false;
       // Nur der erste Finger zählt (ein zweiter beendete sonst das Kraulen)
       if (e.button > 0 || e.isPrimary === false || !this._g) return;
-      this._press = { x: e.clientX, y: e.clientY, id: e.pointerId };
+      // Ein Kraulen, dessen Ende nie gemeldet wurde, endet spätestens mit dem nächsten Druck
+      this._kraulOn = false;
+      const P = (this._press = { x: e.clientX, y: e.clientY, id: e.pointerId, touch: e.pointerType === 'touch' });
       try {
         el.setPointerCapture(e.pointerId); // beim Wischen nicht vom Pika abrutschen
       } catch (err) { /* nicht unterstützt */ }
+      this._pressFx(e);
       clearTimeout(this._pressT);
       this._pressT = setTimeout(() => {
-        const P = this._press;
-        if (!P || P.swiped) return;
+        if (this._press !== P || P.swiped || !this._running) return;
         if (this._asleep) {
           // im Schlaf gekrault: wohlig, aber er bleibt liegen
           P.kraul = true;
-          this._add('g', GAIN.pet);
+          this._add('g', this._petGainNow());
           this._petCount();
+          this._found('sleep');
           return this._sleepTouch('kraul');
         }
-        if (!this._petFree()) return;
+        if (!this._petFree()) {
+          // Beschäftigt: Lang drücken zählt wie Antippen, und zwar jetzt. Auf das Loslassen zu warten hieße auf Android,
+          // auf einen Klick zu warten, der nach langem Drücken nicht kommt.
+          P.done = true;
+          return this._pet({ clientX: P.x, clientY: P.y });
+        }
         P.kraul = true;
         this._kraulOn = true;
         this._petFriend();
         this._touchNext('kraul');
-      }, 550);
+      }, KRAUL.hold);
     }
 
     _pressMove(e) {
       const P = this._press;
-      if (!P || P.id !== e.pointerId || P.kraul || P.swiped || !this._g) return;
+      if (!P || P.id !== e.pointerId || P.kraul || P.swiped || P.done || !this._g) return;
       const dx = Math.abs(e.clientX - P.x);
       const dy = Math.abs(e.clientY - P.y);
       if (dx > this._g.pW * 0.35 && dx > dy * 1.5) {
         P.swiped = true;
         clearTimeout(this._pressT);
         this._onStroke();
-      } else if (Math.hypot(dx, dy) > 12) clearTimeout(this._pressT); // bewegt: kein Kraulen
+      } else if (Math.hypot(dx, dy) > PRESS_SLOP) clearTimeout(this._pressT); // bewegt: kein Kraulen
+      this._pressFx(e); // der Blick wandert mit
     }
 
+    // e: pointerup, pointercancel oder pointerleave. null: Der Finger ist weg, ohne dass es der Zeiger gemeldet hat.
     _pressEnd(e) {
       const P = this._press;
       if (!P || (e && e.pointerId !== P.id)) return;
+      // Ein Finger verlässt das Element nicht, solange er liegt (der Zeiger ist festgehalten): pointerleave kommt bei
+      // Touch nur als Nachzügler von pointerup oder pointercancel. Nach einem pointercancel beim Kraulen (unten) beendete
+      // er sonst doch noch, was weiterlaufen soll.
+      if (e?.type === 'pointerleave' && P.touch) return;
+      // Der Browser meldet den Zeiger ab (pointercancel), obwohl der Finger beim Kraulen noch liegt: Das Kraulen läuft
+      // weiter, bis touchend oder touchcancel kommt (_pressBind). Nur wenn hier überhaupt Touch-Ereignisse ankommen.
+      if (e?.type === 'pointercancel' && P.kraul && P.touch && this._finger && this._kraulOn) {
+        P.lost = true;
+        return;
+      }
       clearTimeout(this._pressT);
       this._press = null;
-      // Der Klick beim Loslassen gehört zum Kraulen bzw. Wischen: den nächsten verschlucken. Bleibt er aus (Touch
-      // nach Bewegung), räumt der nächste Druck bzw. die Frist den Merker weg.
-      if (P.kraul || P.swiped) {
+      this._pressFx(null);
+      // Losgelassen, ohne zu kraulen oder zu wischen: Das ist der Tipp. Nicht nach pointercancel (die Seite rollt) und
+      // nicht nach pointerleave.
+      const up = e?.type === 'pointerup';
+      // Weit weggezogen und woanders losgelassen (der Zeiger ist festgehalten, pointerup kommt trotzdem hier an): kein Tipp
+      const far = up && Math.hypot(e.clientX - P.x, e.clientY - P.y) > Math.max(PRESS_SLOP * 2, (this._g?.pW || 0) * 0.6);
+      const tap = up && !far && !P.kraul && !P.swiped && !P.done;
+      // Der Klick des Browsers beim Loslassen gehört dazu: den nächsten verschlucken. Bleibt er aus (Android nach langem
+      // Drücken, Touch nach Bewegung), räumt der nächste Druck bzw. die Frist den Merker weg.
+      if (P.kraul || P.swiped || P.done || tap || far) {
         this._eatClick = true;
         clearTimeout(this._eatClickT);
-        this._eatClickT = setTimeout(() => (this._eatClick = false), 2000);
+        this._eatClickT = setTimeout(() => (this._eatClick = false), tap ? 700 : 2000);
       }
       if (P.kraul) this._kraulOn = false;
+      if (tap) this._pet(e);
+    }
+
+    // Sofort beim Aufsetzen, noch bevor feststeht, ob es ein Tipp, Kraulen oder Wischen wird: leicht stauchen, Bäckchen,
+    // die Augen wandern zum Finger. Nur eine Klasse und zwei Variablen am Pika, keine Aktion: Was er gerade tut, läuft
+    // unverändert weiter. e null: Finger weg. Im Schlaf bleibt er ruhig liegen.
+    _pressFx(e) {
+      const p = this._el.pika;
+      if (!e || this._asleep) {
+        clearTimeout(this._pressFxT);
+        p.classList.remove('pressed');
+        return;
+      }
+      const at = this._pkPoint(e);
+      if (at) {
+        // Auslenkung der Augen in Einheiten der Grafik, von der Gesichtsmitte (90/48) aus
+        p.style.setProperty('--ex', `${(clamp((at.x - 90) / 34, -1, 1) * 1.2).toFixed(2)}px`);
+        p.style.setProperty('--ey', `${(clamp((at.y - 48) / 34, -1, 1) * 0.9).toFixed(2)}px`);
+      }
+      if (p.classList.contains('pressed')) return;
+      p.classList.add('pressed');
+      this._blush(1400);
+      // Sicherung: Bleibt die Meldung „Finger weg“ ganz aus, steht er nicht für immer gestaucht da
+      clearTimeout(this._pressFxT);
+      this._pressFxT = setTimeout(() => p.classList.remove('pressed'), KRAUL.max + 3000);
     }
 
     // Über das Fell gestrichen: es plustert sich auf und legt sich wieder
     _onStroke() {
-      this._add('g', GAIN.pet);
+      this._add('g', this._petGainNow());
       this._petCount();
+      this._found('stroke');
       if (this._asleep) return this._sleepTouch('stroke');
       this._blush(2000);
       if (this._petFree()) this._touchNext('stroke');
@@ -7325,25 +7608,34 @@
       await this._wait(600);
     }
 
-    // Kraulen, solange der Finger liegt (höchstens 20 s): Augen zu, Klopfbein, prrr
+    // Kraulen, solange der Finger liegt (höchstens KRAUL.max): Augen zu, Klopfbein, prrr. Der Einstieg zählt wie ein
+    // Tipp, danach gibt jeder Takt Glück: Ruhiges Kraulen bringt je Sekunde mehr als jedes Tippen (KRAUL, petGain).
     async _kraul() {
       const p = this._el.pika;
       p.classList.add('squint', 'content', 'flat', 'tilt');
       this._say('prrr…', 1500);
-      this._add('g', GAIN.pet);
+      this._add('g', this._petGainNow());
       this._petCount();
+      this._found('kraul');
       const t0 = Date.now();
+      const P = this._press; // der Druck, zu dem dieses Kraulen gehört
       try {
-        for (let i = 0; this._kraulOn && Date.now() - t0 < 20000; i++) {
+        for (let i = 0; this._kraulOn && Date.now() - t0 < KRAUL.max; i++) {
           if (i === 1) p.classList.add('thump');
           this._blush(2500);
           if (i % 2) this._hearts(1);
-          if (i % 3 === 2) this._add('g', GAIN.pet / 2);
+          if (i > 0) {
+            this._add('g', KRAUL.gain);
+            this._petAt = Date.now(); // ein Tipp gleich danach zählt nicht noch einmal voll
+            if (i % KRAUL.count === 0) this._petCount();
+          }
           if (i === 4) this._say(pick(['prrrr…', 'mmmh…', '♥']), 1500);
-          await this._wait(900);
+          await this._wait(KRAUL.beat);
         }
       } finally {
-        this._kraulOn = false;
+        // Nur das eigene Kraulen beenden. Kurz abgesetzt und wieder aufgelegt: Der neue Druck hat _kraulOn schon
+        // gesetzt und dieses Kraulen abgebrochen; es nähme dem nächsten sonst gleich wieder den Finger weg.
+        if (this._press === P || !this._press?.kraul) this._kraulOn = false;
       }
       p.classList.remove('thump');
       await this._wait(500);
@@ -7384,7 +7676,290 @@
       await this._wait(rnd(1200, 1800));
     }
 
+    // Tastatur: Was sich antippen lässt (role="button"), lässt sich mit Tab anwählen und mit Enter oder Leertaste
+    // auslösen. fn: was dann geschieht; sonst ein Klick auf el, den dessen eigener Klick-Handler bekommt.
+    _keyTap(el, fn = null) {
+      el.tabIndex = 0;
+      el.classList.add('ktap');
+      el.addEventListener('keydown', (e) => {
+        if (e.key !== 'Enter' && e.key !== ' ') return;
+        e.preventDefault();
+        // Was der Zeiger gerade nicht trifft (Vogel im Flug, weggeräumtes Häufchen), löst auch die Taste nicht aus
+        if (e.repeat || getComputedStyle(el).pointerEvents === 'none') return;
+        if (fn) fn();
+        else el.click();
+      });
+    }
+
+    // ---------- Die Welt antwortet ----------
+    // Ein Tipp auf Blume, Wolke, Stern, Tür, Windrad oder Wollknäuel bekommt eine kleine Antwort. Alles bleibt auf diesem
+    // Gerät: Nichts davon steht im Zustand oder im Tagesplan, nichts wird in die Helfer geschrieben. Die Ziele bekommen
+    // keine eigenen Tippflächen (sie lägen über Pika, Häufchen und Besuchern und stünden _tapBelow im Weg): Der Klick,
+    // den sonst niemand wollte, kommt an der Szene an (_onLookAt) und wird hier nach Rechtecken gesucht. Was eine
+    // eigene Tippfläche hat (Häufchen, Geschenk, Pino, Besucher, Flugzeuge, Geräte, Leiste, Knöpfe), fängt seinen
+    // Klick vorher ab und behält so den Vorrang.
+
+    // Zeigt die Stelle freien Himmel? Davor liegen die gemalten Flächen von Hügeln und Bergen, Bau und Stein.
+    _skyAt(e) {
+      const stack = this.shadowRoot.elementsFromPoint?.(e.clientX, e.clientY) || [];
+      return !stack.some((el) => el.matches?.('.hills *, .burrow svg *, .lookout svg *'));
+    }
+
+    // Flächen der antippbaren Dinge in px der Szene, in Rangfolge und mit Tipp-Rand (worldPick). sky: Die Stelle zeigt
+    // freien Himmel, nur dann zählen Sterne und Wolken.
+    _worldZones(sky) {
+      const sc = this._el.scene;
+      const sr = sc.getBoundingClientRect();
+      const Z = [];
+      const add = (k, el, pad) => {
+        const r = el.getBoundingClientRect();
+        if (!r.width && !r.height) return;
+        Z.push({ k, el, l: r.left - sr.left - pad, t: r.top - sr.top - pad, r: r.right - sr.left + pad, b: r.bottom - sr.top + pad, pad });
+      };
+      const E = this._gtEls;
+      if (E?.has(0)) add('yarn', E.get(0), 8);
+      if (E?.has(1)) add('wheel', E.get(1), 4);
+      if (!sc.classList.contains('snowcover')) {
+        for (const f of this._flowers) if (!f.el.classList.contains('picked')) add('flower', f.el, 6);
+      }
+      const { hole } = this._g;
+      Z.push({ k: 'door', l: hole.l, t: hole.top, r: hole.r, b: hole.lip, pad: 0 });
+      if (!sky) return Z;
+      if (sc.classList.contains('night') || sc.classList.contains('dusk')) {
+        for (const el of this._el.starEls) if (!el._fell && Number(getComputedStyle(el).opacity) > 0.25) add('star', el, 13);
+      }
+      for (const el of this._el.clouds) if (el.classList.contains('on')) add('cloud', el, 5);
+      return Z;
+    }
+
+    // Hat er gerade nichts vor, das ein Blick oder ein „oh!“ stören könnte?
+    _calm() {
+      return this._petFree() && (this._action == null || ['idle', 'look', 'wander', 'squeak', 'comeHere'].includes(this._action));
+    }
+
+    // z: Treffer aus _worldZones. Schläft er, bleibt es leise: Die Dinge antworten, er nicht.
+    _worldTap(z) {
+      const now = Date.now();
+      // je Art höchstens alle 250 ms (Dauerfeuer füllte sonst die Effekt-Ebene)
+      const T = (this._worldT ??= {});
+      if (now - (T[z.k] || 0) < 250) return;
+      T[z.k] = now;
+      const awake = !this._asleep;
+      const p = this._el.pika;
+      const calm = calmMotion();
+      const pad = z.pad || 0;
+      const cx = (z.l + z.r) / 2;
+      const cy = (z.t + z.b) / 2;
+      if (z.k === 'flower') {
+        // Sie wackelt und staubt. Steht er daneben und hat nichts vor, kribbelt es in der Nase.
+        if (!calm) this._wag(z.el, { rotate: ['0deg', '-13deg', '9deg', '-4deg', '0deg'] }, 520);
+        this._dust(cx, z.t + pad + (z.b - z.t - 2 * pad) * 0.25);
+        if (awake && this._petFree() && Math.abs(cx - this._liveX()) < Math.max(this._g.pW * 1.6, this._W * 0.22)) {
+          this._worldReq = { k: 'flower', x: cx };
+          this._touchNext('worldReact');
+        }
+      } else if (z.k === 'cloud') {
+        // Sie zuckt zusammen und tröpfelt (in der Ebene der Wolken: hinter Hügeln und Bau)
+        if (!calm) this._wag(z.el, { scale: ['1 1', '1.07 .88', '1 1'] }, 380);
+        const host = z.el.parentElement;
+        const o = (z.el.offsetParent || this._el.scene).getBoundingClientRect();
+        const sr = this._el.scene.getBoundingClientRect();
+        const w = z.r - z.l - 2 * pad;
+        for (let i = 0; i < 5; i++) {
+          const d = document.createElement('span');
+          d.className = 'gdrop';
+          d.style.left = `${(z.l + pad + w * rnd(0.12, 0.88) + sr.left - o.left).toFixed(1)}px`;
+          d.style.top = `${(z.b - pad - 2 + sr.top - o.top).toFixed(1)}px`;
+          d.style.animationDelay = `${i * 70}ms`;
+          d.style.animationFillMode = 'both';
+          host.appendChild(d);
+          setTimeout(() => d.remove(), 650 + i * 70);
+        }
+      } else if (z.k === 'star') {
+        // Er fällt vom Himmel und ist nach ein paar Sekunden wieder da
+        const el = z.el;
+        el._fell = true;
+        el.style.transition = 'opacity .15s';
+        el.style.opacity = '0';
+        setTimeout(() => {
+          el._fell = false;
+          el.style.transition = el.style.opacity = '';
+        }, 5000);
+        if (!calm) {
+          const len = this._Hs * rnd(0.2, 0.3);
+          const tilt = rnd(56, 74);
+          const m = document.createElement('div');
+          m.className = 'met';
+          m.style.cssText = `left:${cx.toFixed(1)}px;top:${cy.toFixed(1)}px;--a:${(cx < this._W / 2 ? tilt : 180 - tilt).toFixed(1)}deg;`
+            + `--len:${len.toFixed(1)}px;--tail:${(len * 0.4).toFixed(1)}px;--d:.75s`;
+          m.innerHTML = '<b class="mt"></b><b class="mh"></b>';
+          this._el.meteors.appendChild(m);
+          setTimeout(() => m.remove(), 950);
+        }
+        if (awake && !this._inside && this._calm()) {
+          this._mimik('awe', 1600); // Staunen
+          if (Math.random() < 0.6) this._say(pick(['oh!', 'ooh!']), 900);
+        }
+      } else if (z.k === 'door') {
+        // Klopf, klopf. Ist er im Bau, linst er heraus; schläft er, zuckt nur ein Ohr.
+        if (!awake) this._cls('stw', 550, true);
+        else {
+          this._knock();
+          if (this._inside) {
+            if (!p.classList.contains('tv')) {
+              this._pose('peek', 300);
+              if (Math.random() < 0.5) this._say(pick(['ja?', 'hm?', 'iiep?']), 900);
+            }
+          } else if (this._calm() && !p.classList.contains('tilt')) {
+            this._cls('tilt', 1400);
+            this._emote('q', 1400);
+          }
+        }
+      } else if (z.k === 'wheel') {
+        // Es dreht sich kurz ganz schnell (auch nachts und bei Flaute, wo es sonst ruht)
+        const el = z.el;
+        this._blowUntil = Math.max(this._blowUntil || 0, this._haNow() + 2600);
+        el.classList.add('tapspin');
+        this._giftScene();
+        clearTimeout(this._wheelT);
+        this._wheelT = setTimeout(() => {
+          el.classList.remove('tapspin');
+          this._giftScene();
+        }, 2700);
+        this._peep(cx, z.t + pad + 2, 'surr!');
+      } else if (z.k === 'yarn') {
+        if (!this._yarnTap(z.el, cx)) return;
+      } else return;
+      this._found(z.k);
+    }
+
+    // Kurzes Wackeln über die Einzel-Eigenschaften rotate bzw. scale: Sie legen sich über die laufende Animation des
+    // Elements (Schaukeln, Ziehen), statt deren transform zu ersetzen. Kennt ein alter Browser sie nicht, bleibt es aus.
+    _wag(el, frames, ms) {
+      try {
+        el.animate?.(frames, { duration: ms, easing: 'ease-out' });
+      } catch (e) { /* ohne Wackeln */ }
+    }
+
+    // Klopf, klopf: Schriftzug am Eingang
+    _knock() {
+      const { hole } = this._g;
+      this._peep(hole.cx, hole.top + (hole.lip - hole.top) * 0.3, 'klopf, klopf');
+      this._found('door');
+    }
+
+    // Blütenstaub steigt an der Stelle (x, y) auf
+    _dust(x, y) {
+      const { pH } = this._g;
+      for (let i = 0; i < 6; i++) {
+        const el = document.createElement('span');
+        el.className = 'pol';
+        el.style.left = `${(x + rnd(-0.05, 0.05) * pH).toFixed(1)}px`;
+        el.style.top = `${(y + rnd(-0.04, 0.02) * pH).toFixed(1)}px`;
+        el.style.setProperty('--px', `${(rnd(-0.14, 0.14) * pH).toFixed(1)}px`);
+        el.style.setProperty('--py', `${(rnd(-0.22, -0.06) * pH).toFixed(1)}px`);
+        el.style.animationDelay = `${i * 60}ms`;
+        this._el.fx.appendChild(el);
+        setTimeout(() => el.remove(), 1700 + i * 60);
+      }
+    }
+
+    // Das Wollknäuel kullert ein Stück vom Finger weg (bleibt dort liegen wie nach seinem Spiel, nur auf diesem Gerät).
+    // Nicht, während er selbst damit spielt oder es gerade durch die Luft fliegt (Kopfball: Web Animation, auch beim
+    // Auspacken). → true, wenn es gerollt ist
+    _yarnTap(el, x) {
+      const flying = (a) => !(typeof CSSAnimation !== 'undefined' && a instanceof CSSAnimation)
+        && !(typeof CSSTransition !== 'undefined' && a instanceof CSSTransition);
+      if (['giftYarn', 'giftHeader'].includes(this._action) || el.getAnimations?.().some(flying)) return false;
+      const { fMin, fMax } = this._g;
+      const W = this._W;
+      const from = this._giftX(0);
+      const roll = (dir) => clamp(from + dir * W * rnd(0.07, 0.14), fMin * W, fMax * W);
+      const min = Math.max(8, W * 0.04);
+      let to = roll(x <= from ? 1 : -1);
+      if (Math.abs(to - from) < min) to = roll(x <= from ? -1 : 1); // am Rand der Wiese: zurück
+      if (Math.abs(to - from) < 8) return false;
+      this._yarnXf = to / W;
+      this._yarnRot = (this._yarnRot || 0) + ((to - from) / (Math.PI * this._H * 0.075)) * 360;
+      el.style.transition = 'left .9s cubic-bezier(.2, .7, .4, 1)';
+      el.style.left = `${to.toFixed(1)}px`;
+      el.querySelector('svg').style.transform = `rotate(${this._yarnRot.toFixed(0)}deg)`;
+      clearTimeout(this._yarnT);
+      this._yarnT = setTimeout(() => !['giftYarn', 'giftHeader'].includes(this._action) && (el.style.transition = ''), 950);
+      return true;
+    }
+
+    // Antwort des Pikas auf einen Tipp in die Welt, wo sie eine eigene Aktion braucht (nur, wenn er nichts vorhat)
+    async _worldReact() {
+      const R = this._worldReq;
+      this._worldReq = null;
+      if (!R) return;
+      if (R.k === 'flower') {
+        // Blütenstaub in der Nase
+        if (Math.abs(R.x - this._x) > 2) this._face(R.x >= this._x ? 1 : -1);
+        await this._wait(250);
+        await this._sneeze(true);
+      }
+    }
+
+    // Kurzer eigener Blick (look-f, look-b, look-up) für ms. Nur den Blick vom letzten Tipp ersetzen: Schaut er gerade
+    // für seine Aktion (Vögelchen, Hunger, Bild betrachten), bleibt der Blick dort.
+    _glance(c, ms = 1500) {
+      const p = this._el.pika;
+      clearTimeout(this._lookT);
+      if (this._lookC) p.classList.remove(this._lookC);
+      this._lookC = null;
+      if (['look-f', 'look-b', 'look-up'].some((k) => p.classList.contains(k))) return;
+      p.classList.add(c);
+      this._lookC = c;
+      this._lookT = setTimeout(() => (p.classList.remove(c), (this._lookC = null)), ms);
+    }
+
+    // Entdeckungen (Seite im Tagebuch, FINDS): Was schon ausprobiert wurde, merkt sich nur dieses Gerät im Browser.
+    // Ohne Speicher gilt es bis zum Neuladen. Mit diary: false gibt es die Seite nicht, dann wird auch nichts gemerkt.
+    _finds() {
+      const key = `pika-pet-finds:${this._cfg?.name}`;
+      if (this._findsKey !== key) {
+        this._findsKey = key;
+        let raw = '';
+        try {
+          raw = localStorage.getItem(key) || '';
+        } catch (e) { /* kein Speicher */ }
+        this._findsSet = findsParse(raw);
+      }
+      return this._findsSet;
+    }
+
+    _found(k) {
+      if (!FIND_IDS.has(k) || !this._diaryOn()) return;
+      const S = this._finds();
+      if (S.has(k)) return;
+      S.add(k);
+      try {
+        // Eine zweite Karte gleichen Namens (andere Ansicht, anderer Tab) hat vielleicht inzwischen geschrieben: vereinigen
+        for (const f of findsParse(localStorage.getItem(this._findsKey) || '')) S.add(f);
+        localStorage.setItem(this._findsKey, findsSer(S));
+      } catch (e) { /* kein Speicher: gilt bis zum Neuladen */ }
+    }
+
     // ---------- Mimik ----------
+
+    // Brauen und Mund für Trauer ('sad'), Trotz ('defy'), Stolz ('proud') und Staunen ('awe'); null nimmt sie zurück.
+    // ms: so lange, sonst bis zum Ende der Aktion (_cleanup). Die Teile sitzen im Gesicht (.face): Sie wandern mit dem
+    // Blick und der Spiegelung mit und fehlen in der Rückansicht. Im Schlaf, beim Fressen, Gähnen, Pfeifen und Trinken
+    // blendet das CSS sie aus.
+    _mimik(name, ms = 0) {
+      const p = this._el?.pika;
+      if (!p) return;
+      clearTimeout(this._mimT);
+      const d = name && hasKey(MIMIK, name) ? MIMIK[name] : null;
+      if (this._mim || d) p.classList.remove('mi', ...MIMIK_CLS);
+      this._mim = d ? name : null;
+      if (!d) return;
+      (this._el.mim ??= p.querySelector('.mim'))?.setAttribute('d', d);
+      p.classList.add('mi', `mi-${name}`);
+      if (ms > 0) this._mimT = setTimeout(() => this._mimik(null), ms);
+    }
 
     // Zustandsklasse c für ms Millisekunden (eigener Zeitgeber je Klasse; restart spielt die Animation neu ab)
     _cls(c, ms, restart) {
@@ -7766,7 +8341,10 @@
       g._t = f.t;
       g._xf = f.x / 100; // relativ: bei Größenänderung mitwandern
       this._flowerGiftPlace(g);
+      g.setAttribute('role', 'button');
+      g.setAttribute('aria-label', 'Blume annehmen');
       g.addEventListener('click', (e) => (e.stopPropagation(), this._takeGift()));
+      this._keyTap(g);
       this._el.fx.appendChild(g);
       this._giftEl = g;
       clearTimeout(this._giftT);
@@ -7785,6 +8363,7 @@
       if (!el) return;
       this._giftEl = null;
       clearTimeout(this._giftT);
+      this._found('bloom');
       this._planOp({ t: 'ftake', ft: el._t });
       const r = el.getBoundingClientRect();
       const s = this._el.scene.getBoundingClientRect();
@@ -7892,6 +8471,7 @@
         b.classList.add('no');
         return;
       }
+      this._found('feed');
       this._add('s', GAIN.feed);
       const { fMin, fMax } = this._g;
       let xf = rnd(fMin, fMax);
@@ -7952,25 +8532,25 @@
       setTimeout(land, 800);
     }
 
+    // Klick in die Szene, den kein Tippziel abgefangen hat: Die Welt antwortet (Blume, Wolke, Stern, Tür, Windrad,
+    // Wollknäuel), und er schaut hin.
     _onLookAt(e) {
+      if (!this._g) return;
       const p = this._el.pika;
-      // Im Bau (auch beim Fernsehen, Rückansicht) schaut er nicht herum
-      if (this._asleep || !this._g || this._action === 'eatFood' || this._inside || p.classList.contains('tv')) return;
       const sr = this._el.scene.getBoundingClientRect();
       const x = e.clientX - sr.left;
-      const c = Math.sign(x - this._liveX()) === this._dir ? 'look-f' : 'look-b';
-      // Nur den eigenen Blick vom letzten Tipp ersetzen; schaut er gerade für seine Aktion (Vögelchen, Hunger,
-      // Bild betrachten), bleibt der Blick dort
-      clearTimeout(this._lookT);
-      if (this._lookC) p.classList.remove(this._lookC);
-      this._lookC = null;
-      if (!['look-f', 'look-b', 'look-up'].some((k) => p.classList.contains(k))) {
-        p.classList.add(c);
-        this._lookC = c;
-        this._lookT = setTimeout(() => (p.classList.remove(c), (this._lookC = null)), 1500);
-      }
+      const y = e.clientY - sr.top;
+      // Leiste und Knöpfe (bei diary: false reicht die Leiste ihren Klick hierher durch) sind keine Welt
+      const hit = e.target?.closest?.('.stats, button, .ptag') ? null : worldPick(x, y, this._worldZones(this._skyAt(e)));
+      if (hit) this._worldTap(hit);
+      // Im Bau (auch beim Fernsehen, Rückansicht) schaut er nicht herum
+      if (this._asleep || this._action === 'eatFood' || this._inside || p.classList.contains('tv')) return;
+      const up = hit?.k === 'cloud' || hit?.k === 'star';
+      this._glance(up ? 'look-up' : Math.sign(x - this._liveX()) === this._dir ? 'look-f' : 'look-b');
+      if (hit) return; // die Antwort der Welt ersetzt Herhoppeln und Kopf-schief
       // Heute oft gestreichelt: auf die Wiese getippt, hoppelt er gern hin. Sonst legt er manchmal den Kopf schief.
-      const meadow = e.clientY - sr.top > this._g.gy - this._H * 0.3;
+      const meadow = y > this._g.gy - this._H * 0.3;
+      if (meadow) this._found('meadow');
       if (meadow && this._clingy() && this._petFree() && Math.random() < 0.6) {
         this._comeX = clamp(x, this._g.pW * 0.5, this._W - this._g.pW * 0.5);
         this._touchNext('comeHere');
@@ -8456,6 +9036,7 @@
       this._festCakeEl = E.front.querySelector('.fcake');
       this._festEggs = [...E.front.querySelectorAll('.fegg')].map((el, i) => {
         el.addEventListener('click', (e) => (e.stopPropagation(), this._festWobble(el)));
+        this._keyTap(el);
         return { el, x: eggX[i] };
       });
       // Haus-Bote: Geräte weichen der Bodendeko aus (boteRow)
@@ -9116,7 +9697,8 @@
       el.style.left = `${spot.x}px`;
       el.style.top = `${spot.y}px`;
       const b = this._critter({ el, perch: spot.id, x: spot.x, y: spot.y, sitting: false, dir: 1 });
-      el.querySelector('.bw').addEventListener('click', (e) => (e.stopPropagation(), b.scare()));
+      el.querySelector('.bw').addEventListener('click', (e) => (e.stopPropagation(), this._found('visitor'), b.scare()));
+      this._keyTap(el.querySelector('.bw'));
       this._bird = b;
       this._el.birds.appendChild(el);
       try {
@@ -9212,7 +9794,8 @@
       el.className = 'mouse';
       el.innerHTML = `<div class="mw" role="button" aria-label="Maus"><div class="mf"><div class="mb">${MOUSE_SVG}</div></div></div>`;
       const m = this._critter({ el, x: 0, y: 0, dir: 1, visible: false, out: false });
-      el.querySelector('.mw').addEventListener('click', (e) => (e.stopPropagation(), m.scare()));
+      el.querySelector('.mw').addEventListener('click', (e) => (e.stopPropagation(), this._found('visitor'), m.scare()));
+      this._keyTap(el.querySelector('.mw'));
       this._mouse = m;
       this._el.mice.appendChild(el);
 
@@ -9382,7 +9965,8 @@
       el.innerHTML = `<div class="cw" role="button" aria-label="Frosch"><div class="cf"><div class="cb">${FROG_SVG}</div></div></div>`;
       const yG = gy - this._H * 0.02; // knapp hinter dem Pika
       const f = this._critter({ el, x: 0, y: yG, w: fw, dir: -1, out: false });
-      el.querySelector('.cw').addEventListener('click', (e) => (e.stopPropagation(), f.scare()));
+      el.querySelector('.cw').addEventListener('click', (e) => (e.stopPropagation(), this._found('visitor'), f.scare()));
+      this._keyTap(el.querySelector('.cw'));
       this._frog = f;
       this._el.mice.appendChild(el);
 
@@ -9527,7 +10111,8 @@
         s.poked = true;
         if (s.hidden) wob();
       };
-      el.querySelector('.cw').addEventListener('click', (e) => (e.stopPropagation(), s.poke()));
+      el.querySelector('.cw').addEventListener('click', (e) => (e.stopPropagation(), this._found('visitor'), s.poke()));
+      this._keyTap(el.querySelector('.cw'));
       this._snail = s;
       this._el.mice.appendChild(el);
 
@@ -9870,6 +10455,7 @@
       };
       fr.kickP = new Promise((r) => (fr.kick = r));
       el.addEventListener('click', (e) => (e.stopPropagation(), this._frPet(fr)));
+      this._keyTap(el);
       el.classList.toggle('cold', !!this._wx.cold);
       this._el.friends.append(el, sw);
       return fr;
@@ -10284,6 +10870,7 @@
     // Pino antippen: Herzen, Freudensprung, kurzer Piep (die Werte des Pikas bleiben, wie sie sind)
     _frPet(fr) {
       if (this._fr !== fr) return;
+      this._found('pino');
       this._frHappy(fr);
       this._frJump(fr, Math.random() < 0.3 ? 'binky' : 'hop1');
       this._frSay(fr, pick(['mip!', 'iiep!', '♥', 'pip!']), 1000);
@@ -11105,6 +11692,7 @@
       el._pile = p;
       el.classList.toggle('old', this._now() - p.due > POOP.fly * 36e5);
       el.addEventListener('click', (e) => (e.stopPropagation(), this._cleanPile(key)));
+      this._keyTap(el);
       this._el.poops.appendChild(el);
       this._pileEls.set(key, el);
     }
@@ -11128,6 +11716,7 @@
       if (!el || el.classList.contains('scooped')) return;
       const p = el._pile;
       const x = this._pileX(p);
+      this._found('clean');
       el.classList.add('scooped');
       this._pileEls.delete(key);
       setTimeout(() => el.remove(), 800);
@@ -11597,6 +12186,7 @@
       p.classList.add('look-up');
       await this._wait(250);
       if (m.bolide) this._jump('hop1');
+      this._mimik('awe', m.bolide ? 2200 : 1500);
       this._say(m.bolide ? 'oooh!' : 'oh!', 1200);
       await this._wait(rnd(700, 1000));
       // mit dem Kopf hinterher, in Flugrichtung
@@ -11747,6 +12337,16 @@
       // Flugzeug antippen: Flugnummer, Ziel, Airline, Typ, Strecke, Höhe und Tempo; nochmal tippen schließt
       // Die Tippfläche eines tiefen Fliegers liegt über Pika, Pino, Häufchen, Besuchern und Geräten: die haben Vorrang
       const below = (e) => this._tapBelow(e);
+      const flip = () => {
+        clearTimeout(p.openT);
+        const open = !tag.classList.contains('open');
+        if (open) {
+          this._planeText(p);
+          this._found('plane');
+          p.openT = setTimeout(() => tag.classList.remove('open'), 9000);
+        }
+        tag.classList.toggle('open', open);
+      };
       const toggle = (e) => {
         e.stopPropagation();
         if (e.currentTarget === hit) {
@@ -11758,20 +12358,15 @@
             }));
           }
         }
-        clearTimeout(p.openT);
-        const open = !tag.classList.contains('open');
-        if (open) {
-          this._planeText(p);
-          p.openT = setTimeout(() => tag.classList.remove('open'), 9000);
-        }
-        tag.classList.toggle('open', open);
+        flip();
       };
       hit.addEventListener('click', toggle);
       tag.addEventListener('click', toggle);
-      // Kraulen und Übers-Fell-Streichen unter dem Flieger: die Tippfläche hält den Finger fest und reicht ihn durch
-      hit.addEventListener('pointerdown', (e) => below(e)?.classList.contains('pika') && this._pressStart(e, hit));
-      hit.addEventListener('pointermove', (e) => this._pressMove(e));
-      for (const t of ['pointerup', 'pointercancel']) hit.addEventListener(t, (e) => this._pressEnd(e));
+      // Tastatur: ohne Stelle gibt es nichts darunter, Enter und Leertaste klappen das Fähnchen auf und zu
+      hit.setAttribute('aria-label', 'Flugzeug');
+      this._keyTap(hit, flip);
+      // Tippen, Kraulen und Übers-Fell-Streichen unter dem Flieger: die Tippfläche hält den Finger fest und reicht ihn durch
+      this._pressBind(hit, (e) => !!below(e)?.classList.contains('pika'), false);
       this._el.planes.appendChild(el);
       this._el.phits.appendChild(hit);
       this._el.ptags.appendChild(tag);
@@ -12548,8 +13143,10 @@
         el.innerHTML = '<div class="hb-i"></div><span class="hb-a">!</span>';
         el.addEventListener('click', (e) => {
           e.stopPropagation();
+          this._found('device');
           this._boteTag(a, !a.tag?.classList.contains('open'));
         });
+        this._keyTap(el);
         this._el.props.insertBefore(el, this._bote.bars);
         const bar = document.createElement('div');
         bar.className = 'hb-bar';
@@ -13707,6 +14304,7 @@
       const x = sec(this._haNow());
       this._planOp({ t: 'give', z, i, gold, x });
       if (this._plan.gift?.z !== z) return no();
+      this._found('parcel');
       // Leckerli und Freude erst, wenn das Verschenken bestätigt ist (_giftCredit): Drückten zwei Geräte gleichzeitig,
       // gilt nur ein Päckchen, und nur dessen Gerät gibt die Belohnung
       this._giftOwn = { z, i, x, at: this._haNow() };
@@ -14005,6 +14603,7 @@
         ie.style.top = `${(gy - this._H * 0.2).toFixed(1)}px`;
         this._el.fx.appendChild(ie);
         this._cls('sparkle', 2600);
+        this._mimik('awe', 1000);
         await this._wait(1000);
         B.el.classList.add('fade');
         if (B.item >= GIFT_TRE) {
@@ -15095,8 +15694,35 @@
       return h;
     }
 
-    // Fenster über dem Dashboard öffnen (tab: 'heute', 'gestern', 'schatz'). Lang drücken auf den Päckchen-Knopf
-    // schlägt gleich die Schätze auf.
+    // Reiter „Entdeckungen“: was man mit ihm und seiner Welt tun kann (FINDS). Eine Pfote steht vor dem, was auf diesem
+    // Gerät schon ausprobiert wurde (_found). Gezeigt wird nur, was es bei dieser Karte gibt.
+    _diaryFinds() {
+      const S = this._finds();
+      const lv = this._giftOn() ? giftLvs(this._plan?.gift) : [];
+      const have = {
+        gift: this._giftOn(), friend: !!this._cfg.friend, flight: !!this._cfg.flight_entity,
+        bote: Array.isArray(this._cfg.appliances) && this._cfg.appliances.length > 0, wheel: lv[1] > 0, yarn: lv[0] > 0,
+      };
+      const fr = this._frName();
+      const list = FINDS.filter((f) => !f.need || have[f.need]);
+      const n = list.filter((f) => S.has(f.k)).length;
+      let h = `<p class="fazit">${!n ? 'Probier aus, was du mit mir und meiner Welt machen kannst!'
+        : n >= list.length ? 'Du hast alles ausprobiert, was es bei mir gibt!'
+          : `Das kannst du mit mir und meiner Welt machen. ${n} von ${list.length} hast du schon ausprobiert.`}</p>`;
+      FIND_GROUPS.forEach((g, i) => {
+        const part = list.filter((f) => f.g === i);
+        if (!part.length) return;
+        h += `<h3>${esc(g)}</h3>${part.map((f) => {
+          const ok = S.has(f.k);
+          return `<div class="fd${ok ? ' ok' : ''}"><i>${ok ? DIARY_PAW : ''}</i><div><b>${esc(f.t.replace('{n}', fr))}</b>`
+            + `<span>${esc(f.h.replace('{n}', fr))}</span></div></div>`;
+        }).join('')}`;
+      });
+      return `${h}<p class="note">Die Pfoten merkt sich nur dieses Gerät.</p>`;
+    }
+
+    // Fenster über dem Dashboard öffnen (tab: 'heute', 'gestern', 'schatz', 'entd'). Lang drücken auf den
+    // Päckchen-Knopf schlägt gleich die Schätze auf.
     _diaryOpen(tab = 'heute') {
       if (!this._el) return;
       // diary: false: nur die Schätze (lang drücken auf den Päckchen-Knopf), ohne Heute/Gestern und ohne den Verlauf zu lesen
@@ -15114,7 +15740,7 @@
             <div class="hd"><span class="bk">${DIARY_BOOK}</span><div class="ht"><b>${esc(title)}</b><span class="dt"></span></div>
               <button class="x" aria-label="Schließen" title="Schließen">✕</button></div>
             ${only ? '' : `<div class="tabs" role="tablist">
-              <button role="tab" data-tab="heute">Heute</button><button role="tab" data-tab="gestern">Gestern</button><button role="tab" data-tab="schatz">Schätze</button>
+              <button role="tab" data-tab="heute">Heute</button><button role="tab" data-tab="gestern">Gestern</button><button role="tab" data-tab="schatz">Schätze</button><button role="tab" data-tab="entd">Entdeckungen</button>
             </div>`}
             <div class="page" role="tabpanel" tabindex="0"></div>
             <div class="ft"></div>
@@ -15181,6 +15807,9 @@
       if (D.tab === 'schatz') {
         dt.textContent = 'Was mir gehört';
         pg.innerHTML = this._diaryTreasures();
+      } else if (D.tab === 'entd') {
+        dt.textContent = 'Was du bei mir ausprobieren kannst';
+        pg.innerHTML = this._diaryFinds();
       } else {
         const M = D.data?.days[today ? 0 : 1];
         const raw = { ...(this._wxRaw || {}), ...(this._dbgWeather || {}) };
@@ -15887,10 +16516,12 @@
       await this._wait(900);
       if (S.r(6) < 0.75) {
         this._happy(1400);
+        this._mimik('proud', 2600);
         this._say(pick(['Fertig!', 'Kunst!', 'Meisterwerk!', '♥']), 1500);
         this._jump('hop1');
       } else {
         p.classList.add('meh');
+        this._mimik('sad', 1500);
         this._say(pick(['naja …', 'hm.', 'nächstes Mal']), 1400);
         await this._wait(1500);
         p.classList.remove('meh');
@@ -15977,7 +16608,7 @@
       const anim = el.animate(frames, { duration: dur, easing: 'linear', fill: 'forwards' });
       const b = { el, anim, pts, dur };
       bubs.add(b);
-      el.firstChild.addEventListener('click', (e) => (e.stopPropagation(), this._popBubble(b, true)));
+      el.firstChild.addEventListener('click', (e) => (e.stopPropagation(), this._found('bubble'), this._popBubble(b, true)));
       anim.finished.then(() => this._popBubble(b), () => {});
     }
 
@@ -16204,6 +16835,7 @@
           p.classList.add('lift-gnd');
           this._say('uff!', 1000);
           p.classList.add('meh');
+          this._mimik('sad', 1600);
           await this._wait(1600);
           p.classList.remove('meh');
           continue;
@@ -16213,6 +16845,7 @@
         await this._wait(rnd(1200, 2200));
         p.classList.remove('strain');
         this._say(pick(['Ta-da!', 'Stark!', 'Muskeln!']), 1300);
+        this._mimik('proud', 1700);
         this._hearts(2);
         await this._wait(1300);
         p.classList.remove('lift-hi');
@@ -16267,6 +16900,7 @@
       planBlank, planSer, planParse, planApply, hayNow, giftLv, pikaDay,
       freshStats, serialize, parseStats, mergeStats, seedRnd, weightedR,
       sunTimes, festDay, festEaster, festAdvent1, festBirthdate,
+      GAIN, PET_CALM, KRAUL, petGain, kraulGain, worldPick, MIMIK, FINDS, FIND_GROUPS, findsParse, findsSer,
     });
   }
 })();

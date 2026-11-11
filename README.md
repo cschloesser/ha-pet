@@ -14,7 +14,10 @@ Ein kleiner Pika (Pfeifhase) wohnt in deinem Home-Assistant-Dashboard.
 
 ## Streicheln
 
-Tippt man ihn an, während er nur herumsitzt, hoppelt oder sich umschaut, reagiert er auf die Stelle. Ist er gerade beschäftigt (Buch, Musik, Futter …), gibt es Herzchen und einen Hüpfer, ohne dass er aufhört; Lang drücken zählt dann wie Antippen. Mit der Tastatur streichelt Enter oder die Leertaste (der Pika lässt sich mit Tab anwählen).
+Tippt man ihn an, während er nur herumsitzt, hoppelt oder sich umschaut, reagiert er auf die Stelle. Ist er gerade beschäftigt (Buch, Musik, Futter …), gibt es Herzchen und einen Hüpfer, ohne dass er aufhört; Lang drücken zählt dann wie Antippen (nach gut einer halben Sekunde, noch während der Finger liegt). Mit der Tastatur streichelt Enter oder die Leertaste (der Pika lässt sich mit Tab anwählen); eine gehaltene Taste zählt einmal.
+
+- **Sofort beim Aufsetzen** des Fingers, noch vor dem Loslassen: Er gibt ein wenig nach, die Bäckchen werden rot, die Augen wandern zum Finger. Was er gerade tut, läuft dabei weiter. Mit „Bewegung reduzieren“ bleiben Bäckchen und Blick, das Nachgeben entfällt.
+- **Glück**: Ein Tipp gibt 8 Punkte, wenn seit der letzten Berührung mindestens anderthalb Sekunden vergangen sind, schneller hintereinander entsprechend weniger. Dauerfeuer bringt so nicht mehr als ruhiges Tippen, abgezogen wird nie etwas. Am meisten lohnt das Kraulen (siehe unten).
 
 - **Kopf**: Er lehnt sich in die Hand, Augen zu, Ohren angelegt, zufriedenes ω-Mäulchen.
 - **Nase**: *boop!* Er schielt auf seine Nase, manchmal muss er niesen.
@@ -22,7 +25,7 @@ Tippt man ihn an, während er nur herumsitzt, hoppelt oder sich umschaut, reagie
 - **Bauch**: Er kichert und kippt manchmal kurz auf den Rücken.
 - **Rücken und Po**: Freudensprung wie gehabt.
 - **Mehrmals hintereinander** (innerhalb von 6 Sekunden): beim 5. Mal ein Luftsprung mit Funkeln, ab dem 8. Mal schmilzt er zum runden Fellknäuel. Beim 11. Mal ist es ihm zu viel: „hmpf!“, er dreht sich mit Grummelwolke weg, linst dann doch zurück („…na gut“). Solange er schmollt, lässt er sich von weiterem Tippen nicht stören (fürs Glück zählt es trotzdem).
-- **Lang drücken** = kraulen: Augen zu, Ohren angelegt, „prrr…“, ein Hinterbein klopft. Solange der Finger liegt (höchstens 20 s), gibt es Herzchen und Glück.
+- **Lang drücken** = kraulen: Augen zu, Ohren angelegt, „prrr…“, ein Hinterbein klopft. Solange der Finger liegt (höchstens 20 s), gibt es Herzchen und Glück: 6 Punkte je knapper Sekunde, mehr als jedes Tippen in derselben Zeit. Der Finger darf dabei ruhig etwas rutschen, und die Seite rollt währenddessen nicht mit (vor dem Einsetzen des Kraulens lässt sie sich über dem Pika wie gewohnt schieben). Nach dem Loslassen lässt er sich sofort wieder kraulen. Ein langes Kraulen zählt fürs Tagebuch und fürs Anhänglichsein mehrfach (etwa alle 4,5 s einmal).
 - **Waagerecht über ihn wischen** = übers Fell streichen: Es plustert sich auf und legt sich wieder.
 - **Im Schlaf**: Antippen, Kraulen und Wischen wecken ihn nicht. Er öffnet kurz ein Auge, es gibt ein Herzchen und manchmal ein verschlafenes „mmh…“. Viermal in 6 Sekunden: „noch fünf Minuten…“, und er dreht sich auf die andere Seite.
 - **Anhänglich**: Wurde er heute schon zehnmal gestreichelt (mit `plan_entity` auf allen Geräten zusammengezählt, sonst je Gerät; der Tag wechselt um 4 Uhr nachts), hoppelt er oft hin, wenn man auf die Wiese tippt, und legt den Kopf schief. Fürs Tagebuch zählt er weiter bis 99.
@@ -33,6 +36,7 @@ Tippt man ihn an, während er nur herumsitzt, hoppelt oder sich umschaut, reagie
 Zwischen den Beschäftigungen hat er kleine Eigenheiten. Jedes Gerät würfelt sie selbst, wie das Umschauen und Herumhoppeln.
 
 - **Mimik**: Die Nase wackelt ab und zu, die Schnurrhaare zittern mit. Beim Streicheln werden die Bäckchen rot, ist er glücklich, sitzt er manchmal mit ω-Mäulchen da. Satt, glücklich und sauber atmet er ruhiger, nach dem Herumflitzen schneller.
+- **Brauen und Mund** zeigen vier Stimmungen: **Trauer** (Hunger, es geht ihm nicht gut, Spiel verloren, Bild missraten, Hantel zu schwer), **Trotz** (das „hmpf!“ nach zu viel Streicheln, „iih!“ am Häufchen), **Stolz** (fertiges Bild, gestemmte Hantel) und **Staunen** (Flugzeug, Sternschnuppe, fallender Stern, der Inhalt eines Päckchens). Streicheln wischt Trauer und Trotz weg.
 - **Kopf schief** mit Fragezeichen, manchmal erst links, dann rechts. Auch wenn ein Vögelchen zurückzwitschert, die Maus schnuppert, ein Flugzeug brummt oder man auf die Wiese tippt.
 - **Gähnen** mit großem Mäulchen, danach Schmatzen. Mittags und abends öfter.
 - **Niesen**: „ha… haa… hatschi!“, danach schüttelt er die Ohren. Im Frühling öfter (Blütenstaub tanzt vor der Nase), bei Kälte auch.
@@ -45,6 +49,21 @@ Zwischen den Beschäftigungen hat er kleine Eigenheiten. Jedes Gerät würfelt s
 - **Gangart**: Kurze Wege trippelt er, eilig macht er große Hopser. Beim Landen wippt er nach, die Ohren schwingen nach. Selten stolpert er beim Herumhoppeln („hoppla!“).
 - **Wiedersehen**: War die Karte über 3 Stunden nicht zu sehen (Tab im Hintergrund, Bildschirm aus), hoppelt er nach vorn, winkt mit Sternchenaugen („Du warst lange weg!“) und macht Freudensprünge. Schlief er, als der Bildschirm ausging, und ist inzwischen Morgen, wacht er erst auf und begrüßt dich dann.
 - **Träume**: Im Schlaf erscheint ab und zu eine bläuliche Traumblase. Was er am Tag erlebt hat, träumt er öfter: Pino, Kaffee, ein Flugzeug, ein Vögelchen, Musik, der Schmetterling, Löwenzahn oder Klee vom Füttern, ein Herz, wenn er viel gestreichelt wurde. Dazu zuckt er im Schlaf, schmatzt oder murmelt („mip…“, „Pino…“). Was er erlebt hat, steht mit `plan_entity` im Helfer: Kam Pino, während der Bildschirm aus war, träumt das Tablet trotzdem von ihm, sobald ein anderes Gerät den Besuch gezeigt hat. Ohne Helfer merkt sich jedes Gerät nur, was es selbst gezeigt hat. Wann und was er träumt, würfelt jedes Gerät selbst.
+
+## Die Welt antwortet
+
+Auch die Szene lässt sich antippen. Die Antworten sind klein und bleiben auf dem Gerät, auf dem getippt wurde: Sie ändern weder seine Werte noch den Tagesplan, und was er gerade vorhat, läuft weiter. Schläft er, antworten nur die Dinge, er bleibt liegen.
+
+- **Blume**: Sie wackelt und staubt. Steht er in der Nähe und hat nichts vor, kribbelt es ihm in der Nase: „ha… haa… hatschi!“
+- **Wolke**: Sie zuckt zusammen und tröpfelt. Er schaut hoch.
+- **Stern** (abends und nachts, solange Sterne zu sehen sind): Er fällt als kleine Sternschnuppe vom Himmel und ist nach ein paar Sekunden wieder da. Ist der Pika wach und hat nichts vor, staunt er.
+- **Tür**: „klopf, klopf“. Ist er im Bau verschwunden, linst er heraus (das zählt wie Streicheln); ist er draußen, legt er den Kopf schief.
+- **Windrad** (Schatz): dreht sich ein paar Sekunden ganz schnell, auch nachts und bei Flaute.
+- **Wollknäuel** (Schatz): kullert ein Stück vom Finger weg und bleibt dort liegen.
+
+Was schon ein eigenes Tippziel ist, behält den Vorrang: Pika, Häufchen, Blumengeschenk, Pino, Besucher, Flugzeuge, Geräte, Statusleiste und Knöpfe. Liegt eine Blume unter der Tippfläche eines Flugzeugs, geht das Fähnchen auf.
+
+Alles, was sich antippen lässt (Häufchen, Blumengeschenk, Pino, Besucher, Geräte, Flugzeuge, Ostereier), lässt sich auch mit Tab anwählen und mit Enter oder Leertaste auslösen.
 
 ## Päckchen
 
@@ -115,7 +134,7 @@ Ist das Album voll, geht es weiter: Jeder Schatz lässt sich zweimal aufwerten, 
 
 ## Tagebuch
 
-Tippt man oben links auf die Statusleiste (das kleine Buch vor dem Namen), geht „Pikas Tagebuch“ auf: ein Notizbuch über dem Dashboard mit drei Reitern.
+Tippt man oben links auf die Statusleiste (das kleine Buch vor dem Namen), geht „Pikas Tagebuch“ auf: ein Notizbuch über dem Dashboard mit vier Reitern.
 
 - **Heute** und **Gestern**: Was er erlebt hat, aus seiner Sicht und mit Uhrzeit, gegliedert in Morgens, Mittags, Nachmittags, Abends und Nachts. Der Tag wechselt wie beim Streicheln um 4 Uhr nachts.
   - Oben steht ein Satz, wie es ihm geht, darunter Zähler: wie oft er gefüttert, gestreichelt und geputzt wurde.
@@ -125,11 +144,12 @@ Tippt man oben links auf die Statusleiste (das kleine Buch vor dem Namen), geht 
   - **Geheimnis**: Steht in seiner Wachzeit länger als 100 Minuten nichts im Verlauf (kein Gerät hat ihn gezeigt), erfindet das Tagebuch nichts: „Was ich gemacht habe, bleibt mein Geheimnis.“ Nur die längste Lücke des Tages.
   - Je Ereignis gibt es mehrere Sätze. Welcher erscheint, hängt an Ereignis und Minute: Alle Geräte zeigen denselben, auch beim zweiten Öffnen.
 - **Schätze**: alle acht Schätze mit Stufe, Päckchen im Vorrat und wann das nächste kommt (bzw. was fehlt), Pflege-Serie in Tagen, Blüten im Vorrat. Lang drücken auf den Päckchen-Knopf schlägt diesen Reiter direkt auf.
+- **Entdeckungen**: was man mit ihm und seiner Welt alles tun kann, aus seiner Sicht, in drei Abschnitten (Streicheln, Kümmern, Meine Welt). Die Seite ersetzt eine Einführung: Jede Zeile sagt, wie es geht. Vor dem, was auf diesem Gerät schon ausprobiert wurde, steht ein Pfotenabdruck. Gezeigt wird nur, was es bei dieser Karte gibt (Pino, Päckchen, Flugzeuge, Geräte nur, wenn eingerichtet; Windrad und Wollknäuel erst, wenn ausgepackt). Die Pfoten merkt sich nur der Browser des Geräts (nichts davon steht in den Helfern), es gibt dafür weder Fristen noch Belohnungen.
 - **Woher es kommt**: Gespeichert wird dafür nichts Neues. Die Karte liest beim Öffnen den Verlauf der beiden Helfer aus Home Assistant (die letzten zwei Tage) und leitet die Einträge aus den Änderungen von Zustand und Tagesplan ab, die Uhrzeit ist der Zeitstempel der Änderung. Darum zeigen alle Geräte dasselbe Tagebuch, und „Gestern“ ist gleich nach dem Update gefüllt. Der Recorder muss die Helfer dafür aufzeichnen (das ist der Standard); sonst steht unten ein Hinweis. Ohne Helfer schreibt das Gerät die Stände im Browser mit (3 Tage) und kennt nur, was es selbst gezeigt hat. Mit `appliances` liest die Karte auch den Verlauf der Geräte (`state`).
 - **Was nicht drinsteht**: Kleinigkeiten, die jedes Gerät selbst würfelt (Niesen, Zoomies, Seilspringen, Gewichtheben, was er mit Pino spielt), Maus, Frosch und Schnecke, und alles, was kein Gerät gezeigt hat.
 - **Bedienung**: Schließen mit ✕, einem Tipp neben das Buch oder Esc. Nach 60 Sekunden ohne Berührung schließt es sich selbst (Wand-Tablet). Ein roter Punkt am Buch zeigt Neues: ein neuer Tag oder ein ausgepacktes Päckchen seit dem letzten Aufschlagen (je Gerät gemerkt). Nachts ist das Papier dunkel, auf schmalen Bildschirmen kommt das Buch als Blatt von unten.
 - **Fuß**: Ganz unten steht die Version der Karte auf diesem Gerät (so sieht man, ob ein Gerät noch eine alte geladen hat). Gab es seit dem Laden Fehler, lassen sich die letzten zehn dort aufklappen; auf einem Wand-Tablet ist das der einzige Ort, an dem man sie sieht.
-- Mit `show_stats: false` gibt es statt der Leiste einen kleinen Buch-Knopf oben links. `diary: false` schaltet den Einstieg ab (die Schätze bleiben über langes Drücken auf den Päckchen-Knopf erreichbar, ohne die Reiter Heute und Gestern), `diary_house: false` lässt Kaffee und Haushaltsgeräte weg.
+- Mit `show_stats: false` gibt es statt der Leiste einen kleinen Buch-Knopf oben links. `diary: false` schaltet den Einstieg ab (die Schätze bleiben über langes Drücken auf den Päckchen-Knopf erreichbar, ohne die Reiter Heute, Gestern und Entdeckungen; gemerkt wird dann auch nichts), `diary_house: false` lässt Kaffee und Haushaltsgeräte weg.
 
 ## Häufchen und Sauberkeit
 
@@ -385,6 +405,6 @@ Die Karte schont das Gerät: Ist sie nicht zu sehen (Tab im Hintergrund, Bildsch
 
 ## Entwicklung
 
-`node --test` (im Ordner des Repos, ab Node 20) prüft die reinen Funktionen der Karte: Tagesplan (lesen, schreiben, Länge, wiederholbare Änderungen), Zustand und Zusammenführen, Päckchen-Stufen, Feste, Sonnenzeiten, den Fehlerspeicher und den Wachhund der Lebensschleife. Die Tests laden `pika-pet-card.js` unverändert mit ein paar Attrappen für `window` und `document`. Die Schleife selbst hält Fehler aus: Wirft eine Beschäftigung oder das Aufräumen danach, merkt sich die Karte den Fehler (siehe Fuß des Tagebuchs) und macht weiter; bleibt sie trotzdem länger als gut anderthalb Minuten an etwas hängen, startet der Wachhund sie neu.
+`node --test` (im Ordner des Repos, ab Node 20) prüft die reinen Funktionen der Karte: Tagesplan (lesen, schreiben, Länge, wiederholbare Änderungen), Zustand und Zusammenführen, Päckchen-Stufen, Feste, Sonnenzeiten, den Fehlerspeicher und den Wachhund der Lebensschleife, dazu das Glück fürs Streicheln (Dauerfeuer, Kraulen), die Trefferwahl der Welt-Tipps, die Mimik und die Entdeckungen. Die Tests laden `pika-pet-card.js` unverändert mit ein paar Attrappen für `window` und `document`. Die Schleife selbst hält Fehler aus: Wirft eine Beschäftigung oder das Aufräumen danach, merkt sich die Karte den Fehler (siehe Fuß des Tagebuchs) und macht weiter; bleibt sie trotzdem länger als gut anderthalb Minuten an etwas hängen, startet der Wachhund sie neu.
 
 `preview.html` lädt die Karte mit einem simulierten `hass`-Objekt. Die Häufchen-Knöpfe stellen die Uhr der Häufchen vor (nächstes Häufchen, +4 Std., +1 Tag), die Besuch-Knöpfe holen Vögelchen, Maus, Frosch und Schnecke sofort (auch ohne Regen) oder stellen die Besuchsuhr kurz vor den nächsten berechneten Besuch, die Hobby-Knöpfe starten eine Beschäftigung sofort (auch ohne passendes Wetter), die Flieger-Knöpfe schicken Testflüge los (Anflug, Abflug, Reiseflug, Hubschrauber, Kleinflugzeug). Dafür den Ordner über einen lokalen Webserver öffnen, z. B. `node dev/serve.mjs . 8765` (lauscht nur auf localhost). `areale.html` zeigt alle vier Areale nebeneinander. Die Zeile Tiefe schaltet `depth` um, schickt ihn auf die hintere bzw. vordere Spur und wechselt das Areal. Die Knopfzeilen Himmel-Extras, Festtage, Freund-Pika, Haus-Bote, Kaffee und Aktivitäten lösen die jeweiligen Erweiterungen sofort aus (Festtage stellen dafür das Datum der Karte um, Haus-Bote und Kaffee setzen Mock-Zustände der Geräte; ein Kaffeebezug dauert dort 18 s). Beide Vorschau-Karten teilen sich die Helfer wie zwei Geräte: „Uhr vor“ stellt die Plan-Uhr kurz vor die nächste große oder kleine Beschäftigung, „rechte Karte neu laden“ zeigt den Einstieg mitten in einer laufenden. Die Zeile Süßes startet die kleinen Momente sofort (das Geschenk nur links, rechts erscheint es über den Helfer), spielt Streichel-Zonen und Combos ohne genaues Zielen ab, krault 4 s, wischt übers Fell, stellt „heute oft gestreichelt“ ein, holt das Wiedersehen nach 4 Stunden und zeigt nachts sofort einen Traum. Die Zeile Päckchen gibt links ein Päckchen bzw. ein goldenes dazu, verschenkt es, stellt den Beginn der Serie zurück (12 Stunden, 7 Tage), lässt Satt unter 50 % fallen oder tut so, als läge ein Wert schon seit 2 Stunden darunter (der Ring wird grau, Füttern startet eine neue Serie), füllt das Album, setzt alles zurück, zeigt das Album und startet die Schatz-Aktionen sofort. Die Zeile Stufen gibt allen Schätzen im Album ihren Trick bzw. macht sie golden (vorher „Album voll“ für alle acht), nimmt die Stufen wieder weg und startet die Tricks sofort (Sterngucken stellt die Dämmerung ein, Schaukeln holt die Hängematte auf die Wiese). Die Vorschau führt für beide Helfer einen Verlauf wie der Recorder von HA; die Zeile Tagebuch öffnet das Tagebuch der linken Karte bzw. die Schätze, zeigt zwei volle Beispieltage (fertige Ereignisse statt des Verlaufs), schiebt den bisherigen Verlauf um 3 Stunden oder einen Tag zurück (so wandert Erlebtes nach gestern), blendet die Leiste aus (dann erscheint der Buch-Knopf) und zeigt, wie viele Stände im Verlauf liegen.

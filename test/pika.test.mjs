@@ -15,7 +15,7 @@ vm.runInNewContext(src, {
   HTMLElement: class {},
   customElements: { get: () => null, define() {} },
   console: { info() {}, log() {}, warn: (...a) => warned.push(a) },
-  setTimeout, clearTimeout, setInterval, clearInterval, queueMicrotask, Date, Math, JSON, Promise, Intl,
+  setTimeout, clearTimeout, setInterval, clearInterval, queueMicrotask, Date, Math, JSON, Promise, Intl, AbortController,
   __pikaTest: (x) => (T = x),
 }, { filename: 'pika-pet-card.js' });
 
@@ -337,4 +337,146 @@ test('Größeneinheit: ab 3:2 die Höhe, schmaler die Breite / 1,5', () => {
   assert.equal(T.sceneUnit(372, 248), 248); // genau 3:2
   assert.ok(Math.abs(T.sceneUnit(340, 248) - 226.67) < 0.01); // Handy im Abschnitts-Layout
   assert.ok(Math.abs(T.sceneUnit(320, 400) - 213.33) < 0.01); // Hochformat
+});
+
+// ---------- Streicheln: Glück hängt an der Zeit, nicht an der Zahl der Tipps ----------
+// Summe aus Tipps im festen Abstand über die Dauer (ms)
+const tippen = (abstand, dauer) => {
+  let g = 0;
+  let zuletzt = -Infinity;
+  for (let t = 0; t <= dauer; t += abstand) {
+    g += T.petGain(t - zuletzt);
+    zuletzt = t;
+  }
+  return g;
+};
+
+test('Streicheln: Dauerfeuer bringt nie mehr als ruhiges Tippen, abgezogen wird nichts', () => {
+  assert.equal(T.petGain(Infinity), T.GAIN.pet); // der erste Tipp zählt voll
+  assert.equal(T.petGain(T.PET_CALM), T.GAIN.pet);
+  assert.equal(T.petGain(T.PET_CALM * 10), T.GAIN.pet); // nie mehr als voll
+  assert.ok(T.petGain(100) > 0); // jeder Tipp zählt
+  assert.equal(T.petGain(-500), 0); // Uhr sprang zurück: nichts, aber auch kein Abzug
+  const dauer = 14 * T.PET_CALM;
+  const ruhig = tippen(T.PET_CALM, dauer);
+  assert.equal(ruhig, 15 * T.GAIN.pet);
+  for (const ms of [50, 100, 250, 500, 750]) assert.ok(tippen(ms, dauer) <= ruhig + 1e-6, `alle ${ms} ms: ${tippen(ms, dauer)}`);
+  // langsamer als ruhig bringt je Tipp dasselbe, also insgesamt weniger: Es gibt keinen Grund, sich zu beeilen
+  assert.ok(tippen(3000, dauer) < ruhig);
+});
+
+test('Streicheln: Kraulen lohnt mehr als jedes Tippen', () => {
+  assert.ok(T.KRAUL.gain / T.KRAUL.beat > T.GAIN.pet / T.PET_CALM, 'je Sekunde');
+  assert.equal(T.kraulGain(0), 0);
+  assert.equal(T.kraulGain(T.KRAUL.beat - 1), 0);
+  assert.equal(T.kraulGain(T.KRAUL.beat), T.KRAUL.gain);
+  assert.equal(T.kraulGain(1e9), T.kraulGain(T.KRAUL.max)); // nach KRAUL.max ist Schluss
+  // Finger liegt 10 bzw. 20 s (Einsetzen nach hold, der Einstieg zählt wie ein Tipp) gegen Dauerfeuer in derselben Zeit
+  for (const dauer of [10000, 20000]) {
+    const kraulen = T.GAIN.pet + T.kraulGain(dauer - T.KRAUL.hold);
+    assert.ok(kraulen > tippen(100, dauer), `${dauer} ms: kraulen ${kraulen}, tippen ${tippen(100, dauer)}`);
+  }
+});
+
+// ---------- Die Welt antwortet ----------
+test('Welt: die Art des ersten Treffers gewinnt, unter gleichen die nächste Mitte', () => {
+  const zones = [
+    { k: 'flower', i: 0, l: 100, t: 200, r: 130, b: 240 },
+    { k: 'flower', i: 1, l: 120, t: 200, r: 150, b: 240 },
+    { k: 'door', l: 60, t: 150, r: 125, b: 230 },
+    { k: 'star', i: 0, l: 300, t: 20, r: 326, b: 46 },
+    { k: 'star', i: 1, l: 310, t: 30, r: 336, b: 56 },
+    { k: 'cloud', l: 280, t: 10, r: 400, b: 60 },
+  ];
+  assert.equal(T.worldPick(10, 10, zones), null); // freier Himmel bzw. Wiese
+  assert.equal(T.worldPick(80, 180, zones).k, 'door');
+  assert.equal(T.worldPick(110, 210, zones).k, 'flower'); // Blume vor der Tür
+  assert.equal(T.worldPick(124, 220, zones).i, 0); // zwei Blumen: Mitte 115 ist näher als 135
+  assert.equal(T.worldPick(127, 220, zones).i, 1);
+  assert.equal(T.worldPick(320, 40, zones).k, 'star'); // Stern vor der Wolke
+  assert.equal(T.worldPick(320, 40, zones).i, 1);
+  assert.equal(T.worldPick(390, 50, zones).k, 'cloud');
+  assert.equal(T.worldPick(50, 50, []), null);
+});
+
+// ---------- Mimik ----------
+test('Mimik: Trauer, Trotz, Stolz und Staunen haben je einen Mundpfad mit der Kerbe unter der Nase', () => {
+  assert.deepEqual(Object.keys(T.MIMIK).sort(), ['awe', 'defy', 'proud', 'sad']);
+  for (const [k, d] of Object.entries(T.MIMIK)) assert.match(d, /^M91 54\.1 v[\d.]+ M[\d. ]+[qa]/, k);
+  // nur ein Name aus der Tabelle setzt etwas; „constructor“ ist keine Miene
+  const cls = [];
+  const c = Object.create(T.PikaPetCard.prototype);
+  c._el = { pika: { classList: { add: (...a) => cls.push(...a), remove() {} }, querySelector: () => ({ setAttribute() {} }) } };
+  c._mimik('constructor');
+  assert.equal(c._mim, null);
+  assert.deepEqual(cls, []);
+  c._mimik('awe');
+  assert.equal(c._mim, 'awe');
+  assert.deepEqual(cls, ['mi', 'mi-awe']);
+  c._mimik(null);
+  assert.equal(c._mim, null);
+});
+
+// ---------- Entdeckungen ----------
+test('Entdeckungen: Kennungen eindeutig, jede mit Titel, Hinweis und gültigem Abschnitt', () => {
+  const ids = T.FINDS.map((f) => f.k);
+  assert.equal(new Set(ids).size, ids.length);
+  for (const f of T.FINDS) {
+    assert.match(f.k, /^[a-z]+$/, f.k); // steht mit Kommas getrennt im Browser-Speicher
+    assert.ok(f.t && f.h, f.k);
+    assert.ok(f.g >= 0 && f.g < T.FIND_GROUPS.length, f.k);
+    assert.ok(f.need === undefined || ['gift', 'friend', 'flight', 'bote', 'wheel', 'yarn'].includes(f.need), f.k);
+  }
+  // was die Welt beantwortet, steht auch auf der Seite
+  for (const k of ['flower', 'cloud', 'star', 'door', 'wheel', 'yarn']) assert.ok(ids.includes(k), k);
+});
+
+test('Entdeckungen: gemerkt nur auf dem Gerät, Unbekanntes wird überlesen, diary: false merkt nichts', () => {
+  assert.equal(T.findsSer(T.findsParse('nose,quatsch,head,nose,__proto__')), 'head,nose'); // in der Reihenfolge der Seite
+  assert.equal(T.findsParse(null).size, 0);
+  assert.equal(T.findsParse(undefined).size, 0);
+  // In node gibt es keinen Browser-Speicher: Dann gilt es bis zum Neuladen, ohne Fehler
+  const c = Object.create(T.PikaPetCard.prototype);
+  c._cfg = { name: 'Test' };
+  c._found('nose');
+  c._found('nose');
+  c._found('quatsch');
+  assert.deepEqual([...c._finds()], ['nose']);
+  c._cfg = { name: 'Test', diary: false };
+  c._found('head');
+  assert.deepEqual([...c._finds()], ['nose']);
+});
+
+// Die echte Methode _kraul mit Attrappen: Finger kurz weg und gleich wieder drauf. Der neue Druck bricht das alte
+// Kraulen ab; dessen Aufräumen darf dem neuen nicht den Finger wegnehmen (sonst: einmal „prrr…“ und Schluss).
+test('Kraulen: kurz absetzen und wieder auflegen läuft weiter', async () => {
+  const c = Object.create(T.PikaPetCard.prototype);
+  const cls = new Set();
+  c._el = { pika: { classList: { add: (...x) => x.forEach((k) => cls.add(k)), remove: (...x) => x.forEach((k) => cls.delete(k)), contains: (k) => cls.has(k) } } };
+  let adds = 0;
+  Object.assign(c, { _say() {}, _add: () => adds++, _petCount() {}, _found() {}, _blush() {}, _hearts() {}, _running: true, _g: {}, _action: 'kraul' });
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+  c._ac = new AbortController();
+  c._press = { kraul: true };
+  c._kraulOn = true;
+  const p1 = c._kraul().catch((e) => e);
+  await sleep(T.KRAUL.beat + 50); // der zweite Takt hat eben begonnen
+  c._press = null; // Finger weg (_pressEnd)
+  c._kraulOn = false;
+  await sleep(100);
+  c._press = { kraul: true }; // wieder drauf, der Zeitgeber aus _pressStart hat ausgelöst
+  c._kraulOn = true;
+  c._touchNext('kraul'); // bricht das alte Kraulen ab
+  await p1;
+  assert.equal(c._kraulOn, true, 'das alte Kraulen hat dem neuen den Finger weggenommen');
+  c._ac = new AbortController();
+  adds = 0;
+  const p2 = c._kraul().catch((e) => e);
+  await sleep(T.KRAUL.beat + 150);
+  assert.ok(adds >= 2, `das zweite Kraulen läuft nicht weiter (${adds} Buchungen)`);
+  assert.equal(c._kraulOn, true);
+  // Bricht etwas anderes das Kraulen ab, während der Finger noch liegt, ist es vorbei
+  c._ac.abort();
+  await p2;
+  assert.equal(c._kraulOn, false);
 });
