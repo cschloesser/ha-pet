@@ -30,6 +30,9 @@
  *   type: custom:pika-pet-card
  *   name: Pika                       # Name in der Statusanzeige
  *   entity: input_text.pika_status   # optional: Zustand geräteübergreifend speichern
+ *   plan_entity: input_text.pika_plan       # optional: Tagesplan (Vorrat, Päckchen, Verlauf) für alle Geräte gemeinsam
+ *   chronicle_entity: todo.pikas_chronik    # optional: To-do-Liste als Langzeitgedächtnis, je Pika-Tag ein Eintrag
+ *                                           # mit der Tagesbilanz (nur mit entity und plan_entity)
  *   sleep_start: sunset              # Schlafenszeit: "21:00", "sunset" oder z. B. "sunset+01:00"
  *   sleep_end: sunrise               # Aufwachzeit: "07:00", "sunrise" oder z. B. "sunrise-30" (Minuten)
  *   sun_entity: sun.sun              # Sonnenstand (Höhe + Azimut) für Himmel und Sonne
@@ -81,7 +84,11 @@ import {
   boatPos, GLIDER_STEP, gliderThrows, groundSpot,
 } from './logik/beschaeftigungen-klein.js';
 import { GIFT, giftLv } from './logik/paeckchen.js';
-import { FIND_GROUPS, FINDS, findsParse, findsSer } from './logik/tagebuch.js';
+import { FIND_GROUPS, FINDS, findsParse, findsSer, diaryDerive } from './logik/tagebuch.js';
+import {
+  CHRONIK, chronikDatum, chronikTag, chronikStart, chronikVersatz, chronikZoneOk, chronikKod, chronikLies, chronikMisch, chronikBilanz,
+  chronikTage, chronikFehlt, chronikPlan,
+} from './logik/chronik.js';
 import { PikaPetCard } from './karte.js';
 
 if (!customElements.get('pika-pet-card')) {
@@ -112,5 +119,7 @@ if (typeof globalThis !== 'undefined' && typeof globalThis.__pikaTest === 'funct
     festMoments, FEST_AHEAD, FRIEND_LAST, KRAM, PROP_SEL, WALK_LATE, WALK_REJOIN, KITE_LEAN, kitePaw, EAR_SWING, poopClean, sportPlan,
     MINI_W, MINI_ACTS, MINI_REST, MINI_PROG, miniProg, miniOk, miniBase, miniSwap, miniChain, groundSpot, ACT_NOJOIN, WX_STOP, miniHas,
     miniStart, bigStart, ACT_WIN, ACT_GAP, BOAT_T, boatPos, boatPuffs, bezAt, gliderThrows, GLIDER_STEP, ACT_PX, wxProgThen,
+    CHRONIK, chronikDatum, chronikTag, chronikStart, chronikVersatz, chronikZoneOk, chronikKod, chronikLies, chronikMisch, chronikBilanz,
+    chronikTage, chronikFehlt, chronikPlan, diaryDerive,
   });
 }

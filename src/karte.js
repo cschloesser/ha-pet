@@ -30,6 +30,7 @@ import { Paeckchen } from './karte/paeckchen.js';
 import { Schaetze } from './karte/schaetze.js';
 import { Tagesplan } from './karte/tagesplan.js';
 import { BeschaeftigungenKlein } from './karte/beschaeftigungen-klein.js';
+import { Chronik } from './karte/chronik.js';
 
 class PikaPetCard extends HTMLElement {
   constructor() {
@@ -72,6 +73,7 @@ class PikaPetCard extends HTMLElement {
       if (cfg[k] && !/^input_text\.\w+$/.test(cfg[k])) throw new Error(`pika-pet-card: ${k} muss ein input_text-Helfer sein (ist "${cfg[k]}")`);
     }
     if (cfg.entity && cfg.entity === cfg.plan_entity) throw new Error('pika-pet-card: entity und plan_entity brauchen zwei verschiedene Helfer');
+    if (cfg.chronicle_entity && !/^todo\.\w+$/.test(cfg.chronicle_entity)) throw new Error(`pika-pet-card: chronicle_entity muss eine To-do-Liste sein (ist "${cfg.chronicle_entity}")`);
     if (cfg.areal && !AREALE[cfg.areal]) console.warn(`pika-pet-card: areal "${cfg.areal}" gibt es nicht (${Object.keys(AREALE).join(', ')}), nehme huegel`);
     this._lsRename(this._cfg?.name, cfg.name);
     this._cfg = cfg;
@@ -113,6 +115,12 @@ class PikaPetCard extends HTMLElement {
     if (pk !== this._planKey) {
       this._planKey = pk;
       this._planReset();
+    }
+    // Chronik: andere Liste (oder keine mehr), dann gilt nichts mehr von dem, was zur alten gemerkt ist
+    const ck = this._cfg.chronicle_entity || '';
+    if (ck !== this._chronikKey) {
+      this._chronikKey = ck;
+      this._chronikReset();
     }
     this._renderStats();
     if (this.isConnected) this._attach();
@@ -349,6 +357,7 @@ class PikaPetCard extends HTMLElement {
     this._detachFriend();
     this._detachBote();
     this._detachGift();
+    this._chronikStop();
     this._diaryClose();
   }
 
@@ -385,7 +394,7 @@ class PikaPetCard extends HTMLElement {
 const TEILE = [
   Editor, Aufbau, Schlaf, Lebensschleife, Alltag, Wiese, Haeufchen, Besucher, Flugzeuge, Beschaeftigungen,
   BeschaeftigungenGross, Bausteine, Interaktion, Tagebuch, Momente, Feste, Zustand, Pino, Himmel, Wetter, HausBote,
-  Kaffee, Paeckchen, Schaetze, Tagesplan, BeschaeftigungenKlein,
+  Kaffee, Paeckchen, Schaetze, Tagesplan, BeschaeftigungenKlein, Chronik,
 ];
 for (const Teil of TEILE) {
   for (const k of Reflect.ownKeys(Teil.prototype)) {

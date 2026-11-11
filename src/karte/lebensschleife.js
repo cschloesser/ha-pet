@@ -385,6 +385,8 @@ export class Lebensschleife {
       this._tickGift, this._diaryDot]) {
       this._guard(f.name, () => f.call(this));
     }
+    // Chronik (nur mit chronicle_entity): einmal am Tag die Tagesbilanz nachtragen
+    this._guard('Chronik', () => this._chronikTick());
   }
 
   _tickCore() {

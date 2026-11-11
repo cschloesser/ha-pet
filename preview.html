@@ -12,6 +12,7 @@
   .wrap { display: flex; flex-wrap: wrap; gap: 16px; align-items: flex-start; margin-top: 12px; }
   .slot { background: #2c2c2e; border-radius: 12px; }
   #log { font: 12px monospace; color: #aaa; margin-top: 12px; white-space: pre; }
+  #chr-out { font: 12px monospace; color: #aaa; margin-top: 12px; white-space: pre-wrap; }
 </style>
 </head>
 <body>
@@ -301,16 +302,34 @@
 </div>
 <!-- ==================== Ende Tagebuch ==================== -->
 
+<!-- ==================== Vorschau-Knöpfe Chronik (chronicle_entity: Tagesbilanz in einer To-do-Liste) ==================== -->
+<div class="bar" id="bar-chronik"><b>Chronik</b>
+  <button id="chr-on">Chronik an/aus</button>
+  <button id="chr-past">Verlauf: vier Tage füllen</button>
+  <button id="chr-human">Mensch schreibt</button>
+  <button id="chr-check">beide prüfen</button>
+  <button id="chr-clear">Liste leeren</button>
+</div>
+<!-- ==================== Ende Chronik ==================== -->
+
 <div class="wrap">
   <div class="slot" style="width:600px;height:248px"><pika-pet-card id="a"></pika-pet-card></div>
   <div class="slot" style="width:380px;height:184px"><pika-pet-card id="b"></pika-pet-card></div>
 </div>
 <div id="log"></div>
+<div id="chr-out"></div>
+<script>
+  // Die Karte gibt ihre reinen Funktionen heraus, wenn es __pikaTest gibt (wie für die Tests). Die Zeile Chronik
+  // braucht daraus die Schreibweise der beiden Helfer, um vergangene Tage in den Verlauf zu legen.
+  window.__pikaTest = (x) => (window.PIKA = x);
+</script>
 <script src="pika-pet-card.js"></script>
 <script>
   const log = (t) => (document.getElementById('log').textContent = t);
   const states = {
-    'sun.sun': { state: 'above_horizon', attributes: {
+    // last_updated wie in HA (dort ändert sich sun.sun alle paar Minuten): Daran erkennt die Chronik, dass HA den
+    // heutigen Tag erreicht hat, ohne Stempel prüfte sie in der Vorschau nie von selbst
+    'sun.sun': { state: 'above_horizon', last_updated: new Date().toISOString(), attributes: {
       elevation: 28, azimuth: 180,
       // Uhrzeiten für sleep_start/sleep_end: heute 07:56 und 18:33 Ortszeit (Datum egal, zählt nur die Uhrzeit)
       next_rising: new Date(new Date().setHours(7, 56, 0, 0)).toISOString(),
@@ -330,10 +349,105 @@
   // (history/history_during_period, Antwort je Entity [{ s, lu }]).
   const hist = {};
   const histAdd = (id, s) => (hist[id] ||= []).push({ s, lu: Date.now() / 1000 });
+
+  // To-do-Liste für die Chronik (chronicle_entity), mit dem Verhalten, das an local_todo von HA gemessen ist. Beide
+  // Karten teilen sie wie die Helfer. Die Liste vergibt die Kennung (uid) selbst, add_item antwortet ohne sie; der
+  // Titel wird getrimmt, ein leerer abgelehnt; eine unbekannte uid wird abgelehnt (als schlichtes Objekt, nicht als
+  // Error), und von einer Liste von uids wird alles gelöscht oder nichts. Der Zustand der Entität ist die Zahl der
+  // offenen Einträge: Nur wenn die sich ändert, gibt es in HA ein state_changed, also eine Zeile im Recorder.
+  // Jeder Aufruf antwortet erst nach etwa 150 ms. So lesen zwei Karten, die im selben Augenblick prüfen, beide die
+  // Liste, bevor eine schreibt, und legen denselben Tag doppelt an: die Dopplung, die das Nachprüfen wieder abräumt.
+  const CHR = 'todo.pikas_chronik';
+  const todo = { items: [], calls: [], rows: 0 }; // calls: Protokoll { t, wer, txt }, rows: Recorder-Zeilen der Liste
+  const todoEntity = () => {
+    const open = String(todo.items.filter((x) => x.status === 'needs_action').length);
+    if (states[CHR]?.state === open) return false;
+    const t = new Date().toISOString();
+    states[CHR] = { state: open, attributes: { friendly_name: 'Pikas Chronik', supported_features: 127 }, last_changed: t, last_updated: t };
+    return true;
+  };
+  todoEntity();
+  const todoUid = () => Array.from({ length: 32 }, () => Math.floor(Math.random() * 16).toString(16)).join('');
+  const todoKurz = (uid) => String(uid).slice(0, 8);
+  const todoFind = (item) => todo.items.find((x) => x.uid === item) || todo.items.find((x) => x.summary === item);
+  // „Gibt es nicht“ sagt HA auf zwei Arten (beide gemessen). Wurde der Eintrag eben erst gelöscht (hier: in der
+  // letzten Sekunde, etwa von der anderen Karte beim Abräumen derselben Dopplung), kennt HAs gemerkter Stand der
+  // Liste ihn noch, und erst der Speicher scheitert: unknown_error. Sonst: service_validation_error.
+  const todoGone = new Map(); // uid → wann gelöscht
+  const todoMiss = (item) => (Date.now() - (todoGone.get(item) ?? -Infinity) < 1000
+    ? { code: 'unknown_error', message: `No existing item with uid/recurrence_id: ${item}/None` }
+    : { code: 'service_validation_error', message: `Validation error: Unable to find to-do list item: ${item}` });
+  // Ein Dienst der Liste. → Text fürs Protokoll; wirft, was HA ablehnt
+  const todoService = (service, d, id) => {
+    if (id !== CHR) throw { code: 'not_found', message: 'Entity not found' };
+    if (service === 'add_item') {
+      const summary = String(d.item ?? '').trim();
+      if (!summary) throw { code: 'invalid_format', message: 'string value is empty' };
+      const it = { summary, uid: todoUid(), status: 'needs_action' };
+      if (d.description) it.description = String(d.description);
+      if (d.due_date) it.due = String(d.due_date);
+      todo.items.push(it);
+      return `„${summary}“ (bekommt ${todoKurz(it.uid)})`;
+    }
+    if (service === 'update_item') {
+      const x = todoFind(d.item);
+      if (!x) throw todoMiss(d.item);
+      if (d.rename != null) x.summary = String(d.rename).trim();
+      if (d.status != null) {
+        x.status = d.status === 'completed' ? 'completed' : 'needs_action';
+        // wie in HA: ein abgehakter Eintrag trägt den Zeitpunkt des Abhakens
+        if (x.status === 'completed') x.completed = new Date().toISOString();
+        else delete x.completed;
+      }
+      if (d.description != null) {
+        if (d.description) x.description = String(d.description);
+        else delete x.description;
+      }
+      return `${d.rename != null ? `→ „${x.summary}“` : ''}${d.status != null ? ` ${x.status}` : ''}${d.description != null ? ' Beschreibung' : ''}`.trim();
+    }
+    if (service === 'remove_item') {
+      const ids = [d.item].flat();
+      const miss = ids.find((i) => !todoFind(i));
+      if (miss !== undefined) throw todoMiss(miss);
+      const xs = ids.map(todoFind);
+      for (const x of xs) todoGone.set(x.uid, Date.now());
+      todo.items = todo.items.filter((x) => !xs.includes(x));
+      return '';
+    }
+    throw { code: 'not_found', message: `Service todo.${service} not found` };
+  };
+  // wer: 'A' (linke Karte), 'B' (rechte) oder 'Mensch'. tun() → [Antwort, Text fürs Protokoll]
+  const todoCall = (wer, was, tun) => new Promise((ok, nein) => setTimeout(() => {
+    let r = null;
+    let err = null;
+    try {
+      r = tun();
+    } catch (e) {
+      err = e;
+    }
+    todo.calls.push({ t: Date.now(), wer, txt: err ? `${was} → abgelehnt: ${err?.message ?? err}` : `${was} ${r[1]}`.trim() });
+    if (todo.calls.length > 60) todo.calls.shift();
+    if (todoEntity()) {
+      todo.rows++;
+      push();
+    }
+    chrShow();
+    if (err) nein(err);
+    else ok(r[0]);
+  }, 130 + Math.random() * 40));
+
   const hass = {
     states,
-    config: { latitude: 50.06, longitude: 8.69 },
-    callWS(msg) {
+    // time_zone: die Zone des Browsers. Die Chronik schreibt nur auf Geräten, deren Ortszeit zur Zone von HA passt;
+    // mit einer festen Zone wäre sie in der Vorschau je nach Rechner aus.
+    config: { latitude: 50.06, longitude: 8.69, time_zone: Intl.DateTimeFormat().resolvedOptions().timeZone },
+    callWS(msg, wer = '?') {
+      if (msg.type === 'todo/item/list') {
+        return todoCall(wer, 'todo/item/list', () => {
+          if (msg.entity_id !== CHR) throw { code: 'not_found', message: 'Entity not found' };
+          return [{ items: todo.items.map((x) => ({ ...x })) }, `→ ${todo.items.length} Einträge`];
+        });
+      }
       if (msg.type !== 'history/history_during_period') return Promise.reject(new Error('unknown_command'));
       const from = Date.parse(msg.start_time) / 1000;
       const out = {};
@@ -344,7 +458,18 @@
       }
       return Promise.resolve(out);
     },
-    callService(domain, service, data) {
+    // Wie im Frontend von HA: callService(domain, service, serviceData, target, notifyOnError = true, returnResponse).
+    // Mit notifyOnError zeigt HA bei einer Ablehnung zehn Sekunden lang eine Meldung am Bildschirm; die Chronik
+    // übergibt darum false. Tut sie es nicht, steht es als Hinweis im Protokoll.
+    callService(domain, service, data, target, notifyOnError = true, returnResponse = false, wer = '?') {
+      // To-do-Liste: eigene Dienste mit dem Ziel im vierten Parameter, kein Text-Helfer. Antwort ohne uid.
+      if (domain === 'todo') {
+        // (im Protokoll: welcher Eintrag gemeint ist, Kennung gekürzt)
+        const item = service === 'add_item' || data?.item == null ? '' : ` ${[data.item].flat().map(todoKurz).join(', ')}`;
+        const laut = notifyOnError === false ? '' : ' [ohne notifyOnError = false: HA zeigte bei einer Ablehnung eine Meldung]';
+        return todoCall(wer, `todo.${service}${laut}${item}`, () =>
+          [{ context: { id: todoUid(), parent_id: null, user_id: null } }, todoService(service, data || {}, target?.entity_id ?? data?.entity_id)]);
+      }
       states[data.entity_id] = { state: data.value, attributes: states[data.entity_id]?.attributes || {} };
       histAdd(data.entity_id, data.value);
       log(`${domain}.${service} → ${data.value}`);
@@ -352,9 +477,22 @@
       return Promise.resolve();
     },
   };
+  // Jede Karte bekommt ihre eigene Sicht auf hass (alles wie dort, nur die Aufrufe tragen ihren Absender): So steht
+  // im Protokoll der Chronik, welche Karte gelesen und welche geschrieben hat.
+  const views = new WeakMap();
+  const viewOf = (c) => {
+    if (!views.has(c)) {
+      const v = Object.create(hass);
+      const wer = c.id.toUpperCase();
+      v.callWS = (msg) => hass.callWS(msg, wer);
+      v.callService = (domain, service, data, target, notifyOnError, returnResponse) => hass.callService(domain, service, data, target, notifyOnError, returnResponse, wer);
+      views.set(c, v);
+    }
+    return views.get(c);
+  };
   function push() {
     hass.states = { ...states };
-    cards.forEach((c) => (c.hass = hass));
+    cards.forEach((c) => (c.hass = viewOf(c)));
   }
   cards.forEach((c) => c.setConfig({ name: 'Pika', entity: 'input_text.pika_status', plan_entity: 'input_text.pika_plan' }));
   push();
@@ -870,7 +1008,7 @@
     for (const k of ['_dbgPlanMs', '_dbgShiftMs', '_dbgShift', '_dbgSleep', '_dbgElev', '_dbgAz', '_dbgDate']) nb[k] = old[k];
     old.replaceWith(nb);
     cards[1] = nb;
-    nb.hass = hass;
+    nb.hass = viewOf(nb);
     log('rechte Karte neu geladen');
   });
   // ==================== Ende Aktivitäten ====================
@@ -1027,6 +1165,122 @@
     c._diaryOpen();
   });
   // ==================== Ende Tagebuch ====================
+
+  // ==================== Chronik ====================
+  // Standard: aus, dann fragt keine Karte nach der Liste. „Chronik an/aus“ setzt chronicle_entity an beiden Karten wie
+  // im Editor. Danach prüfen sie beim nächsten Takt von selbst (einmal am Tag, gemerkt im Browser; bis zum Nachprüfen
+  // vergehen wie in HA 30 bis 60 s). „beide prüfen“ erzwingt die Prüfung sofort und an beiden zugleich, mit 2 s bis
+  // zum Nachprüfen: Unter der Karte steht, wie die Dopplung entsteht und wieder verschwindet.
+  const chrBtn = document.getElementById('chr-on');
+  const chrOut = document.getElementById('chr-out');
+  const chrOn = () => !!cards[0]._cfg.chronicle_entity;
+  const chrDay = (vor) => PIKA.chronikDatum(PIKA.pikaDay(cards[0]._haNow()) - vor);
+  // Liste (uid gekürzt, Status, Titel) und die letzten Aufrufe. Leer, solange die Chronik aus und nichts geschehen ist.
+  function chrShow() {
+    const on = chrOn();
+    chrBtn.style.borderColor = on ? '#6bb152' : '';
+    if (!on && !todo.items.length && !todo.calls.length) return (chrOut.textContent = '');
+    const zeit = (t) => `${new Date(t).toLocaleTimeString('de-DE')},${String(t % 1000).padStart(3, '0')}`;
+    chrOut.textContent = [
+      `${CHR} (Chronik ${on ? 'an' : 'aus'}): ${todo.items.length} Einträge, ${states[CHR].state} offen · Recorder-Zeilen der Liste bisher: ${todo.rows}`,
+      ...todo.items.map((x) => `  ${todoKurz(x.uid)}  ${x.status.padEnd(12)}  ${x.summary}${x.description ? `  (Beschreibung: ${x.description})` : ''}`),
+      ...(todo.items.length ? [] : ['  (leer)']),
+      '',
+      'Aufrufe an die Liste (A = linke Karte, B = rechte):',
+      ...todo.calls.map((r) => `  ${zeit(r.t)}  ${r.wer.padEnd(6)}  ${r.txt}`),
+    ].join('\n');
+  }
+  chrBtn.addEventListener('click', () => {
+    const on = !chrOn();
+    cards.forEach((c) => c.setConfig({ ...c._cfg, chronicle_entity: on ? CHR : null }));
+    chrShow();
+    log(on ? `Chronik an: ${CHR}` : 'Chronik aus');
+  });
+  // Vergangene Tage in den nachgestellten Verlauf der beiden Helfer legen, so wie ihn der Recorder geführt hätte.
+  // Zurückschieben wie beim Tagebuch reicht hier nicht: Wann gefüttert und an welchem Tag gestreichelt wurde, steht im
+  // Plan selbst. Die Stände bauen auf dem ersten echten Stand von heute auf (nur Futter, Streicheln, Erlebnisse,
+  // Päckchen und Häufchen ändern sich), so entsteht am Übergang zu heute kein Ereignis, das es nicht gab.
+  // vor wie vielen Tagen: gefüttert, gestreichelt, Erlebnisse (Bits: 16 Pino, 64 Vögelchen, 256 Schmetterling) …
+  const CHR_TAGE = [
+    [4, { futter: 1, streicheln: 3 }],
+    [3, { futter: 2, streicheln: 7, mem: 64 }],
+    [2, { futter: 3, streicheln: 12, mem: 16 | 64, paeckchen: 1, putzen: 2 }],
+    [1, { futter: 1, streicheln: 4, mem: 256 }],
+  ];
+  const chrGen = new WeakSet(); // Stände, die dieser Knopf erzeugt hat (beim nächsten Mal ersetzt)
+  document.getElementById('chr-past').addEventListener('click', () => {
+    const T = PIKA;
+    const sId = 'input_text.pika_status';
+    const pId = 'input_text.pika_plan';
+    const echt = (id) => (hist[id] || []).filter((r) => !chrGen.has(r));
+    const sek = (t) => Math.round(t / 1000) * 1000;
+    const heute = T.pikaDay(cards[0]._haNow());
+    const t0 = sek(T.chronikStart(heute - CHR_TAGE[0][0]) - 36e5);
+    let S = T.parseStats(echt(sId)[0]?.s ?? states[sId].state) || T.freshStats(t0);
+    const P0 = T.planParse(echt(pId)[0]?.s ?? states[pId].state) || T.planBlank(t0);
+    let P = { ...P0, fd: [], cute: { d: heute - CHR_TAGE[0][0] - 1, n: 0, m: 0 },
+      gift: P0.gift || { k: t0, a: 1, p: t0, n: 1, u: 0, v: 0, z: 0, o: 0, b: null, x: 0, y: 0, d: 0, i: 2 } };
+    const VS = [{ s: T.serialize(S), lu: t0 / 1000 }];
+    const VP = [{ s: T.planSer(P), lu: t0 / 1000 }];
+    const plan = (t, neu) => {
+      P = { ...P, ...neu };
+      VP.push({ s: T.planSer(P), lu: t / 1000 });
+    };
+    let bit = 30; // weggemachte Häufchen: Bits von oben, die echten von heute zählen von unten
+    for (const [vor, { futter = 0, streicheln = 0, mem = 0, paeckchen = 0, putzen = 0 }] of CHR_TAGE) {
+      const a = T.chronikStart(heute - vor); // 4 Uhr; gefüttert ab 8, gestreichelt um 12, Päckchen um 13, geputzt um 14 Uhr
+      for (let i = 0; i < futter; i++) {
+        const t = sek(a + 4 * 36e5 + i * 40 * 6e4);
+        plan(t + 2000, { fd: [...P.fd, { t, x: 40, k: 0, e: false }].slice(-3) });
+      }
+      if (streicheln || mem) plan(sek(a + 8 * 36e5), { cute: { d: heute - vor, n: streicheln, m: mem } });
+      for (let i = 0; i < paeckchen; i++) {
+        const t = sek(a + 9 * 36e5 + i * 6e5);
+        plan(t, { gift: { ...P.gift, z: P.gift.z + 1 } }); // verschenkt
+        plan(t + 60000, { gift: { ...P.gift, o: P.gift.o + 1 } }); // ausgepackt
+      }
+      for (let i = 0; i < putzen; i++) {
+        S = { ...S, m: (S.m | (1 << bit--)) >>> 0 };
+        VS.push({ s: T.serialize(S), lu: sek(a + 10 * 36e5 + i * 6e4) / 1000 });
+      }
+    }
+    for (const [id, V] of [[sId, VS], [pId, VP]]) {
+      V.forEach((r) => chrGen.add(r));
+      hist[id] = [...V, ...echt(id)].sort((x, y) => x.lu - y.lu);
+    }
+    log(`Verlauf: ${CHR_TAGE.map(([vor]) => chrDay(vor)).join(', ')} eingetragen (${VS.length} Stände Zustand, ${VP.length} Stände Tagesplan)`);
+  });
+  // Ein Mensch schreibt in dieselbe Liste: etwas ganz anderes, einen Eintrag einer späteren Version (ein Feld, das
+  // 0.34 nicht kennt), den er abhakt und mit einer Notiz versieht, und einen eigenen Satz zu einem Tag. Den ersten und
+  // den letzten fasst die Karte nie an, der mittlere bleibt mit Feld, Haken und Notiz erhalten.
+  document.getElementById('chr-human').addEventListener('click', async () => {
+    const mensch = (service, data) => hass.callService('todo', service, data, { entity_id: CHR }, false, false, 'Mensch');
+    await mensch('add_item', { item: 'Blumen gießen' });
+    await mensch('add_item', { item: `Pika-Tag ${chrDay(3)} · futter=2 laune=gut` });
+    await mensch('update_item', { item: todo.items.at(-1).uid, status: 'completed', description: 'von Hand abgehakt' });
+    await mensch('add_item', { item: `Pika-Tag ${chrDay(4)}: war schön` });
+  });
+  document.getElementById('chr-check').addEventListener('click', async () => {
+    if (!chrOn()) return log('Chronik ist aus: erst „Chronik an/aus“');
+    const beide = [...cards];
+    beide.forEach((c) => (c._dbgChronik = { check: 2000 }));
+    log('Chronik: beide Karten prüfen …');
+    const r = await Promise.all(beide.map((c) => c._chronikNow()));
+    beide.forEach((c) => delete c._dbgChronik);
+    const wort = (v) => (v === true ? 'fertig' : v === false ? 'Fehlschlag (fehlt der Verlauf der Helfer? „Verlauf: vier Tage füllen“)' : 'nicht gelaufen');
+    log(`Chronik geprüft: links ${wort(r[0])}, rechts ${wort(r[1])}`);
+    chrShow();
+  });
+  // Liste und Protokoll leeren. Die Karten haben heute schon geprüft und tragen von selbst nichts mehr nach.
+  document.getElementById('chr-clear').addEventListener('click', () => {
+    todo.items = [];
+    todo.calls = [];
+    todo.rows = 0;
+    if (todoEntity()) push();
+    chrShow();
+    log('Chronik: Liste geleert');
+  });
+  // ==================== Ende Chronik ====================
 </script>
 </body>
 </html>

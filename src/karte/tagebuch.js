@@ -109,14 +109,25 @@ export class Tagebuch {
     return d.getTime();
   }
 
+  // Liegen Zustand (haS) und Tagesplan (haP) in HA? Dann steht ihr Verlauf im Recorder, sonst schreibt das Gerät
+  // selbst mit (_diaryLog).
+  _diaryHa() {
+    const c = this._cfg;
+    return {
+      haS: !!c.entity && !this._noEntity,
+      haP: !!c.plan_entity && !!this._hass?.states[c.plan_entity] && this._planMax() >= PLAN_MIN,
+    };
+  }
+
   // Verlauf von Zustand und Tagesplan (und der Geräte des Haus-Boten) zwischen from und to. Mit Helfer aus HA,
-  // ohne aus der Mitschrift im Browser. → { S, P (geparst, aufsteigend), bote (Ereignisse), fail }
-  async _diaryHist(from, to) {
+  // ohne aus der Mitschrift im Browser. → { S, P (geparst, aufsteigend), bote (Ereignisse), fail, none, ha (beide
+  // Helfer kamen aus HA) }. only: nur die beiden Helfer, ohne die Geräte des Haus-Boten, und ein Fehlschlag steht nur
+  // leise in der Konsole (für die Chronik, die es von selbst später wieder versucht).
+  async _diaryHist(from, to, only = false) {
     const c = this._cfg;
     const hass = this._hass;
-    const haS = !!c.entity && !this._noEntity;
-    const haP = !!c.plan_entity && !!hass?.states[c.plan_entity] && this._planMax() >= PLAN_MIN;
-    const house = c.diary_house !== false ? this._boteSync().list : [];
+    const { haS, haP } = this._diaryHa();
+    const house = !only && c.diary_house !== false ? this._boteSync().list : [];
     const ids = [...new Set([...(haS ? [c.entity] : []), ...(haP ? [c.plan_entity] : []), ...house.map((a) => a.cfg.state)])];
     let res = {};
     let fail = false;
@@ -128,7 +139,8 @@ export class Tagebuch {
         })) || {};
       } catch (e) {
         fail = true;
-        console.warn('pika-pet-card: Verlauf für das Tagebuch nicht lesbar', e);
+        if (only) console.debug('pika-pet-card: Verlauf für die Chronik nicht lesbar, später noch einmal', e);
+        else console.warn('pika-pet-card: Verlauf für das Tagebuch nicht lesbar', e);
       }
     }
     // HA liefert je Helfer [{ s: Stand, lu: Sekunden }], ältere Versionen { state, last_updated }
@@ -163,7 +175,7 @@ export class Tagebuch {
       }
     }
     // Helfer da, aber kein einziger Stand im Verlauf: Der Recorder zeichnet ihn nicht auf
-    return { S, P, bote, fail, none: !fail && ((haS && !S.length) || (haP && !P.length)) };
+    return { S, P, bote, fail, none: !fail && ((haS && !S.length) || (haP && !P.length)), ha: haS && haP };
   }
 
   // Beide Seiten (heute, gestern) aus dem Verlauf. Vorschau: _dbgDiary liefert fertige Roh-Ereignisse.

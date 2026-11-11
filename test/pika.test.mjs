@@ -14,17 +14,32 @@ const quell = fs.readdirSync(new URL('../src/', import.meta.url), { recursive: t
   .map((f) => fs.readFileSync(new URL(`../src/${f.replaceAll('\\', '/')}`, import.meta.url), 'utf8').replace(/\r\n/g, '\n')).join('\n');
 let T = null;
 const warned = [];
+const leise = []; // console.debug
 // document der Karte: Tests mit Attrappen hängen hier ihr createElement ein (siehe Att)
 const DOK = { hidden: false, addEventListener() {}, removeEventListener() {} };
-vm.runInNewContext(src, {
+// Zeitgeber, die die Karte stellt, werden gezählt (für „ohne chronicle_entity kein zusätzlicher Zeitgeber“)
+let zeitgeber = 0;
+const abgeraeumt = new WeakSet(); // … und die sie wieder abräumt
+// Die Welt der Karte. localStorage gibt es darin nicht (jeder Zugriff wirft, wie in einem gesperrten Browser);
+// ein Test, der den Speicher braucht, hängt für seine Dauer einen ein (mitSpeicher).
+const WELT = {
   window: { matchMedia: () => ({ matches: false }), customCards: [] },
   document: DOK,
   HTMLElement: class {},
   customElements: { get: () => null, define() {} },
-  console: { info() {}, log() {}, warn: (...a) => warned.push(a) },
-  setTimeout, clearTimeout, setInterval, clearInterval, queueMicrotask, Date, Math, JSON, Promise, Intl, AbortController,
+  console: { info() {}, log() {}, warn: (...a) => warned.push(a), debug: (...a) => leise.push(a) },
+  setTimeout: (...a) => {
+    zeitgeber++;
+    return setTimeout(...a);
+  },
+  clearTimeout: (h) => {
+    if (h && typeof h === 'object') abgeraeumt.add(h);
+    return clearTimeout(h);
+  },
+  setInterval, clearInterval, queueMicrotask, Date, Math, JSON, Promise, Intl, AbortController,
   __pikaTest: (x) => (T = x),
-}, { filename: 'pika-pet-card.js' });
+};
+vm.runInNewContext(src, WELT, { filename: 'pika-pet-card.js' });
 
 // Objekte aus dem anderen Kontext haben andere Prototypen: für deepEqual über JSON angleichen
 const plain = (v) => JSON.parse(JSON.stringify(v));
@@ -2239,4 +2254,1545 @@ test('Späteinstieg nach einem Wetterumschwung: ein Fenster, das trocken begann,
   assert.equal(c._slotNow(), S);
   c._wxLog = [{ t: NOW - 36e5, c: 'cloudy', T: -2 }, { t: NOW - 3000, c: 'snowy', T: -2 }];
   assert.equal(c._slotNow(), null);
+});
+
+// ---------- Chronik (0.34): Tagesbilanz je Pika-Tag in einer To-do-Liste von HA ----------
+
+const CH = 'todo.pikas_chronik';
+const HEUTE = T.pikaDay(NOW);
+const datum = (tag) => T.chronikDatum(tag);
+const eintrag = (d, f = {}) => ({ d, futter: null, streicheln: null, putzen: null, paeckchen: null, besuch: null, x: {}, ...f });
+
+test('Chronik: Datum und Tagesindex (Schaltjahr, Jahreswechsel, ungültiges Datum), der Pika-Tag beginnt um 4 Uhr', () => {
+  assert.equal(T.chronikDatum(T.pikaDay(new Date(2026, 10, 10, 12).getTime())), '2026-11-10');
+  // bis 4 Uhr gehört die Nacht zum Vortag
+  assert.equal(T.chronikDatum(T.pikaDay(new Date(2026, 10, 11, 3, 59).getTime())), '2026-11-10');
+  assert.equal(T.chronikDatum(T.pikaDay(new Date(2026, 10, 11, 4, 0).getTime())), '2026-11-11');
+  assert.equal(T.chronikTag('2024-02-29'), Date.UTC(2024, 1, 29) / 864e5);
+  assert.equal(T.chronikTag('2026-01-01') - T.chronikTag('2025-12-31'), 1);
+  assert.equal(T.chronikTag('2024-03-01') - T.chronikTag('2024-02-28'), 2);
+  assert.equal(T.chronikTag('2023-03-01') - T.chronikTag('2023-02-28'), 1);
+  const falsch = ['2023-02-29', '2026-02-30', '2026-13-01', '2026-00-10', '2026-11-31', '2026-11-00', '2026-1-01', '26-11-10', '2026-11-10 ',
+    '0050-01-01', '10.11.2026', '', null, undefined, 20768];
+  for (const d of falsch) assert.equal(T.chronikTag(d), null, `„${d}“ ist kein Datum`);
+  for (const t of [NaN, 1.5, Infinity, '20768', null, undefined, -8e5, 3e6]) assert.equal(T.chronikDatum(t), null, `${t} ist kein Tagesindex`);
+  // Hin- und Rückweg über gut zwei Jahre (mit Schalttag und, wo es sie gibt, den Zeitumstellungen)
+  const von = T.chronikTag('2023-12-25');
+  let n = 0;
+  for (let tag = von; tag < von + 800; tag++, n++) {
+    const d = T.chronikDatum(tag);
+    assert.match(d, /^\d{4}-\d{2}-\d{2}$/);
+    assert.equal(T.chronikTag(d), tag);
+    const a = T.chronikStart(tag);
+    const D = new Date(a);
+    assert.deepEqual([D.getFullYear(), D.getMonth() + 1, D.getDate(), D.getHours(), D.getMinutes()], [...d.split('-').map(Number), 4, 0]);
+    assert.equal(T.pikaDay(a), tag, `${d}: um 4 Uhr beginnt der Tag`);
+    assert.equal(T.pikaDay(a - 1), tag - 1, `${d}: davor ist noch der Vortag`);
+  }
+  assert.equal(n, 800);
+});
+
+// Eine Zone, in der zur Zeit t sicher eine andere Uhrzeit gilt als auf dem Rechner, auf dem die Tests laufen
+const andereZone = (t) => ['Asia/Tokyo', 'America/New_York'].find((z) => T.chronikVersatz(z, t) !== -new Date(t).getTimezoneOffset());
+const HIER = Intl.DateTimeFormat().resolvedOptions().timeZone;
+
+test('Chronik: die Ortszeit des Geräts muss zur Zeitzone von HA passen, jetzt und vor einer Woche', () => {
+  const winter = Date.UTC(2026, 10, 11, 12);
+  const sommer = Date.UTC(2026, 6, 1, 12);
+  // Versatz einer Zone in Minuten östlich von UTC
+  assert.deepEqual(['Europe/Berlin', 'Asia/Tokyo', 'Africa/Lagos', 'UTC', 'Asia/Kolkata', 'America/New_York'].map((z) => [T.chronikVersatz(z, winter), T.chronikVersatz(z, sommer)]),
+    [[60, 120], [540, 540], [60, 60], [0, 0], [330, 330], [-300, -240]]);
+  assert.equal(T.chronikVersatz('Europe/Berlin', winter + 999), 60, 'Millisekunden zählen nicht');
+  for (const z of [undefined, null, '', 'Mars/Olympus', 5, {}]) assert.equal(T.chronikVersatz(z, winter), null, String(z));
+  // Ein Gerät in Berlin (lokal: sein Versatz), HA in …
+  const berlin = (t) => T.chronikVersatz('Europe/Berlin', t);
+  assert.equal(T.chronikZoneOk('Europe/Berlin', [winter, sommer], berlin), true);
+  assert.equal(T.chronikZoneOk('Asia/Tokyo', [winter], berlin), false);
+  assert.equal(T.chronikZoneOk('America/New_York', [sommer], berlin), false);
+  // Lagos geht im Winter wie Berlin, kennt aber keine Sommerzeit. Drei Tage nach der Umstellung (25.10.2026) stimmt
+  // „jetzt“ überein, der Beginn des ältesten Tags, der nachgetragen würde, nicht: Darum zwei Zeitpunkte.
+  const jetzt = Date.UTC(2026, 9, 28, 12);
+  const davor = jetzt - 7 * 864e5;
+  assert.equal(T.chronikZoneOk('Africa/Lagos', [jetzt], berlin), true);
+  assert.equal(T.chronikZoneOk('Africa/Lagos', [jetzt, davor], berlin), false);
+  assert.equal(T.chronikZoneOk('Africa/Lagos', [davor, jetzt], berlin), false);
+  assert.equal(T.chronikZoneOk('Europe/Berlin', [jetzt, davor], berlin), true);
+  // umgekehrt: das Gerät in Tokio, HA in Berlin (der gemeldete Fall)
+  assert.equal(T.chronikZoneOk('Europe/Berlin', [winter], (t) => T.chronikVersatz('Asia/Tokyo', t)), false);
+  // nicht prüfbar (HA nennt keine Zone, der Browser kennt sie nicht): gilt als passend, wie bisher
+  for (const z of [undefined, null, '', 'Mars/Olympus']) assert.equal(T.chronikZoneOk(z, [winter, sommer], berlin), true, String(z));
+  assert.equal(T.chronikZoneOk('Asia/Tokyo', [], berlin), true);
+  // ohne dritten Parameter zählt der Rechner selbst: seine eigene Zone passt, eine andere nicht (in jeder Zone, in der
+  // die Tests laufen)
+  assert.equal(T.chronikZoneOk(HIER, [NOW, NOW - 7 * 864e5, winter, sommer]), true, HIER);
+  assert.ok(andereZone(NOW));
+  assert.equal(T.chronikZoneOk(andereZone(NOW), [NOW]), false);
+});
+
+test('Chronik: Kodieren und Lesen ergeben dasselbe (alle Felder, Unbekanntes, Besuch leer, nur der Kopf)', () => {
+  const d = '2026-11-10';
+  const faelle = [
+    [eintrag(d, { futter: 3, streicheln: 12, putzen: 2, paeckchen: 1, besuch: ['pino', 'vogel'] }),
+      'Pika-Tag 2026-11-10 · futter=3 streicheln=12 putzen=2 paeckchen=1 besuch=pino,vogel'],
+    [eintrag(d), 'Pika-Tag 2026-11-10'],
+    [eintrag(d, { futter: 0, streicheln: 0, putzen: 0, paeckchen: 0, besuch: [] }), 'Pika-Tag 2026-11-10 · futter=0 streicheln=0 putzen=0 paeckchen=0 besuch=-'],
+    [eintrag(d, { streicheln: 99, besuch: ['falter'] }), 'Pika-Tag 2026-11-10 · streicheln=99 besuch=falter'],
+    [eintrag(d, { paeckchen: 123456789 }), 'Pika-Tag 2026-11-10 · paeckchen=123456789'],
+    // Felder einer späteren Version: bleiben erhalten, hinter den bekannten, nach Schlüssel sortiert
+    [eintrag(d, { futter: 1, x: { a_1: 'x=y', laune: 'gut·sehr', wetter: 'regen' } }), 'Pika-Tag 2026-11-10 · futter=1 a_1=x=y laune=gut·sehr wetter=regen'],
+    // Besuch: pino, vogel, falter, danach Unbekanntes nach dem Alphabet
+    [eintrag(d, { besuch: ['pino', 'vogel', 'falter', 'igel', 'zebra'] }), 'Pika-Tag 2026-11-10 · besuch=pino,vogel,falter,igel,zebra'],
+  ];
+  for (const [e, titel] of faelle) {
+    assert.equal(T.chronikKod(e), titel);
+    assert.deepEqual(plain(T.chronikLies(titel)), e, titel);
+    assert.equal(T.chronikKod(T.chronikLies(titel)), titel);
+    assert.equal(titel, titel.trim(), 'HA schneidet Leerzeichen am Rand ab: Der Titel hat keine');
+  }
+  assert.equal(faelle.length, 7);
+  // ungeordnet hinein, geordnet heraus
+  assert.equal(T.chronikKod(eintrag(d, { besuch: ['zebra', 'falter', 'pino', 'igel', 'vogel', 'pino'], x: { z: '1', b: '2' } })),
+    'Pika-Tag 2026-11-10 · besuch=pino,vogel,falter,igel,zebra b=2 z=1');
+  // Beim Lesen großzügig: beliebige Leerzeichen, „·“ ohne Leerzeichen oder gar nicht, andere Reihenfolge, führende Nullen
+  const locker = [
+    ['Pika-Tag 2026-11-10 futter=3', 'Pika-Tag 2026-11-10 · futter=3'],
+    ['Pika-Tag 2026-11-10·futter=3', 'Pika-Tag 2026-11-10 · futter=3'],
+    ['Pika-Tag 2026-11-10   ·   futter=3    besuch=vogel,pino,pino', 'Pika-Tag 2026-11-10 · futter=3 besuch=pino,vogel'],
+    ['Pika-Tag 2026-11-10 · besuch=- streicheln=007 futter=3', 'Pika-Tag 2026-11-10 · futter=3 streicheln=7 besuch=-'],
+    ['Pika-Tag 2026-11-10 · futter=3\nputzen=1', 'Pika-Tag 2026-11-10 · futter=3 putzen=1'],
+    ['Pika-Tag 2026-11-10 ·', 'Pika-Tag 2026-11-10'],
+    ['Pika-Tag 2026-11-10 · streicheln=250', 'Pika-Tag 2026-11-10 · streicheln=250'],
+  ];
+  for (const [roh, sauber] of locker) {
+    const e = T.chronikLies(roh);
+    assert.ok(e && !e.fremd, roh);
+    assert.equal(T.chronikKod(e), sauber);
+  }
+  assert.equal(locker.length, 7);
+});
+
+test('Chronik: fremde Einträge zählen nicht, „fremd für diesen Tag“ belegt den Tag', () => {
+  // kein Kopf mit gültigem Datum: ein Mensch, etwas ganz anderes
+  const fremd = ['Milch kaufen', '', undefined, null, 42, 'pika-tag 2026-11-10', ' Pika-Tag 2026-11-10', 'Pika-Tag', 'Pika-Tag ', 'Pika-Tag  2026-11-10',
+    'Pika-Tag 2026-02-30 · futter=1', 'Pika-Tag 10.11.2026', 'Pika-Tag 2026-11-101', 'Pika-Tag 2026-11-1', 'Pikas Tag 2026-11-10', 'Mein Pika-Tag 2026-11-10'];
+  for (const t of fremd) assert.equal(T.chronikLies(t), null, `„${t}“`);
+  assert.equal(fremd.length, 16);
+  // Kopf und Datum stimmen, der Rest ist nicht sauber lesbar
+  const halb = ['war ein schöner Tag', '· futter=drei', '· futter=3 futter=4', '· futter=-1', '· futter=1.5', '· futter=1234567890', '· futter=',
+    '· besuch=', '· besuch=pino,,vogel', '· besuch=Pino', '· besuch=pino,-', '· Futter=3', '· futter=3 ✓', '· x=1 x=2', '·· futter=3', '· futter = 3',
+    '· 1a=2', '· futter=3 und mehr'];
+  for (const r of halb) assert.deepEqual(plain(T.chronikLies(`Pika-Tag 2026-11-10 ${r}`)), { d: '2026-11-10', fremd: true }, r);
+  for (const t of ['Pika-Tag 2026-11-10: Notiz', 'Pika-Tag 2026-11-10futter=3', 'Pika-Tag 2026-11-10, futter=3']) {
+    assert.deepEqual(plain(T.chronikLies(t)), { d: '2026-11-10', fremd: true }, t);
+  }
+  assert.equal(halb.length, 18);
+  // Namen, die jedes Objekt schon kennt, sind gewöhnliche unbekannte Felder (und nicht „doppelt“)
+  assert.deepEqual(plain(T.chronikLies('Pika-Tag 2026-11-10 · constructor=a tostring=b').x), { constructor: 'a', tostring: 'b' });
+});
+
+test('Chronik: Zusammenführen ist kommutativ, assoziativ und idempotent', () => {
+  const E = [
+    'Pika-Tag 2026-11-10',
+    'Pika-Tag 2026-11-10 · futter=3 streicheln=12 putzen=2 paeckchen=1 besuch=pino,vogel',
+    'Pika-Tag 2026-11-10 · futter=5 streicheln=4 besuch=-',
+    'Pika-Tag 2026-11-10 · putzen=7 besuch=falter,igel wetter=regen',
+    'Pika-Tag 2026-11-10 · futter=0 wetter=sonne laune=gut',
+    'Pika-Tag 2026-11-10 · streicheln=99 paeckchen=0 besuch=vogel,zebra laune=prima',
+  ].map((t) => T.chronikLies(t));
+  const vorher = JSON.stringify(E);
+  const m = T.chronikMisch;
+  const k = T.chronikKod;
+  // Zahlen: das Größere, unbekannt weicht der Zahl; Besuch und Unbekanntes vereinigt, bei zwei Werten der als Text größere
+  assert.equal(k(m(E[1], E[2])), 'Pika-Tag 2026-11-10 · futter=5 streicheln=12 putzen=2 paeckchen=1 besuch=pino,vogel');
+  assert.equal(k(m(E[0], E[2])), 'Pika-Tag 2026-11-10 · futter=5 streicheln=4 besuch=-');
+  assert.equal(k(m(E[3], E[4])), 'Pika-Tag 2026-11-10 · futter=0 putzen=7 besuch=falter,igel laune=gut wetter=sonne');
+  assert.equal(k(m(E[4], E[5])), 'Pika-Tag 2026-11-10 · futter=0 streicheln=99 paeckchen=0 besuch=vogel,zebra laune=prima wetter=sonne');
+  assert.equal(k(m(E[0], E[0])), 'Pika-Tag 2026-11-10');
+  let n = 0;
+  for (const a of E) {
+    assert.deepEqual(plain(m(a, a)), plain(a));
+    assert.deepEqual(plain(m(a, null)), plain(a));
+    assert.deepEqual(plain(m(null, a)), plain(a));
+    for (const b of E) {
+      assert.deepEqual(plain(m(a, b)), plain(m(b, a)));
+      assert.deepEqual(plain(m(m(a, b), b)), plain(m(a, b)));
+      for (const c of E) {
+        assert.deepEqual(plain(m(m(a, b), c)), plain(m(a, m(b, c))));
+        assert.equal(k(m(m(a, b), c)), k(m(c, m(b, a))));
+        n++;
+      }
+    }
+  }
+  assert.equal(n, 216);
+  assert.equal(JSON.stringify(E), vorher, 'die Eingaben bleiben, wie sie waren');
+});
+
+// Kleiner nachgestellter Verlauf der beiden Helfer, wie ihn der Recorder führt: je Tag so oft gefüttert, so oft
+// gestreichelt (der Zähler im Plan), Erlebnisse (Bits wie MEM_BITS: 16 Pino, 64 Vögelchen, 256 Schmetterling), Päckchen
+// ausgepackt, Häufchen einzeln weggemacht und Großputz. → { S, P }: Stände als Text mit Zeit
+const chronikVerlauf = (tage) => {
+  const t0 = sek(T.chronikStart(tage[0][0]) - 36e5);
+  let P = { ...T.planBlank(t0), cute: { d: tage[0][0] - 1, n: 5, m: 0 },
+    gift: { k: t0, a: 1, p: t0, n: 9, u: 0, v: 0, z: 0, o: 0, b: null, x: 0, y: 0, d: 0, i: 2 } };
+  let S = T.freshStats(t0);
+  const V = { S: [{ t: t0, s: T.serialize(S) }], P: [{ t: t0, s: T.planSer(P) }] };
+  const plan = (t, neu) => {
+    P = { ...P, ...neu };
+    V.P.push({ t, s: T.planSer(P) });
+  };
+  let bit = 0;
+  for (const [tag, { futter = 0, streicheln = 0, mem = 0, paeckchen = 0, putzen = 0, gross = 0 }] of tage) {
+    const a = T.chronikStart(tag);
+    for (let i = 0; i < futter; i++) {
+      const t = sek(a + (i + 1) * 20 * 6e4);
+      plan(t + 2000, { fd: [...P.fd, { t, x: 40, k: 0, e: false }].slice(-3) });
+    }
+    if (streicheln || mem) plan(sek(a + 8 * 36e5), { cute: { d: tag, n: streicheln, m: mem } });
+    for (let i = 0; i < paeckchen; i++) {
+      const t = sek(a + 9 * 36e5 + i * 6e5);
+      plan(t, { gift: { ...P.gift, z: P.gift.z + 1 } });
+      plan(t + 60000, { gift: { ...P.gift, o: P.gift.o + 1 } });
+    }
+    for (let i = 0; i < putzen + gross; i++) {
+      const t = sek(a + 10 * 36e5 + i * 6e4);
+      S = i < putzen ? { ...S, m: S.m | (1 << bit++) } : { ...S, c: t, l: t, m: 0 };
+      V.S.push({ t, s: T.serialize(S) });
+    }
+  }
+  return V;
+};
+
+test('Chronik: Bilanz eines Tages aus einem nachgestellten Verlauf der beiden Helfer', () => {
+  const g = HEUTE - 1;
+  const V = chronikVerlauf([[g - 1, { futter: 1, streicheln: 30, mem: 256 }],
+    [g, { futter: 2, streicheln: 12, mem: 16 | 64 | 4, paeckchen: 1, putzen: 2, gross: 1 }], [g + 1, { futter: 4, streicheln: 2, mem: 256, putzen: 1 }]]);
+  const R = T.diaryDerive(V.S.map((r) => ({ t: r.t, v: T.parseStats(r.s) })), V.P.map((r) => ({ t: r.t, v: T.planParse(r.s) })), T.chronikStart(g - 1),
+    { decayAt: () => Infinity, until: NOW });
+  const bil = (tag) => T.chronikKod(T.chronikBilanz(R.ev, R.pets, T.chronikStart(tag), T.chronikStart(tag + 1), tag));
+  // (Kaffee, Bit 4, ist ein Erlebnis, aber kein Besuch)
+  assert.equal(bil(g), `Pika-Tag ${datum(g)} · futter=2 streicheln=12 putzen=3 paeckchen=1 besuch=pino,vogel`);
+  assert.equal(bil(g - 1), `Pika-Tag ${datum(g - 1)} · futter=1 streicheln=30 putzen=0 paeckchen=0 besuch=falter`);
+  assert.equal(bil(g + 1), `Pika-Tag ${datum(g + 1)} · futter=4 streicheln=2 putzen=1 paeckchen=0 besuch=falter`);
+  assert.equal(bil(g + 2), `Pika-Tag ${datum(g + 2)} · futter=0 streicheln=0 putzen=0 paeckchen=0 besuch=-`);
+  assert.equal(R.ev.filter((e) => e.k === 'hungry').length, 0, 'ohne Abbau-Rechnung kein „Bauch knurrt“');
+  // Grenzen: start gehört dazu, end nicht; gestreichelt höchstens 99 („99 oder mehr“)
+  const ev = [{ t: 1000, k: 'feed' }, { t: 1999, k: 'feed' }, { t: 2000, k: 'feed' }, { t: 999, k: 'feed' }, { t: 1500, k: 'clean', n: 3 },
+    { t: 1500, k: 'clean', n: 1, all: true }, { t: 1500, k: 'parcel' }, { t: 1500, k: 'mem', b: 'bfly' }, { t: 1500, k: 'mem', b: 'pino' },
+    { t: 1500, k: 'mem', b: 'coffee' }, { t: 1500, k: 'mem', b: 'constructor' }, { t: 1500, k: 'act', a: 'read' }];
+  assert.equal(T.chronikKod(T.chronikBilanz(ev, { [g]: 250, [g - 1]: 7 }, 1000, 2000, g)),
+    `Pika-Tag ${datum(g)} · futter=2 streicheln=99 putzen=4 paeckchen=1 besuch=pino,falter`);
+  assert.equal(T.chronikKod(T.chronikBilanz([], {}, 1000, 2000, g)), `Pika-Tag ${datum(g)} · futter=0 streicheln=0 putzen=0 paeckchen=0 besuch=-`);
+});
+
+test('Chronik: welche Tage fehlen, und was in der Liste steht (Dopplungen zusammengeführt, Fremdes nicht mitgezählt)', () => {
+  const h = HEUTE;
+  const items = [
+    { summary: 'Milch kaufen', uid: 'm', status: 'needs_action' },
+    { summary: `Pika-Tag ${datum(h - 1)} · futter=1 streicheln=2 putzen=0 paeckchen=0 besuch=-`, uid: 'a', status: 'needs_action' },
+    { summary: `Pika-Tag ${datum(h - 1)} · futter=3 streicheln=1 putzen=0 paeckchen=0 besuch=pino`, uid: 'b', status: 'needs_action' },
+    { summary: `Pika-Tag ${datum(h - 3)} da waren wir im Zoo`, uid: 'c', status: 'needs_action' },
+    { summary: `Pika-Tag ${datum(h - 5)} · futter=2`, uid: 'd', status: 'completed', completed: '2026-11-08T10:00:00+00:00' }, // abgehakt zählt
+    { summary: `Pika-Tag ${datum(h)} · futter=9`, uid: 'e', status: 'needs_action' }, // heute: geht das Nachtragen nichts an
+    { summary: `Pika-Tag ${datum(h - 30)} · futter=4`, uid: 'f', status: 'needs_action' },
+    { uid: 'kaputt' }, null,
+  ];
+  assert.deepEqual(plain(T.chronikFehlt(items, h, 7)), [h - 7, h - 6, h - 4, h - 2]);
+  assert.deepEqual(plain(T.chronikFehlt(items, h, 1)), []);
+  assert.deepEqual(plain(T.chronikFehlt([], h, 3)), [h - 3, h - 2, h - 1]);
+  assert.deepEqual(plain(T.chronikFehlt(undefined, h, 2)), [h - 2, h - 1]);
+  const tage = T.chronikTage(items);
+  assert.deepEqual([...tage.keys()].sort(), [datum(h - 30), datum(h - 5), datum(h - 1), datum(h)]);
+  assert.equal(T.chronikKod(tage.get(datum(h - 1))), `Pika-Tag ${datum(h - 1)} · futter=3 streicheln=2 putzen=0 paeckchen=0 besuch=pino`);
+  assert.equal(tage.has(datum(h - 3)), false, '„fremd für diesen Tag“ ist kein lesbarer Stand');
+  assert.equal(T.chronikTage(undefined).size, 0);
+});
+
+// Nachgestellte To-do-Liste mit dem an local_todo gemessenen Verhalten: Die Liste vergibt die uid (add_item antwortet
+// ohne sie), der Titel wird getrimmt, ein leerer abgelehnt; eine unbekannte uid wird als schlichtes Objekt abgelehnt,
+// eine Liste von uids ganz oder gar nicht gelöscht. start: Titel (wie angelegt) oder fertige Einträge.
+// „Gibt es nicht“ sagt HA auf zwei Arten (beide gemessen): für eine uid, die es nie gab, als service_validation_error;
+// für eine, die eben erst gelöscht wurde (ein anderes Gerät war schneller), als unknown_error „No existing item“, weil
+// HA die uid zuerst gegen seinen gemerkten Stand der Liste prüft und erst im Speicher scheitert. Die Attrappe kennt
+// keine Zeit: Was sie selbst gelöscht hat, gilt als eben gelöscht.
+const todoListe = (start = [], uid = (n) => `u${String(n).padStart(3, '0')}`) => {
+  // weg: so oft „gibt es nicht“ geantwortet, spaet: davon in der Form „eben gelöscht“, neu: mit add_item angelegte Titel
+  const L = { items: [], n: 0, weg: 0, spaet: 0, neu: [], fort: new Set() };
+  const ziel = { entity_id: CH };
+  const fehlt = (item) => {
+    L.weg++;
+    if (!L.fort.has(item)) return { code: 'service_validation_error', message: `Validation error: Unable to find to-do list item: ${item}` };
+    L.spaet++;
+    return { code: 'unknown_error', message: `No existing item with uid/recurrence_id: ${item}/None` };
+  };
+  const finde = (item) => L.items.find((x) => x.uid === item) || L.items.find((x) => x.summary === item);
+  const da = (id) => {
+    if (id !== CH) throw { code: 'not_found', message: 'Entity not found' };
+  };
+  L.lies = (m) => {
+    da(m.entity_id);
+    return { items: L.items.map((x) => ({ ...x })) };
+  };
+  L.dienst = (name, data, z) => {
+    da(z?.entity_id);
+    if (name === 'add_item') {
+      const summary = String(data.item ?? '').trim();
+      if (!summary) throw { code: 'invalid_format', message: 'string value is empty' };
+      L.items.push({ summary, uid: uid(++L.n), status: 'needs_action' });
+      L.neu.push(summary);
+    } else if (name === 'update_item') {
+      const x = finde(data.item);
+      if (!x) throw fehlt(data.item);
+      if (data.rename != null) x.summary = String(data.rename).trim();
+    } else if (name === 'remove_item') {
+      const ids = [data.item].flat();
+      const xs = ids.map(finde);
+      if (xs.some((x) => !x)) throw fehlt(ids.find((i) => !finde(i)));
+      for (const x of xs) L.fort.add(x.uid);
+      L.items = L.items.filter((x) => !xs.includes(x));
+    } else throw { code: 'not_found', message: 'Service not found' };
+    return { context: { id: '01JCX', parent_id: null, user_id: 'u' } };
+  };
+  for (const s of start) {
+    if (typeof s === 'string') L.dienst('add_item', { item: s }, ziel);
+    else L.items.push({ ...s });
+  }
+  L.neu = [];
+  return L;
+};
+// Schritte aus chronikPlan auf die Liste anwenden
+const planAnwenden = (L, steps) => {
+  for (const s of steps) {
+    if (s.op === 'add') L.dienst('add_item', { item: s.summary }, { entity_id: CH });
+    else if (s.op === 'update') L.dienst('update_item', { item: s.uid, rename: s.summary }, { entity_id: CH });
+    else L.dienst('remove_item', { item: s.uid }, { entity_id: CH });
+  }
+};
+
+test('Chronik: der Plan löst Dopplungen auf (die kleinste uid bleibt), legt Fehlendes an, und nach dem Anwenden ist er leer', () => {
+  const start = [
+    { summary: 'Milch kaufen', uid: 'm1', status: 'needs_action', description: 'Bio' },
+    { summary: 'Pika-Tag 2026-11-08 · futter=2 streicheln=5 putzen=0 paeckchen=0 besuch=-', uid: 'c9', status: 'needs_action' },
+    { summary: 'Pika-Tag 2026-11-08 · futter=3 streicheln=1 putzen=0 paeckchen=0 besuch=pino', uid: 'b2', status: 'completed', description: 'Notiz von Mama' },
+    { summary: 'Pika-Tag 2026-11-08 · futter=1 streicheln=9 putzen=1 paeckchen=0 besuch=-', uid: 'd1', status: 'needs_action' },
+    { summary: 'Pika-Tag 2026-11-09 war ein schöner Tag', uid: 'a0', status: 'needs_action' }, // fremd für diesen Tag
+    { summary: 'Pika-Tag 2026-11-07   futter=1 besuch=vogel,pino', uid: 'e5', status: 'needs_action' }, // lesbar, nur anders formatiert
+    { summary: 'Pika-Tag 2026-11-06 · futter=4 besuch=- zukunft=ja', uid: 'f1', status: 'needs_action' },
+    { summary: 'Pika-Tag 2026-11-06 · futter=4 besuch=- zukunft=ja', uid: 'f0', status: 'needs_action' }, // zweimal dasselbe
+    { summary: 'Pika-Tag 2026-11-05 · futter=1', uid: '9', status: 'needs_action' },
+    { summary: 'Pika-Tag 2026-11-05 · futter=2', uid: '10', status: 'needs_action' }, // als Text ist „10“ kleiner als „9“
+  ];
+  const L = todoListe(start);
+  const ohne = plain(T.chronikPlan(L.lies({ entity_id: CH }).items));
+  assert.deepEqual(ohne, [
+    { op: 'remove', d: '2026-11-05', uid: '9' },
+    { op: 'remove', d: '2026-11-06', uid: 'f1' },
+    { op: 'update', d: '2026-11-08', uid: 'b2', summary: 'Pika-Tag 2026-11-08 · futter=3 streicheln=9 putzen=1 paeckchen=0 besuch=pino' },
+    { op: 'remove', d: '2026-11-08', uid: 'c9' },
+    { op: 'remove', d: '2026-11-08', uid: 'd1' },
+  ]);
+  // mit soll: neue Tage anlegen (aufsteigend), in Lesbares hineinmischen (nur wenn sich die Bedeutung ändert), Fremdes lassen
+  const soll = new Map([
+    ['2026-11-10', eintrag('2026-11-10', { futter: 1, streicheln: 0, putzen: 0, paeckchen: 0, besuch: [] })],
+    ['2026-11-04', eintrag('2026-11-04', { futter: 7, besuch: ['falter'] })],
+    ['2026-11-09', eintrag('2026-11-09', { futter: 5 })], // der Tag ist „fremd“ belegt: nichts
+    ['2026-11-07', eintrag('2026-11-07', { futter: 1, besuch: ['pino'] })], // steht schon drin: nichts
+    ['2026-11-08', eintrag('2026-11-08', { paeckchen: 2 })],
+    ['2026-13-01', eintrag('2026-13-01', { futter: 1 })], // kein Datum: nichts
+  ]);
+  const mit = plain(T.chronikPlan(L.lies({ entity_id: CH }).items, soll));
+  assert.deepEqual(mit, [
+    { op: 'add', d: '2026-11-04', summary: 'Pika-Tag 2026-11-04 · futter=7 besuch=falter' },
+    ohne[0], ohne[1],
+    { op: 'update', d: '2026-11-08', uid: 'b2', summary: 'Pika-Tag 2026-11-08 · futter=3 streicheln=9 putzen=1 paeckchen=2 besuch=pino' },
+    ohne[3], ohne[4],
+    { op: 'add', d: '2026-11-10', summary: 'Pika-Tag 2026-11-10 · futter=1 streicheln=0 putzen=0 paeckchen=0 besuch=-' },
+  ]);
+  // soll darf auch ein Objekt oder eine Liste von Paaren sein
+  assert.deepEqual(plain(T.chronikPlan(L.lies({ entity_id: CH }).items, Object.fromEntries(soll))), mit);
+  assert.deepEqual(plain(T.chronikPlan(L.lies({ entity_id: CH }).items, [...soll])), mit);
+  // ändert sich die Bedeutung, bekommt auch der anders formatierte Eintrag den gemeinsamen Titel
+  assert.deepEqual(plain(T.chronikPlan([start[5]], [['2026-11-07', eintrag('2026-11-07', { futter: 6 })]])),
+    [{ op: 'update', d: '2026-11-07', uid: 'e5', summary: 'Pika-Tag 2026-11-07 · futter=6 besuch=pino,vogel' }]);
+  planAnwenden(L, T.chronikPlan(L.lies({ entity_id: CH }).items, soll));
+  assert.equal(L.weg, 0);
+  const nach = L.lies({ entity_id: CH }).items;
+  assert.deepEqual(plain(T.chronikPlan(nach)), [], 'nach dem Anwenden gibt es nichts mehr zu tun');
+  assert.deepEqual(plain(T.chronikPlan(nach, soll)), [], 'auch nicht mit demselben soll');
+  const von = (u) => nach.find((x) => x.uid === u);
+  // Mensch und „fremd für diesen Tag“ unangetastet, der nur anders formatierte Eintrag nicht umgeschrieben
+  for (const i of [0, 4, 5]) assert.deepEqual(von(start[i].uid), start[i]);
+  // Status und Beschreibung des bleibenden Eintrags gehören dem Menschen
+  assert.deepEqual(von('b2'), { ...start[2], summary: 'Pika-Tag 2026-11-08 · futter=3 streicheln=9 putzen=1 paeckchen=2 besuch=pino' });
+  assert.deepEqual(nach.map((x) => x.uid), ['m1', 'b2', 'a0', 'e5', 'f0', '10', 'u001', 'u002']);
+  const jeTag = nach.map((x) => T.chronikLies(x.summary)).filter((e) => e).map((e) => e.d);
+  assert.equal(new Set(jeTag).size, jeTag.length, 'jeder Tag steht genau einmal da');
+  assert.equal(jeTag.length, 7);
+  // ohne uid ließe sich nichts ändern oder löschen: Der Tag bleibt, wie er ist
+  assert.deepEqual(plain(T.chronikPlan([{ summary: 'Pika-Tag 2026-11-05 · futter=1' }, { summary: 'Pika-Tag 2026-11-05 · futter=2', uid: 'x' }],
+    [['2026-11-05', eintrag('2026-11-05', { futter: 9 })]])), []);
+});
+
+// hass für die echten Methoden der Chronik: To-do-Liste L (todoListe) und ein Recorder, der aus V (chronikVerlauf)
+// antwortet. Z.ruf zählt jeden Aufruf an HA mit, Z.hist die Anfragen an den Verlauf, Z.laut den fünften Parameter der
+// Dienstaufrufe.
+const chronikRecorder = (V, Z) => (m) => {
+  Z?.hist.push(m);
+  const from = Date.parse(m.start_time);
+  const to = Date.parse(m.end_time);
+  // wie HA: der letzte Stand vor dem Zeitraum als erster, mit dem Beginn als Zeit
+  const aus = (all) => {
+    const vor = all.filter((r) => r.t <= from).at(-1);
+    return [...(vor ? [{ s: vor.s, lu: from / 1000 }] : []), ...all.filter((r) => r.t > from && r.t < to).map((r) => ({ s: r.s, lu: r.t / 1000 }))];
+  };
+  return Object.fromEntries(m.entity_ids.map((id) => [id, aus(id === 'input_text.s' ? V.S : id === 'input_text.p' ? V.P : [])]));
+};
+const chronikHass = (L, rec, Z = { ruf: [], hist: [] }) => {
+  const ruf = (name, tun) => {
+    Z.ruf.push(name);
+    try {
+      return Promise.resolve(tun());
+    } catch (e) {
+      return Promise.reject(e);
+    }
+  };
+  return {
+    connected: true,
+    states: {
+      'input_text.s': { state: '80.0,1,80.0,1,1,0,1' }, 'input_text.p': { state: 'p1|3.1.-.0|-|-|-', attributes: { max: 255 } },
+      [CH]: { state: '0', attributes: { friendly_name: 'Pikas Chronik', supported_features: 127 } },
+    },
+    callWS: (m) => ruf(m.type, () => (m.type === 'todo/item/list' ? L.lies(m) : rec(m))),
+    // (fünfter Parameter: notifyOnError. Mit allem außer false zeigt das Frontend von HA bei einer Ablehnung eine
+    // Meldung am Bildschirm; Z.laut schreibt mit, was die Karte übergibt)
+    callService: (dom, name, data, ziel, ...mehr) => ruf(`${dom}.${name}`, () => {
+      (Z.laut ??= []).push(mehr[0]);
+      if (dom !== 'todo') throw { code: 'not_found', message: 'Service not found' };
+      return L.dienst(name, data, ziel);
+    }),
+  };
+};
+// Karte mit beiden Helfern in HA, Zustand und Plan geladen. um(t) stellt die Uhr von HA: die der Karte (_haNow) und
+// den Zeitstempel, den HA zuletzt vergeben hat (last_updated am Helfer für den Zustand; daran erkennt die Chronik,
+// dass HA den Tag erreicht hat). um(t, ha) stellt beides getrennt: eine Geräteuhr, die falsch geht, solange noch keine
+// Zeitprobe von HA da ist (ha = null: kein Stempel).
+const chronikKarte = (hass, cfg = {}) => {
+  const c = Object.create(T.PikaPetCard.prototype);
+  Object.assign(c, {
+    _cfg: { name: 'Pika', entity: 'input_text.s', plan_entity: 'input_text.p', chronicle_entity: CH, ...cfg },
+    _hass: hass, _synced: true, _planOk: true, _attached: true,
+  });
+  c.um = (t, ha = t) => {
+    c._clockUse = t - Date.now();
+    if (ha == null) delete hass.states['input_text.s'].last_updated;
+    else hass.states['input_text.s'].last_updated = new Date(ha).toISOString();
+  };
+  return c;
+};
+const mitSpeicher = async (fn) => {
+  const M = new Map();
+  WELT.localStorage = { getItem: (k) => (M.has(k) ? M.get(k) : null), setItem: (k, v) => void M.set(k, String(v)), removeItem: (k) => void M.delete(k) };
+  try {
+    return await fn(M);
+  } finally {
+    delete WELT.localStorage;
+  }
+};
+// Der Takt der Karte (_tick), alles andere darin stillgelegt
+const nurTakt = (c) => Object.assign(c, {
+  _away: () => false, _watchdog() {}, _tickCore() {}, _tickSky() {}, _tickFest() {}, _tickFriend() {}, _tickBote() {}, _tickCoffee() {},
+  _tickGift() {}, _diaryDot() {},
+});
+
+test('Chronik am Gerät: ohne chronicle_entity kein Aufruf an HA, kein Zeitgeber, nichts im Browser', async () => {
+  await mitSpeicher(async (M) => {
+    const g = HEUTE - 1;
+    const Z = { ruf: [], hist: [] };
+    const L = todoListe();
+    const c = nurTakt(chronikKarte(chronikHass(L, chronikRecorder(chronikVerlauf([[g, { futter: 2 }]]), Z), Z), { chronicle_entity: null }));
+    c.um(T.chronikStart(HEUTE) + 6 * 36e5);
+    let takte = 0;
+    const echt = c._chronikTick;
+    c._chronikTick = function () {
+      takte++;
+      return echt.call(this);
+    };
+    const z0 = zeitgeber;
+    const w0 = warned.length;
+    const l0 = leise.length;
+    for (let i = 0; i < 5; i++) c._tick();
+    assert.equal(takte, 5, 'der Takt der Karte kommt bei der Chronik an');
+    assert.equal(c._chronikOn(), false);
+    assert.equal(await c._chronikNow(), null);
+    assert.equal(await c._chronikLesen(), null);
+    c._chronikStop(); // wie beim Abhängen
+    await gleich();
+    assert.deepEqual(Z.ruf, []);
+    assert.equal(zeitgeber, z0, 'kein Zeitgeber');
+    assert.equal(M.size, 0, 'nichts im Browser gemerkt');
+    assert.equal(L.items.length, 0);
+    assert.ok(!c._chronikBusy && !c._chronikStand && c._chronikJit === undefined);
+    assert.equal(c._errs, undefined);
+    assert.equal(warned.length, w0);
+    assert.equal(leise.length, l0);
+    // Gegenprobe mit derselben Karte und denselben Attrappen: Mit der Option wird gelesen, nachgetragen und gemerkt.
+    // (Sonst wäre oben auch dann alles still, wenn die Attrappen gar nicht erreicht würden.)
+    c._cfg.chronicle_entity = CH;
+    c._dbgChronik = { check: 1 };
+    c._chronikJit = 0;
+    c._tick();
+    assert.equal(takte, 6);
+    assert.equal(await c._chronikBusy.p, true);
+    assert.deepEqual(Z.ruf, ['todo/item/list', 'history/history_during_period', 'todo.add_item', 'todo/item/list']);
+    assert.equal(zeitgeber, z0 + 1, 'ein Zeitgeber: die Wartezeit vor dem Nachprüfen');
+    assert.deepEqual([...M], [['pika-pet-chronik:Pika', `${CH}|${HEUTE}`]]);
+    assert.deepEqual(L.items.map((x) => x.summary), [`Pika-Tag ${datum(g)} · futter=2 streicheln=0 putzen=0 paeckchen=0 besuch=-`]);
+  });
+  // ein Fehler in der Chronik reißt den Takt nicht mit und steht unter „Chronik“ im Fehlerspeicher
+  const d = nurTakt(chronikKarte(chronikHass(todoListe(), () => ({}))));
+  d._chronikTick = () => d.gibtEsNicht();
+  const w1 = warned.length;
+  d._tick();
+  assert.deepEqual(plain(d._errs).map((e) => [e.where, e.n]), [['Chronik', 1]]);
+  assert.equal(warned.length, w1 + 1);
+});
+
+test('Chronik am Gerät: lesen, Verlauf, anlegen, nachprüfen; am selben Tag kein zweites Mal', async () => {
+  const g = HEUTE - 1;
+  // vorgestern nichts im Verlauf: Was kein Gerät gezeigt hat, wird nicht geschrieben
+  const V = chronikVerlauf([[g - 2, { futter: 1, streicheln: 3 }], [g, { futter: 2, streicheln: 12, mem: 16 | 64, paeckchen: 1, putzen: 3 }]]);
+  const L = todoListe(['Milch kaufen', `Pika-Tag ${datum(g - 3)} war schön`]);
+  const Z = { ruf: [], hist: [] };
+  // (mit einem Gerät für den Haus-Boten: Dessen Verlauf braucht das Tagebuch, die Chronik nicht)
+  const c = chronikKarte(chronikHass(L, chronikRecorder(V, Z), Z), { appliances: [{ type: 'washer', state: 'sensor.waschmaschine' }] });
+  c._dbgChronik = { check: 5 };
+  const a = T.chronikStart(HEUTE);
+  // der Versatz wird einmal je Karte gewürfelt, unter CHRONIK.jitter
+  c.um(a + 60000);
+  c._chronikTick();
+  const jit = c._chronikJit;
+  assert.ok(jit >= 0 && jit < T.CHRONIK.jitter);
+  c._chronikTick();
+  assert.equal(c._chronikJit, jit);
+  const andere = chronikKarte(chronikHass(L, chronikRecorder(V)));
+  andere.um(a + 60000);
+  andere._chronikTick();
+  assert.notEqual(andere._chronikJit, jit, 'zwei Karten würfeln nicht dasselbe');
+  // frühestens Tagesbeginn + Wartezeit + Versatz
+  c._chronikJit = 3 * 6e4;
+  c.um(a + T.CHRONIK.wait + 3 * 6e4 - 5000);
+  c._chronikTick();
+  // und erst, wenn Zustand und Plan geladen und frisch sind
+  c.um(a + T.CHRONIK.wait + 3 * 6e4 + 1000);
+  for (const [k, v] of [['_synced', false], ['_planOk', false], ['_planStale', true]]) {
+    const alt = c[k];
+    c[k] = v;
+    c._chronikTick();
+    c[k] = alt;
+  }
+  assert.ok(!c._chronikBusy);
+  assert.deepEqual(Z.ruf, []);
+  c._chronikTick();
+  const lauf = c._chronikBusy;
+  assert.ok(lauf);
+  c._chronikTick(); // während ein Lauf läuft, beginnt kein zweiter
+  assert.equal(c._chronikBusy, lauf);
+  assert.equal(await lauf.p, true);
+  assert.deepEqual(Z.ruf, ['todo/item/list', 'history/history_during_period', 'todo.add_item', 'todo.add_item', 'todo/item/list']);
+  // jeder Dienstaufruf mit notifyOnError = false: Eine Ablehnung zeigt in HA keine Meldung am Bildschirm
+  assert.deepEqual(Z.laut, [false, false]);
+  // EIN Abruf, vom Beginn des ältesten fehlenden Tags bis jetzt, nur die beiden Helfer (ohne die Geräte des Haus-Boten)
+  assert.equal(Z.hist.length, 1);
+  assert.equal(Date.parse(Z.hist[0].start_time), T.chronikStart(HEUTE - 7));
+  assert.ok(Math.abs(Date.parse(Z.hist[0].end_time) - (c._haNow() + 60000)) < 5000);
+  assert.deepEqual(plain(Z.hist[0].entity_ids), ['input_text.s', 'input_text.p']);
+  assert.deepEqual(L.items.map((x) => x.summary), ['Milch kaufen', `Pika-Tag ${datum(g - 3)} war schön`,
+    `Pika-Tag ${datum(g - 2)} · futter=1 streicheln=3 putzen=0 paeckchen=0 besuch=-`,
+    `Pika-Tag ${datum(g)} · futter=2 streicheln=12 putzen=3 paeckchen=1 besuch=pino,vogel`]);
+  // der gelesene Stand hängt an der Karte (nach dem Nachprüfen: mit den eigenen Einträgen)
+  assert.deepEqual([...c._chronikStand.tage.keys()], [datum(g - 2), datum(g)]);
+  assert.equal(c._chronikStand.tage.get(datum(g)).streicheln, 12);
+  assert.ok(Math.abs(c._chronikStand.t - c._haNow()) < 5000);
+  assert.ok(!c._chronikBusy);
+  // am selben Tag: kein Aufruf mehr
+  for (let i = 0; i < 3; i++) c._chronikTick();
+  await gleich();
+  assert.equal(Z.ruf.length, 5);
+  // am nächsten Tag wieder. Es fehlen noch Tage, aber der Verlauf weiß nichts über sie: lesen, Verlauf, fertig
+  c.um(a + 864e5 + T.CHRONIK.wait + 3 * 6e4 + 1000);
+  c._chronikTick();
+  assert.equal(await c._chronikBusy.p, true);
+  assert.deepEqual(Z.ruf.slice(5), ['todo/item/list', 'history/history_during_period']);
+  assert.equal(Date.parse(Z.hist[1].start_time), T.chronikStart(HEUTE - 6));
+  assert.equal(L.items.length, 4);
+  // _chronikLesen: nur lesen
+  const S = await c._chronikLesen();
+  assert.equal(S, c._chronikStand);
+  assert.equal(Z.ruf.length, 8);
+  assert.equal(Z.ruf[7], 'todo/item/list');
+  assert.equal(S.tage.size, 2);
+  assert.ok(Z.ruf.every((r) => !r.startsWith('input_text.')), 'die Helfer schreibt die Chronik nie');
+  assert.equal(c._errs, undefined);
+  // Das Tagebuch fragt wie bisher: auch nach den Geräten des Haus-Boten, und ein Fehlschlag ist dort eine Warnung
+  const H = await c._diaryHist(T.chronikStart(g), c._haNow());
+  assert.deepEqual(plain(Z.hist.at(-1).entity_ids), ['input_text.s', 'input_text.p', 'sensor.waschmaschine']);
+  assert.deepEqual(Object.keys(H).sort(), ['P', 'S', 'bote', 'fail', 'ha', 'none']);
+  assert.deepEqual([H.fail, H.none, H.ha, H.bote.length, H.S.length > 1, H.P.length > 1], [false, false, true, 0, true, true]);
+  c._hass.callWS = () => Promise.reject({ code: 'unknown_error', message: 'x' });
+  const w0 = warned.length;
+  const l0 = leise.length;
+  assert.equal((await c._diaryHist(T.chronikStart(g), c._haNow())).fail, true);
+  assert.deepEqual([warned.length - w0, leise.length - l0], [1, 0]);
+  assert.equal((await c._diaryHist(T.chronikStart(g), c._haNow(), true)).fail, true);
+  assert.deepEqual([warned.length - w0, leise.length - l0], [1, 1]);
+});
+
+test('Chronik am Gerät: „heute geprüft“ steht im Browser, je Name und Liste', async () => {
+  await mitSpeicher(async (M) => {
+    const g = HEUTE - 1;
+    const V = chronikVerlauf([[g, { futter: 1 }]]);
+    const L = todoListe();
+    const Z = { ruf: [], hist: [] };
+    const karte = (cfg) => {
+      const c = chronikKarte(chronikHass(L, chronikRecorder(V, Z), Z), cfg);
+      c._dbgChronik = { check: 1 };
+      c._chronikJit = 0;
+      c.um(T.chronikStart(HEUTE) + 6 * 36e5);
+      return c;
+    };
+    const A = karte();
+    A._chronikTick();
+    assert.equal(await A._chronikBusy.p, true);
+    assert.deepEqual([...M], [['pika-pet-chronik:Pika', `${CH}|${HEUTE}`]]);
+    const n = Z.ruf.length;
+    assert.equal(n, 4);
+    // neu geladen (eine frische Karte im selben Browser): prüft heute nicht noch einmal
+    const B = karte();
+    for (let i = 0; i < 3; i++) B._chronikTick();
+    assert.ok(!B._chronikBusy);
+    assert.equal(Z.ruf.length, n);
+    // ein anderer Name oder eine andere Liste ist eine andere Chronik: Die wird geprüft
+    const C = karte({ name: 'Momo' });
+    C._chronikTick();
+    assert.equal(await C._chronikBusy.p, true);
+    assert.deepEqual(Z.ruf.slice(n), ['todo/item/list', 'history/history_during_period'], 'gelesen; der Tag steht schon da, zu den älteren weiß der Verlauf nichts');
+    assert.equal(M.get('pika-pet-chronik:Momo'), `${CH}|${HEUTE}`);
+    M.set('pika-pet-chronik:Pika', `todo.alt|${HEUTE}`);
+    const D = karte();
+    D._chronikTick();
+    assert.equal(await D._chronikBusy.p, true);
+    assert.equal(Z.ruf.length, n + 4);
+    assert.equal(M.get('pika-pet-chronik:Pika'), `${CH}|${HEUTE}`);
+    // im Editor umbenannt: Der Merker zieht mit um
+    D._lsRename('Pika', 'Pikachu');
+    assert.equal(M.get('pika-pet-chronik:Pikachu'), `${CH}|${HEUTE}`);
+    assert.equal(L.items.length, 1);
+  });
+});
+
+test('Chronik am Gerät: eine vorgehende Geräteuhr löst nichts aus, geprüft wird erst, wenn HA den neuen Tag selbst gestempelt hat', async () => {
+  const g = HEUTE - 1;
+  const a = T.chronikStart(HEUTE);
+  const echt = a + 6 * 36e5; // 10 Uhr am echten Tag
+  // gestern ist abgeschlossen, heute läuft noch: Bisher wurde einmal gefüttert, am Abend kommt noch etwas dazu
+  const V = chronikVerlauf([[g, { futter: 2, streicheln: 4 }], [HEUTE, { futter: 1 }]]);
+  const gestern = `Pika-Tag ${datum(g)} · futter=2 streicheln=4 putzen=0 paeckchen=0 besuch=-`;
+  const alle = ['sun.sun', 'input_text.s', 'input_text.p', 'weather.zuhause', CH];
+  const neu = (cfg = {}) => {
+    const L = todoListe();
+    const Z = { ruf: [], hist: [] };
+    const h = chronikHass(L, chronikRecorder(V, Z), Z);
+    Object.assign(h.states, { 'sun.sun': { state: 'above_horizon' }, 'weather.zuhause': { state: 'cloudy' }, 'sensor.fremd': { state: '1' } });
+    const c = chronikKarte(h, { sun_entity: 'sun.sun', weather_entity: 'weather.zuhause', ...cfg });
+    c._dbgChronik = { check: 1 };
+    c._chronikJit = 0;
+    return { L, Z, h, c };
+  };
+  const iso = (t) => new Date(t).toISOString();
+  await mitSpeicher(async (M) => {
+    const { L, Z, h, c } = neu();
+    // Die Geräteuhr geht einen Tag vor, eine Zeitprobe von HA gibt es noch nicht: Für die Karte ist „heute“ schon
+    // morgen. HA hat zuletzt am echten Tag gestempelt.
+    c.um(echt + 864e5, echt);
+    assert.equal(T.pikaDay(c._haNow()), HEUTE + 1);
+    assert.equal(c._chronikStempel(), echt);
+    const z0 = zeitgeber;
+    const l0 = leise.length;
+    const still = (wo) => {
+      for (let i = 0; i < 3; i++) c._chronikTick();
+      assert.deepEqual(Z.ruf, [], wo);
+      assert.ok(!c._chronikBusy && !c._chronikNext && !c._chronikOk, wo);
+    };
+    still('Stempel vom echten Tag');
+    // kein Stempel, ein ungültiger, einer an einem Zustand, den die Karte nicht liest, einer knapp vor dem neuen Tag
+    c.um(echt + 864e5, null);
+    assert.equal(c._chronikStempel(), -Infinity);
+    still('kein Stempel');
+    h.states['input_text.s'].last_updated = 'gestern Abend';
+    h.states['sun.sun'].last_updated = '';
+    h.states[CH].last_updated = null;
+    assert.equal(c._chronikStempel(), -Infinity);
+    still('ungültige Stempel');
+    h.states['sensor.fremd'].last_updated = iso(echt + 864e5);
+    still('ein fremder Zustand zählt nicht');
+    h.states['weather.zuhause'].last_updated = iso(a + 864e5 - 1);
+    assert.equal(c._chronikStempel(), a + 864e5 - 1);
+    still('eine Millisekunde vor dem neuen Tag');
+    await gleich();
+    assert.deepEqual(Z.ruf, []);
+    assert.equal(L.items.length, 0, 'der laufende Tag steht nicht als abgeschlossen in der Liste');
+    assert.equal(M.size, 0, 'nichts als geprüft gemerkt');
+    assert.equal(zeitgeber, z0, 'kein Zeitgeber');
+    assert.equal(leise.length, l0);
+    assert.equal(c._errs, undefined);
+    // Die erste Zeitprobe von HA stellt die Uhr: Es ist der echte Tag, und für den hat HA längst gestempelt
+    c.um(echt, echt);
+    assert.equal(T.pikaDay(c._haNow()), HEUTE);
+    c._chronikTick();
+    assert.equal(await c._chronikBusy.p, true);
+    assert.deepEqual(Z.ruf, ['todo/item/list', 'history/history_during_period', 'todo.add_item', 'todo/item/list']);
+    assert.deepEqual(L.items.map((x) => x.summary), [gestern], 'nur der abgeschlossene Tag');
+    assert.deepEqual([...M], [['pika-pet-chronik:Pika', `${CH}|${HEUTE}`]]);
+  });
+  // Gegenprobe: _chronikNow (Vorschau, Tests) achtet nicht auf den Stempel. Mit derselben falschen Uhr stünde der
+  // laufende Tag halb in der Liste, und niemand ergänzte ihn mehr.
+  const F = neu();
+  F.c.um(echt + 864e5, echt);
+  assert.equal(await F.c._chronikNow(), true);
+  assert.deepEqual(F.L.items.map((x) => x.summary), [gestern, `Pika-Tag ${datum(HEUTE)} · futter=1 streicheln=0 putzen=0 paeckchen=0 besuch=-`]);
+  // Jeder der Zustände, die die Karte ohnehin liest, kann den Tag belegen (und nur, soweit er eingestellt ist). Die
+  // Uhr stimmt hier: Auch dann wartet die Karte, bis HA nach 4 Uhr etwas gestempelt hat.
+  for (const id of alle) {
+    const { L, Z, h, c } = neu();
+    c.um(echt, null);
+    for (const k of [...alle, 'sensor.fremd']) h.states[k].last_updated = iso(a - 1);
+    c._chronikTick();
+    assert.ok(!c._chronikBusy, id);
+    h.states[id].last_updated = iso(a); // genau zum Tagesbeginn
+    c._chronikTick();
+    assert.ok(c._chronikBusy, id);
+    assert.equal(await c._chronikBusy.p, true, id);
+    assert.deepEqual(L.items.map((x) => x.summary), [gestern], id);
+    assert.equal(Z.ruf.length, 4, id);
+  }
+  for (const [k, id] of [['sun_entity', 'sun.sun'], ['weather_entity', 'weather.zuhause']]) {
+    const { Z, h, c } = neu({ [k]: null });
+    c.um(echt, null);
+    h.states[id].last_updated = iso(echt);
+    for (let i = 0; i < 3; i++) c._chronikTick();
+    assert.ok(!c._chronikBusy, `${k} nicht eingestellt: Der Zustand zählt nicht`);
+    assert.deepEqual(Z.ruf, []);
+  }
+  assert.equal(quell.split('this._chronikStempel()').length - 1, 1, 'genau eine Stelle fragt nach dem Stempel: _chronikTick');
+});
+
+test('Chronik am Gerät: Liste fehlt, lehnt ab oder die Verbindung ist weg: kein Fehler, der Lauf endet, später ein neuer Versuch', async () => {
+  const g = HEUTE - 1;
+  const V = chronikVerlauf([[g, { futter: 2 }]]);
+  const ab = (wert) => () => Promise.reject(wert);
+  // [Name, stören (gibt zurück, wie es wieder heil wird), so viele Aufrufe bis zum Ende, steht leise in der Konsole]
+  const faelle = [
+    ['Liste gibt es nicht', (K) => { const alt = K.h.states[CH]; delete K.h.states[CH]; return () => { K.h.states[CH] = alt; }; }, 0],
+    ['Liste nicht erreichbar', (K) => { K.h.states[CH].state = 'unavailable'; return () => { K.h.states[CH].state = '0'; }; }, 0],
+    ['Liste unbekannt', (K) => { K.h.states[CH].state = 'unknown'; return () => { K.h.states[CH].state = '0'; }; }, 0],
+    ['Liste nimmt nichts an', (K) => { K.h.states[CH].attributes.supported_features = 126; return () => { K.h.states[CH].attributes.supported_features = 127; }; }, 0],
+    ['Verbindung getrennt', (K) => { K.h.connected = false; return () => { K.h.connected = true; }; }, 0],
+    ['Zustand liegt nicht in HA', (K) => { K.c._noEntity = true; return () => { K.c._noEntity = false; }; }, 0],
+    ['Tagesplan liegt nicht in HA', (K) => { const alt = K.h.states['input_text.p']; delete K.h.states['input_text.p']; return () => { K.h.states['input_text.p'] = alt; }; }, 0],
+    ['Lesen abgelehnt', (K) => K.stoer('callWS', 'todo/item/list', ab({ code: 'not_found', message: 'Entity not found' })), 1, 1],
+    ['Verbindung reißt beim Lesen', (K) => K.stoer('callWS', 'todo/item/list', ab(3)), 1, 1],
+    ['Antwort ohne Liste', (K) => K.stoer('callWS', 'todo/item/list', () => Promise.resolve({})), 1, 0],
+    ['Verlauf abgelehnt', (K) => K.stoer('callWS', 'history/history_during_period', ab({ code: 'unknown_command', message: 'Unknown command.' })), 2, 1],
+    ['Recorder zeichnet die Helfer nicht auf', (K) => K.stoer('callWS', 'history/history_during_period', () => Promise.resolve({})), 2, 0],
+    ['Anlegen abgelehnt', (K) => K.stoer('callService', 'todo.add_item', ab({ code: 'service_validation_error', message: 'Validation error: nope' })), 3, 1],
+    ['Verbindung reißt beim Anlegen', (K) => K.stoer('callService', 'todo.add_item', ab({ code: 3, message: 'Connection lost' })), 3, 1],
+  ];
+  const w0 = warned.length;
+  let leiseDazu = 0;
+  for (const [name, stoeren, rufe, sagt = 0] of faelle) {
+    const L = todoListe(['Milch kaufen']);
+    const Z = { ruf: [], hist: [] };
+    const h = chronikHass(L, chronikRecorder(V, Z), Z);
+    const c = chronikKarte(h);
+    const K = { h, c, stoer: (wo, was, statt) => {
+      const alt = h[wo];
+      h[wo] = (...a) => {
+        const ruf = wo === 'callWS' ? a[0].type : `${a[0]}.${a[1]}`;
+        if (ruf !== was) return alt(...a);
+        Z.ruf.push(ruf);
+        return statt();
+      };
+      return () => { h[wo] = alt; };
+    } };
+    c._dbgChronik = { check: 1 };
+    c._chronikJit = 0;
+    c.um(T.chronikStart(HEUTE) + 6 * 36e5);
+    const heil = stoeren(K);
+    const l0 = leise.length;
+    c._chronikTick();
+    if (rufe) {
+      assert.ok(c._chronikBusy, name);
+      assert.equal(await c._chronikBusy.p, false, name);
+      // nicht als geprüft gemerkt, und der nächste Versuch frühestens nach CHRONIK.retry
+      assert.ok(Math.abs(c._chronikNext - Date.now() - T.CHRONIK.retry) < 5000, name);
+      leiseDazu += sagt;
+    } else {
+      assert.ok(!c._chronikBusy && !c._chronikNext, name);
+      assert.equal(await c._chronikNow(), null, name);
+      assert.equal(await c._chronikLesen(), null, name);
+    }
+    assert.equal(Z.ruf.length, rufe, `${name}: ${Z.ruf.join(', ')}`);
+    assert.equal(leise.length - l0, sagt, `${name}: höchstens eine leise Zeile in der Konsole`);
+    assert.ok(!c._chronikBusy, `${name}: der Lauf ist zu Ende`);
+    assert.equal(c._errs, undefined, `${name}: kein Fehler der Karte`);
+    assert.deepEqual(L.items.map((x) => x.summary), ['Milch kaufen'], name);
+    for (let i = 0; i < 3; i++) c._chronikTick();
+    await gleich();
+    assert.equal(Z.ruf.length, rufe, `${name}: solange es so bleibt, kein weiterer Aufruf`);
+    // wieder heil: ohne Fehlschlag gleich, nach einem Fehlschlag erst, wenn die Pause um ist
+    heil();
+    c._chronikTick();
+    assert.equal(!!c._chronikBusy, !rufe, name);
+    c._chronikNext = Date.now() - 1;
+    c._chronikTick();
+    assert.equal(await c._chronikBusy.p, true, name);
+    assert.deepEqual(Z.ruf.slice(rufe), ['todo/item/list', 'history/history_during_period', 'todo.add_item', 'todo/item/list'], name);
+    assert.deepEqual(L.items.map((x) => x.summary), ['Milch kaufen', `Pika-Tag ${datum(g)} · futter=2 streicheln=0 putzen=0 paeckchen=0 besuch=-`], name);
+    assert.equal(c._errs, undefined, name);
+  }
+  assert.equal(faelle.length, 14);
+  assert.equal(leiseDazu, 5);
+  assert.equal(warned.length, w0, 'nichts davon ist eine Warnung');
+});
+
+test('Chronik am Gerät: ein Fehler im eigenen Code steht im Fehlerspeicher, der Lauf endet trotzdem', async () => {
+  const L = todoListe();
+  const Z = { ruf: [], hist: [] };
+  const c = chronikKarte(chronikHass(L, chronikRecorder(chronikVerlauf([[HEUTE - 1, { futter: 2 }]]), Z), Z));
+  c._chronikJit = 0;
+  c.um(T.chronikStart(HEUTE) + 6 * 36e5);
+  c._chronikDo = null; // „this._chronikDo is not a function“: ein Error aus der Karte selbst
+  const l0 = leise.length;
+  c._chronikTick();
+  assert.equal(await c._chronikBusy.p, false);
+  assert.deepEqual(plain(c._errs).map((e) => [e.where, e.n]), [['Chronik', 1]]);
+  assert.match(c._errs[0].msg, /_chronikDo/);
+  assert.equal(leise.length, l0);
+  assert.ok(!c._chronikBusy);
+  assert.ok(c._chronikNext > Date.now());
+  assert.deepEqual(Z.ruf, ['todo/item/list', 'history/history_during_period']);
+  // ein Lauf, der hängt (HA antwortet nie), wird nach CHRONIK.hang aufgegeben
+  delete c._chronikDo;
+  c._hass.callWS = () => new Promise(() => {});
+  c._chronikNext = 0;
+  c._chronikTick();
+  const haengt = c._chronikBusy;
+  assert.ok(haengt);
+  c._chronikTick();
+  assert.equal(c._chronikBusy, haengt);
+  haengt.at -= T.CHRONIK.hang + 1000;
+  c._chronikTick();
+  assert.equal(c._chronikBusy, null);
+  assert.ok(c._chronikNext > Date.now());
+});
+
+test('Chronik am Gerät: gelöscht wird erst nach frischem Lesen; eine verlorene Änderung kostet nichts', async () => {
+  const d = datum(HEUTE - 1);
+  // alle anderen Tage der Woche sind belegt, es fehlt nichts: kein Abruf des Verlaufs
+  const rest = [2, 3, 4, 5, 6, 7].map((i) => `Pika-Tag ${datum(HEUTE - i)} · futter=0`);
+  const zwei = [`Pika-Tag ${d} · futter=3 streicheln=1 putzen=0 paeckchen=0 besuch=-`, `Pika-Tag ${d} · futter=1 streicheln=8 putzen=0 paeckchen=0 besuch=pino`];
+  const eins = `Pika-Tag ${d} · futter=3 streicheln=8 putzen=0 paeckchen=0 besuch=pino`;
+  const lauf = async (L, feat = 127) => {
+    const Z = { ruf: [], hist: [] };
+    const c = chronikKarte(chronikHass(L, () => { throw new Error('der Verlauf wird nicht gebraucht'); }, Z));
+    c._hass.states[CH].attributes.supported_features = feat;
+    c._dbgChronik = { check: 1 };
+    c.um(T.chronikStart(HEUTE) + 6 * 36e5);
+    assert.equal(await c._chronikNow(), true);
+    assert.equal(c._errs, undefined);
+    return { Z, c, titel: L.items.map((x) => x.summary).filter((s) => s.includes(d)) };
+  };
+  // gewöhnlich: ändern, lesen, löschen, lesen
+  let R = await lauf(todoListe([...rest, ...zwei]));
+  assert.deepEqual(R.Z.ruf, ['todo/item/list', 'todo.update_item', 'todo/item/list', 'todo.remove_item', 'todo/item/list']);
+  assert.deepEqual(R.Z.laut, [false, false], 'auch Ändern und Löschen ohne Meldung am Bildschirm');
+  assert.deepEqual(R.titel, [eins]);
+  assert.equal(R.c._chronikStand.tage.get(d).streicheln, 8);
+  // Die erste Änderung meldet Erfolg und geht verloren (gemessen: zwei gleichzeitige update_item). Gleich danach zu
+  // löschen hieße, den Eintrag mit „streicheln=8“ zu verlieren. So fällt es beim Nachlesen auf.
+  let L = todoListe([...rest, ...zwei]);
+  const echt = L.dienst;
+  let verloren = 0;
+  L.dienst = (name, data, z) => (name === 'update_item' && !verloren++ ? { context: {} } : echt(name, data, z));
+  R = await lauf(L);
+  assert.equal(verloren, 2);
+  assert.deepEqual(R.Z.ruf, ['todo/item/list', 'todo.update_item', 'todo/item/list', 'todo.update_item', 'todo/item/list', 'todo.remove_item', 'todo/item/list']);
+  assert.deepEqual(R.titel, [eins]);
+  // Der bleibende Eintrag ist inzwischen weg (jemand hat ihn gelöscht): nichts löschen, neu lesen. Der andere bleibt.
+  L = todoListe([...rest, ...zwei]);
+  const echt2 = L.dienst;
+  L.dienst = (name, data, z) => {
+    if (name === 'update_item') echt2('remove_item', { item: data.item }, z);
+    return echt2(name, data, z);
+  };
+  R = await lauf(L);
+  assert.deepEqual([L.weg, L.spaet], [1, 1]);
+  assert.deepEqual(R.Z.ruf, ['todo/item/list', 'todo.update_item', 'todo/item/list']);
+  assert.deepEqual(R.titel, [zwei[1]]);
+  // Die Liste kann nicht ändern (ohne Bit 4): Dann wird auch nicht gelöscht, sonst ginge die Hälfte verloren
+  R = await lauf(todoListe([...rest, ...zwei]), 1 | 2);
+  assert.deepEqual(R.Z.ruf, ['todo/item/list']);
+  assert.deepEqual(R.titel, zwei);
+  // … zwei gleiche darf sie aufräumen
+  R = await lauf(todoListe([...rest, zwei[0], zwei[0]]), 1 | 2);
+  assert.deepEqual(R.Z.ruf, ['todo/item/list', 'todo.remove_item', 'todo/item/list']);
+  assert.deepEqual(R.titel, [zwei[0]]);
+  // Die Liste kann nicht löschen (ohne Bit 2): der gemeinsame Titel ja, die Dopplung bleibt
+  R = await lauf(todoListe([...rest, ...zwei]), 1 | 4);
+  assert.deepEqual(R.Z.ruf, ['todo/item/list', 'todo.update_item', 'todo/item/list']);
+  assert.deepEqual(R.titel, [eins, zwei[1]]);
+});
+
+test('Chronik am Gerät: „den Eintrag gibt es nicht mehr“ sagt HA auf zwei Arten, beide heißen weitermachen und nachprüfen', async () => {
+  const d = datum(HEUTE - 1);
+  const rest = [2, 3, 4, 5, 6, 7].map((i) => `Pika-Tag ${datum(HEUTE - i)} · futter=0`);
+  const a = `Pika-Tag ${d} · futter=3 streicheln=1 putzen=0 paeckchen=0 besuch=-`;
+  const b = `Pika-Tag ${d} · futter=1 streicheln=8 putzen=0 paeckchen=0 besuch=pino`;
+  // Beide Formen sind an HA 2026.11.1 gemessen: die erste für eine uid, die die Liste nicht kennt, die zweite, wenn
+  // ein anderes Gerät denselben Eintrag eben erst gelöscht hat (der Fall „zwei Karten räumen dieselbe Dopplung ab“)
+  const formen = [
+    ['unbekannte uid', (uid) => ({ code: 'service_validation_error', message: `Validation error: Unable to find to-do list item: ${uid}` })],
+    ['eben gelöscht', (uid) => ({ code: 'unknown_error', message: `No existing item with uid/recurrence_id: ${uid}/None` })],
+    ['eben gelöscht, von der Attrappe selbst', null],
+  ];
+  // Das andere Gerät ist beim Ändern (op = update_item) oder beim Löschen (remove_item) um einen Aufruf schneller: Es
+  // hat den Eintrag schon gelöscht. → Liste, Karte, Aufrufe, Ergebnis des Laufs
+  const lauf = async (titel, op, sagt) => {
+    const L = todoListe([...rest, ...titel]);
+    const echt = L.dienst;
+    L.dienst = (name, data, z) => {
+      if (name !== op) return echt(name, data, z);
+      echt('remove_item', { item: data.item }, z);
+      if (typeof sagt !== 'function') return echt(name, data, z); // die Attrappe lehnt selbst ab
+      throw sagt(data.item);
+    };
+    const Z = { ruf: [], hist: [] };
+    const c = chronikKarte(chronikHass(L, () => { throw new Error('der Verlauf wird nicht gebraucht'); }, Z));
+    c._dbgChronik = { check: 1 };
+    c.um(T.chronikStart(HEUTE) + 6 * 36e5);
+    const erg = await c._chronikNow();
+    return { L, c, ruf: Z.ruf, erg, titel: L.items.map((x) => x.summary).filter((s) => s.includes(d)) };
+  };
+  const w0 = warned.length;
+  const l0 = leise.length;
+  for (const [name, sagt] of formen) {
+    // Löschen: zwei gleiche Einträge, der zweite ist schon weg
+    let R = await lauf([a, a], 'remove_item', sagt);
+    assert.equal(R.erg, true, name);
+    assert.deepEqual(R.ruf, ['todo/item/list', 'todo.remove_item', 'todo/item/list'], `${name}: weiter, und nachgeprüft`);
+    assert.deepEqual(R.titel, [a], name);
+    assert.ok(R.c._errs === undefined && !R.c._chronikNext && !R.c._chronikBusy, name);
+    if (!sagt) assert.deepEqual([R.L.weg, R.L.spaet], [1, 1], 'die Attrappe sagt „No existing item“');
+    // Ändern: Der bleibende Eintrag ist schon weg. Nichts löschen, neu lesen: Der andere steht jetzt allein da.
+    R = await lauf([a, b], 'update_item', sagt);
+    assert.equal(R.erg, true, name);
+    assert.deepEqual(R.ruf, ['todo/item/list', 'todo.update_item', 'todo/item/list'], name);
+    assert.deepEqual(R.titel, [b], name);
+    assert.ok(R.c._errs === undefined && !R.c._chronikNext && !R.c._chronikBusy, name);
+    if (!sagt) assert.deepEqual([R.L.weg, R.L.spaet], [1, 1]);
+  }
+  assert.deepEqual([warned.length - w0, leise.length - l0], [0, 0], 'weder Warnung noch leise Zeile: Das ist der gewöhnliche Fall');
+  // Gegenprobe: Derselbe code mit einer anderen Meldung ist etwas anderes: Fehlschlag, später noch einmal
+  let R = await lauf([a, a], 'remove_item', () => ({ code: 'unknown_error', message: 'Unknown error' }));
+  assert.equal(R.erg, false);
+  assert.deepEqual(R.ruf, ['todo/item/list', 'todo.remove_item']);
+  assert.ok(R.c._chronikNext > Date.now() && R.c._errs === undefined);
+  assert.equal(leise.length - l0, 1);
+  // … und ein Error mit passendem Text stammt aus dem eigenen Code: Der gehört in den Fehlerspeicher
+  // (Error aus der Welt der Karte: Nur den erkennt sie mit instanceof)
+  const KartenError = vm.runInContext('Error', WELT);
+  R = await lauf([a, a], 'remove_item', () => new KartenError('No existing item with uid/recurrence_id: x/None'));
+  assert.equal(R.erg, false);
+  assert.deepEqual(plain(R.c._errs).map((e) => [e.where, e.n]), [['Chronik', 1]]);
+  // die erkannten Formen für sich (auch ohne code; nie eine Zahl, ein Text oder nichts)
+  const c = chronikKarte(chronikHass(todoListe(), () => ({})));
+  assert.deepEqual([formen[0][1]('x'), formen[1][1]('x'), { message: 'no existing item' }, { code: 'unknown_error', message: 'x' }, { code: 'service_validation_error', message: 'Validation error: nope' },
+    3, 'No existing item', null, undefined].map((e) => c._chronikGone(e)), [true, true, true, false, false, false, false, false, false]);
+});
+
+test('Chronik am Gerät: abgehängt oder andere Liste: der Lauf endet und schreibt nichts mehr', async () => {
+  const g = HEUTE - 1;
+  const V = chronikVerlauf([[g, { futter: 2 }]]);
+  const L = todoListe();
+  const Z = { ruf: [], hist: [] };
+  const c = chronikKarte(chronikHass(L, chronikRecorder(V, Z), Z));
+  c._dbgChronik = { check: 60000 }; // lange genug, dass der Lauf sicher noch wartet, wenn der Test ihn abbricht
+  c.um(T.chronikStart(HEUTE) + 6 * 36e5);
+  const z0 = zeitgeber;
+  const p = c._chronikNow();
+  for (let i = 0; i < 5 && !c._chronikW; i++) await gleich();
+  assert.ok(c._chronikW, 'angelegt ist, der Lauf wartet vor dem Nachprüfen');
+  assert.equal(zeitgeber, z0 + 1);
+  assert.deepEqual(Z.ruf, ['todo/item/list', 'history/history_during_period', 'todo.add_item']);
+  const t = c._chronikW.t;
+  c._chronikStop(); // das ruft _detach
+  const weg = abgeraeumt.has(t);
+  clearTimeout(t); // (bliebe er stehen, hielte er den Testlauf noch eine Minute offen)
+  assert.ok(weg, 'der Zeitgeber ist abgeräumt');
+  assert.equal(await p, null);
+  assert.equal(Z.ruf.length, 3);
+  assert.ok(!c._chronikBusy && !c._chronikW && !c._chronikOk && !c._chronikNext, 'weder geprüft noch Fehlschlag');
+  const ab = [...quell.matchAll(/\n  _detach\(\) \{\n[\s\S]*?\n  \}\n/g)];
+  assert.equal(ab.length, 1);
+  assert.equal(ab[0][0].split('this._chronikStop();').length - 1, 1, '_detach beendet den Lauf');
+  // wieder eingehängt: Der nächste Takt prüft neu (der Tag steht schon da: lesen, nichts fehlt … doch, die Tage davor)
+  c._dbgChronik = { check: 1 };
+  c._chronikJit = 0;
+  c._chronikTick();
+  assert.equal(await c._chronikBusy.p, true);
+  assert.deepEqual(Z.ruf.slice(3), ['todo/item/list', 'history/history_during_period']);
+  assert.equal(L.items.length, 1);
+
+  // Andere Liste, während ein Aufruf unterwegs ist: Was danach käme, unterbleibt
+  let weiter = null;
+  const L2 = todoListe();
+  const Z2 = { ruf: [], hist: [] };
+  const h = chronikHass(L2, chronikRecorder(V, Z2), Z2);
+  const ws = h.callWS;
+  h.callWS = (m) => (m.type === 'todo/item/list' ? ws(m) : new Promise((ja) => { weiter = () => ja(ws(m)); }));
+  const e = chronikKarte(h);
+  e.um(T.chronikStart(HEUTE) + 6 * 36e5);
+  const q = e._chronikNow();
+  for (let i = 0; i < 5 && !weiter; i++) await gleich();
+  assert.ok(weiter, 'der Verlauf ist angefragt');
+  e._chronikStand = { t: 1, tage: new Map() };
+  e._cfg = { ...e._cfg, chronicle_entity: 'todo.andere' };
+  e._chronikReset(); // das ruft setConfig bei einer anderen Liste
+  assert.equal(e._chronikStand, null);
+  weiter();
+  assert.equal(await q, null);
+  await gleich();
+  assert.deepEqual(Z2.ruf, ['todo/item/list', 'history/history_during_period']);
+  assert.equal(L2.items.length, 0);
+  assert.equal(e._errs, undefined);
+
+  // Abgehängt, während das Anlegen unterwegs ist: Der Eintrag kommt noch an, danach stellt der Lauf keinen Zeitgeber
+  // mehr (er prüft nicht nach; das holt der nächste Lauf)
+  let fertig = null;
+  const L3 = todoListe();
+  const Z3 = { ruf: [], hist: [] };
+  const h3 = chronikHass(L3, chronikRecorder(V, Z3), Z3);
+  const sv = h3.callService;
+  h3.callService = (...x) => new Promise((ja) => { fertig = () => ja(sv(...x)); });
+  const f = chronikKarte(h3);
+  f.um(T.chronikStart(HEUTE) + 6 * 36e5);
+  const r = f._chronikNow();
+  for (let i = 0; i < 5 && !fertig; i++) await gleich();
+  assert.ok(fertig, 'das Anlegen ist unterwegs');
+  const z1 = zeitgeber;
+  f._chronikStop();
+  fertig();
+  assert.equal(await r, null);
+  await gleich();
+  assert.equal(L3.items.length, 1);
+  assert.deepEqual(Z3.ruf, ['todo/item/list', 'history/history_during_period', 'todo.add_item']);
+  assert.equal(zeitgeber, z1, 'kein Zeitgeber an einer abgehängten Karte');
+  assert.ok(!f._chronikW && !f._chronikBusy);
+
+  // Zwei Tage fehlen, abgehängt wird, während der erste angelegt wird: Der zweite geht nicht mehr hinaus
+  let los = null;
+  const L4 = todoListe();
+  const Z4 = { ruf: [], hist: [] };
+  const h4 = chronikHass(L4, chronikRecorder(chronikVerlauf([[g - 1, { futter: 1 }], [g, { futter: 2 }]]), Z4), Z4);
+  const sv4 = h4.callService;
+  h4.callService = (...x) => new Promise((ja) => { los = () => ja(sv4(...x)); });
+  const k = chronikKarte(h4);
+  k.um(T.chronikStart(HEUTE) + 6 * 36e5);
+  const r4 = k._chronikNow();
+  for (let i = 0; i < 5 && !los; i++) await gleich();
+  assert.ok(los, 'das erste Anlegen ist unterwegs');
+  k._chronikStop();
+  los();
+  los = null;
+  for (let i = 0; i < 5; i++) await gleich();
+  assert.equal(los, null, 'kein zweiter Aufruf');
+  assert.equal(await r4, null);
+  assert.deepEqual(Z4.ruf, ['todo/item/list', 'history/history_during_period', 'todo.add_item']);
+  assert.deepEqual(L4.items.map((x) => x.summary), [`Pika-Tag ${datum(g - 1)} · futter=1 streicheln=0 putzen=0 paeckchen=0 besuch=-`]);
+  // Gegenprobe mit denselben Attrappen, ohne abzuhängen: Beide Tage werden angelegt
+  h4.callService = sv4;
+  const k2 = chronikKarte(h4);
+  k2._dbgChronik = { check: 1 };
+  k2.um(T.chronikStart(HEUTE) + 6 * 36e5);
+  assert.equal(await k2._chronikNow(), true);
+  assert.equal(L4.items.length, 2);
+});
+
+test('Chronik am Gerät: still aus in einer anderen Zeitzone als HA, in der Editor-Vorschau und solange die Karte nicht zu sehen ist', async () => {
+  const g = HEUTE - 1;
+  const V = chronikVerlauf([[g, { futter: 2 }]]);
+  const lauf = ['todo/item/list', 'history/history_during_period', 'todo.add_item', 'todo/item/list'];
+  const neu = (config) => {
+    const L = todoListe();
+    const Z = { ruf: [], hist: [] };
+    const h = chronikHass(L, chronikRecorder(V, Z), Z);
+    if (config) h.config = config;
+    const c = nurTakt(chronikKarte(h));
+    c._dbgChronik = { check: 1 };
+    c._chronikJit = 0;
+    c.um(T.chronikStart(HEUTE) + 6 * 36e5);
+    return { L, Z, h, c };
+  };
+  const w0 = warned.length;
+  const l0 = leise.length;
+  const z0 = zeitgeber;
+  // still: kein Aufruf, kein Zeitgeber, keine Pause, nichts in der Konsole, auch nicht über _chronikNow und _chronikLesen
+  const still = async ({ L, Z, c }, wo) => {
+    for (let i = 0; i < 3; i++) c._tick();
+    assert.equal(c._chronikOn(), false, wo);
+    assert.equal(await c._chronikNow(), null, wo);
+    assert.equal(await c._chronikLesen(), null, wo);
+    await gleich();
+    assert.deepEqual(Z.ruf, [], wo);
+    assert.ok(!c._chronikBusy && !c._chronikNext && !c._chronikOk && !c._chronikStand && c._errs === undefined, wo);
+    assert.equal(L.items.length, 0, wo);
+  };
+  const geht = async ({ L, Z, c }, wo) => {
+    c._tick();
+    assert.ok(c._chronikBusy, wo);
+    assert.equal(await c._chronikBusy.p, true, wo);
+    assert.deepEqual(Z.ruf, lauf, wo);
+    assert.equal(L.items.length, 1, wo);
+  };
+  // Zeitzone: HA steht woanders als das Gerät (das Handy auf Reisen). Sein Pika-Tag beginnt zu einer anderen Stunde.
+  const fremd = andereZone(T.chronikStart(HEUTE) + 6 * 36e5);
+  assert.ok(fremd);
+  let K = neu({ time_zone: fremd });
+  await still(K, `HA in ${fremd}, das Gerät in ${HIER}`);
+  assert.equal(zeitgeber, z0);
+  // wieder zu Hause (dieselbe Karte, dieselben Attrappen): Der nächste Takt prüft
+  K.h.config.time_zone = HIER;
+  await geht(K, HIER);
+  // nicht prüfbar: HA nennt keine Zone (config fehlt, ist leer) oder der Browser kennt sie nicht → wie bisher erlaubt
+  for (const config of [undefined, {}, { time_zone: null }, { time_zone: 'Mars/Olympus' }]) await geht(neu(config), JSON.stringify(config));
+  // Zwei Zonen können heute gleich gehen und vor einer Woche nicht (eine hat inzwischen die Uhr umgestellt). Geprüft
+  // wird darum auch der Beginn des ältesten Tags, der nachgetragen würde. Gesucht: eine Zone und ein Zeitpunkt in
+  // 2026, für die genau das auf diesem Rechner gilt (feste Zonen für jede volle Stunde, dazu einige mit Sommerzeit).
+  const lokal = (t) => -new Date(t).getTimezoneOffset();
+  const davor = (t) => T.chronikStart(T.pikaDay(t) - T.CHRONIK.back);
+  const zonen = [...Array.from({ length: 27 }, (_, i) => (i === 14 ? 'Etc/GMT' : `Etc/GMT${i > 14 ? '+' : ''}${i - 14}`)),
+    'Europe/London', 'Europe/Berlin', 'Europe/Helsinki', 'America/New_York', 'America/Santiago', 'Australia/Sydney', 'Pacific/Auckland'];
+  assert.ok(zonen.every((z) => T.chronikVersatz(z, NOW) != null), 'der Rechner kennt alle diese Zonen');
+  let paar = null;
+  let stelltUm = false;
+  for (let t = Date.UTC(2026, 0, 8, 12); t < Date.UTC(2027, 0, 1); t += 7 * 864e5) {
+    if (lokal(t) !== lokal(davor(t))) stelltUm = true;
+    paar ??= zonen.map((z) => ({ z, t })).find(({ z }) => T.chronikVersatz(z, t) === lokal(t) && T.chronikVersatz(z, davor(t)) !== lokal(davor(t)));
+  }
+  // (Stellt der Rechner selbst nie um und geht keine der Zonen mit Sommerzeit zeitweise wie er, gibt es kein solches
+  // Paar, etwa mit TZ=Asia/Tokyo. Mit Sommerzeit oder in UTC gibt es eines.)
+  assert.ok(paar || !stelltUm, `kein Paar für ${HIER}`);
+  if (HIER === 'Europe/Berlin' || HIER === 'UTC') assert.ok(paar);
+  if (paar) {
+    K = neu({ time_zone: paar.z });
+    K.c.um(paar.t);
+    assert.equal(T.chronikZoneOk(paar.z, [paar.t]), true, 'jetzt gehen beide gleich');
+    assert.equal(K.c._chronikOn(), false, `${paar.z} gegen ${HIER} am ${new Date(paar.t).toISOString()}`);
+    K.h.config.time_zone = HIER;
+    assert.equal(K.c._chronikOn(), true);
+  }
+
+  // Editor von HA: Die Vorschau-Karte (preview = true) schriebe sonst sofort, noch vor dem Speichern
+  K = neu({ time_zone: HIER });
+  K.c.preview = true;
+  await still(K, 'Vorschau im Editor');
+  K.c.preview = false; // die gespeicherte Karte im Dashboard
+  await geht(K, 'gespeicherte Karte');
+
+  // Nicht zu sehen (Tab im Hintergrund, Bildschirm aus): Der Takt pflegt nur Fristen, die Chronik prüft nicht
+  K = neu();
+  let kaffee = 0;
+  Object.assign(K.c, { _away: () => true, _tickCoffee: () => { kaffee++; } });
+  for (let i = 0; i < 3; i++) K.c._tick();
+  await gleich();
+  assert.equal(kaffee, 3, 'der Takt läuft');
+  assert.deepEqual(K.Z.ruf, []);
+  assert.ok(!K.c._chronikBusy);
+  K.c._away = () => false;
+  await geht(K, 'wieder zu sehen');
+  assert.deepEqual([warned.length - w0, leise.length - l0], [0, 0]);
+});
+
+test('Chronik am Gerät: geändert und gelöscht wird nur aus einem frischen Lesestand (drei Geräte, eines kommt spät)', async () => {
+  const d = datum(HEUTE - 1);
+  const d1 = HEUTE - 2;
+  const rest = [3, 4, 5, 6, 7].map((i) => `Pika-Tag ${datum(HEUTE - i)} · futter=0`);
+  const V = chronikVerlauf([[d1, { futter: 1 }]]);
+  const neuerTag = `Pika-Tag ${datum(d1)} · futter=1 streicheln=0 putzen=0 paeckchen=0 besuch=-`;
+  const t = (x) => `Pika-Tag ${d} · ${x}`;
+  const a = t('futter=3 streicheln=4 putzen=0 paeckchen=0 besuch=vogel');
+  const b = t('futter=2 streicheln=2 putzen=0 paeckchen=1 besuch=falter');
+  const c3 = t('futter=1 streicheln=9 putzen=2 paeckchen=0 besuch=pino');
+  const voll = t('futter=3 streicheln=9 putzen=2 paeckchen=1 besuch=pino,vogel,falter');
+  const ziel = { entity_id: CH };
+  // Die Uhr des Geräts lässt sich vorstellen: So „hängt“ ein Aufruf, ohne dass der Test wartet
+  const echtNow = Date.now;
+  let vor = 0;
+  Date.now = () => echtNow() + vor;
+  // Das Gerät liest, dann hängt sein erstes Anlegen (das Handy schläft ein): Inzwischen vergeht dauer, und
+  // andere(L) geschieht an der Liste. → Liste, Aufrufe, Ergebnis, Titel des Tags d
+  const lauf = async (titel, dauer, andere = () => {}) => {
+    const L = todoListe([...rest, ...titel]);
+    const echt = L.dienst;
+    let erstes = true;
+    L.dienst = (name, data, z) => {
+      if (name === 'add_item' && erstes) {
+        erstes = false;
+        andere(L, echt);
+        vor += dauer;
+      }
+      return echt(name, data, z);
+    };
+    const Z = { ruf: [], hist: [] };
+    const c = chronikKarte(chronikHass(L, chronikRecorder(V, Z), Z));
+    c._dbgChronik = { check: 1 };
+    c.um(T.chronikStart(HEUTE) + 6 * 36e5);
+    const erg = await c._chronikNow();
+    assert.equal(c._errs, undefined);
+    return { L, Z, erg, titel: L.items.map((x) => x.summary).filter((s) => s.includes(d)) };
+  };
+  try {
+    // Zwei Einträge für gestern (von Gerät A und von diesem, C), vorgestern fehlt. Der Plan: vorgestern anlegen, dann
+    // den Eintrag von A auf „A und C“ ändern. Während das Anlegen hängt, legt Gerät B seinen an, und A räumt auf:
+    // Der bleibende Eintrag enthält jetzt alles von A, B und C, die anderen beiden sind gelöscht.
+    const dritte = (L, echt) => {
+      echt('add_item', { item: b }, ziel);
+      const uid = (s) => L.items.find((x) => x.summary === s).uid;
+      echt('update_item', { item: uid(a), rename: voll }, ziel);
+      echt('remove_item', { item: uid(b) }, ziel);
+      echt('remove_item', { item: uid(c3) }, ziel);
+    };
+    let R = await lauf([a, c3], T.CHRONIK.frisch + 1000, dritte);
+    // Der alte Plan wird nicht mehr ausgeführt („A und C“ nähme dem Eintrag wieder, was B beitrug, und B ist gelöscht):
+    // kein update_item, stattdessen neu lesen. Dort ist nichts mehr zu tun.
+    assert.deepEqual(R.Z.ruf, ['todo/item/list', 'history/history_during_period', 'todo.add_item', 'todo/item/list']);
+    assert.equal(R.erg, true);
+    assert.deepEqual(R.titel, [voll], 'nichts von dem, was B beitrug, ist verloren');
+    assert.ok(R.L.items.some((x) => x.summary === neuerTag), 'das späte Anlegen kommt an');
+    assert.equal(R.L.weg, 0);
+    // Derselbe Ablauf ohne die anderen Geräte: Der alte Plan wäre noch richtig, aber das weiß das Gerät nicht. Es
+    // liest neu und führt ihn dann aus (ändern, lesen, löschen, lesen).
+    R = await lauf([a, c3], T.CHRONIK.frisch + 1000);
+    assert.deepEqual(R.Z.ruf, ['todo/item/list', 'history/history_during_period', 'todo.add_item', 'todo/item/list', 'todo.update_item',
+      'todo/item/list', 'todo.remove_item', 'todo/item/list']);
+    assert.equal(R.erg, true);
+    assert.deepEqual(R.titel, [t('futter=3 streicheln=9 putzen=2 paeckchen=0 besuch=pino,vogel')]);
+    // … und das Löschen einer reinen Dopplung ebenso: erst neu lesen
+    R = await lauf([a, a], T.CHRONIK.frisch + 1000);
+    assert.deepEqual(R.Z.ruf, ['todo/item/list', 'history/history_during_period', 'todo.add_item', 'todo/item/list', 'todo.remove_item', 'todo/item/list']);
+    assert.deepEqual([R.erg, R.titel], [true, [a]]);
+    // Ist der Lesestand noch frisch (das Anlegen dauerte kürzer), geht es ohne Umweg weiter
+    R = await lauf([a, a], T.CHRONIK.frisch - 2000);
+    assert.deepEqual(R.Z.ruf, ['todo/item/list', 'history/history_during_period', 'todo.add_item', 'todo.remove_item', 'todo/item/list']);
+    assert.deepEqual([R.erg, R.titel], [true, [a]]);
+    assert.equal(T.CHRONIK.frisch, 10000);
+    // Anlegen bleibt davon unberührt: Braucht schon der Verlauf länger, wird trotzdem angelegt. Ein spätes Anlegen
+    // kostet höchstens eine Dopplung, und die wird abgeräumt.
+    const L = todoListe([...rest, a]);
+    const Z = { ruf: [], hist: [] };
+    const rec = chronikRecorder(V, Z);
+    const spaet = chronikKarte(chronikHass(L, (m) => {
+      vor += T.CHRONIK.frisch + 1000;
+      return rec(m);
+    }, Z));
+    spaet._dbgChronik = { check: 1 };
+    spaet.um(T.chronikStart(HEUTE) + 6 * 36e5);
+    assert.equal(await spaet._chronikNow(), true);
+    assert.deepEqual(Z.ruf, ['todo/item/list', 'history/history_during_period', 'todo.add_item', 'todo/item/list']);
+    assert.ok(L.items.some((x) => x.summary === neuerTag));
+    // Die Zeit zählt ab dem Lesen der Liste, auch der Abruf des Verlaufs gehört dazu. Braucht er lange und gibt es
+    // danach nichts anzulegen (an dem fehlenden Tag tat sich nichts), ist das Verwerfen des alten Stands das Einzige,
+    // was die Runde „geschrieben“ hat: Trotzdem wird neu gelesen und dann erst gelöscht.
+    const L2 = todoListe([...rest, a, a]);
+    const Z2 = { ruf: [], hist: [] };
+    const rec2 = chronikRecorder(chronikVerlauf([[HEUTE - 9, { futter: 1 }]]), Z2);
+    const lahm = chronikKarte(chronikHass(L2, (m) => {
+      vor += T.CHRONIK.frisch + 1000;
+      return rec2(m);
+    }, Z2));
+    lahm._dbgChronik = { check: 1 };
+    lahm.um(T.chronikStart(HEUTE) + 6 * 36e5);
+    assert.equal(await lahm._chronikNow(), true);
+    assert.deepEqual(Z2.ruf, ['todo/item/list', 'history/history_during_period', 'todo/item/list', 'todo.remove_item', 'todo/item/list']);
+    assert.deepEqual(L2.items.map((x) => x.summary).filter((x) => x.includes(d)), [a]);
+  } finally {
+    Date.now = echtNow;
+  }
+});
+
+test('Chronik am Gerät: Fehlschläge in Folge verdoppeln die Pause bis zu einem Tag, ein fertiger Lauf fängt wieder bei einer Stunde an', async () => {
+  const g = HEUTE - 1;
+  const L = todoListe();
+  const Z = { ruf: [], hist: [] };
+  // Der Recorder zeichnet die Helfer nicht auf: Das bleibt so, bis es jemand ändert
+  let rec = () => ({});
+  const c = chronikKarte(chronikHass(L, (m) => rec(m), Z));
+  c._dbgChronik = { check: 1 };
+  c._chronikJit = 0;
+  c.um(T.chronikStart(HEUTE) + 6 * 36e5);
+  const pause = () => Math.round((c._chronikNext - Date.now()) / 36e4) / 10; // Stunden, auf eine Stelle
+  const fehlschlag = async () => {
+    c._chronikNext = Date.now() - 1; // die Pause ist um
+    c._chronikTick();
+    assert.ok(c._chronikBusy);
+    assert.equal(await c._chronikBusy.p, false);
+    return pause();
+  };
+  const pausen = [];
+  for (let i = 0; i < 8; i++) pausen.push(await fehlschlag());
+  assert.deepEqual(pausen, [1, 2, 4, 8, 16, 24, 24, 24]);
+  assert.equal(c._chronikFails, 8);
+  assert.deepEqual([T.CHRONIK.retry, T.CHRONIK.retryMax], [36e5, 24 * 36e5]);
+  // in der Pause: kein Aufruf
+  const n = Z.ruf.length;
+  assert.equal(n, 16);
+  for (let i = 0; i < 3; i++) c._chronikTick();
+  assert.ok(!c._chronikBusy);
+  assert.equal(Z.ruf.length, n);
+  // Der Recorder zeichnet wieder auf: Der nächste Lauf wird fertig, danach beginnt es wieder bei einer Stunde
+  const heil = chronikRecorder(chronikVerlauf([[g, { futter: 2 }]]), Z);
+  rec = heil;
+  c._chronikNext = Date.now() - 1;
+  c._chronikTick();
+  assert.equal(await c._chronikBusy.p, true);
+  assert.deepEqual([c._chronikFails, c._chronikNext], [0, 0]);
+  rec = () => ({});
+  assert.equal(await c._chronikNow(), false); // (die Tage davor fehlen noch: Der Verlauf wird wieder gefragt)
+  assert.deepEqual([c._chronikFails, pause()], [1, 1]);
+  assert.equal(await c._chronikNow(), false);
+  assert.deepEqual([c._chronikFails, pause()], [2, 2]);
+  // Ein Lauf, der hängt und aufgegeben wird, zählt als Fehlschlag
+  c._hass.callWS = () => new Promise(() => {});
+  c._chronikNext = 0;
+  c._chronikOk = null;
+  c._chronikTick();
+  assert.ok(c._chronikBusy);
+  c._chronikBusy.at -= T.CHRONIK.hang + 1000;
+  c._chronikTick();
+  assert.deepEqual([c._chronikBusy, c._chronikFails, pause()], [null, 3, 4]);
+  // andere Liste: von vorn
+  c._chronikReset();
+  assert.deepEqual([c._chronikFails, c._chronikNext], [0, 0]);
+  assert.equal(c._errs, undefined);
+});
+
+test('Chronik am Gerät: schreibt auch die letzte Runde noch, gilt der Tag nicht als geprüft; vor jedem Nachprüfen 30 bis 60 Sekunden', async () => {
+  await mitSpeicher(async (M) => {
+    const d = datum(HEUTE - 1);
+    const rest = [2, 3, 4, 5, 6, 7].map((i) => `Pika-Tag ${datum(HEUTE - i)} · futter=0`);
+    const a = `Pika-Tag ${d} · futter=3 streicheln=1 putzen=0 paeckchen=0 besuch=-`;
+    const L = todoListe([...rest, a]);
+    // Ein anderes Gerät legt denselben Tag immer wieder an (vor jedem Lesen steht eine neue Dopplung da)
+    let stoert = true;
+    const lies = L.lies;
+    L.lies = (m) => {
+      if (stoert) L.dienst('add_item', { item: a }, { entity_id: CH });
+      return lies(m);
+    };
+    const Z = { ruf: [], hist: [] };
+    const c = chronikKarte(chronikHass(L, () => { throw new Error('der Verlauf wird nicht gebraucht'); }, Z));
+    c._chronikJit = 0;
+    c.um(T.chronikStart(HEUTE) + 6 * 36e5);
+    // (ohne _dbgChronik: die echte Wartezeit, hier nur mitgeschrieben statt abgewartet)
+    const warten = [];
+    c._chronikWait = (ms) => {
+      warten.push(ms);
+      return Promise.resolve();
+    };
+    const l0 = leise.length;
+    c._chronikTick();
+    assert.equal(await c._chronikBusy.p, false, 'nach drei Runden ist nicht bewiesen, dass die Liste sauber ist');
+    assert.deepEqual(Z.ruf, ['todo/item/list', 'todo.remove_item', 'todo/item/list', 'todo.remove_item', 'todo/item/list', 'todo.remove_item',
+      'todo/item/list', 'todo.remove_item']);
+    assert.equal(warten.length, T.CHRONIK.rounds);
+    assert.ok(warten.every((ms) => ms >= 30000 && ms < 60000), `Wartezeiten ${warten.join(', ')}`);
+    assert.equal(new Set(warten).size, warten.length, 'jedes Mal neu gewürfelt');
+    assert.deepEqual([T.CHRONIK.check, T.CHRONIK.checkJit, T.CHRONIK.rounds], [30000, 30000, 3]);
+    // nicht als geprüft gemerkt, und nach der Pause von vorn (kein Fehler, nichts in der Konsole)
+    assert.equal(M.size, 0);
+    assert.ok(!c._chronikOk && !c._chronikBusy && c._errs === undefined);
+    assert.ok(Math.abs(c._chronikNext - Date.now() - T.CHRONIK.retry) < 5000);
+    assert.equal(leise.length, l0);
+    const n = Z.ruf.length;
+    for (let i = 0; i < 3; i++) c._chronikTick();
+    assert.equal(Z.ruf.length, n);
+    // Das andere Gerät gibt Ruhe: Der nächste Versuch findet die Liste sauber vor (die letzte Dopplung ist abgeräumt)
+    // und wird fertig
+    stoert = false;
+    c._chronikNext = Date.now() - 1;
+    c._chronikTick();
+    assert.equal(await c._chronikBusy.p, true);
+    assert.deepEqual(Z.ruf.slice(n), ['todo/item/list']);
+    assert.deepEqual(L.items.map((x) => x.summary).filter((s) => s.includes(d)), [a]);
+    assert.deepEqual([...M], [['pika-pet-chronik:Pika', `${CH}|${HEUTE}`]]);
+    assert.equal(warten.length, T.CHRONIK.rounds, 'wer nichts schreibt, prüft nicht nach');
+    assert.deepEqual([c._chronikFails, c._chronikNext], [0, 0]);
+  });
+});
+
+test('Chronik: setConfig lehnt alles ab, was keine To-do-Liste ist, und fängt bei einer anderen Liste von vorn an', () => {
+  const c = Object.create(T.PikaPetCard.prototype);
+  for (const id of ['input_text.pika', 'todo', 'todo.', 'pikas_chronik', 'todo.a b', 'sensor.todo.x']) {
+    assert.throws(() => c.setConfig({ chronicle_entity: id }), (e) => e.message === `pika-pet-card: chronicle_entity muss eine To-do-Liste sein (ist "${id}")`, id);
+  }
+  // der Rest von setConfig mit Attrappen für alles, was die Szene braucht
+  let resets = 0;
+  const echt = c._chronikReset;
+  Object.assign(c, {
+    _el: { name: {}, stats: {}, scene: { style: { removeProperty() {}, setProperty() {} }, classList: { toggle() {} } } },
+    _applyAreal() {}, _diarySync() {}, _planReset() {}, _renderStats() {}, _loadLocal() {}, _lsRename() {},
+    _chronikReset() {
+      resets++;
+      return echt.call(this);
+    },
+  });
+  c.setConfig({ name: 'Pika' });
+  assert.equal(c._cfg.chronicle_entity, null, 'Standard: keine Chronik');
+  assert.equal(resets, 1);
+  c.setConfig({ name: 'Pika', chronicle_entity: CH });
+  assert.equal(resets, 2);
+  Object.assign(c, { _chronikStand: { t: 1 }, _chronikOk: `${CH}|1`, _chronikNext: 5, _chronikBusy: { at: 0 } });
+  // der Editor ruft setConfig bei jeder Änderung: Bleibt die Liste, bleibt alles
+  c.setConfig({ name: 'Pikachu', chronicle_entity: CH, height: 200 });
+  assert.equal(resets, 2);
+  assert.deepEqual(plain(c._chronikStand), { t: 1 });
+  c.setConfig({ name: 'Pikachu', chronicle_entity: 'todo.andere' });
+  assert.equal(resets, 3);
+  assert.deepEqual([c._chronikStand, c._chronikOk, c._chronikNext, c._chronikBusy], [null, null, 0, null]);
+  c.setConfig({ name: 'Pikachu' });
+  assert.equal(resets, 4);
+  // im Editor: ein Feld für die Domäne todo, mit Beschriftung und Hilfetext, gleich unter den beiden Helfern
+  const form = T.PikaPetCard.getConfigForm();
+  const namen = form.schema.map((s) => s.name);
+  assert.equal(namen.indexOf('chronicle_entity'), namen.indexOf('plan_entity') + 1);
+  const feld = form.schema.find((s) => s.name === 'chronicle_entity');
+  assert.deepEqual(plain(feld.selector), { entity: { filter: { domain: 'todo' } } });
+  assert.match(form.computeLabel(feld), /To-do-Liste/);
+  assert.ok(form.computeHelper(feld).length > 20);
+});
+
+// Zwei Karten an einer Liste. Jeder Aufruf an HA (Liste lesen, Verlauf, anlegen, ändern, löschen) bleibt stehen, bis
+// der Test ihn freigibt: pfad[i] sagt, welches der wartenden Geräte beim i-ten Schritt drankommt.
+// → Liste, Geräte (neu: so oft hat es angelegt) und wie viele bei jedem Schritt zur Wahl standen
+const chronikZuZweit = async (pfad, { start, uid, verlauf, jetzt }) => {
+  const L = todoListe(start, uid);
+  const G = verlauf.map((V) => {
+    const D = { los: null, erg: undefined, fertig: false, neu: 0 };
+    const tor = (tun) => new Promise((ja, nein) => {
+      D.los = () => {
+        D.los = null;
+        try {
+          ja(tun());
+        } catch (e) {
+          nein(e);
+        }
+      };
+    });
+    const rec = chronikRecorder(V);
+    D.c = chronikKarte({
+      ...chronikHass(L, rec),
+      callWS: (m) => tor(() => (m.type === 'todo/item/list' ? L.lies(m) : rec(m))),
+      callService: (dom, name, data, ziel) => tor(() => {
+        if (name === 'add_item') D.neu++;
+        return L.dienst(name, data, ziel);
+      }),
+    });
+    D.c._chronikWait = () => Promise.resolve(); // Wartezeit vor dem Nachprüfen: Die Reihenfolge bestimmt hier der Test
+    D.c.um(jetzt);
+    D.c._chronikNow().then((r) => {
+      D.erg = r;
+      D.fertig = true;
+    });
+    return D;
+  });
+  const wahl = [];
+  for (;;) {
+    for (let i = 0; i < 200 && G.some((D) => !D.fertig && !D.los); i++) await Promise.resolve();
+    assert.ok(G.every((D) => D.fertig || D.los), 'ein Gerät hängt zwischen zwei Aufrufen');
+    const bereit = G.filter((D) => D.los);
+    if (!bereit.length) break;
+    const k = pfad[wahl.length] ?? 0;
+    assert.ok(k < bereit.length);
+    wahl.push(bereit.length);
+    bereit[k].los();
+  }
+  return { L, G, wahl };
+};
+// Alle Reihenfolgen durchgehen: wie ein Kilometerzähler die letzte Stelle hochzählen, an der noch eine Wahl offen ist
+const allePfade = async (lauf) => {
+  let pfad = [];
+  for (let n = 1; ; n++) {
+    const wahl = await lauf(pfad);
+    const p = wahl.map((_, i) => pfad[i] ?? 0);
+    let i = p.length - 1;
+    while (i >= 0 && p[i] + 1 >= wahl[i]) i--;
+    if (i < 0) return n;
+    pfad = [...p.slice(0, i), p[i] + 1];
+  }
+};
+
+test('Chronik, zwei Geräte an einer Liste: in jeder Reihenfolge der Aufrufe bleibt genau ein Eintrag je Tag, nichts geht verloren', async () => {
+  const g = HEUTE - 1;
+  const d = datum(g);
+  const start = [{ summary: 'Milch kaufen', uid: 'm1', status: 'completed', description: 'Bio' },
+    { summary: `Pika-Tag ${datum(g - 1)} da waren wir im Zoo`, uid: 'z1', status: 'needs_action', due: '2026-11-09' }];
+  const auf = (n) => `u${String(n).padStart(3, '0')}`;
+  const ab = (n) => `u${String(999 - n).padStart(3, '0')}`; // HA vergibt die uid zufällig: Der jüngere Eintrag kann der kleinere sein
+  const t = (rest) => `Pika-Tag ${d} · ${rest}`;
+  const faelle = [
+    // beide Geräte leiten dieselbe Bilanz ab
+    { name: 'gleiche Bilanz', uid: auf, a: { futter: 2, streicheln: 5 }, b: { futter: 2, streicheln: 5 }, min: 200,
+      ta: t('futter=2 streicheln=5 putzen=0 paeckchen=0 besuch=-'), tb: t('futter=2 streicheln=5 putzen=0 paeckchen=0 besuch=-'),
+      beide: t('futter=2 streicheln=5 putzen=0 paeckchen=0 besuch=-') },
+    // das zweite hat schon mehr im Verlauf (einmal mehr gefüttert, Pino war da)
+    { name: 'eine Bilanz enthält die andere', uid: auf, a: { futter: 2, streicheln: 5 }, b: { futter: 3, streicheln: 5, mem: 16 }, min: 1000,
+      ta: t('futter=2 streicheln=5 putzen=0 paeckchen=0 besuch=-'), tb: t('futter=3 streicheln=5 putzen=0 paeckchen=0 besuch=pino'),
+      beide: t('futter=3 streicheln=5 putzen=0 paeckchen=0 besuch=pino') },
+    // jedes weiß etwas, das dem anderen fehlt (und hier bekommt der jüngere Eintrag die kleinere uid: Er bleibt)
+    { name: 'jede Bilanz hat etwas für sich', uid: ab, a: { futter: 3, streicheln: 4, mem: 64 }, b: { futter: 1, streicheln: 9, mem: 16, putzen: 2 }, min: 2000,
+      ta: t('futter=3 streicheln=4 putzen=0 paeckchen=0 besuch=vogel'), tb: t('futter=1 streicheln=9 putzen=2 paeckchen=0 besuch=pino'),
+      beide: t('futter=3 streicheln=9 putzen=2 paeckchen=0 besuch=pino,vogel') },
+  ];
+  for (const F of faelle) {
+    const opt = { start, uid: F.uid, verlauf: [chronikVerlauf([[g, F.a]]), chronikVerlauf([[g, F.b]])], jetzt: T.chronikStart(HEUTE) + 6 * 36e5 };
+    const zahl = { doppelt: 0, nurA: 0, nurB: 0, zuSpaet: 0, laengster: 0 };
+    const pfade = await allePfade(async (pfad) => {
+      const { L, G, wahl } = await chronikZuZweit(pfad, opt);
+      const wo = `${F.name}, Reihenfolge ${pfad.join('') || '0'}`;
+      for (const D of G) {
+        assert.equal(D.erg, true, wo);
+        assert.equal(D.c._errs, undefined, wo);
+        assert.ok(!D.c._chronikBusy, wo);
+      }
+      // Mensch und „fremd für diesen Tag“ unangetastet
+      assert.deepEqual(L.items.slice(0, 2), start, wo);
+      // Genau ein Eintrag für den Tag. Haben beide Geräte angelegt (keines sah den Eintrag des anderen), steht darin
+      // alles von beiden. Fand das zweite den Tag schon vor, hat es nichts nachgetragen: Dann gilt, was das erste schrieb.
+      const [erster, zweiter] = L.neu;
+      assert.ok(L.neu.length === 1 || L.neu.length === 2, wo);
+      assert.ok([F.ta, F.tb].includes(erster) && [F.ta, F.tb, undefined].includes(zweiter), wo);
+      assert.deepEqual(L.items.slice(2).map((x) => x.summary), [zweiter ? F.beide : erster], wo);
+      assert.equal(G[0].neu + G[1].neu, L.neu.length, wo);
+      zahl[zweiter ? 'doppelt' : G[0].neu ? 'nurA' : 'nurB']++;
+      // (wer zu spät kommt, hört von der Liste „No existing item“: Der Eintrag wurde eben erst gelöscht)
+      assert.equal(L.spaet, L.weg, wo);
+      if (L.weg) zahl.zuSpaet++;
+      zahl.laengster = Math.max(zahl.laengster, wahl.length);
+      return wahl;
+    });
+    // Damit der Test nicht still nichts prüft: Es gab viele Reihenfolgen, solche mit zwei Einträgen, solche, in denen
+    // nur ein Gerät schrieb, und solche, in denen ein Gerät beim Ändern oder Löschen zu spät kam
+    assert.ok(pfade >= F.min, `${F.name}: nur ${pfade} Reihenfolgen`);
+    assert.equal(zahl.doppelt + zahl.nurA + zahl.nurB, pfade);
+    assert.ok(zahl.doppelt >= F.min / 2 && zahl.nurA > 0 && zahl.nurB > 0 && zahl.zuSpaet > 0 && zahl.laengster >= 12, `${F.name}: ${JSON.stringify(zahl)}`);
+  }
 });

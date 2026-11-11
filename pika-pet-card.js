@@ -30,6 +30,9 @@
  *   type: custom:pika-pet-card
  *   name: Pika                       # Name in der Statusanzeige
  *   entity: input_text.pika_status   # optional: Zustand geräteübergreifend speichern
+ *   plan_entity: input_text.pika_plan       # optional: Tagesplan (Vorrat, Päckchen, Verlauf) für alle Geräte gemeinsam
+ *   chronicle_entity: todo.pikas_chronik    # optional: To-do-Liste als Langzeitgedächtnis, je Pika-Tag ein Eintrag
+ *                                           # mit der Tagesbilanz (nur mit entity und plan_entity)
  *   sleep_start: sunset              # Schlafenszeit: "21:00", "sunset" oder z. B. "sunset+01:00"
  *   sleep_end: sunrise               # Aufwachzeit: "07:00", "sunrise" oder z. B. "sunrise-30" (Minuten)
  *   sun_entity: sun.sun              # Sonnenstand (Höhe + Azimut) für Himmel und Sonne
@@ -57,7 +60,7 @@
  */
 (() => {
   // src/version.js
-  var VERSION = "0.33.1";
+  var VERSION = "0.34.0";
 
   // src/logik/hilfen.js
   var Cancel = class extends Error {
@@ -1517,6 +1520,159 @@
     return { ev, stamps: stamps.sort((x, y) => x - y), pets };
   };
 
+  // src/logik/chronik.js
+  var CHRONIK = {
+    kopf: "Pika-Tag ",
+    back: 7,
+    wait: 10 * 6e4,
+    jitter: 10 * 6e4,
+    check: 3e4,
+    checkJit: 3e4,
+    retry: 36e5,
+    retryMax: 24 * 36e5,
+    rounds: 3,
+    hang: 10 * 6e4,
+    frisch: 1e4
+  };
+  var CHRONIK_NUM = ["futter", "streicheln", "putzen", "paeckchen"];
+  var CHRONIK_GAST = ["pino", "vogel", "falter"];
+  var CHRONIK_MEM = { pino: "pino", bird: "vogel", bfly: "falter" };
+  var chronikDatum = (tag) => Number.isInteger(tag) && tag > -7e5 && tag < 29e5 ? new Date(tag * 864e5).toISOString().slice(0, 10) : null;
+  var chronikTag = (datum) => {
+    const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(datum ?? ""));
+    if (!m) return null;
+    const tag = Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3])) / 864e5;
+    return chronikDatum(tag) === m[0] ? tag : null;
+  };
+  var chronikStart = (tag) => {
+    const d = new Date(tag * 864e5);
+    return new Date(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), 4).getTime();
+  };
+  var chronikVersatz = (zone, t) => {
+    if (typeof zone !== "string" || !zone) return null;
+    try {
+      const p = {};
+      const fmt = new Intl.DateTimeFormat("en-US", { timeZone: zone, hourCycle: "h23", year: "numeric", month: "numeric", day: "numeric", hour: "numeric", minute: "numeric", second: "numeric" });
+      for (const x of fmt.formatToParts(new Date(t))) p[x.type] = Number(x.value);
+      const v = (Date.UTC(p.year, p.month - 1, p.day, p.hour % 24, p.minute, p.second) - Math.floor(t / 1e3) * 1e3) / 6e4;
+      return Number.isFinite(v) ? v : null;
+    } catch (e) {
+      return null;
+    }
+  };
+  var chronikZoneOk = (zone, zeiten, lokal = (t) => -new Date(t).getTimezoneOffset()) => {
+    for (const t of zeiten) {
+      const v = chronikVersatz(zone, t);
+      if (v == null) return true;
+      if (v !== lokal(t)) return false;
+    }
+    return true;
+  };
+  var gastSort = (list) => [...new Set(list)].sort((a, b) => {
+    const i = CHRONIK_GAST.indexOf(a);
+    const j = CHRONIK_GAST.indexOf(b);
+    return i >= 0 && j >= 0 ? i - j : i >= 0 ? -1 : j >= 0 ? 1 : a < b ? -1 : a > b ? 1 : 0;
+  });
+  var chronikKod = (e) => {
+    const f = [];
+    for (const k of CHRONIK_NUM) if (e[k] != null) f.push(`${k}=${e[k]}`);
+    if (e.besuch) f.push(`besuch=${gastSort(e.besuch).join(",") || "-"}`);
+    for (const k of Object.keys(e.x || {}).sort()) f.push(`${k}=${e.x[k]}`);
+    return `${CHRONIK.kopf}${e.d}${f.length ? ` · ${f.join(" ")}` : ""}`;
+  };
+  var chronikLies = (titel) => {
+    if (typeof titel !== "string" || !titel.startsWith(CHRONIK.kopf)) return null;
+    const m = /^(\d{4}-\d{2}-\d{2})(?!\d)([\s\S]*)$/.exec(titel.slice(CHRONIK.kopf.length));
+    if (!m || chronikTag(m[1]) == null) return null;
+    const d = m[1];
+    const fremd = { d, fremd: true };
+    const e = { d, futter: null, streicheln: null, putzen: null, paeckchen: null, besuch: null, x: {} };
+    if (!m[2].trim()) return e;
+    const r = /^(?:\s*·\s*|\s+)([\s\S]*)$/.exec(m[2]);
+    if (!r) return fremd;
+    const seen = /* @__PURE__ */ new Set();
+    for (const tok of r[1].split(/\s+/).filter(Boolean)) {
+      const q = /^([a-z][a-z0-9_]*)=(\S+)$/.exec(tok);
+      if (!q || seen.has(q[1])) return fremd;
+      const [, k, v] = q;
+      seen.add(k);
+      if (CHRONIK_NUM.includes(k)) {
+        if (!/^\d{1,9}$/.test(v)) return fremd;
+        e[k] = Number(v);
+      } else if (k === "besuch") {
+        if (v !== "-" && !/^[a-z][a-z0-9_]*(,[a-z][a-z0-9_]*)*$/.test(v)) return fremd;
+        e.besuch = v === "-" ? [] : gastSort(v.split(","));
+      } else e.x[k] = v;
+    }
+    return e;
+  };
+  var chronikMisch = (a, b) => {
+    const e = { d: (a || b).d, futter: null, streicheln: null, putzen: null, paeckchen: null, besuch: null, x: {} };
+    for (const o of [a, b]) {
+      if (!o) continue;
+      for (const k of CHRONIK_NUM) if (o[k] != null) e[k] = e[k] == null ? o[k] : Math.max(e[k], o[k]);
+      if (o.besuch) e.besuch = [...e.besuch || [], ...o.besuch];
+      for (const k of Object.keys(o.x || {})) if (!hasKey(e.x, k) || o.x[k] > e.x[k]) e.x[k] = o.x[k];
+    }
+    if (e.besuch) e.besuch = gastSort(e.besuch);
+    e.x = Object.fromEntries(Object.keys(e.x).sort().map((k) => [k, e.x[k]]));
+    return e;
+  };
+  var chronikBilanz = (ev, pets, start, end, tag) => {
+    const e = { d: chronikDatum(tag), futter: 0, streicheln: Math.min(Math.max(0, Math.floor(Number(pets?.[tag]) || 0)), PET_CAP), putzen: 0, paeckchen: 0, besuch: [], x: {} };
+    for (const v of ev) {
+      if (!(v.t >= start && v.t < end)) continue;
+      if (v.k === "feed") e.futter++;
+      else if (v.k === "clean") e.putzen += v.n || 0;
+      else if (v.k === "parcel") e.paeckchen++;
+      else if (v.k === "mem" && hasKey(CHRONIK_MEM, v.b)) e.besuch.push(CHRONIK_MEM[v.b]);
+    }
+    e.besuch = gastSort(e.besuch);
+    return e;
+  };
+  var chronikGruppen = (items) => {
+    const G = /* @__PURE__ */ new Map();
+    for (const it of Array.isArray(items) ? items : []) {
+      const e = chronikLies(it?.summary);
+      if (!e) continue;
+      if (!G.has(e.d)) G.set(e.d, { les: [], fremd: false });
+      if (e.fremd) G.get(e.d).fremd = true;
+      else G.get(e.d).les.push({ uid: it.uid, e });
+    }
+    return G;
+  };
+  var chronikTage = (items) => {
+    const T = /* @__PURE__ */ new Map();
+    for (const [d, g] of chronikGruppen(items)) if (g.les.length) T.set(d, g.les.reduce((m, x) => chronikMisch(m, x.e), null));
+    return T;
+  };
+  var chronikFehlt = (items, heute, back) => {
+    const G = chronikGruppen(items);
+    const out = [];
+    for (let tag = heute - back; tag < heute; tag++) if (!G.has(chronikDatum(tag))) out.push(tag);
+    return out;
+  };
+  var chronikPlan = (items, soll) => {
+    const G = chronikGruppen(items);
+    const S = new Map(!soll ? [] : typeof soll[Symbol.iterator] === "function" ? [...soll] : Object.entries(soll));
+    const out = [];
+    for (const d of [.../* @__PURE__ */ new Set([...G.keys(), ...S.keys()])].sort()) {
+      const g = G.get(d);
+      const neu = S.get(d);
+      if (!g) {
+        if (neu && chronikTag(d) != null) out.push({ op: "add", d, summary: chronikKod({ ...neu, d }) });
+        continue;
+      }
+      if (!g.les.length || g.les.some((x) => typeof x.uid !== "string" || !x.uid)) continue;
+      const les = [...g.les].sort((a, b) => a.uid < b.uid ? -1 : a.uid > b.uid ? 1 : 0);
+      const alle = les.reduce((m, x) => chronikMisch(m, x.e), neu ? { ...neu, d } : null);
+      const summary = chronikKod(alle);
+      if (summary !== chronikKod(les[0].e)) out.push({ op: "update", d, uid: les[0].uid, summary });
+      for (const x of les.slice(1)) out.push({ op: "remove", d, uid: x.uid });
+    }
+    return out;
+  };
+
   // src/logik/einstellungen.js
   var screenElsewhere = () => typeof window.fully === "undefined" && !!window.matchMedia?.("(pointer: fine) and (hover: hover)").matches;
   var WAKE_EVENTS = ["pointerdown", "keydown", "wheel", "touchstart"];
@@ -1527,6 +1683,9 @@
     entity: null,
     // Tagesplan (Vorrat, Frühsport, Verlauf der Beschäftigungen) für alle Geräte gemeinsam; ohne: je Gerät
     plan_entity: null,
+    // Chronik: To-do-Liste von HA als Langzeitgedächtnis, je Pika-Tag ein Eintrag mit der Tagesbilanz (siehe
+    // src/logik/chronik.js). Nur mit beiden Helfern; ohne: keine Chronik, kein Aufruf an HA
+    chronicle_entity: null,
     sleep_start: "sunset",
     sleep_end: "sunrise",
     sun_entity: "sun.sun",
@@ -1567,6 +1726,7 @@
     areal: "Bau",
     entity: "Zustand (Text-Helfer, max. 100)",
     plan_entity: "Tagesplan (Text-Helfer, max. 255)",
+    chronicle_entity: "Chronik (To-do-Liste)",
     show_stats: "Balken anzeigen",
     gifts: "Päckchen",
     friend: "Pino kommt zu Besuch",
@@ -1594,6 +1754,7 @@
   var EDITOR_HELP = {
     entity: "Damit alle Geräte denselben Pika sehen. Leer: nur in diesem Browser.",
     plan_entity: "Vorrat, Abwechslung, Päckchen und Träume für alle Geräte. Muss ein anderer Helfer sein als der Zustand.",
+    chronicle_entity: "Sein Langzeitgedächtnis: je Tag ein Eintrag mit der Tagesbilanz. Am besten eine eigene Liste; braucht beide Helfer. Leer: keine Chronik.",
     diary: "Antippen der Leiste öffnet sein Tagebuch.",
     diary_house: "Kaffee, Wäsche und Geschirr stehen mit Uhrzeit drin.",
     sleep_start: "z. B. sunset, sunset+01:00 oder 21:00",
@@ -1828,6 +1989,7 @@
           ] },
           { name: "entity", selector: ent("input_text") },
           { name: "plan_entity", selector: ent("input_text") },
+          { name: "chronicle_entity", selector: ent("todo") },
           { type: "grid", name: "", schema: [
             { name: "show_stats", selector: bool, default: true },
             { name: "gifts", selector: bool, default: true },
@@ -6074,6 +6236,7 @@
       ]) {
         this._guard(f.name, () => f.call(this));
       }
+      this._guard("Chronik", () => this._chronikTick());
     }
     _tickCore() {
       this._renderStats();
@@ -10425,14 +10588,24 @@
       d.setDate(d.getDate() - back);
       return d.getTime();
     }
+    // Liegen Zustand (haS) und Tagesplan (haP) in HA? Dann steht ihr Verlauf im Recorder, sonst schreibt das Gerät
+    // selbst mit (_diaryLog).
+    _diaryHa() {
+      const c = this._cfg;
+      return {
+        haS: !!c.entity && !this._noEntity,
+        haP: !!c.plan_entity && !!this._hass?.states[c.plan_entity] && this._planMax() >= PLAN_MIN
+      };
+    }
     // Verlauf von Zustand und Tagesplan (und der Geräte des Haus-Boten) zwischen from und to. Mit Helfer aus HA,
-    // ohne aus der Mitschrift im Browser. → { S, P (geparst, aufsteigend), bote (Ereignisse), fail }
-    async _diaryHist(from, to) {
+    // ohne aus der Mitschrift im Browser. → { S, P (geparst, aufsteigend), bote (Ereignisse), fail, none, ha (beide
+    // Helfer kamen aus HA) }. only: nur die beiden Helfer, ohne die Geräte des Haus-Boten, und ein Fehlschlag steht nur
+    // leise in der Konsole (für die Chronik, die es von selbst später wieder versucht).
+    async _diaryHist(from, to, only = false) {
       const c = this._cfg;
       const hass = this._hass;
-      const haS = !!c.entity && !this._noEntity;
-      const haP = !!c.plan_entity && !!hass?.states[c.plan_entity] && this._planMax() >= PLAN_MIN;
-      const house = c.diary_house !== false ? this._boteSync().list : [];
+      const { haS, haP } = this._diaryHa();
+      const house = !only && c.diary_house !== false ? this._boteSync().list : [];
       const ids = [.../* @__PURE__ */ new Set([...haS ? [c.entity] : [], ...haP ? [c.plan_entity] : [], ...house.map((a) => a.cfg.state)])];
       let res = {};
       let fail = false;
@@ -10449,7 +10622,8 @@
           }) || {};
         } catch (e) {
           fail = true;
-          console.warn("pika-pet-card: Verlauf für das Tagebuch nicht lesbar", e);
+          if (only) console.debug("pika-pet-card: Verlauf für die Chronik nicht lesbar, später noch einmal", e);
+          else console.warn("pika-pet-card: Verlauf für das Tagebuch nicht lesbar", e);
         }
       }
       const rows = (id) => (Array.isArray(res[id]) ? res[id] : []).map((r) => ({ t: Math.round((Number(r.lu ?? r.lc) || Date.parse(r.last_updated || r.last_changed) / 1e3) * 1e3), s: r.s ?? r.state })).filter((r) => Number.isFinite(r.t)).sort((a, b) => a.t - b.t);
@@ -10476,7 +10650,7 @@
           last = s;
         }
       }
-      return { S, P, bote, fail, none: !fail && (haS && !S.length || haP && !P.length) };
+      return { S, P, bote, fail, none: !fail && (haS && !S.length || haP && !P.length), ha: haS && haP };
     }
     // Beide Seiten (heute, gestern) aus dem Verlauf. Vorschau: _dbgDiary liefert fertige Roh-Ereignisse.
     async _diaryBuild() {
@@ -12366,14 +12540,15 @@
       return `pika-pet-card:${this._cfg.name}`;
     }
     // Im Editor umbenannt: Der Name steckt in den Schlüsseln, unter denen ohne Helfer Zustand, Tagesplan (Vorrat, Serie,
-    // Album) und „Päckchen-Knopf schon gesehen“ im Browser liegen. Den Stand unter den neuen Namen mitnehmen, sonst
-    // finge er von vorn an. Kopiert, nicht verschoben: Bricht man das Bearbeiten ab, gilt der alte Name weiter. Der
-    // Editor ruft setConfig bei jedem Tastendruck, Zwischenstände („Pik“, „Pi“ …) werden darum wieder entfernt.
+    // Album) und „Päckchen-Knopf schon gesehen“ im Browser liegen (und mit Chronik, für welchen Tag sie schon geprüft
+    // ist). Den Stand unter den neuen Namen mitnehmen, sonst finge er von vorn an. Kopiert, nicht verschoben: Bricht
+    // man das Bearbeiten ab, gilt der alte Name weiter. Der Editor ruft setConfig bei jedem Tastendruck, Zwischenstände
+    // („Pik“, „Pi“ …) werden darum wieder entfernt.
     _lsRename(from, to) {
       if (from == null || to == null || from === to) return;
       try {
         const mine = this._lsCopies ??= /* @__PURE__ */ new Set();
-        for (const p of ["pika-pet-card", "pika-pet-plan", "pika-pet-gift", "pika-pet-diary", "pika-pet-diary-seen"]) {
+        for (const p of ["pika-pet-card", "pika-pet-plan", "pika-pet-gift", "pika-pet-diary", "pika-pet-diary-seen", "pika-pet-chronik"]) {
           const v = localStorage.getItem(`${p}:${from}`);
           if (v != null && localStorage.getItem(`${p}:${to}`) == null) {
             localStorage.setItem(`${p}:${to}`, v);
@@ -17529,6 +17704,262 @@
     }
   };
 
+  // src/karte/chronik.js
+  var Chronik = class {
+    // Mit chronicle_entity (einer To-do-Liste von HA) trägt die Karte einmal am Tag nach, was an den vergangenen
+    // Pika-Tagen geschah: je Tag ein Eintrag (Format und Regeln in src/logik/chronik.js). Abgeleitet wird die Bilanz wie
+    // das Tagebuch aus dem Verlauf der beiden Helfer. Gezeigt wird sie noch nirgends. Ohne die Option passiert hier
+    // nichts: kein Aufruf an HA, kein Zeitgeber.
+    // Andere Liste (oder keine mehr): von vorn. Ein laufender Lauf gehört zur alten Liste und endet.
+    _chronikReset() {
+      this._chronikStop();
+      this._chronikStand = null;
+      this._chronikOk = null;
+      this._chronikNext = 0;
+      this._chronikFails = 0;
+    }
+    // Laufenden Lauf beenden (Karte abgehängt, andere Liste): Die Wartezeit vor dem Nachprüfen endet sofort, und nach
+    // dem Aufruf, der gerade unterwegs ist, tut der Lauf nichts mehr (er ist nicht mehr der von _chronikBusy).
+    _chronikStop() {
+      const w = this._chronikW;
+      this._chronikW = null;
+      this._chronikBusy = null;
+      if (w) {
+        clearTimeout(w.t);
+        w.done();
+      }
+    }
+    // Geschrieben wird nur in eine Liste, die es gibt, die erreichbar ist und Einträge annimmt, und nur, wenn beide
+    // Helfer in HA liegen (dann liest auch das Tagebuch aus dem Recorder): Ohne gemeinsame Helfer hat jedes Gerät seinen
+    // eigenen Pika, der gehört nicht in die gemeinsame Liste.
+    // Still aus (kein Fehler, keine Zeile in der Konsole) ist die Chronik außerdem
+    // - an der Vorschau-Karte im Editor von HA (das Frontend setzt dort preview = true): Sie schriebe sonst sofort, noch
+    //   vor dem Speichern, und wer im Editor versehentlich die Einkaufsliste auswählt, hätte dort bis zu sieben Einträge;
+    // - auf einem Gerät, dessen Ortszeit nicht zur Zeitzone von HA passt (chronikZoneOk): Sein Pika-Tag beginnt zu einer
+    //   anderen Stunde, es hielte den Tag von zu Hause für abgeschlossen, während er noch läuft. Geprüft für jetzt und
+    //   für den Beginn des ältesten Tags, der nachgetragen werden könnte.
+    _chronikOn() {
+      const id = this._cfg?.chronicle_entity;
+      const hass = this._hass;
+      if (!id || !hass || hass.connected === false || this.preview === true) return false;
+      const ent = hass.states[id];
+      if (!ent || ent.state === "unavailable" || ent.state === "unknown" || !(Number(ent.attributes?.supported_features) & 1)) return false;
+      const { haS, haP } = this._diaryHa();
+      if (!haS || !haP) return false;
+      const now = this._haNow();
+      return chronikZoneOk(hass.config?.time_zone, [now, chronikStart(pikaDay(now) - CHRONIK.back)]);
+    }
+    _chronikLsKey() {
+      return `pika-pet-chronik:${this._cfg.name}`;
+    }
+    // Heute schon fertig geprüft? Das steht im Browser, damit ein Handy, das zehnmal am Tag lädt, einmal prüft (und eine
+    // zweite Karte gleichen Namens gar nicht). Ohne Speicher gilt es bis zum Neuladen.
+    _chronikDone(heute) {
+      const v = `${this._cfg.chronicle_entity}|${heute}`;
+      if (this._chronikOk === v) return true;
+      try {
+        if (localStorage.getItem(this._chronikLsKey()) !== v) return false;
+      } catch (e) {
+        return false;
+      }
+      this._chronikOk = v;
+      return true;
+    }
+    _chronikMark(heute) {
+      this._chronikOk = `${this._cfg.chronicle_entity}|${heute}`;
+      try {
+        localStorage.setItem(this._chronikLsKey(), this._chronikOk);
+      } catch (e) {
+      }
+    }
+    // Alle 20 s aus _tick: einmal je Pika-Tag und Browser prüfen, ob Tage fehlen.
+    _chronikTick() {
+      if (!this._chronikOn()) return;
+      const busy = this._chronikBusy;
+      if (busy) {
+        if (Date.now() - busy.at < CHRONIK.hang) return;
+        this._chronikStop();
+        this._chronikPause();
+      }
+      if (!this._synced || !this._planOk || this._planStale || Date.now() < (this._chronikNext || 0)) return;
+      const now = this._haNow();
+      const heute = pikaDay(now);
+      this._chronikJit ??= Math.random() * CHRONIK.jitter;
+      if (now < chronikStart(heute) + CHRONIK.wait + this._chronikJit || this._chronikDone(heute)) return;
+      if (!(this._chronikStempel() >= chronikStart(heute))) return;
+      this._chronikRun(heute);
+    }
+    // Der jüngste Zeitstempel (last_updated) unter den Zuständen, die die Karte ohnehin liest. Den vergibt HA, nicht
+    // das Gerät. → ms; -Infinity, wenn keiner einen gültigen trägt
+    _chronikStempel() {
+      const c = this._cfg;
+      const S = this._hass?.states || {};
+      let t = -Infinity;
+      for (const id of [c.sun_entity, c.entity, c.plan_entity, c.weather_entity, c.chronicle_entity]) {
+        const lu = id ? Date.parse(S[id]?.last_updated) : NaN;
+        if (lu > t) t = lu;
+      }
+      return t;
+    }
+    // Vorschau und Tests: sofort prüfen, ohne auf Tagesbeginn, Versatz, „heute schon geprüft“, den Stempel von HA und
+    // die Pause nach einem Fehlschlag zu achten. this._dbgChronik = { check: ms } verkürzt dazu die Wartezeit vor dem Nachprüfen.
+    // → Promise wie _chronikRun
+    _chronikNow() {
+      return this._chronikOn() ? this._chronikRun(pikaDay(this._haNow())) : Promise.resolve(null);
+    }
+    // Ein Lauf. → Promise (wird nie abgelehnt): true = fertig, der Tag gilt als geprüft; false = Fehlschlag, nach einer
+    // Pause noch einmal (_chronikPause); null = abgebrochen (_chronikStop).
+    // Eine fehlende, nicht erreichbare oder ablehnende Liste ist kein Fehler der Karte: Was HA ablehnt, kommt als
+    // schlichtes Objekt oder Zahl (nie als Error) und steht höchstens in der Konsole. Ein Error stammt aus dem eigenen
+    // Code und gehört in den Fehlerspeicher.
+    _chronikRun(heute) {
+      if (this._chronikBusy) return this._chronikBusy.p;
+      const lauf = { at: Date.now(), p: null };
+      const live = () => this._chronikBusy === lauf;
+      this._chronikBusy = lauf;
+      lauf.p = (async () => {
+        let ok = null;
+        try {
+          ok = await this._chronikRounds(heute, live);
+        } catch (e) {
+          ok = false;
+          this._chronikFail(e);
+        } finally {
+          if (live()) this._chronikBusy = null;
+          else ok = null;
+        }
+        if (ok) {
+          this._chronikFails = 0;
+          this._chronikNext = 0;
+          this._chronikMark(heute);
+        } else if (ok === false) this._chronikPause();
+        return ok;
+      })();
+      return lauf.p;
+    }
+    // Nach einem Fehlschlag: Pause bis zum nächsten Versuch, eine Stunde, mit jedem weiteren Fehlschlag in Folge das
+    // Doppelte, höchstens ein Tag. Was auf Dauer nicht geht (der Recorder zeichnet die Helfer nicht auf, die Liste nimmt
+    // nichts an), fragte sonst jedes sichtbare Gerät stündlich, ohne Ende. Ein fertiger Lauf fängt wieder bei einer
+    // Stunde an, eine andere Liste auch.
+    _chronikPause() {
+      this._chronikFails = (this._chronikFails || 0) + 1;
+      this._chronikNext = Date.now() + Math.min(CHRONIK.retry * 2 ** (this._chronikFails - 1), CHRONIK.retryMax);
+    }
+    _chronikFail(e) {
+      if (e instanceof Error) this._err("Chronik", e);
+      else console.debug("pika-pet-card: Chronik gerade nicht erreichbar, später noch einmal", e);
+    }
+    // Lesen, Fehlendes aus dem Verlauf nachtragen, Dopplungen auflösen, und nach eigenem Schreiben nachprüfen
+    async _chronikRounds(heute, live) {
+      let items = await this._chronikItems();
+      if (!live()) return null;
+      if (!items) return false;
+      const at = Date.now();
+      const fehlt = chronikFehlt(items, heute, CHRONIK.back);
+      const soll = /* @__PURE__ */ new Map();
+      if (fehlt.length) {
+        const now = this._haNow();
+        const from = chronikStart(fehlt[0]);
+        const H = await this._diaryHist(from, now + 6e4, true);
+        if (!live()) return null;
+        if (H.fail || H.none || !H.ha) return false;
+        const R = diaryDerive(H.S, H.P, from, { decayAt: () => Infinity, until: now });
+        for (const tag of fehlt) {
+          const a = chronikStart(tag);
+          const b = chronikStart(tag + 1);
+          const drin = (t) => t >= a && t < b;
+          if (R.stamps.some(drin) || R.ev.some((e) => drin(e.t))) soll.set(chronikDatum(tag), chronikBilanz(R.ev, R.pets, a, b, tag));
+        }
+      }
+      let n = await this._chronikDo(chronikPlan(items, soll), live, at);
+      for (let r = 0; n > 0 && r < CHRONIK.rounds && live(); r++) {
+        await this._chronikWait(this._dbgChronik?.check ?? CHRONIK.check + Math.random() * CHRONIK.checkJit);
+        if (!live()) return null;
+        items = await this._chronikItems();
+        if (!live()) return null;
+        if (!items) return false;
+        n = await this._chronikDo(chronikPlan(items), live, Date.now());
+      }
+      if (!live()) return null;
+      return n === 0;
+    }
+    // Liste lesen (ein Aufruf, erzeugt in HA keinen Recorder-Eintrag) und den Stand merken. → Einträge; null, wenn die
+    // Chronik gerade aus ist oder die Antwort keine Liste enthält. Lehnt HA ab, wirft der Aufruf.
+    async _chronikItems() {
+      if (!this._chronikOn()) return null;
+      const id = this._cfg.chronicle_entity;
+      const r = await this._hass.callWS({ type: "todo/item/list", entity_id: id });
+      if (!Array.isArray(r?.items) || id !== this._cfg?.chronicle_entity) return null;
+      this._chronikStand = { t: this._haNow(), tage: chronikTage(r.items) };
+      return r.items;
+    }
+    // Liste lesen. → { t, tage: Map Datum → Eintrag } (auch in this._chronikStand) oder null, wenn sie gerade nicht
+    // lesbar ist. Schreibt nichts.
+    async _chronikLesen() {
+      try {
+        return await this._chronikItems() ? this._chronikStand : null;
+      } catch (e) {
+        this._chronikFail(e);
+        return null;
+      }
+    }
+    // Schritte aus chronikPlan der Reihe nach ausführen, jeden einzeln abgewartet (eine Liste von uids lehnt HA ganz
+    // ab, wenn eine fehlt). gelesen: wann die Liste gelesen wurde, aus der die Schritte stammen (Date.now()).
+    // → wie viele etwas geschrieben haben: Dann wird nachgeprüft.
+    // Der fünfte Parameter von callService (notifyOnError) ist false: Sonst zeigte das Frontend von HA bei jeder
+    // Ablehnung zehn Sekunden lang eine Meldung am Bildschirm, auch im gewöhnlichen Fall „das andere Gerät war schneller“.
+    async _chronikDo(steps, live, gelesen) {
+      const id = this._cfg.chronicle_entity;
+      const ziel = { entity_id: id };
+      const offen = /* @__PURE__ */ new Set();
+      let n = 0;
+      for (const s of steps) {
+        if (!live()) break;
+        const feat = Number(this._hass.states[id]?.attributes?.supported_features) || 0;
+        if (s.op === "update") {
+          offen.add(s.d);
+          if (!(feat & 4)) continue;
+        }
+        if (s.op === "remove" && (offen.has(s.d) || !(feat & 2))) continue;
+        if (s.op !== "add" && Date.now() - gelesen > CHRONIK.frisch) {
+          n++;
+          break;
+        }
+        try {
+          if (s.op === "add") await this._hass.callService("todo", "add_item", { item: s.summary }, ziel, false);
+          else if (s.op === "update") await this._hass.callService("todo", "update_item", { item: s.uid, rename: s.summary }, ziel, false);
+          else await this._hass.callService("todo", "remove_item", { item: s.uid }, ziel, false);
+          n++;
+        } catch (e) {
+          if (s.op === "add" || !this._chronikGone(e)) throw e;
+          n++;
+        }
+      }
+      return n;
+    }
+    // Ablehnung „den Eintrag gibt es nicht (mehr)“: ein schlichtes Objekt mit code und message, kein Error. Gemessen
+    // sind zwei Formen:
+    //   { code: 'service_validation_error', message: 'Validation error: Unable to find to-do list item: <uid>' }
+    //   { code: 'unknown_error', message: 'No existing item with uid/recurrence_id: <uid>/None' }
+    // Die zweite kommt, wenn ein anderes Gerät denselben Eintrag eben erst gelöscht hat (zwei Karten räumen dieselbe
+    // Dopplung ab): HA prüft die uid zuerst gegen seinen gemerkten Stand der Liste, der dem Speicher kurz
+    // hinterherhinkt, und scheitert dann erst im Speicher. Darum zählt die Meldung, nicht der code.
+    _chronikGone(e) {
+      return !!e && typeof e === "object" && !(e instanceof Error) && (e.translation_key === "item_not_found" || /unable to find|no existing item/i.test(String(e.message)));
+    }
+    // Wartezeit vor dem Nachprüfen. Endet auch, wenn der Lauf abgebrochen wird (_chronikStop): Er soll enden und nicht
+    // für immer an einem abgeräumten Zeitgeber hängen.
+    _chronikWait(ms) {
+      return new Promise((done) => {
+        const w = { done, t: setTimeout(() => {
+          if (this._chronikW === w) this._chronikW = null;
+          done();
+        }, ms) };
+        this._chronikW = w;
+      });
+    }
+  };
+
   // src/karte.js
   var PikaPetCard = class extends HTMLElement {
     constructor() {
@@ -17569,6 +18000,7 @@
         if (cfg[k] && !/^input_text\.\w+$/.test(cfg[k])) throw new Error(`pika-pet-card: ${k} muss ein input_text-Helfer sein (ist "${cfg[k]}")`);
       }
       if (cfg.entity && cfg.entity === cfg.plan_entity) throw new Error("pika-pet-card: entity und plan_entity brauchen zwei verschiedene Helfer");
+      if (cfg.chronicle_entity && !/^todo\.\w+$/.test(cfg.chronicle_entity)) throw new Error(`pika-pet-card: chronicle_entity muss eine To-do-Liste sein (ist "${cfg.chronicle_entity}")`);
       if (cfg.areal && !AREALE[cfg.areal]) console.warn(`pika-pet-card: areal "${cfg.areal}" gibt es nicht (${Object.keys(AREALE).join(", ")}), nehme huegel`);
       this._lsRename(this._cfg?.name, cfg.name);
       this._cfg = cfg;
@@ -17607,6 +18039,11 @@
       if (pk !== this._planKey) {
         this._planKey = pk;
         this._planReset();
+      }
+      const ck = this._cfg.chronicle_entity || "";
+      if (ck !== this._chronikKey) {
+        this._chronikKey = ck;
+        this._chronikReset();
       }
       this._renderStats();
       if (this.isConnected) this._attach();
@@ -17798,6 +18235,7 @@
       this._detachFriend();
       this._detachBote();
       this._detachGift();
+      this._chronikStop();
       this._diaryClose();
     }
     // Fehler merken (die letzten 10, zu sehen im Fuß des Tagebuchs) und einmal je Stelle und Meldung in die Konsole
@@ -17850,7 +18288,8 @@
     Paeckchen,
     Schaetze,
     Tagesplan,
-    BeschaeftigungenKlein
+    BeschaeftigungenKlein,
+    Chronik
   ];
   for (const Teil of TEILE) {
     for (const k of Reflect.ownKeys(Teil.prototype)) {
@@ -17993,7 +18432,21 @@
       gliderThrows,
       GLIDER_STEP,
       ACT_PX,
-      wxProgThen
+      wxProgThen,
+      CHRONIK,
+      chronikDatum,
+      chronikTag,
+      chronikStart,
+      chronikVersatz,
+      chronikZoneOk,
+      chronikKod,
+      chronikLies,
+      chronikMisch,
+      chronikBilanz,
+      chronikTage,
+      chronikFehlt,
+      chronikPlan,
+      diaryDerive
     });
   }
 })();

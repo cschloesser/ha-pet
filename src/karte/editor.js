@@ -22,6 +22,7 @@ export class Editor {
         ] },
         { name: 'entity', selector: ent('input_text') },
         { name: 'plan_entity', selector: ent('input_text') },
+        { name: 'chronicle_entity', selector: ent('todo') },
         { type: 'grid', name: '', schema: [
           { name: 'show_stats', selector: bool, default: true },
           { name: 'gifts', selector: bool, default: true },

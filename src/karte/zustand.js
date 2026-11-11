@@ -202,14 +202,15 @@ export class Zustand {
   }
 
   // Im Editor umbenannt: Der Name steckt in den Schlüsseln, unter denen ohne Helfer Zustand, Tagesplan (Vorrat, Serie,
-  // Album) und „Päckchen-Knopf schon gesehen“ im Browser liegen. Den Stand unter den neuen Namen mitnehmen, sonst
-  // finge er von vorn an. Kopiert, nicht verschoben: Bricht man das Bearbeiten ab, gilt der alte Name weiter. Der
-  // Editor ruft setConfig bei jedem Tastendruck, Zwischenstände („Pik“, „Pi“ …) werden darum wieder entfernt.
+  // Album) und „Päckchen-Knopf schon gesehen“ im Browser liegen (und mit Chronik, für welchen Tag sie schon geprüft
+  // ist). Den Stand unter den neuen Namen mitnehmen, sonst finge er von vorn an. Kopiert, nicht verschoben: Bricht
+  // man das Bearbeiten ab, gilt der alte Name weiter. Der Editor ruft setConfig bei jedem Tastendruck, Zwischenstände
+  // („Pik“, „Pi“ …) werden darum wieder entfernt.
   _lsRename(from, to) {
     if (from == null || to == null || from === to) return;
     try {
       const mine = (this._lsCopies ??= new Set());
-      for (const p of ['pika-pet-card', 'pika-pet-plan', 'pika-pet-gift', 'pika-pet-diary', 'pika-pet-diary-seen']) {
+      for (const p of ['pika-pet-card', 'pika-pet-plan', 'pika-pet-gift', 'pika-pet-diary', 'pika-pet-diary-seen', 'pika-pet-chronik']) {
         const v = localStorage.getItem(`${p}:${from}`);
         if (v != null && localStorage.getItem(`${p}:${to}`) == null) {
           localStorage.setItem(`${p}:${to}`, v);
