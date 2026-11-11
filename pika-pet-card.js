@@ -56,7 +56,7 @@
  * werden aus Datum und Standort (hass.config) berechnet.
  */
 (() => {
-  const VERSION = '0.27.2';
+  const VERSION = '0.28.0';
 
   // screen_entity gehört zu einem Gerät (dem Kiosk-Tablet), dasselbe Dashboard öffnen aber auch andere. Ein Rechner mit
   // Maus ist sicher nicht dieser Bildschirm, Fully Kiosk mit JS-Schnittstelle dagegen schon.
@@ -177,6 +177,9 @@
   const pick = (arr) => arr[Math.floor(Math.random() * arr.length)];
   const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
   const pause = (ms) => new Promise((r) => setTimeout(r, ms));
+  // Eigener Schlüssel einer Tabelle? Namen aus dem Helfer kann jeder von Hand hineinschreiben: "constructor" oder
+  // "toString" fände tabelle[name] sonst auch (und die Schleife liefe damit immer wieder in denselben Fehler).
+  const hasKey = (o, k) => Object.prototype.hasOwnProperty.call(o, k);
   const weighted = (list) => {
     const total = list.reduce((t, [w]) => t + w, 0);
     let r = Math.random() * total;
@@ -567,8 +570,9 @@
   // Text: "p1|n.t.c.m_t_cxxk|d.k_t-xxf…|k:name:v,…|d.n.m|k.a.n.u.z.o.b.x.y.d.i" (Zahlen zur Basis 36), passt in die 255 Zeichen eines input_text.
   const HAY_MAX = 12;
   const PLAN_REC = 4;
-  // Kürzer als so darf der Helfer für den Tagesplan nicht sein (mit Päckchen sind es bis ~100 Zeichen ohne Verlauf)
-  const PLAN_MIN = 120;
+  // Kürzer als so darf der Helfer für den Tagesplan nicht sein: Ohne Verlauf (den kürzt _planFit) sind es mit
+  // Blumengeschenk, drei Futterstücken und Päckchen bis etwa 162 Zeichen, HA lehnte längere Werte sonst endlos ab.
+  const PLAN_MIN = 165;
   const planBlank = (now = Date.now()) => ({ hay: { n: 3, t: now, c: '', m: 0 }, sport: null, rec: [], cute: null, gift: null, fl: null, fd: [] });
   const FOOD_MAX = 3;
   const FOOD_KINDS = ['lz', 'klee'];
@@ -1400,7 +1404,8 @@
         [bd, bm] = [Number(m[1] ?? m[3]), Number(m[2] ?? m[4])];
       } else return null;
     }
-    return bm >= 1 && bm <= 12 && bd >= 1 && bd <= 31 ? [bm, bd] : null;
+    // Tage, die es nicht gibt („31.04.“, „30.02.“), gelten als nicht erkannt: Sie würden nie gefeiert, ohne Hinweis
+    return bm >= 1 && bm <= 12 && bd >= 1 && bd <= [31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31][bm - 1] ? [bm, bd] : null;
   };
   // "Mia" / "Mia und Tom" / "Mia, Tom und Lea"
   const festNames = (a) => (a.length < 2 ? a[0] || '' : `${a.slice(0, -1).join(', ')} und ${a[a.length - 1]}`);
@@ -3230,7 +3235,7 @@
     pino: GIFT_ITEMS[2].svg, flower: GIFT_ITEMS[11].svg,
   };
   // Das gemalte Bild zum Einkleben (Leinwand der Staffelei ohne Gestell)
-  const diaryPainting = (motif) => (!EASEL_MOTIF[motif] ? '' : `<svg class="pic" viewBox="9 7 42 44" aria-hidden="true">
+  const diaryPainting = (motif) => (!hasKey(EASEL_MOTIF, motif) ? '' : `<svg class="pic" viewBox="9 7 42 44" aria-hidden="true">
     <rect x="9" y="7" width="42" height="44" fill="#bfe3f7"/><circle cx="42" cy="16" r="4.6" fill="#f6c945"/>
     <path d="M9 38 Q21 30 33 36 T51 33 V51 H9Z" fill="#86c46b"/><path d="M9 45 Q26 40 51 45 V51 H9Z" fill="#5fae4a"/>${EASEL_MOTIF[motif][1]}</svg>`);
   // Texte aus seiner Sicht. Mehrere Fassungen je Ereignis: Welche erscheint, hängt an Ereignis und Minute (diaryPick),
@@ -3448,6 +3453,11 @@
   .pic { display: block; width: 84px; height: 88px; margin: 8px 0 2px 4px; padding: 5px 5px 14px; background: #fff; border-radius: 2px;
     box-shadow: 0 2px 6px rgba(0, 0, 0, .25); transform: rotate(-3deg); box-sizing: border-box; }
   .wait, .none { margin: 26px 4px; text-align: center; font-size: 15px; line-height: 1.5; color: var(--soft); }
+  /* Fuß: Version der Karte, bei Bedarf die letzten Fehler zum Aufklappen */
+  .ft { flex: none; padding: 5px 18px 8px; border-top: 1px solid var(--line); font-size: 11px; line-height: 1.4; color: var(--soft); }
+  .ft details { margin-top: 2px; }
+  .ft summary { cursor: pointer; }
+  .ft ul { margin: 4px 0 0; padding-left: 16px; max-height: 96px; overflow-y: auto; overflow-wrap: anywhere; }
   .note { margin: 14px 0 0; font-size: 12px; color: var(--soft); }
   .sign { display: flex; justify-content: flex-end; align-items: center; gap: 6px; margin-top: 12px; font-size: 13px; font-weight: 700; color: var(--soft); }
   .sign i { display: block; width: 18px; height: 18px; transform: rotate(14deg); }
@@ -3603,7 +3613,12 @@
   .tiefe .hills .mtn { transform: translateX(calc(var(--plx, 0) * 3.2px)) scaleX(1.08); transition: transform 4s ease-in-out; }
   .tiefe .hills .h0 { transform: translateX(calc(var(--plx, 0) * 2.4px)) scaleX(1.06); transition: fill 2.5s, transform 4s ease-in-out; }
   .tiefe .hills .h1 { transform: translateX(calc(var(--plx, 0) * 1.2px)) scaleX(1.03); transition: fill 2.5s, transform 4s ease-in-out; }
-  .tiefe .clouds { transform: translateX(calc(var(--plx, 0) * 2%)); transition: transform 4s ease-in-out; }
+  /* Die Wolken-Ebene bekommt hier eine eigene Fläche: Mit transform ist sie der Bezugsrahmen ihrer Wolken, ohne Höhe
+     stünden alle am oberen Rand (top in % von 0). */
+  .tiefe .clouds {
+    position: absolute; inset: 0; pointer-events: none;
+    transform: translateX(calc(var(--plx, 0) * 2%)); transition: transform 4s ease-in-out;
+  }
   /* Hintere Spur: Schatten etwas blasser, tagsüber ein Hauch Dunst (heller, weniger satt) */
   .pika.lane1 .shadow { opacity: .75; }
   .pika .br { transition: filter 1s; }
@@ -4432,8 +4447,9 @@
   }
   .frog.croak svg { animation: fpuff .9s ease-in-out; }
   @keyframes fpuff { 18%, 58% { transform: scale(1.04, .96); } 42%, 82% { transform: scale(.98, 1.03); } }
-  .flid { transform-box: fill-box; transform-origin: 50% 0; transform: scaleY(0); animation: fblink 4.6s infinite; }
-  @keyframes fblink { 0%, 93%, 100% { transform: scaleY(0); } 96% { transform: scaleY(1); } }
+  /* nicht "fblink": so heißt schon das Blinken der Lichterkette (STYLE_FEST), das spätere gewönne */
+  .flid { transform-box: fill-box; transform-origin: 50% 0; transform: scaleY(0); animation: froglid 4.6s infinite; }
+  @keyframes froglid { 0%, 93%, 100% { transform: scaleY(0); } 96% { transform: scaleY(1); } }
   .ftng { transform-box: fill-box; transform-origin: 0 100%; transform: scale(0); }
   .frog.zap .ftng { animation: fzap .38s ease-out; }
   @keyframes fzap { 40%, 55% { transform: scale(1); } 100% { transform: scale(0); } }
@@ -4594,7 +4610,7 @@
 
   /* ---- Sparen ---- */
   /* Niemand sieht hin (Tab versteckt, Karte aus dem Bild): alle Animationen anhalten, sie laufen danach weiter */
-  .scene.paused, .scene.paused * { animation-play-state: paused !important; }
+  .scene.paused, .scene.paused *, .scene.paused *::before, .scene.paused *::after { animation-play-state: paused !important; }
   /* Nachts ohne Wind stehen die Blumen still (die Ebene ist dann gefiltert, jedes Schaukeln kostete ein Neufiltern);
      eine nachwachsende wächst trotzdem fertig */
   .scene.night:not(.windy) .flower { animation-play-state: paused; }
@@ -4754,6 +4770,7 @@
       if (ent !== this._entKey) {
         this._entKey = ent;
         clearTimeout(this._saveT);
+        this._saveT = this._saveSince = null;
         clearTimeout(this._freshT);
         clearTimeout(this._unavT);
         this._pendingWrite = this._synced = this._noEntity = this._saveWait = false;
@@ -4778,7 +4795,7 @@
       const fresh = hass !== this._hass;
       this._hass = hass;
       const c = this._cfg;
-      this._clockHass(hass);
+      this._guard('Uhr', () => this._clockHass(hass));
       if (fresh && hass.connected !== false) this._hassN = (this._hassN || 0) + 1;
       if (c.entity) {
         const st = hass.states[c.entity]?.state;
@@ -4831,6 +4848,15 @@
               // Eigene Änderung ungesendet oder noch unbestätigt: zusammenführen statt den fremden Stand zu
               // übernehmen. Der fremde kam bei HA vor dem eigenen an, ihm fehlt also alles, was hier noch offen ist.
               this._stats = mergeStats(this._stats, parsed, gain, this._haNow(), (a, b) => this._decayH(a, b));
+              // Zwei Geräte haben fast gleichzeitig die letzten Häufchen einzeln weggemacht: Zusammen ist alles
+              // sauber, aber keines hat den Großputz gesehen. Den jetzt nachholen, sonst blieben alle Plätze belegt
+              // (nach dem achten käme nie wieder eins).
+              this._poopCache = null;
+              if (gain.c && this._stats.m && !this._poops().piles.length) {
+                const t = sec(this._now());
+                Object.assign(this._stats, { c: t, l: t, m: 0 });
+                this._poopCache = null;
+              }
               this._sent.forEach((e) => (e.gain = { s: 0, g: 0, c: false })); // steckt jetzt im nächsten Schreiben
               this._gain = gain;
               this._save();
@@ -4874,25 +4900,18 @@
       if (w !== this._lastWeather || pr !== this._lastPrecip) {
         this._lastWeather = w;
         this._lastPrecip = pr;
-        this._readWeather(w, pr);
+        this._guard('Wetter', () => this._readWeather(w, pr));
       }
       const fl = c.flight_entity ? hass.states[c.flight_entity] : undefined;
       if (fl !== this._lastFlights) {
         this._lastFlights = fl;
-        this._readFlights(fl);
+        this._guard('Flugzeuge', () => this._readFlights(fl));
       }
       // Ein Fehler in einer Erweiterung (unerwartete Daten) soll die anderen nicht mitreißen
       for (const f of [this._hassSky, this._hassFest, this._hassFriend, this._hassBote, this._hassCoffee, this._hassPlan, this._hassAct]) {
-        try {
-          f.call(this, hass);
-        } catch (e) {
-          if (!this._hassErr?.has(f.name)) {
-            (this._hassErr ??= new Set()).add(f.name);
-            console.warn(`pika-pet-card: ${f.name}`, e);
-          }
-        }
+        this._guard(f.name, () => f.call(this, hass));
       }
-      this._updateSky();
+      this._guard('Himmel', () => this._updateSky());
       // Veralteter Plan nach langer Pause: erst frisch, wenn verbunden und sich seitdem etwas geändert hat (ein neues
       // hass-Objekt allein kann nur "verbunden: ja/nein" sein, mit noch altem Stand)
       if (fresh && this._planStale && hass.connected !== false && hass.states !== this._staleStates) this._planFresh();
@@ -4921,6 +4940,9 @@
       this._ro.observe(this._el.scene);
       this._onVis = () => this._visSync();
       document.addEventListener('visibilitychange', this._onVis);
+      // Seite geht zu oder lädt neu: Ungesendetes noch hinausschicken
+      this._onHide = () => this._flush();
+      window.addEventListener('pagehide', this._onHide);
       // Bedient jemand das Gerät, obwohl screen_entity „aus“ meldet, ist es nicht dieser Bildschirm (oder er ging eben an
       // und Fully meldet es noch nicht): bis zur nächsten Meldung des Schalters läuft die Karte hier
       this._onWake = () => {
@@ -4968,6 +4990,7 @@
       this._io?.disconnect();
       clearTimeout(this._staleT);
       document.removeEventListener('visibilitychange', this._onVis);
+      window.removeEventListener('pagehide', this._onHide);
       for (const t of WAKE_EVENTS) document.removeEventListener(t, this._onWake, { capture: true });
       this._timers.forEach((t) => clearInterval(t));
       this._timers = [];
@@ -5347,6 +5370,7 @@
       if (away) {
         this._hidAt = document.hidden || this._screenDark() ? Date.now() : null;
         this._goneAt ??= Date.now(); // für das Wiedersehen
+        this._flush();
         this._stop();
         this._stopCritters();
         this._hiddenFeatures(true);
@@ -5417,23 +5441,69 @@
       (async () => {
         while (run === this._runId) {
           this._ac = new AbortController();
+          this._waitDue = Date.now(); // für den Wachhund (_watchdog)
           try {
             await this._step();
           } catch (e) {
             if (!(e instanceof Cancel)) {
-              console.warn('pika-pet-card:', e);
+              this._err(`Schleife (${this._action || 'Auswahl'})`, e);
               await pause(2000);
             }
           }
           if (run !== this._runId) return;
-          this._cleanup();
+          // Auch das Aufräumen darf die Schleife nicht beenden: Sie liefe nie wieder an (_running bliebe wahr), der Pika
+          // stünde auf einem Bildschirm, der immer an ist, bis zum Neuladen still.
+          try {
+            this._cleanup();
+          } catch (e) {
+            this._err('Aufräumen', e);
+          }
           await pause(40);
         }
       })();
     }
 
+    // Fehler merken (die letzten 10, zu sehen im Fuß des Tagebuchs) und einmal je Stelle und Meldung in die Konsole
+    // schreiben: Auf dem Wand-Tablet schaut niemand in die Konsole, und derselbe Fehler käme sonst alle paar Sekunden.
+    _err(where, e) {
+      const msg = String(e?.message ?? e).slice(0, 140);
+      const L = (this._errs ??= []);
+      const old = L.find((x) => x.where === where && x.msg === msg);
+      if (old) {
+        old.n++;
+        old.t = Date.now();
+        return;
+      }
+      L.push({ where, msg, t: Date.now(), n: 1 });
+      if (L.length > 10) L.shift();
+      console.warn(`pika-pet-card: ${where}`, e);
+    }
+
+    // Ein Fehler in einem Teil (unerwartete Daten) soll die anderen nicht mitreißen
+    _guard(where, fn) {
+      try {
+        return fn();
+      } catch (e) {
+        this._err(where, e);
+      }
+    }
+
+    // Wachhund: Die Schleife wartet immer mit Frist (_wait). Ist die bei zwei Ticks hintereinander (20 s Abstand) seit
+    // über 90 s um, hängt sie an etwas, das nie fertig wird: neu starten. Zwei Ticks, weil nach einem Geräteschlaf
+    // alle Zeitgeber auf einmal fällig sind und der Tick vor dem nächsten _wait drankommen kann.
+    _watchdog() {
+      const late = this._running && this._waitDue > 0 && Date.now() - this._waitDue > 90000;
+      this._wdHit = late ? (this._wdHit || 0) + 1 : 0;
+      if (this._wdHit < 2) return;
+      this._wdHit = 0;
+      this._err('Wachhund', new Error(`Schleife stand bei „${this._action || 'Auswahl'}“, neu gestartet`));
+      this._stop();
+      this._start();
+    }
+
     _stop() {
       this._running = false;
+      this._waitDue = 0;
       clearTimeout(this._slotT);
       this._slotT = null;
       this._runId++;
@@ -5447,6 +5517,7 @@
 
     _wait(ms) {
       const sig = this._ac.signal;
+      this._waitDue = Date.now() + ms;
       return new Promise((resolve, reject) => {
         if (sig.aborted) return reject(new Cancel());
         const onAbort = () => (clearTimeout(t), reject(new Cancel()));
@@ -6764,7 +6835,16 @@
     _loop(fn, min, max) {
       const h = { t: 0 };
       // Unsichtbar nur weiterzählen, nichts tun (Blinzeln, Ohrenzucken, Blitze sieht keiner)
-      const next = () => (h.t = setTimeout(() => (this._away() || fn(), next()), rnd(min, max)));
+      // Wirft fn einmal, läuft die Schleife trotzdem weiter (sonst blinzelte er bis zum Neuladen nie wieder)
+      const next = () => (h.t = setTimeout(() => {
+        try {
+          if (!this._away()) fn();
+        } catch (e) {
+          this._err('Kleinigkeit', e);
+        } finally {
+          next();
+        }
+      }, rnd(min, max)));
       this._loops.push(h);
       next();
     }
@@ -6772,22 +6852,25 @@
     _tick() {
       // Unsichtbar: nur Fristen pflegen, alles andere holt der Tick beim Sichtbarwerden nach
       if (this._away()) return this._tickCoffee();
+      this._watchdog();
+      // Ein Fehler in einem Teil soll die anderen nicht mitreißen (wie in set hass)
+      for (const f of [this._tickCore, this._tickSky, this._tickFest, this._tickFriend, this._tickBote, this._tickCoffee,
+        this._tickGift, this._diaryDot]) {
+        this._guard(f.name, () => f.call(this));
+      }
+    }
+
+    _tickCore() {
       this._renderStats();
       // Vorrat verfällt auch ohne neue Plan-Änderung (ändert nur etwas, wenn ein Tag um ist)
       if (this._plan) this._hayFromPlan();
-      // Frischer Kaffee hält ihn kurz wach (er trinkt aus und schläft dann weiter)
-      if (this._sleepTime() !== this._asleep && !['goSleep', 'wakeUp', 'coffee'].includes(this._action)) {
+      // Frischer Kaffee hält ihn kurz wach (er trinkt aus und schläft dann weiter). Ein Päckchen packt er noch fertig
+      // aus (sonst verschwände der Inhalt ohne Vorführung), danach geht er von selbst schlafen (_step).
+      if (this._sleepTime() !== this._asleep && !['goSleep', 'wakeUp', 'coffee', 'giftOpen'].includes(this._action)) {
         this._interrupt();
       }
       if (this._wxDeadAt > 0 && Date.now() - this._wxDeadAt >= WX_HOLD) this._readWeather(this._lastWeather, this._lastPrecip);
       this._updateSky();
-      this._tickSky();
-      this._tickFest();
-      this._tickFriend();
-      this._tickBote();
-      this._tickCoffee();
-      this._tickGift();
-      this._diaryDot();
     }
 
     _hiddenFeatures(hidden) {
@@ -7648,7 +7731,8 @@
       } else if (r < 0.6) {
         this._cls('stw', 550, true);
       } else if (r < 0.75) {
-        this._say(pick(['mip…', 'mmh…', 'zzz… Löwenzahn…', `${this._frName()}…`, 'hihi…']), 1800);
+        // vom Freund murmelt er nur, wenn der auch zu Besuch kommt (friend: false)
+        this._say(pick(['mip…', 'mmh…', 'zzz… Löwenzahn…', ...(this._cfg.friend ? [`${this._frName()}…`] : []), 'hihi…']), 1800);
       } else if (r < 0.85) {
         this._cls('mlem', 950, true);
       }
@@ -7711,8 +7795,9 @@
           if (!drop) return;
           this._el.pika.classList.add('peek');
           setTimeout(() => this._el.pika.classList.remove('peek'), 900);
-        } else if (this._action !== 'eatFood' && this._action !== 'coffee') {
-          // Beim Kaffee nicht: das Futter frisst er ohnehin erst danach, er hüpfte nur vom Stein
+        } else if (!['eatFood', 'coffee', 'giftOpen'].includes(this._action)) {
+          // Beim Kaffee nicht: das Futter frisst er ohnehin erst danach, er hüpfte nur vom Stein. Beim Auspacken
+          // nicht: Der Inhalt verschwände ohne Vorführung („neuer Trick!“), das Futter frisst er gleich danach.
           this._interrupt();
         }
       };
@@ -8746,6 +8831,8 @@
         this._slotNext = null;
         this._slotArm();
       }
+      // Pinos nächster Besuch wartet noch mit der alten Uhr: Er käme um den Versatz zu spät oder gar nicht
+      if (this._frT && !this._fr) this._friendPlan();
     }
 
     // Uhr der Besuche: Uhr von HA (Vorschau: um _dbgShiftMs vorgestellt). Nicht _dbgDate, das steht fest.
@@ -8807,7 +8894,7 @@
     _critterWeather(kind) {
       const wx = this._wx;
       if (!this._g) return false;
-      if (kind === 'frog' || kind === 'snail') return wx.rain > 0 && !wx.snow && !wx.flash && !wx.cold;
+      if (kind === 'frog' || kind === 'snail') return wx.rain > 0 && !wx.snow && !wx.flash && !wx.cold && !wx.hail;
       if (wx.wet || wx.storm) return false;
       if (kind === 'mouse') return true;
       const e = this._dbgElev ?? this._elev;
@@ -10467,8 +10554,9 @@
 
     // Satt durch selbst Gefressenes, höchstens bis SELF_MAX
     _selfFed(d) {
-      const room = SELF_MAX - this._raw('s');
-      if (room > 0) this._add('s', Math.min(d, room), true);
+      // Nur ganze Bissen: Knapp unter SELF_MAX schrieb sonst jedes Knabbern (alle paar Minuten) ein Zehntel in den
+      // Helfer, Hunderte Zeilen am Tag im Verlauf von HA
+      if (SELF_MAX - this._raw('s') >= d) this._add('s', d, true);
     }
 
     // self: zählt nicht als Pflege (selbst gefressen, Inhalt eines Päckchens). Füttern, Streicheln, Putzen kommen von dir
@@ -10528,50 +10616,57 @@
       this._pendingWrite = true;
       this._saveWait = false;
       clearTimeout(this._saveT);
-      this._saveT = setTimeout(() => {
-        const v = serialize(this._stats);
-        if (this._cfg.entity && !this._noEntity) {
-          // Stand aus HA noch nicht da (Start, unavailable): warten, beim Eintreffen wird zusammengeführt
-          if (!this._synced || !this._hass) return;
-          const id = this._cfg.entity;
-          const st = this._hass.states[id]?.state;
-          // Getrennt oder Helfer gerade nicht erreichbar: nicht ins Leere senden (es käme nie ein Echo). Bleibt
-          // ungesendet und geht beim nächsten verbundenen hass bzw. zusammengeführt mit dem wiederkehrenden Stand hinaus.
-          // ("unknown" ist ein frisch angelegter, leerer Helfer: _synced kommt dort erst nach 20 s, dann beschreiben)
-          if (this._hass.connected === false || st === 'unavailable') {
-            this._saveWait = true;
-            return;
-          }
-          // Derselbe Wert ändert in HA nichts (es käme kein Echo): nicht senden
-          if (st !== v) {
-            const e = { v, gain: this._gain, at: Date.now(), n: this._hassN };
-            this._sent.push(e);
-            if (this._sent.length > 8) this._sent.shift();
-            this._hass
-              .callService('input_text', 'set_value', { entity_id: id, value: v })
-              .catch((err) => {
-                console.warn('pika-pet-card: Speichern fehlgeschlagen, neuer Versuch', err);
-                // mit wachsender Pause (5 s, 10 s … höchstens 5 Min): lehnt HA den Wert ab, nicht alle paar Sekunden
-                this._saveFail = (this._saveFail || 0) + 1;
-                e.failed = true; // die Pause hier gilt, _sentCheck wertet es nicht vorher schon als verloren
-                setTimeout(() => this._sentLost(e), Math.min(5000 * 2 ** (this._saveFail - 1), 3e5));
-              });
-            this._sentCheck(e, 15000);
-          }
-        } else {
-          try {
-            localStorage.setItem(this._lsKey(), v);
-          } catch (e) { /* egal */ }
-          this._diaryLog('s', v);
-          // Helfer fehlt oder war beim Laden nicht erreichbar: Gewinne behalten, kommt er, gehen sie auf seinen Stand
-          if (this._cfg.entity) {
-            this._pendingWrite = false;
-            return;
-          }
+      // Gebündelt: 1,2 s nach der letzten Änderung, bei Dauerstreicheln aber spätestens 4 s nach der ersten
+      this._saveSince ??= Date.now();
+      this._saveT = setTimeout(() => this._saveNow(), clamp(this._saveSince + 4000 - Date.now(), 0, 1200));
+    }
+
+    _saveNow() {
+      clearTimeout(this._saveT);
+      this._saveT = null;
+      this._saveSince = null;
+      const v = serialize(this._stats);
+      if (this._cfg.entity && !this._noEntity) {
+        // Stand aus HA noch nicht da (Start, unavailable): warten, beim Eintreffen wird zusammengeführt
+        if (!this._synced || !this._hass) return;
+        const id = this._cfg.entity;
+        const st = this._hass.states[id]?.state;
+        // Getrennt oder Helfer gerade nicht erreichbar: nicht ins Leere senden (es käme nie ein Echo). Bleibt
+        // ungesendet und geht beim nächsten verbundenen hass bzw. zusammengeführt mit dem wiederkehrenden Stand hinaus.
+        // ("unknown" ist ein frisch angelegter, leerer Helfer: _synced kommt dort erst nach 20 s, dann beschreiben)
+        if (this._hass.connected === false || st === 'unavailable') {
+          this._saveWait = true;
+          return;
         }
-        this._gain = { s: 0, g: 0, c: false };
-        this._pendingWrite = false;
-      }, 1200);
+        // Derselbe Wert ändert in HA nichts (es käme kein Echo): nicht senden
+        if (st !== v) {
+          const e = { v, gain: this._gain, at: Date.now(), n: this._hassN };
+          this._sent.push(e);
+          if (this._sent.length > 8) this._sent.shift();
+          this._hass
+            .callService('input_text', 'set_value', { entity_id: id, value: v })
+            .catch((err) => {
+              console.warn('pika-pet-card: Speichern fehlgeschlagen, neuer Versuch', err);
+              // mit wachsender Pause (5 s, 10 s … höchstens 5 Min): lehnt HA den Wert ab, nicht alle paar Sekunden
+              this._saveFail = (this._saveFail || 0) + 1;
+              e.failed = true; // die Pause hier gilt, _sentCheck wertet es nicht vorher schon als verloren
+              setTimeout(() => this._sentLost(e), Math.min(5000 * 2 ** (this._saveFail - 1), 3e5));
+            });
+          this._sentCheck(e, 15000);
+        }
+      } else {
+        try {
+          localStorage.setItem(this._lsKey(), v);
+        } catch (e) { /* egal */ }
+        this._diaryLog('s', v);
+        // Helfer fehlt oder war beim Laden nicht erreichbar: Gewinne behalten, kommt er, gehen sie auf seinen Stand
+        if (this._cfg.entity) {
+          this._pendingWrite = false;
+          return;
+        }
+      }
+      this._gain = { s: 0, g: 0, c: false };
+      this._pendingWrite = false;
     }
 
     // Kein Echo nach ms: Steht der Wert doch in HA, gilt er als angekommen. Verloren ist er erst, wenn seit dem Senden
@@ -10598,7 +10693,7 @@
       if (from == null || to == null || from === to) return;
       try {
         const mine = (this._lsCopies ??= new Set());
-        for (const p of ['pika-pet-card', 'pika-pet-plan', 'pika-pet-gift', 'pika-pet-diary']) {
+        for (const p of ['pika-pet-card', 'pika-pet-plan', 'pika-pet-gift', 'pika-pet-diary', 'pika-pet-diary-seen']) {
           const v = localStorage.getItem(`${p}:${from}`);
           if (v != null && localStorage.getItem(`${p}:${to}`) == null) {
             localStorage.setItem(`${p}:${to}`, v);
@@ -11794,6 +11889,7 @@
         fog: !!def.fog,
         flash: !!def.flash,
         storm: !!def.storm,
+        hail: raw.cond === 'hail', // zählt als Starkregen, aber Frosch und Schnecke bleiben weg
         windy: !!def.wind || raw.wind >= 30,
         cold: raw.temp != null && raw.temp < 3,
         chilly: raw.temp != null && raw.temp < 12, // Ofen an, Schornstein raucht
@@ -12352,7 +12448,12 @@
       const B = this._bote;
       if (!this._g || !this._el || !B?.list.length) return;
       const row = B.list.filter((a) => a.el && a.spec).sort((x, y) => x.idx - y.idx);
-      if (!row.length) return;
+      // Leere Reihe: die Signatur vergessen. Kommt danach dieselbe Ansicht wieder (Programm abgebrochen und neu
+      // gestartet), bekäme das neue Requisit sonst weder Platz noch Größe und läge riesig oben links.
+      if (!row.length) {
+        B.sig = null;
+        return;
+      }
       const H = this._H;
       const W = this._W;
       const left = 6;
@@ -13369,15 +13470,21 @@
         b.hidden = false;
         // Zum allerersten Mal (je Gerät gemerkt): Der Knopf ploppt herein und funkelt
         let seen = true;
+        const k = `pika-pet-gift:${this._cfg.name}`;
         try {
-          const k = `pika-pet-gift:${this._cfg.name}`;
           seen = !!localStorage.getItem(k);
-          localStorage.setItem(k, '1');
         } catch (e) { /* egal */ }
         if (!seen && this._g) {
+          // erst jetzt merken: Stand die Szene noch nicht, käme das Funkeln sonst nie
+          try {
+            localStorage.setItem(k, '1');
+          } catch (e) { /* egal */ }
           b.classList.add('new');
           setTimeout(() => b.classList.remove('new'), 1000);
-          for (let i = 0; i < 5; i++) setTimeout(() => this._sparkle(this._W - 32 + rnd(-16, 16), this._H - 84 + rnd(-16, 16), 1), 300 + i * 150);
+          // um den Knopf herum (er sitzt oben rechts, auf schmalen Karten darunter)
+          const bx = b.offsetLeft + b.offsetWidth / 2;
+          const by = b.offsetTop + b.offsetHeight / 2;
+          for (let i = 0; i < 5; i++) setTimeout(() => this._sparkle(bx + rnd(-16, 16), by + rnd(-16, 16), 1), 300 + i * 150);
           if (!this._asleep && !this._inside && this._running) this._say(pick(['oh!', 'ein Päckchen!']), 1300);
         }
       }
@@ -13788,10 +13895,14 @@
         { transform: cur === 'none' ? 'none' : cur },
         { transform: `translate(${(to.left + to.width / 2 - from.left - from.width / 2).toFixed(1)}px, ${(to.top + to.height / 2 - from.top - from.height / 2).toFixed(1)}px) scale(${k.toFixed(2)})`, opacity: tgt ? 1 : 0.2 },
       ], { duration: 750, easing: 'cubic-bezier(.4, 0, .3, 1)', fill: 'forwards' });
-      await this._wait(750);
+      try {
+        await this._wait(750);
+      } finally {
+        // auch bei Abbruch (Futter fällt, Bildschirm aus): sonst bliebe der Schatz bis zum Neuladen unsichtbar
+        if (tgt) tgt.style.opacity = '';
+      }
       ie.remove();
       if (tgt) {
-        tgt.style.opacity = '';
         tgt.classList.add('new');
         setTimeout(() => tgt.classList.remove('new'), 800);
         this._sparkle(to.left - sc.left + to.width / 2, to.top - sc.top + to.height * 0.3, 3);
@@ -14041,6 +14152,17 @@
 
     // Trick des Wollknäuels: mit der Nase hochstupsen, Kopfball, es fliegt im Bogen weiter über die Wiese
     async _giftHeader() {
+      // Die Flug-Animationen halten ihren Endstand (fill: forwards): bei Abbruch mitten im Flug beenden, sonst bliebe
+      // das Knäuel in der Luft hängen bzw. versetzt liegen
+      const A = [];
+      try {
+        await this._giftHeaderRun(A);
+      } finally {
+        A.forEach((a) => a.cancel());
+      }
+    }
+
+    async _giftHeaderRun(A) {
       const el = this._gtEls?.get(0);
       if (!el) return;
       const p = this._el.pika;
@@ -14065,6 +14187,7 @@
         { transform: `translate(${(hx * 0.6).toFixed(1)}px, ${(hy * 1.7).toFixed(1)}px)`, offset: 0.55 },
         { transform: `translate(${hx.toFixed(1)}px, ${hy.toFixed(1)}px)` },
       ], { duration: 900, easing: 'ease-in-out', fill: 'forwards' });
+      A.push(up);
       setTimeout(() => this._g && this._jump('hop1'), 520);
       await this._wait(900);
       this._say('Kopfball!', 1200);
@@ -14076,6 +14199,7 @@
         { transform: `translate(${dx.toFixed(1)}px, ${(hy * 0.12).toFixed(1)}px)`, offset: 0.93 },
         { transform: `translate(${dx.toFixed(1)}px, 0)` },
       ], { duration: 1100, easing: 'ease-in-out', fill: 'forwards' });
+      A.push(away);
       up.cancel();
       this._yarnRot = (this._yarnRot || 0) + kd * 540;
       el.querySelector('svg').style.transform = `rotate(${this._yarnRot.toFixed(0)}deg)`;
@@ -14600,7 +14724,8 @@
       const nm = it.key === 'plush' ? `Plüsch-${fr}` : it.name;
       if (e.what === 'treat') return `${lead} Drin war ein Leckerli: ${nm}. Sofort aufgefuttert!`;
       if (e.what === 'trick') return `${lead} Jetzt kann ich einen neuen Trick: ${GIFT_TRICK[e.it]}!`;
-      if (e.what === 'gilt') return `${lead} Jetzt hab ich ${GIFT_GILT[e.it].replace('%', nm)}.`;
+      // GIFT_GILT steht im Nominativ („ein goldener Plüsch-Pino!“), hier braucht es den Akkusativ
+      if (e.what === 'gilt') return `${lead} Jetzt hab ich ${GIFT_GILT[e.it].replace('%', nm).replace(/^ein goldener /, 'einen goldenen ')}.`;
       return `${lead} Drin war ${it.key === 'plush' ? `ein ${nm}!` : it.say}`;
     }
 
@@ -14679,7 +14804,7 @@
       const rank = (a) => (a === 'paint' ? 0 : a === 'sport' ? 1 : fav.includes(a) ? 2 : 3);
       const parts = new Map();
       for (const e of acts) {
-        if (!T.act[e.a]) continue;
+        if (!hasKey(T.act, e.a)) continue;
         const p = partOf(e.t);
         if (!parts.has(p)) parts.set(p, []);
         parts.get(p).push(e);
@@ -14800,9 +14925,12 @@
     // schlägt gleich die Schätze auf.
     _diaryOpen(tab = 'heute') {
       if (!this._el) return;
+      // diary: false: nur die Schätze (lang drücken auf den Päckchen-Knopf), ohne Heute/Gestern und ohne den Verlauf zu lesen
+      const only = !this._diaryOn();
+      if (only) tab = 'schatz';
       if (this._dia) return this._diaryTab(tab);
       const n = String(this._cfg.name || 'Pika');
-      const title = `${/[sßxz]$/i.test(n) ? `${n}’` : `${n}s`} Tagebuch`;
+      const title = `${/[sßxz]$/i.test(n) ? `${n}’` : `${n}s`} ${only ? 'Schätze' : 'Tagebuch'}`;
       const host = document.createElement('div');
       host.className = 'pika-pet-diary';
       const root = host.attachShadow({ mode: 'open' });
@@ -14811,10 +14939,11 @@
           <div class="sheet" role="dialog" aria-modal="true" aria-label="${esc(title)}" tabindex="-1">
             <div class="hd"><span class="bk">${DIARY_BOOK}</span><div class="ht"><b>${esc(title)}</b><span class="dt"></span></div>
               <button class="x" aria-label="Schließen" title="Schließen">✕</button></div>
-            <div class="tabs" role="tablist">
+            ${only ? '' : `<div class="tabs" role="tablist">
               <button role="tab" data-tab="heute">Heute</button><button role="tab" data-tab="gestern">Gestern</button><button role="tab" data-tab="schatz">Schätze</button>
-            </div>
+            </div>`}
             <div class="page" role="tabpanel" tabindex="0"></div>
+            <div class="ft"></div>
           </div>
         </div>`;
       document.body.appendChild(host);
@@ -14845,6 +14974,7 @@
       poke();
       this._diaryRender();
       root.querySelector('.sheet').focus();
+      if (only) return;
       try {
         localStorage.setItem(`pika-pet-diary-seen:${this._cfg.name}`, this._diarySig());
       } catch (e) { /* egal */ }
@@ -14854,7 +14984,7 @@
         D.data = data;
         this._diaryRender();
       }).catch((e) => {
-        console.warn('pika-pet-card: Tagebuch', e);
+        this._err('Tagebuch', e);
         if (this._dia !== D) return;
         D.data = { fail: true, days: [] };
         this._diaryRender();
@@ -14863,7 +14993,7 @@
 
     _diaryTab(tab) {
       if (!this._dia) return;
-      this._dia.tab = tab;
+      this._dia.tab = this._diaryOn() ? tab : 'schatz';
       this._diaryRender();
     }
 
@@ -14887,6 +15017,11 @@
           : M ? this._diaryPage(M, today, D.data.fail, D.data.none) : '<p class="none">Mein Tagebuch klemmt gerade. Versuch es gleich noch einmal.</p>';
       }
       pg.scrollTop = 0;
+      // Fuß: Version der Karte auf diesem Gerät (liefe hier noch eine alte, sähe man es) und, falls es welche gab, die
+      // letzten Fehler. Auf dem Wand-Tablet ist das der einzige Ort, an dem man sie sieht.
+      const errs = this._errs || [];
+      D.root.querySelector('.ft').innerHTML = `<span>Pika Pet Card ${VERSION}</span>${errs.length ? `<details><summary>${errs.length === 1 ? '1 Fehler' : `${errs.length} Fehler`} seit dem Laden</summary><ul>${errs.map((e) =>
+        `<li>${esc(new Date(e.t).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' }))} · ${esc(e.where)}${e.n > 1 ? ` (${e.n}×)` : ''}: ${esc(e.msg)}</li>`).join('')}</ul></details>` : ''}`;
     }
 
     _diaryClose() {
@@ -15044,7 +15179,7 @@
     _bigAct(k, start) {
       const rec = this._plan.rec;
       const own = rec.find((e) => e[0] === k);
-      if (own) return ACT_LEN[own[1]] ? own[1] : null;
+      if (own) return hasKey(ACT_LEN, own[1]) ? own[1] : null;
       if (this._sportSlot(k, start)) return 'sport';
       const recent = rec.filter((e) => e[0] < k).slice(0, ACT_RECENT).map((e) => e[1]);
       const tf = this._tagesform(start);
@@ -15181,8 +15316,11 @@
     // Anderer Helfer oder Name: von vorn. Ohne plan_entity bleibt der Plan im Browser (je Gerät).
     _planReset() {
       clearTimeout(this._planT);
+      this._planT = null;
       clearTimeout(this._planFreshT);
       clearTimeout(this._planRT);
+      this._planSeen = false; // der Helfer war schon einmal da (fehlt er später kurz, startet HA wohl neu)
+      this._planNewer = false; // im Helfer steht das Format einer neueren Karte: nur lesen
       this._planOps = [];
       this._planSent = []; // gesendet, noch ohne Echo: { v, at }
       this._planAck = 0; // Änderungen bis zu dieser Zeit hat HA bestätigt
@@ -15228,6 +15366,14 @@
       // Helfer zu kurz für den Plan: er wird nicht beschrieben, sein eingefrorener Stand zählt nicht (sonst sprängen Serie,
       // Album und Vorrat bei jedem Neuladen zurück). Der Plan bleibt im Browser, siehe _planSave.
       const P = this._planMax() < PLAN_MIN ? null : planParse(st);
+      if (st !== undefined) this._planSeen = true;
+      // Format einer neueren Karte (höheres Präfix oder mehr Felder, als diese Version kennt): nicht überschreiben.
+      // Dieses Gerät plant mit seinem letzten Stand weiter und schreibt nichts, bis es neu geladen ist.
+      if (typeof st === 'string' && st !== 'unknown' && st !== 'unavailable') {
+        const newer = !P && /^p\d+\|/.test(st) && (!st.startsWith('p1|') || st.split('|').length > 6);
+        if (newer && !this._planNewer) console.warn(`pika-pet-card: ${id} hat das Format einer neueren Karte, dieses Gerät schreibt den Tagesplan nicht mehr. Bitte neu laden.`);
+        this._planNewer = newer;
+      }
       if (P) {
         // Ein anderes Gerät hat entwarnt (dort wurde gepflegt): Die eigene Warnung von eben nicht noch einmal obendrauf
         // legen und 10 s keine neue aussprechen, bis sein Zustand (kommt nach dem Plan) auch hier ist. Sonst schrieben
@@ -15246,7 +15392,7 @@
       if (st === undefined && !this._planWarned) {
         this._planWarned = true;
         console.warn(`pika-pet-card: ${id} gibt es nicht, der Tagesplan bleibt auf diesem Gerät`);
-      } else if (!P && st && st !== 'unknown' && st !== 'unavailable' && this._planMax() >= PLAN_MIN) {
+      } else if (!P && st && st !== 'unknown' && st !== 'unavailable' && this._planMax() >= PLAN_MIN && !this._planNewer) {
         console.warn(`pika-pet-card: ${id} enthält "${st}", der Tagesplan fängt neu an`);
       }
       // unknown/unavailable (Start von HA): abwarten, sonst wäre der gespeicherte Plan überschrieben. Ein neu
@@ -15318,52 +15464,70 @@
 
     _planSave() {
       clearTimeout(this._planT);
-      this._planT = setTimeout(() => {
-        const id = this._cfg.plan_entity;
-        const ent = id && this._hass?.states[id];
-        const P = this._plan;
-        const v = planSer(P);
-        // Helfer zu kurz (max. Länge unter PLAN_MIN): Päckchen und Verlauf passen nicht hinein, darum gar nicht
-        // senden (HA lehnte jeden Wert ab), sondern einmal deutlich warnen und im Browser weiterplanen
-        const short = ent && this._planMax() < PLAN_MIN;
-        if (short && !this._planShortW) {
-          this._planShortW = true;
-          console.warn(`pika-pet-card: ${id} ist zu kurz (max. Länge ${this._planMax()}), bitte auf 255 stellen. Der Tagesplan bleibt bis dahin auf diesem Gerät.`);
-        }
-        if (ent && !short) {
-          // Stand aus HA noch nicht da (Start): beim Eintreffen wird zusammengeführt und geschrieben
-          if (!this._planOk) return;
-          // Nicht erreichbar (war es schon beim Laden, plant die Karte nach 60 s lokal weiter): nicht ins Leere senden,
-          // später noch einmal; die eigenen Änderungen bleiben bis zur Bestätigung (siehe _planCompose)
-          // ("unknown" ist ein frisch angelegter, leerer Helfer: den beschreiben, _planOk kam erst nach 20 s)
-          if (ent.state === 'unavailable') {
-            this._planBase = P;
-            return this._planRetry(15000);
-          }
-          // _planSt bleibt der Stand von HA (erst das Echo ändert ihn): so liest nicht jedes fremde hass-Update bis zum
-          // Echo den alten Stand neu ein und schreibt denselben Wert noch einmal
-          if (v !== this._planSt && v !== this._planSent.at(-1)?.v) {
-            this._planSent.push({ v, at: this._haNow() });
-            if (this._planSent.length > 8) this._planSent.shift();
-            this._hass.callService('input_text', 'set_value', { entity_id: id, value: v })
-              .catch((e) => {
-                console.warn('pika-pet-card: Tagesplan speichern fehlgeschlagen, neuer Versuch', e);
-                this._planRetry(5000);
-              });
-            this._planRetry(15000);
-          }
-        } else {
-          try {
-            localStorage.setItem(this._planLsKey(), v);
-          } catch (e) { /* privat/gesperrt: dann nur bis zum Neuladen */ }
-          this._diaryLog('p', v);
-          this._planAck = this._haNow(); // lokal gibt es kein Echo
-        }
+      this._planT = setTimeout(() => this._planSaveNow(), 400);
+    }
+
+    _planSaveNow() {
+      clearTimeout(this._planT);
+      this._planT = null;
+      const id = this._cfg.plan_entity;
+      const ent = id && this._hass?.states[id];
+      const P = this._plan;
+      const v = planSer(P);
+      // Helfer zu kurz (max. Länge unter PLAN_MIN): Päckchen und Verlauf passen nicht hinein, darum gar nicht
+      // senden (HA lehnte jeden Wert ab), sondern einmal deutlich warnen und im Browser weiterplanen
+      const short = ent && this._planMax() < PLAN_MIN;
+      if (short && !this._planShortW) {
+        this._planShortW = true;
+        console.warn(`pika-pet-card: ${id} ist zu kurz (max. Länge ${this._planMax()}), bitte auf 255 stellen. Der Tagesplan bleibt bis dahin auf diesem Gerät.`);
+      }
+      if (id && !short && (this._planNewer || (!ent && this._planSeen))) {
+        // Im Helfer steht ein neueres Format (siehe _hassPlan): nichts senden. Oder der Helfer war da und fehlt gerade
+        // (HA startet neu): nichts als bestätigt werten. Die eigenen Änderungen bleiben offen und kommen auf seinen
+        // Stand, sobald er wieder da ist (_hassPlan → _planCompose); lokal bestätigt fielen sie nach 15 s weg.
         this._planBase = P;
-        this._giftCredit();
-        // Sammeln aus der Vorschau (ohne Fenster) lässt sich nicht wiederholen, ohne doppelt zu zählen
-        this._planOps = this._planOps.filter((o) => !(o.t === 'gather' && o.m == null));
-      }, 400);
+        return;
+      }
+      if (ent && !short) {
+        // Stand aus HA noch nicht da (Start): beim Eintreffen wird zusammengeführt und geschrieben
+        if (!this._planOk) return;
+        // Nicht erreichbar (war es schon beim Laden, plant die Karte nach 60 s lokal weiter): nicht ins Leere senden,
+        // später noch einmal; die eigenen Änderungen bleiben bis zur Bestätigung (siehe _planCompose)
+        // ("unknown" ist ein frisch angelegter, leerer Helfer: den beschreiben, _planOk kam erst nach 20 s)
+        if (ent.state === 'unavailable') {
+          this._planBase = P;
+          return this._planRetry(15000);
+        }
+        // _planSt bleibt der Stand von HA (erst das Echo ändert ihn): so liest nicht jedes fremde hass-Update bis zum
+        // Echo den alten Stand neu ein und schreibt denselben Wert noch einmal
+        if (v !== this._planSt && v !== this._planSent.at(-1)?.v) {
+          this._planSent.push({ v, at: this._haNow() });
+          if (this._planSent.length > 8) this._planSent.shift();
+          this._hass.callService('input_text', 'set_value', { entity_id: id, value: v })
+            .catch((e) => {
+              console.warn('pika-pet-card: Tagesplan speichern fehlgeschlagen, neuer Versuch', e);
+              this._planRetry(5000);
+            });
+          this._planRetry(15000);
+        }
+      } else {
+        try {
+          localStorage.setItem(this._planLsKey(), v);
+        } catch (e) { /* privat/gesperrt: dann nur bis zum Neuladen */ }
+        this._diaryLog('p', v);
+        this._planAck = this._haNow(); // lokal gibt es kein Echo
+      }
+      this._planBase = P;
+      this._giftCredit();
+      // Sammeln aus der Vorschau (ohne Fenster) lässt sich nicht wiederholen, ohne doppelt zu zählen
+      this._planOps = this._planOps.filter((o) => !(o.t === 'gather' && o.m == null));
+    }
+
+    // Seite wird versteckt oder geschlossen (App zu, Neuladen): Ungesendetes sofort hinaus, die Zeitgeber kämen nicht
+    // mehr dran und das eben Gefütterte oder Gestreichelte wäre weg
+    _flush() {
+      if (this._saveT) this._saveNow();
+      if (this._planT) this._planSaveNow();
     }
 
     // Max. Länge des Helfers (ohne Helfer: unbegrenzt, der Plan bleibt im Browser)
@@ -15475,7 +15639,7 @@
       this._face(dir);
       // Motiv: Wer das Fenster zuerst malt, trägt es in den Plan ein, die anderen malen dasselbe
       const own = S.k >= 0 && this._plan.rec.find((e) => e[0] === S.k);
-      const motif = own && EASEL_MOTIF[own[2]] ? own[2] : this._paintMotif(S.r(4), S.r(5));
+      const motif = own && hasKey(EASEL_MOTIF, own[2]) ? own[2] : this._paintMotif(S.r(4), S.r(5));
       if (S.k >= 0) this._planOp({ t: 'rec', k: S.k, a: 'paint', v: motif });
       const el = document.createElement('div');
       el.className = 'easel';
@@ -15920,5 +16084,15 @@
       documentationURL: 'https://github.com/cschloesser/ha-pet#readme',
     });
     console.info(`%c PIKA-PET-CARD %c ${VERSION} `, 'background:#ad8664;color:#fff;border-radius:3px 0 0 3px', 'background:#f0e2cf;color:#5a4030;border-radius:0 3px 3px 0');
+  }
+  // Für die Tests (test/, node --test): reine Funktionen und die Klasse herausgeben. Im Browser setzt niemand
+  // __pikaTest, dort passiert nichts.
+  if (typeof globalThis !== 'undefined' && typeof globalThis.__pikaTest === 'function') {
+    globalThis.__pikaTest({
+      VERSION, PikaPetCard, PLAN_MIN, HAY_MAX, GIFT, ACT_LEN, hasKey,
+      planBlank, planSer, planParse, planApply, hayNow, giftLv, pikaDay,
+      freshStats, serialize, parseStats, mergeStats, seedRnd, weightedR,
+      sunTimes, festDay, festEaster, festAdvent1, festBirthdate,
+    });
   }
 })();
