@@ -56,7 +56,13 @@
  * werden aus Datum und Standort (hass.config) berechnet.
  */
 (() => {
-  const VERSION = '0.27.1';
+  const VERSION = '0.27.2';
+
+  // screen_entity gehört zu einem Gerät (dem Kiosk-Tablet), dasselbe Dashboard öffnen aber auch andere. Ein Rechner mit
+  // Maus ist sicher nicht dieser Bildschirm, Fully Kiosk mit JS-Schnittstelle dagegen schon.
+  const screenElsewhere = () => typeof window.fully === 'undefined'
+    && !!window.matchMedia?.('(pointer: fine) and (hover: hover)').matches;
+  const WAKE_EVENTS = ['pointerdown', 'keydown', 'wheel', 'touchstart'];
 
   // Prototyp Tiefe (depth: true): hintere Spur liegt LANE_DY × Kartenhöhe über der Bodenlinie, Pika dort um LANE_S kleiner
   const LANE_DY = 0.075;
@@ -123,7 +129,7 @@
     sleep_end: 'z. B. sunrise, sunrise-30 oder 07:00',
     rain_min: 'Meldet das Wetter „rainy“ bei weniger, bleibt es trocken (nur mit Niederschlags-Sensor).',
     flight_radius: 'So groß wie der Radius der Flightradar24-Integration.',
-    screen_entity: 'z. B. der Bildschirm-Schalter von Fully Kiosk: Bei „aus“ ruht die Karte, beim Einschalten winkt er.',
+    screen_entity: 'z. B. der Bildschirm-Schalter von Fully Kiosk: Bei „aus“ ruht die Karte auf dem Tablet (nicht auf Rechnern mit Maus), beim Einschalten winkt er.',
     birthdays: '- name: Mia\n  date: "03-14"',
     appliances: '- type: washer\n  state: sensor.waschmaschine_betriebszustand\n  progress: sensor.…_fortschritt\n  end: sensor.…_endzeit',
     coffee: 'active: select.…_aktives_programm\ncounter: sensor.…_tassen\nselected: select.…_ausgewahltes_programm',
@@ -4915,6 +4921,14 @@
       this._ro.observe(this._el.scene);
       this._onVis = () => this._visSync();
       document.addEventListener('visibilitychange', this._onVis);
+      // Bedient jemand das Gerät, obwohl screen_entity „aus“ meldet, ist es nicht dieser Bildschirm (oder er ging eben an
+      // und Fully meldet es noch nicht): bis zur nächsten Meldung des Schalters läuft die Karte hier
+      this._onWake = () => {
+        if (!this._screenDark()) return;
+        this._screenWoke = true;
+        this._visSync();
+      };
+      for (const t of WAKE_EVENTS) document.addEventListener(t, this._onWake, { capture: true, passive: true });
       // Karte aus dem Bild gescrollt (Handy, iPad): wie ein versteckter Tab alles anhalten
       this._offscreen = false;
       this._away0 = this._away();
@@ -4954,6 +4968,7 @@
       this._io?.disconnect();
       clearTimeout(this._staleT);
       document.removeEventListener('visibilitychange', this._onVis);
+      for (const t of WAKE_EVENTS) document.removeEventListener(t, this._onWake, { capture: true });
       this._timers.forEach((t) => clearInterval(t));
       this._timers = [];
       clearInterval(this._planeT);
@@ -5313,7 +5328,13 @@
     // Schaut keiner hin? Tab im Hintergrund, aus dem Bild gescrollt oder (mit screen_entity) Bildschirm aus. Ein dunkler
     // Kiosk-Bildschirm lässt den Tab sichtbar: ohne screen_entity liefe dann alles die ganze Nacht weiter.
     _away() {
-      return document.hidden || !!this._offscreen || this._screenSt === 'off';
+      return document.hidden || !!this._offscreen || this._screenDark();
+    }
+
+    // Ist der Bildschirm von screen_entity aus, und ist es der Bildschirm dieses Geräts? Auf einem anderen Gerät mit
+    // demselben Dashboard (Rechner mit Maus; Handy, das gerade bedient wird) läuft die Karte weiter.
+    _screenDark() {
+      return this._screenSt === 'off' && !this._screenWoke && !screenElsewhere();
     }
 
     // Sichtbarkeit hat sich geändert: unsichtbar ruht alles (Schleife, Besucher, Animationen), sichtbar geht es weiter
@@ -5324,7 +5345,7 @@
       this._el.scene.classList.toggle('paused', away);
       this._fxAnims(away);
       if (away) {
-        this._hidAt = document.hidden || this._screenSt === 'off' ? Date.now() : null;
+        this._hidAt = document.hidden || this._screenDark() ? Date.now() : null;
         this._goneAt ??= Date.now(); // für das Wiedersehen
         this._stop();
         this._stopCritters();
@@ -14890,6 +14911,7 @@
       const st = id ? hass.states[id]?.state : undefined;
       if (st === this._screenSt) return;
       this._screenSt = st;
+      this._screenWoke = false;
       // Bildschirm aus: wie ein versteckter Tab ruht alles (Schleife, Besuche, Animationen). Geht er an, steigt der Pika
       // wie nach dem Neuladen gleich mitten in der Beschäftigung ein und winkt (_visSync → _start, _showReq).
       if (this._el) this._visSync();
