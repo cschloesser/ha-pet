@@ -1,0 +1,4 @@
+# Quelltext, Tests und die gebaute Karte immer mit LF auschecken, auch unter Windows mit core.autocrlf:
+# Tests suchen im Text nach Zeilenumbrüchen, und der Bau soll auf jedem Rechner dieselbe Datei ergeben.
+*.js text eol=lf
+*.mjs text eol=lf

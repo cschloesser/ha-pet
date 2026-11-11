@@ -1,0 +1,14 @@
+{
+  "name": "pika-pet-card",
+  "private": true,
+  "description": "Pika Pet Card für Home Assistant: Quelltext in src/, gebaut wird pika-pet-card.js im Wurzelverzeichnis",
+  "type": "module",
+  "scripts": {
+    "build": "node dev/build.mjs",
+    "test": "node --test"
+  },
+  "devDependencies": {
+    "acorn": "8.19.0",
+    "esbuild": "0.28.2"
+  }
+}

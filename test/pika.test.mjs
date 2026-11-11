@@ -7,6 +7,11 @@ import fs from 'node:fs';
 import vm from 'node:vm';
 
 const src = fs.readFileSync(new URL('../pika-pet-card.js', import.meta.url), 'utf8');
+// src ist das gebaute Bündel, so wie es ausgeliefert wird (esbuild druckt Strings mit doppelten Anführungszeichen und
+// die obere Ebene mit var). quell sind die Module unter src/ hintereinander, so wie sie geschrieben sind: Tests, die
+// im Quelltext nach JS-Schreibweise suchen, lesen dort. Dass beides zusammenpasst, prüft test/bau.test.mjs.
+const quell = fs.readdirSync(new URL('../src/', import.meta.url), { recursive: true }).map(String).filter((f) => f.endsWith('.js')).sort()
+  .map((f) => fs.readFileSync(new URL(`../src/${f.replaceAll('\\', '/')}`, import.meta.url), 'utf8').replace(/\r\n/g, '\n')).join('\n');
 let T = null;
 const warned = [];
 // document der Karte: Tests mit Attrappen hängen hier ihr createElement ein (siehe Att)
@@ -1566,9 +1571,9 @@ test('Requisiten: hervorkramen und wegräumen über .kram und .stow, beim Abbruc
   assert.equal(folge.at(-1), 'kram lift-gnd lifting');
   clearTimeout(c._kramT);
   // jede Klasse, mit der eine Beschäftigung ihr Requisit zeigt, räumt das Aufräumen der Schleife ab (_cleanup)
-  const gezeigt = [...src.matchAll(/this\._propOn\(([^)]*)\)/g)].flatMap((m) => m[1].split(',').map((x) => x.trim().replace(/'/g, '')));
+  const gezeigt = [...quell.matchAll(/this\._propOn\(([^)]*)\)/g)].flatMap((m) => m[1].split(',').map((x) => x.trim().replace(/'/g, '')));
   assert.ok(gezeigt.length >= 9);
-  const raeumt = src.match(/const all = \['walking'([\s\S]*?)\];/)[1] + src.match(/const ACT_CLS = \[([\s\S]*?)\];/)[1];
+  const raeumt = quell.match(/const all = \['walking'([\s\S]*?)\];/)[1] + quell.match(/const ACT_CLS = \[([\s\S]*?)\];/)[1];
   for (const k of [...gezeigt, 'kram', 'stow']) assert.ok(raeumt.includes(`'${k}'`), k);
 });
 
@@ -1627,8 +1632,9 @@ const GROESSEN = [[600, 248], [380, 184], [340, 248], [320, 400], [1000, 200]];
 
 test('Kleine Beschäftigungen: jede wählbare hat Methode, Länge, Wetter-Abbruch und räumt ihre Klassen ab', () => {
   assert.equal(T.MINI_ACTS.length, 14);
-  const raeumt = src.match(/const all = \['walking'([\s\S]*?)\];/)[1] + src.match(/const ACT_CLS = \[([\s\S]*?)\];/)[1]
-    + src.match(/const CUTE_CLS = \[([\s\S]*?)\];/)[1];
+  const raeumt = quell.match(/const all = \['walking'([\s\S]*?)\];/)[1] + quell.match(/const ACT_CLS = \[([\s\S]*?)\];/)[1]
+    + quell.match(/const CUTE_CLS = \[([\s\S]*?)\];/)[1];
+  let geprueft = 0;
   for (const a of T.MINI_ACTS) {
     assert.equal(typeof T.PikaPetCard.prototype[`_${a}`], 'function', `Methode _${a}`);
     assert.ok(T.hasKey(T.ACT_LEN, a), `ACT_LEN.${a}`);
@@ -1638,11 +1644,14 @@ test('Kleine Beschäftigungen: jede wählbare hat Methode, Länge, Wetter-Abbruc
     }
     assert.ok(T.WX_STOP.includes(a), `WX_STOP: ${a}`);
     // was die Methode dem Pika an Klassen gibt (direkt, über _propOn oder aus einer Liste in Großbuchstaben)
-    const body = src.match(new RegExp(`\\n    async _${a}\\(\\) \\{([\\s\\S]*?)\\n    \\}\\n`))[1];
+    const body = quell.match(new RegExp(`\\n  async _${a}\\(\\) \\{([\\s\\S]*?)\\n  \\}\\n`))[1];
     const kl = [...body.matchAll(/(?:p\.classList\.add|this\._propOn)\(([^)]*)\)|const [A-Z]+ = \[([^\]]*)\]/g)]
       .flatMap((m) => [...(m[1] || m[2]).matchAll(/'([^']+)'/g)].map((x) => x[1]));
     for (const k of kl) assert.ok(raeumt.includes(`'${k}'`), `${a}: Klasse ${k} räumt _cleanup nicht ab`);
+    geprueft += kl.length;
   }
+  // die Suche oben hängt an der Schreibweise des Quelltexts: Findet sie nichts mehr, prüft der Test nichts
+  assert.ok(geprueft >= 50, `nur ${geprueft} Klassen gefunden`);
   // Pfütze, Schiffchen und Schnee-Pika laufen nach der Planzeit: Ein später geladenes Gerät steigt ein
   for (const a of ['puddle', 'boat', 'snowpika']) assert.equal(T.ACT_NOJOIN.has(a), false, a);
   // jedes Requisit in der Pika-Grafik, das eine Klasse einblendet, wird hervorgekramt (PROP_SEL)
@@ -1877,7 +1886,7 @@ test('Requisit am Boden an der Karte: Sperren von Haus-Bote, Festdeko, Schätzen
   c._festPos = {};
   // Schätze auf der Wiese sperren (nicht, was im Bau oder im Arm liegt). Das Wollknäuel nicht: Nach einem Tipp liegt
   // es auf jedem Gerät woanders, die Pfütze läge sonst auf zwei Geräten an verschiedenen Stellen
-  const keys = [...src.matchAll(/\{ key: '(\w+)', name: /g)].map((m) => m[1]);
+  const keys = [...quell.matchAll(/\{ key: '(\w+)', name: /g)].map((m) => m[1]);
   const schatz = (l, w, top) => {
     const el = new Att();
     Object.assign(el, { offsetLeft: l, offsetWidth: w, parentElement: c._el.gifts });
@@ -2003,8 +2012,8 @@ test('Papierschiffchen: wo es ist, steht mit der Planzeit fest; wer später eins
   assert.equal(T.bezAt(0.2, 0.7, 0.3, 1, -1), 0);
   assert.equal(T.bezAt(0.2, 0.7, 0.3, 1, 2), 1);
   // die Karte nimmt dieselbe Kurve und dieselben Zeiten wie die Rechnung
-  assert.ok(src.includes('cubic-bezier(${BOAT_EASE.join(\', \')})'));
-  assert.ok(src.includes("trip(1, 0, T1, BOAT_T.back - BOAT_T.home, 'ease-in-out')"));
+  assert.ok(quell.includes('cubic-bezier(${BOAT_EASE.join(\', \')})'));
+  assert.ok(quell.includes("trip(1, 0, T1, BOAT_T.back - BOAT_T.home, 'ease-in-out')"));
 });
 
 // Eine kleine Beschäftigung aus dem Tagesplan (Fenster 7001) auf einer Karte, die schon am Platz steht (_goSpot ist
