@@ -41,6 +41,8 @@
   <button data-wx="snowy">Schnee</button>
   <button data-wx="fog">Nebel</button>
   <button data-wx="windy">windig</button>
+  <button id="thaw">Schnee taut</button>
+  <button id="bow">nach dem Schauer</button>
   <b>Niederschlag</b>
   <button data-mm="">kein Sensor</button>
   <button data-mm="0.1">0,1 mm/h</button>
@@ -387,10 +389,30 @@
     b.addEventListener('click', () => {
       const w = states['weather.forecast_home'];
       const wind = b.dataset.wx === 'windy' ? 45 : b.dataset.wx === 'pouring' || b.dataset.wx.startsWith('lightning') ? 30 : 12;
-      states['weather.forecast_home'] = { state: b.dataset.wx, attributes: { ...w.attributes, wind_speed: wind, cloud_coverage: { sunny: 5, partlycloudy: 40 }[b.dataset.wx] ?? 90 } };
+      // last_changed wie in HA: seit wann die Lage gilt. Schnee „seit einer halben Stunde“, damit er gleich liegt
+      // (frisch einsetzender Schneefall deckt die Wiese erst in zehn Minuten zu).
+      const since = new Date(Date.now() - (b.dataset.wx === 'snowy' ? 30 * 60000 : 0)).toISOString();
+      states['weather.forecast_home'] = { state: b.dataset.wx, last_changed: since, attributes: { ...w.attributes, wind_speed: wind, cloud_coverage: { sunny: 5, partlycloudy: 40 }[b.dataset.wx] ?? 90 } };
       push();
     })
   );
+  // Wetterlage mit Vorgeschichte: zwei Meldungen nacheinander, wie sie HA über die Zeit geschickt hätte
+  const wxStory = (steps) => {
+    for (const [state, minAgo, attrs] of steps) {
+      const w = states['weather.forecast_home'];
+      states['weather.forecast_home'] = { state, last_changed: new Date(Date.now() - minAgo * 60000).toISOString(), attributes: { ...w.attributes, ...attrs } };
+      push();
+    }
+  };
+  // Es hat geschneit, seit fünf Stunden ist es bei 2 °C bewölkt: Die Decke ist gut halb getaut und taut weiter
+  document.getElementById('thaw').addEventListener('click', () =>
+    wxStory([['snowy', 420, { temperature: -1, cloud_coverage: 90 }], ['cloudy', 300, { temperature: 2, cloud_coverage: 80, wind_speed: 8 }]]));
+  // Ein Schauer ist eben durchgezogen, die Sonne steht tief: Regenbogen (20 Minuten lang)
+  document.getElementById('bow').addEventListener('click', () => {
+    cards.forEach((c) => Object.assign(c, { _dbgAz: 240, _dbgElev: 18, _dbgSleep: false }));
+    wxStory([['rainy', 25, { cloud_coverage: 90 }], ['partlycloudy', 2, { cloud_coverage: 40, wind_speed: 10 }]]);
+    cards.forEach((c) => c._tick());
+  });
   // Niederschlagssensor: "rainy" zeigt erst ab rain_min (0,3 mm/h) Regen
   document.querySelectorAll('[data-mm]').forEach((b) =>
     b.addEventListener('click', () => {
@@ -403,7 +425,7 @@
   );
   document.getElementById('cold').addEventListener('click', () => {
     const w = states['weather.forecast_home'];
-    states['weather.forecast_home'] = { ...w, attributes: { ...w.attributes, temperature: w.attributes.temperature < 3 ? 14 : -2 } };
+    states['weather.forecast_home'] = { ...w, last_updated: new Date().toISOString(), attributes: { ...w.attributes, temperature: w.attributes.temperature < 3 ? 14 : -2 } }; // neue Meldung, dieselbe Lage
     push();
   });
   document.getElementById('burrow').addEventListener('click', () => cards.forEach((c) => { c._next = 'burrow'; c._interrupt(); }));

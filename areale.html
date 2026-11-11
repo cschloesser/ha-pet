@@ -79,7 +79,9 @@
   document.querySelectorAll('[data-sun]').forEach((b) => b.addEventListener('click', () => setSun(b.dataset.sun)));
   document.querySelectorAll('[data-wx]').forEach((b) => b.addEventListener('click', () => {
     const w = states['weather.forecast_home'];
-    states['weather.forecast_home'] = { state: b.dataset.wx, attributes: { ...w.attributes, wind_speed: b.dataset.wx.startsWith('lightning') ? 30 : 12, cloud_coverage: { sunny: 5, partlycloudy: 40 }[b.dataset.wx] ?? 90 } };
+    // last_changed wie in HA; Schnee „seit einer halben Stunde“, damit er gleich liegt
+    const since = new Date(Date.now() - (b.dataset.wx === 'snowy' ? 30 * 60000 : 0)).toISOString();
+    states['weather.forecast_home'] = { state: b.dataset.wx, last_changed: since, attributes: { ...w.attributes, wind_speed: b.dataset.wx.startsWith('lightning') ? 30 : 12, cloud_coverage: { sunny: 5, partlycloudy: 40 }[b.dataset.wx] ?? 90 } };
     push();
   }));
   document.getElementById('burrow').addEventListener('click', () => cards.forEach((c) => { c._next = 'burrow'; c._interrupt(); }));

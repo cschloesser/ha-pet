@@ -57,7 +57,7 @@
  * werden aus Datum und Standort (hass.config) berechnet.
  */
 (() => {
-  const VERSION = '0.30.0';
+  const VERSION = '0.31.0';
 
   // screen_entity gehört zu einem Gerät (dem Kiosk-Tablet), dasselbe Dashboard öffnen aber auch andere. Ein Rechner mit
   // Maus ist sicher nicht dieser Bildschirm, Fully Kiosk mit JS-Schnittstelle dagegen schon.
@@ -203,6 +203,8 @@
     const i = COMPASS.indexOf(String(v ?? '').trim().toUpperCase().replace(/O/g, 'E'));
     return i < 0 ? NaN : i * 22.5;
   };
+  // Zahl aus einem Attribut: null, fehlend, leer oder Unsinn → NaN (Number(null) und Number('') wären 0)
+  const numAttr = (v) => (typeof v === 'number' ? v : typeof v === 'string' && v.trim() !== '' ? Number(v) : NaN);
   // Längenunterschied in Grad, über die Datumsgrenze gefaltet (−180…180)
   const lonDiff = (a, b) => ((((a - b) % 360) + 540) % 360) - 180;
   // Windgeschwindigkeit aus der Einheit der Wetter-Entität (wind_speed_unit) in km/h; unbekannt: schon km/h.
@@ -272,19 +274,25 @@
   // Position am Bildhimmel in %: Höhe 0° am Hügelrand. Blick nach Süden (Nordhalbkugel): Azimut 90° (Ost) links,
   // 270° (West) rechts. Blick nach Norden (viewN, Südhalbkugel): Ost rechts, West links. Was hinter dem
   // Betrachter steht, bleibt am näheren Rand.
-  const skyPos = (az, alt, viewN = false) => {
+  // ridge (Areal alpin): Die Berge reichen weit in den Himmel, auf 50° Nord stünde die Mittagssonne von Ende November
+  // bis Mitte Januar ganz hinter dem Grat. Dort steigt sie in den ersten 8° über den Grat (bis 26 % von oben), darüber
+  // gestaucht weiter bis zum selben Scheitel. Sie geht also früh hinter den Bergen unter und bleibt im Winter zu sehen.
+  const skyPos = (az, alt, viewN = false, ridge = false) => {
     const d = ((((az - (viewN ? 0 : 180)) % 360) + 540) % 360) - 180; // −180…180 um die Blickrichtung
+    const a = clamp(alt, -12, 62);
+    const up = ridge && a > 0 ? (a <= 8 ? a * 3.75 : 30 + ((a - 8) * 17) / 54) : (a / 62) * 47;
     return {
       x: clamp((d + 90) / 180, 0.04, 0.96) * 100,
-      y: 56 - (clamp(alt, -12, 62) / 62) * 47,
+      y: 56 - up,
     };
   };
 
-  // Wetterlage → Bedeckung in %, Niederschlag (Tropfen, Flocken)
+  // Wetterlage → Bedeckung in %, Niederschlag (Tropfen, Flocken). min/max: in diesem Rahmen zählt bei trockener Lage
+  // die gemeldete Bedeckung (wxCover)
   const WEATHER = {
-    sunny: { cover: 5 }, 'clear-night': { cover: 5 }, partlycloudy: { cover: 45 },
-    cloudy: { cover: 90 }, fog: { cover: 80, fog: true }, windy: { cover: 35, wind: true },
-    'windy-variant': { cover: 60, wind: true }, exceptional: { cover: 70 },
+    sunny: { cover: 5, max: 30 }, 'clear-night': { cover: 5, max: 30 }, partlycloudy: { cover: 45, min: 20, max: 65 },
+    cloudy: { cover: 90, min: 70 }, fog: { cover: 80, fog: true }, windy: { cover: 35, wind: true, max: 65 },
+    'windy-variant': { cover: 60, wind: true, min: 40 }, exceptional: { cover: 70 },
     rainy: { cover: 85, rain: 40 }, pouring: { cover: 95, rain: 95, storm: true },
     hail: { cover: 90, rain: 60, storm: true },
     lightning: { cover: 90, flash: true, storm: true },
@@ -293,6 +301,252 @@
   };
   // So lange gilt das letzte Wetter weiter, wenn die Wetter-Entität unavailable/unknown ist
   const WX_HOLD = 30 * 60000;
+  // Eine neue Meldung der Wetter-Entität, die beim ersten Sehen schon so alt ist, kam verspätet (Verbindung war weg):
+  // Dazwischen kann mehr geschehen sein, der Recorder weiß es (_wxHist)
+  const WX_LATE = 90000;
+  // Recorder nicht lesbar: nach so vielen Minuten noch einmal versuchen (danach immer mit dem letzten Abstand)
+  const WX_RETRY = [1, 5, 15, 30];
+
+  // ==================== Wetter mit Gewicht: reine Funktionen ====================
+  // Dämmerung, Jahreszeit, Schneedecke und Regenbogen hängen nur an dem, was alle Geräte gleich haben: Sonnenhöhe,
+  // Datum, Wetterlage und ihr Verlauf (Zeitstempel von HA, Recorder von HA). Nichts davon steht in den Helfern.
+
+  // Sanfte Stufe: 0 bei a, 1 bei b (auch rückwärts, a > b)
+  const ramp = (a, b, v) => {
+    const t = clamp((v - a) / (b - a), 0, 1);
+    return t * t * (3 - 2 * t);
+  };
+  // Dämmerung stufenlos aus der Sonnenhöhe e (Grad): d = Anteil Abendhimmel (beginnt bei 10°, ganz ab 2°),
+  // n = Anteil Nacht (beginnt bei −1°, ganz ab −9°). Himmel, Hügel und das Licht auf dem Land mischen danach.
+  const twilight = (e) => ({ d: ramp(10, 2, e), n: ramp(-1, -9, e) });
+
+  // Bedeckung in %: Bei trockener Lage zählt die gemeldete, aber nur im Rahmen der Lage. „Sonnig“ mit 80 %
+  // Schleierwolken bleibt ein blauer Himmel, „bewölkt“ mit 40 % bleibt grau.
+  const wxCover = (def, raw) => (Number.isFinite(raw) ? clamp(raw, def.min ?? 0, def.max ?? 100) : def.cover);
+  // Sichtbarkeit der Sterne: klar 0,85, mit der Bedeckung weniger, ab 80 % keine; hinter dichten Wolken (dense:
+  // Regen, Schnee, Nebel, Gewitter, ab 85 %) nie
+  const starOp = (cover, dense) => (dense ? 0 : 0.85 * clamp((80 - cover) / 60, 0, 1));
+
+  // Farben rechnen: '#rrggbb' ↔ [r, g, b]
+  const hexRgb = (h) => [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16));
+  const rgbHex = (c) => `#${c.map((v) => Math.round(clamp(v, 0, 255)).toString(16).padStart(2, '0')).join('')}`;
+  const mixRgb = (a, b, t) => a.map((v, i) => v + (b[i] - v) * t);
+  // wie filter: brightness(b) saturate(s), nur ausgerechnet (vgl. PK_DIM)
+  const dimRgb = (c, b, s) => {
+    const d = c.map((v) => v * b);
+    const L = 0.213 * d[0] + 0.715 * d[1] + 0.072 * d[2];
+    return d.map((v) => clamp(L + (v - L) * s, 0, 255));
+  };
+
+  // Jahreslauf: Stelle 0…12, 0 = Mitte Januar, 4 = Mitte Mai, dazwischen gleitend (Ortszeit). Auf der Südhalbkugel
+  // (south) um ein halbes Jahr versetzt.
+  const seasonPos = (t, south = false) => {
+    const d = new Date(t);
+    const days = new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate();
+    const p = d.getMonth() + (d.getDate() - 0.5) / days - 0.5 + (south ? 6 : 0);
+    return ((p % 12) + 12) % 12;
+  };
+  // Jahreszeit für die Blumen: Frühling März bis Mai, Sommer, Herbst September bis November, Winter
+  const seasonKey = (t, south = false) => {
+    const m = (new Date(t).getMonth() + (south ? 6 : 0)) % 12;
+    return m >= 2 && m <= 4 ? 'spring' : m >= 5 && m <= 7 ? 'summer' : m >= 8 && m <= 10 ? 'autumn' : 'winter';
+  };
+  // Farben von Hügel und Wiese am Tag, je Monat (Mitte des Monats): ferner Hügel h1, Wiese h2, Halme h3, Kuppe des
+  // Erdhügels (mound) mit Rand (ms), Stiel und Blatt der Blumen. Mai und Juni sind die Farben, die bis 0.30 das ganze
+  // Jahr galten. Herbst gelbgrün, Winter kühl und matt, nie braun: Das Fell des Pikas ist sandbraun und soll sich
+  // abheben (Farbabstand ΔE zum Fell am Tag überall mindestens 25, bei bedecktem Himmel 21; bis 0.30 abends 25).
+  const SEASON_PAL = [
+    ['#a3bd98', '#89a67d', '#7d9a72', '#94b089', '#6c8a5e', '#6f7f4a', '#8a9a5c'], // Januar
+    ['#a3bf97', '#89a97b', '#7d9d70', '#94b388', '#6b8c5c', '#6a8047', '#869c5a'],
+    ['#b0cf95', '#91bd74', '#85b168', '#9dc27d', '#6b944f', '#5a8a3f', '#78ab53'], // März
+    ['#abd691', '#89c66d', '#7dbb61', '#97ca76', '#629247', '#50893a', '#6dab4d'],
+    ['#a9d68f', '#86c46b', '#7ab960', '#94c873', '#5f8f45', '#4f8a3a', '#6bab4c'], // Mai
+    ['#a9d68f', '#86c46b', '#7ab960', '#94c873', '#5f8f45', '#4f8a3a', '#6bab4c'],
+    ['#a9d38b', '#86c067', '#7ab55c', '#94c46f', '#5f8c42', '#4f8738', '#6ba749'], // Juli
+    ['#b0d088', '#90bc64', '#84b058', '#9cc06c', '#668a3f', '#558437', '#74a348'],
+    ['#b5cd86', '#9ab863', '#8eac57', '#a5bd6b', '#70873d', '#62823a', '#84a04a'], // September
+    ['#b9cb84', '#a3b863', '#97ac57', '#adbb6c', '#7b853d', '#73803c', '#949b49'],
+    ['#b2c684', '#9bb267', '#8fa65b', '#a6b670', '#76833f', '#747e42', '#92994f'], // November
+    ['#aac18e', '#92ac72', '#86a066', '#9cb27f', '#70864f', '#727f47', '#8e9a57'],
+  ].map((row) => row.map(hexRgb));
+  const SEASON_KEYS = ['h1', 'h2', 'h3', 'mound', 'ms', 'stem', 'leaf'];
+  // Palette an der Stelle pos des Jahreslaufs (seasonPos), zwischen zwei Monaten gemischt → { h1: [r, g, b], … }
+  const seasonPal = (pos) => {
+    const i = Math.floor(pos) % 12;
+    const a = SEASON_PAL[i];
+    const b = SEASON_PAL[(i + 1) % 12];
+    return Object.fromEntries(SEASON_KEYS.map((k, j) => [k, mixRgb(a[j], b[j], pos - Math.floor(pos))]));
+  };
+  // Blumenfarben je Jahreszeit, immer fünf: Im Tagesplan stehen nur die Nummern (Vorrat, Blumengeschenk), jede Version
+  // und jede Jahreszeit malt sie in ihren Farben. Herbst: Goldrute, Heide, Aster; Winter: verblasste Samenstände.
+  const FLOWER_SEASON = {
+    autumn: ['#e3b23c', '#c9739a', '#f1e7cf', '#9a7fd1', '#d9743a'],
+    winter: ['#d9c38d', '#c08a8a', '#ece6d6', '#a99bb8', '#c98f5a'],
+  };
+  // Areal alpin (Enzian und Edelweiß): im Herbst ein blasserer später Enzian, im Winter verblasst
+  const FLOWER_SEASON_ALPIN = {
+    autumn: ['#f1e7cf', '#6f7fd0', '#f1e7cf', '#e3b23c', '#9a7fd1'],
+    winter: ['#ece6d6', '#8792b8', '#ece6d6', '#d9c38d', '#a99bb8'],
+  };
+  // Blütenmitte: bei gelben Blüten dunkler, sonst goldgelb (im Winter strohfarben)
+  const flowerMid = (c) => (['#f6c945', '#e3b23c'].includes(c) ? '#c47f1a' : ['#d9c38d', '#c08a8a', '#ece6d6', '#a99bb8', '#c98f5a', '#8792b8'].includes(c) ? '#a8824a' : '#f4b73a');
+
+  // Schnee auf Hügel, Wiese und Halmen bei Tag, Abend und Nacht (die Farben, die bis 0.30 bei „snowy“ galten)
+  const SNOW_PAL = {
+    day: ['#e9eff3', '#dfe7ed', '#cfdbe3'], dusk: ['#b9bdd0', '#aeb4c8', '#a1a9bf'], night: ['#55627c', '#4c5974', '#44516b'],
+    mound: '#e6edf2', ms: '#aab8c2',
+  };
+  for (const k of ['day', 'dusk', 'night']) SNOW_PAL[k] = SNOW_PAL[k].map(hexRgb);
+  // Berge im Areal alpin: Fels (m1) und Schneekappen (mcap) bei Tag, Abend und Nacht (die Farben, zwischen denen
+  // bis 0.30 umgeschaltet wurde)
+  const MTN_PAL = { m1: ['#8b9bb1', '#6c6f8f', '#222c45'].map(hexRgb), mcap: ['#f4f7fa', '#e6d3de', '#7d88a0'].map(hexRgb) };
+  SNOW_PAL.mound = hexRgb(SNOW_PAL.mound);
+  SNOW_PAL.ms = hexRgb(SNOW_PAL.ms);
+  // Himmel auf Höhe der Hügelkette: blau, abendrot, nachtblau; bei bedecktem Himmel grau
+  const SKY_HOR = Object.fromEntries(Object.entries({
+    day: '#bfe2f5', dusk: '#d997b2', night: '#222f5d', gday: '#cdd5db', gdusk: '#a99ea9', gnight: '#283044',
+    dtint: '#a090b0', ntint: '#143a42',
+  }).map(([k, v]) => [k, hexRgb(v)]));
+  // Farben der Landschaft im Licht des Augenblicks. P: Palette der Jahreszeit (seasonPal); d, n: Dämmerung (twilight);
+  // grey: bedeckt, storm: Gewitter oder Starkregen (je 0 oder 1); snow: Schneedecke 0…1.
+  // → h0…h3 (Hügelkette im Dunst, Hügel, Wiese, Halme: fertig beleuchtet), m1/mcap (Berge, ebenso), mound/moundS (Kuppe und Rand bei Tag, das
+  // Licht kommt dort vom Filter der Ebene), lb/ls (Helligkeit und Sättigung für alles, was auf dem Land steht),
+  // lbp (dasselbe für Requisiten, die nachts etwas heller bleiben).
+  // Abend und Nacht der Wiese sind aus der Tagesfarbe gerechnet und treffen die Farben, die bis 0.30 von Hand gesetzt waren.
+  const landColors = (P, { d = 0, n = 0, grey = 0, storm = 0, snow = 0 } = {}) => {
+    const lit = (c) => mixRgb(
+      mixRgb(c, mixRgb(dimRgb(c, 0.8, 0.7), SKY_HOR.dtint, 0.08), d),
+      mixRgb(dimRgb(c, 0.38, 0.55), SKY_HOR.ntint, 0.5), n);
+    const white = (i) => mixRgb(mixRgb(SNOW_PAL.day[i], SNOW_PAL.dusk[i], d), SNOW_PAL.night[i], n);
+    // Wolkendecke nimmt nur dem Tag Licht (abends und nachts ist es ohnehin dunkel), Gewitter auch der Dämmerung
+    const gb = 1 - 0.1 * grey * (1 - d) * (1 - n) - 0.22 * storm * (1 - n);
+    const gs = 1 - 0.2 * grey * (1 - d) * (1 - n) - 0.15 * storm * (1 - n);
+    const h = ['h1', 'h2', 'h3'].map((k, i) => dimRgb(mixRgb(lit(P[k]), white(i), snow), gb, gs));
+    let sky = mixRgb(mixRgb(SKY_HOR.day, SKY_HOR.dusk, d), SKY_HOR.night, n);
+    if (grey || storm) sky = mixRgb(sky, mixRgb(mixRgb(SKY_HOR.gday, SKY_HOR.gdusk, d), SKY_HOR.gnight, n), 0.9);
+    const lb = (1 - 0.15 * d - 0.35 * n) * gb;
+    // Berge: Dämmerung und Nacht aus ihren drei Farben gemischt, Wolkendecke und Gewitter wie beim Land
+    const far = (c) => rgbHex(dimRgb(mixRgb(mixRgb(c[0], c[1], d), c[2], n), gb, gs));
+    return {
+      h0: rgbHex(mixRgb(h[0], sky, 0.5)), h1: rgbHex(h[0]), h2: rgbHex(h[1]), h3: rgbHex(h[2]),
+      m1: far(MTN_PAL.m1), mcap: far(MTN_PAL.mcap),
+      mound: rgbHex(mixRgb(P.mound, SNOW_PAL.mound, snow)), moundS: rgbHex(mixRgb(P.ms, SNOW_PAL.ms, snow)),
+      lb, ls: (1 - 0.15 * d - 0.25 * n) * gs, lbp: lb + 0.05 * n,
+    };
+  };
+
+  // Temperatur in °C aus den Attributen einer Wetter-Entität; NaN: unbekannt
+  const wxTemp = (a) => {
+    const T = numAttr(a?.temperature);
+    return a?.temperature_unit === '°F' ? (T - 32) / 1.8 : T;
+  };
+
+  // Verlauf der Wetterlage: Stützpunkte [{ t, c, T }] aufsteigend. Ein Stützpunkt ist eine Meldung der Wetter-Entität,
+  // bei der sich die Lage c oder die Temperatur T (auf ganze °C gerundet, null: unbekannt) geändert hat; t ist ihr
+  // Zeitstempel von HA (last_updated, auf ganze Sekunden: so stempeln Recorder und Verbindung gleich). Zwischen zwei
+  // Stützpunkten gelten Lage und Temperatur des ersten. Die Reihe ist damit nur eine Kurzschrift der Meldungen: Ein
+  // Gerät, das mitschreibt, und eines, das sie später aus dem Recorder liest, kommen auf dieselbe.
+  // Meldungen ohne neue Lage und ohne neue Temperatur fallen weg; bei gleichem Zeitstempel gilt die spätere (rows
+  // vor log). „unavailable“ und „unknown“ sind ein Aussetzer (WX_GAP): Dauert er kürzer als WX_HOLD, ist er
+  // vergessen, sobald die nächste Meldung da ist (in der Zeit galt das letzte Wetter weiter), sonst bleibt er als
+  // Abschnitt ohne Wetter stehen. Älteres als WX_KEEP fällt heraus (bis auf den Stand, der an dieser Grenze galt).
+  const WX_KEEP = 72 * 36e5;
+  const WX_GAP = 'unavailable';
+  const wxLogAdd = (log, rows, now) => {
+    const all = [...(log || []), ...(rows || [])]
+      .filter((r) => r && Number.isFinite(r.t) && typeof r.c === 'string' && r.t <= now + 60000)
+      .map((r) => {
+        const gap = r.c === 'unavailable' || r.c === 'unknown';
+        return { t: Math.floor(r.t / 1000) * 1000, c: gap ? WX_GAP : r.c, T: !gap && Number.isFinite(r.T) ? Math.round(r.T) + 0 : null };
+      })
+      .sort((a, b) => a.t - b.t);
+    const out = [];
+    for (let k = 0; k < all.length; k++) {
+      const r = all[k];
+      if (all[k + 1]?.t === r.t) continue;
+      let p = out[out.length - 1];
+      if (p && p.c === WX_GAP && r.c !== WX_GAP && r.t - p.t < WX_HOLD) {
+        out.pop();
+        p = out[out.length - 1];
+      }
+      if (p && p.c === r.c && (r.T == null || r.T === p.T)) continue;
+      out.push(r);
+    }
+    let i = 0;
+    while (i < out.length - 1 && out[i + 1].t <= now - WX_KEEP) i++;
+    return out.slice(i);
+  };
+  // Zeilen des Recorders (history/history_during_period) → Meldungen { t, c, T } für wxLogAdd. HA liefert
+  // [{ s: Lage, a: Attribute, lu: Sekunden }], ältere Versionen { state, attributes, last_updated }.
+  const wxRows = (list) => (Array.isArray(list) ? list : []).filter((r) => r && typeof r === 'object').map((r) => {
+    const s = numAttr(r.lu ?? r.lc);
+    return { t: Number.isFinite(s) ? s * 1000 : Date.parse(r.last_updated || r.last_changed), c: r.s ?? r.state, T: wxTemp(r.a || r.attributes) };
+  });
+  // Mitschrift des Geräts (own) und Verlauf aus dem Recorder (rec, Meldungen aus wxRows) zusammenführen: Bis zu
+  // seiner letzten Zeile gilt allein der Recorder, von der Mitschrift nur, was danach kam. So steht ein eben geladenes
+  // Gerät (dessen erster Eintrag nur vorläufig ist: die Lage seit last_changed mit der Temperatur von jetzt) nach dem
+  // Abruf da wie eines, das die ganze Zeit mitgeschrieben hat. Liefert der Recorder nichts, bleibt die Mitschrift.
+  const wxLogMerge = (own, rec, now) => {
+    const base = wxLogAdd([], rec, now);
+    if (!base.length) return wxLogAdd(own, [], now);
+    const end = base[base.length - 1].t;
+    return wxLogAdd(base, (own || []).filter((r) => r && r.t > end), now);
+  };
+
+  // Schneedecke: So lange braucht Schneefall bis zur geschlossenen Decke; ab show liegt sichtbar Schnee (Blumen
+  // verschwinden, der Stein hat eine Haube, der Pika verhält sich wie bei Schnee)
+  const SNOW = { full: 10 * 60000, show: 0.4 };
+  const WX_RAIN = new Set(['rainy', 'pouring', 'lightning-rainy', 'hail', 'snowy-rainy']);
+  // So viele Stunden hält eine geschlossene Decke bei T °C: 24 bei 0°, je 2° wärmer halb so lang (mindestens 1,5),
+  // bei Frost bis 72. Regen taut viermal, Sonne anderthalbmal so schnell. Ohne Temperatur: wie bei 2°.
+  const snowHours = (T, cond) => {
+    const h = clamp(24 * 2 ** (-(Number.isFinite(T) ? T : 2) / 2), 1.5, 72);
+    return WX_RAIN.has(cond) ? h / 4 : cond === 'sunny' ? h / 1.5 : h;
+  };
+  // Schneit es in diesem Abschnitt? „snowy“ immer, Schneeregen nur bei Frost.
+  const wxSnows = (r) => r.c === 'snowy' || (r.c === 'snowy-rainy' && r.T != null && r.T <= 0);
+  // Schneedecke 0…1 jetzt, aus dem Verlauf der Wetterlage. Abschnitt für Abschnitt: Schneit es, wächst sie in
+  // SNOW.full zu, sonst taut der Anteil Dauer / Haltedauer bei der Temperatur dieses Abschnitts (snowHours). Was
+  // getaut ist, bleibt getaut: Der laufende Abschnitt rechnet mit seinem Stützpunkt, nie rückwirkend mit der
+  // Temperatur von jetzt. Ohne neuen Schneefall nimmt die Decke also nie zu, auch wenn es abends abkühlt.
+  // Aussetzer der Wetter-Entität: Nach Schneefall gilt der noch WX_HOLD lang weiter (so zeigt ihn die Karte), dann
+  // taut es ab dem Aussetzer wie bei unbekannter Temperatur; sonst taut es weiter wie im Abschnitt davor.
+  const snowDepth = (log, now) => {
+    let d = 0;
+    for (let i = 0; i < log.length; i++) {
+      let a = log[i];
+      const b = log[i + 1];
+      const dur = Math.min(b ? b.t : now, now) - a.t;
+      if (!(dur > 0)) continue;
+      const p = log[i - 1];
+      if (a.c === WX_GAP && p && (!wxSnows(p) || (!b && dur < WX_HOLD))) a = p;
+      d = wxSnows(a) ? Math.min(1, d + dur / SNOW.full) : Math.max(0, d - dur / (snowHours(a.T, a.c) * 36e5));
+    }
+    return d;
+  };
+
+  // Regenbogen 0…1: nach einem Schauer (die Lage wechselt von Regen auf heiter; der Regen dauerte mindestens drei
+  // Minuten), solange die Sonne scheint und tief genug steht (über 40° läge der Bogen unter dem Horizont). Er steht
+  // 20 Minuten, kommt in anderthalb Minuten und geht in den letzten fünf. Gesucht wird rückwärts der letzte Wechsel
+  // von Schauer auf heiter, nach dem es heiter blieb: Wechselt die Lage danach zwischen sonnig und teils bewölkt
+  // (oder ändert sich nur die Temperatur), bleibt der Bogen stehen. Ein laufender Aussetzer in der Haltefrist
+  // zählt nicht, ein langer trennt Schauer und Sonne.
+  const WX_SHOWER = new Set(['rainy', 'pouring', 'lightning-rainy', 'hail']);
+  const WX_BRIGHT = new Set(['sunny', 'partlycloudy', 'windy', 'windy-variant']);
+  const BOW = { life: 20 * 60000, in: 90000, out: 5 * 60000, rain: 3 * 60000 };
+  const rainbow = (log, now, elev, cover = 0) => {
+    let i = log.length - 1;
+    if (i >= 0 && log[i].c === WX_GAP && now - log[i].t < WX_HOLD) i--;
+    if (i < 1 || !WX_BRIGHT.has(log[i].c)) return 0;
+    while (i > 0 && WX_BRIGHT.has(log[i - 1].c)) i--;
+    let j = i - 1;
+    if (j < 0 || !WX_SHOWER.has(log[j].c)) return 0;
+    while (j > 0 && WX_SHOWER.has(log[j - 1].c)) j--;
+    if (log[i].t - log[j].t < BOW.rain) return 0;
+    const age = now - log[i].t;
+    if (!(age >= 0 && age < BOW.life) || !(elev > 3 && elev < 40) || cover >= 70) return 0;
+    return Math.min(ramp(0, BOW.in, age), ramp(BOW.life, BOW.life - BOW.out, age), ramp(3, 6, elev), ramp(40, 36, elev));
+  };
 
   // ---------- Flugzeuge ----------
 
@@ -485,6 +739,39 @@
     if (/Cessna|Piper|Cirrus|Diamond|Robin|Beech|Mooney|Socata|Aquila|Extra|Ultralight|Glider|Grob|Tecnam|Zlin|Aeroprakt|Ikarus|Pilatus PC-6|light/i.test(t)
       && !/Citation|Jet|King Air|Pilatus PC-12|Phenom/i.test(t)) return 'prop';
     return 'jet';
+  };
+  // Am Himmel? Nicht am Boden, über 80 ft und in Fahrt (unter 30 kn rollt er oder die Meldung ist kaputt). Ein
+  // Hubschrauber darf in der Luft auch stehen.
+  const flightAloft = (f, kind = planeKind(f)) => !f.on_ground && Number(f.altitude) > 80
+    && (Number(f.ground_speed) > 30 || kind === 'heli');
+  // Hängengebliebene Meldung: Die Integration führt einen Flug manchmal mit seiner letzten Position weiter. Nach 75 s
+  // (PLANE_OLD) ohne neue Position ist er ausgeflogen, g merkt sich die Position ({ lat, lon }); erst eine andere holt ihn zurück.
+  const flightGhost = (g, f) => !!g && g.lat === Number(f.latitude) && g.lon === Number(f.longitude);
+  // Kommt eine Position verspätet, liegt sie hinter dem Punkt, an dem der Flieger im Bild schon ist: Der nächste
+  // Schritt ginge rückwärts. So viele Sekunden ist die Meldung demnach alt (höchstens max). cur: sichtbarer Punkt
+  // { e, n } in km, nxt: die neue Bahn jetzt { e, n, ve, vn } (km, km/s).
+  const planeLag = (cur, nxt, max = 30) => {
+    const v2 = nxt.ve * nxt.ve + nxt.vn * nxt.vn;
+    if (!(v2 > 1e-9)) return 0;
+    return clamp(((cur.e - nxt.e) * nxt.ve + (cur.n - nxt.n) * nxt.vn) / v2, 0, max);
+  };
+  // Ein Flieger führt zwei Uhren. tm: wann seine Position gemeldet wurde, daran hängt das Ausaltern (planeStale:
+  // PLANE_OLD s ohne neue Position). t0: ab wann seine Bahn gerechnet wird, daran hängt nur der Ort im Bild; t0 liegt
+  // um den Versatz aus planeLag vor tm. Beides in einer Uhr hieße: Ein bremsender Anflug (ein paar Sekunden Versatz
+  // bei jeder Meldung) gälte nach einer einzigen ausgebliebenen Position als ausgeflogen und käme als neuer wieder.
+  const PLANE_OLD = 75;
+  const planeStale = (p, now) => (now - (p.tm ?? p.t0)) / 1000 > PLANE_OLD;
+  // Uhren nach einer neuen Position. p: der Flieger bisher { e, n, ve, vn, t0, tm } oder null, wenn es keinen
+  // sichtbaren Punkt zu schützen gibt (neu, eben versetzt); nxt: gemeldete Bahn { e, n, ve, vn }; tm: Meldezeit.
+  // Ist die alte Meldung schon ausgealtert (Karte war unsichtbar oder abgehängt), stand er auch nirgends: kein Versatz.
+  const planeClock = (p, nxt, now, tm) => {
+    let lag = 0;
+    if (p && !planeStale(p, now)) {
+      const dt = (now - p.t0) / 1000;
+      const dn = (now - tm) / 1000;
+      lag = planeLag({ e: p.e + p.ve * dt, n: p.n + p.vn * dt }, { e: nxt.e + nxt.ve * dn, n: nxt.n + nxt.vn * dn, ve: nxt.ve, vn: nxt.vn });
+    }
+    return { tm, t0: tm - lag * 1000 };
   };
 
   // Zustand im Text-Helfer: satt,zeit,glück,zeit,großputz,maske,teilputz (Zeiten in Sekunden).
@@ -1179,9 +1466,9 @@
           <rect x="60.5" y=".4" width="9" height="3" rx=".6" fill="#8c7d72"/>
           <path d="M61.5 7 H68.5 M64 7 V11.5 M66.5 11.5 V16 M61.5 11.5 H68.5" stroke-width=".6" opacity=".6"/>
         </g>
-        <path class="mound" d="M-4 60 C-3 30 22 10 50 10 C80 10 104 20 114 32 C121 41 125 50 126 60Z" stroke="#5f8f45" stroke-width="1.5"/>
+        <path class="mound" d="M-4 60 C-3 30 22 10 50 10 C80 10 104 20 114 32 C121 41 125 50 126 60Z" stroke-width="1.5"/>
         <path d="M14 30 Q28 15 46 13" stroke="#fff" stroke-opacity=".35" stroke-width="3" fill="none" stroke-linecap="round"/>
-        <g stroke="#5f8f45" stroke-width="1.2" fill="none" stroke-linecap="round">
+        <g class="mound-t" stroke-width="1.2" fill="none" stroke-linecap="round">
           <path d="M28 16.5 l-2 -4 M31 15 l.5 -4.5 M68 15 l1.5 -4 M72 17 l3 -3.5 M47 10 l-1 -4 M51 10 l1.5 -4.2"/>
         </g>
         <g fill="#fff"><circle cx="6" cy="48" r="1.6"/><circle cx="9" cy="42" r="1.3"/><circle cx="90" cy="30" r="1.5"/><circle cx="119.5" cy="50" r="1.2"/></g>
@@ -1674,9 +1961,7 @@
   .fi { position: absolute; }
   .fi > svg { position: absolute; left: 0; top: 0; width: 100%; height: 100%; overflow: visible; }
   .fi .b { transition: filter 2.5s; }
-  .day.overcast .fi .b { filter: brightness(.9) saturate(.8); }
-  .dusk .fi .b { filter: brightness(.85) saturate(.85); }
-  .night .fi .b { filter: brightness(.5) saturate(.6); }
+  .shade .fi .b { filter: brightness(var(--lb, 1)) saturate(var(--ls, 1)); }
   .fi .nite { opacity: 0; transition: opacity 2.5s; }
   .dusk .fi .nite { opacity: .75; }
   .night .fi .nite { opacity: 1; }
@@ -1770,17 +2055,19 @@
   `;
   // ==================== Ende Festtage ====================
 
-  const FLOWER_SVG =(c) => `
+  // Farben als Variablen mit dem Tageswert als Rückfall: --fc (Blüte) und --fm (Mitte) setzt _flowerTint je Blume,
+  // --fst (Stiel) und --flf (Blatt) an der Ebene, alle fertig beleuchtet (Jahreszeit, Dämmerung, Wetter).
+  const FLOWER_SVG = (c) => `
   <svg viewBox="0 0 20 30" aria-hidden="true">
-    <path d="M10 30 Q9 20 10 11" stroke="#4f8a3a" stroke-width="1.6" fill="none"/>
-    <ellipse cx="6.5" cy="22" rx="3.6" ry="1.5" fill="#6bab4c" transform="rotate(-30 6.5 22)"/>
-    <g fill="${c}" stroke="rgba(0,0,0,.12)" stroke-width=".5">
+    <path d="M10 30 Q9 20 10 11" stroke="var(--fst, #4f8a3a)" stroke-width="1.6" fill="none"/>
+    <ellipse cx="6.5" cy="22" rx="3.6" ry="1.5" fill="var(--flf, #6bab4c)" transform="rotate(-30 6.5 22)"/>
+    <g fill="var(--fc, ${c})" stroke="rgba(0,0,0,.12)" stroke-width=".5">
       ${[0, 72, 144, 216, 288].map((a) => {
         const r = (a * Math.PI) / 180;
         return `<circle cx="${(10 + Math.sin(r) * 3.7).toFixed(2)}" cy="${(9 - Math.cos(r) * 3.7).toFixed(2)}" r="3.3"/>`;
       }).join('')}
     </g>
-    <circle cx="10" cy="9" r="2.3" fill="${c === '#f6c945' ? '#c47f1a' : '#f4b73a'}"/>
+    <circle cx="10" cy="9" r="2.3" fill="var(--fm, ${flowerMid(c)})"/>
   </svg>`;
 
   // Ein Maulvoll Heu (Heu-Snack am Haufen), gleiche Größe wie die Leckerli aus den Päckchen (24 × 24)
@@ -2310,9 +2597,7 @@
   /* Der Tageszeit-Filter liegt nur auf der Grafik: Das rote Ausrufezeichen (.hb-a) bleibt auch nachts rot */
   .hb-i { transform-origin: 50% 100%; transition: filter 2.5s; }
   .hb svg { display: block; width: 100%; height: auto; overflow: visible; }
-  .day.overcast .hb-i, .day.overcast .hb-carry, .day.overcast .hb-stick, .day.overcast .hb-dipw { filter: brightness(.9) saturate(.8); }
-  .dusk .hb-i, .dusk .hb-carry, .dusk .hb-stick, .dusk .hb-dipw { filter: brightness(.85) saturate(.85); }
-  .night .hb-i, .night .hb-carry, .night .hb-stick, .night .hb-dipw { filter: brightness(.5) saturate(.6); }
+  .shade .hb-i, .shade .hb-carry, .shade .hb-stick, .shade .hb-dipw { filter: brightness(var(--lb, 1)) saturate(var(--ls, 1)); }
   /* Fertig: hüpft alle paar Sekunden kurz (Aufmerksamkeit), Antippen durch den Pika wackelt. Einblenden und
      Antippen haben Vorrang (die Regel greift dann nicht), im Schlaf und nachts ruht es. */
   .hb.hb-done:not(.hb-live):not(.hb-boop):not(.hb-in):not(.hb-still) .hb-i { animation: hb-nudge 4s ease-in-out infinite; }
@@ -2834,9 +3119,7 @@
 
   const STYLE_ACT = `
   .acts { position: absolute; inset: 0; pointer-events: none; transition: filter 2.5s; }
-  .day.overcast .acts { filter: brightness(.9) saturate(.8); }
-  .dusk .acts { filter: brightness(.85) saturate(.85); }
-  .night .acts { filter: brightness(.55) saturate(.6); }
+  .shade .acts { filter: brightness(var(--lbp, 1)) saturate(var(--ls, 1)); }
 
   .band, .arms, .uke, .brush, .wand, .rope, .rgrip, .bar, .wpaw { display: none; }
   .music .uke, .painting .brush, .blowing .wand, .sport .band, .jjack .arms, .roping .rope, .roping .rgrip,
@@ -3139,9 +3422,7 @@
 
   const STYLE_GIFT = `
   .gifts { position: absolute; inset: 0; pointer-events: none; transition: filter 2.5s; }
-  .day.overcast .gifts { filter: brightness(.9) saturate(.8); }
-  .dusk .gifts { filter: brightness(.85) saturate(.85); }
-  .night .gifts { filter: brightness(.55) saturate(.6); }
+  .shade .gifts { filter: brightness(var(--lbp, 1)) saturate(var(--ls, 1)); }
   .gifts svg { display: block; width: 100%; height: auto; overflow: visible; }
   .gold svg { filter: drop-shadow(0 0 3px rgba(255, 226, 120, .95)); }
 
@@ -3719,18 +4000,22 @@
     --z-fx: 8;    /* Kurzlebiges: Herzchen, Funken, Noten, Staub, Geschenk */
     --z-tag: 9;   /* Fähnchen von Flugzeugen und Geräten: die gefragte Auskunft liegt über allem */
   }
-  .scene.dusk { --h1: #8fa98a; --h2: #6e9562; --h3: #648c58; --h0: #b4a09e; }
-  .scene.night { --h1: #2c4547; --h2: #26433a; --h3: #223d34; --h0: #273a52; }
+  /* --h0 bis --h3, --m1, --mcap, --mound, --mound-s (Hügel, Wiese, Halme, Berge, Kuppe) und --lb, --ls, --lbp (Licht auf dem Land) setzt
+     _light am Element: nach Jahreszeit, Sonnenhöhe, Wetter und Schneedecke (landColors). Oben stehen nur die
+     Startwerte (Tag im Mai). */
 
+  /* Himmel in Schichten: Tag liegt unten, Abendrot und Nacht blenden stufenlos mit der Sonnenhöhe darüber (Deckkraft
+     aus twilight, gesetzt in _light), darüber Grau bei bedecktem Himmel und ein dunkler Schleier bei Gewitter. */
   .sky { position: absolute; inset: 0; opacity: 0; transition: opacity 2.5s; }
-  .sky-day { background: linear-gradient(#93cdf0, #dff1fa 78%); }
+  .sky-day { background: linear-gradient(#93cdf0, #dff1fa 78%); opacity: 1; }
   .sky-dusk { background: linear-gradient(#5f62ad, #d996b2 55%, #f7c48e 88%); }
   .sky-night { background: linear-gradient(#0d1734, #27386a 85%); }
-  .day .sky-day, .dusk .sky-dusk, .night .sky-night { opacity: 1; }
   .sky-grey { background: linear-gradient(#8f9eab, #d3dbe1 80%); }
-  .dusk .sky-grey { background: linear-gradient(#5d6079, #b1a3ad 80%); }
-  .night .sky-grey { background: linear-gradient(#141b2b, #2b3449 85%); }
+  .sky-grey::before, .sky-grey::after { content: ''; position: absolute; inset: 0; transition: opacity 2.5s; }
+  .sky-grey::before { background: linear-gradient(#5d6079, #b1a3ad 80%); opacity: var(--gd, 0); }
+  .sky-grey::after { background: linear-gradient(#141b2b, #2b3449 85%); opacity: var(--gn, 0); }
   .overcast .sky-grey { opacity: .9; }
+  .sky-storm { background: linear-gradient(rgba(30, 38, 50, .7), rgba(62, 72, 86, .5)); }
 
   /* Sonne und Mond: left/top setzt das Skript nach dem echten Stand, Wechsel gleiten langsam */
   .sun, .moon {
@@ -3754,29 +4039,36 @@
   .moon-up.night .moon, .moon-up.dusk .moon { opacity: 1; }
   .moon-up.day .moon { opacity: .5; filter: none; }
   .moon-up.overcast .moon { opacity: .2; }
+  /* Dichte Wolken (ab 85 %, Regen, Schnee, Nebel, Gewitter): kein Mond, keine Sterne (--starop ist dann 0) */
+  .moon-up.dense .moon { opacity: 0; }
   .stars i {
     position: absolute; width: 2px; height: 2px; border-radius: 50%; background: #fff;
     opacity: 0; transition: opacity 3s;
   }
   .night .stars i { opacity: var(--starop, .85); }
   .dusk .stars i:nth-child(3n + 1) { opacity: calc(var(--starop, .85) * .6); }
+  /* Stern hinter der Mondscheibe: Die dunkle Seite des Mondes ist durchscheinend gemalt, er schiene hindurch (_starOcc) */
+  .scene .stars i.occ { opacity: 0; }
   /* Funkeln pro Ebene (je acht Sterne), mit eigenem Takt und Versatz, damit es nicht im Gleichschritt pulsiert */
   .stars b { position: absolute; inset: 0; }
   .night .stars b { animation: twinkle 3s ease-in-out infinite alternate; }
   .night .stars b:nth-child(2) { animation-duration: 2.6s; animation-delay: -1.9s; }
   .night .stars b:nth-child(3) { animation-duration: 3.4s; animation-delay: -4.1s; }
+  /* hinter dichten Wolken sind sie unsichtbar (--starop 0): nicht weiterfunkeln */
+  .dense .stars b { animation-play-state: paused; }
   @keyframes twinkle { to { opacity: .3; } }
 
-  /* Wolken: das Skript schaltet so viele ein, wie es die Bedeckung verlangt; Wind macht sie schneller */
+  /* Wolken: das Skript schaltet so viele ein, wie es die Bedeckung verlangt; Wind macht sie schneller. Dauer und
+     Versatz stehen fest: Tempo und Richtung stellt _cloudWind an der laufenden Animation (playbackRate, direction),
+     so bleibt jede Wolke bei einem Windwechsel, wo sie ist. */
   .cloud {
     position: absolute; left: calc(var(--H) * -.6); width: calc(var(--H) * .42 * var(--s)); height: calc(var(--H) * .1 * var(--s));
     border-radius: 999px; background: var(--cloud, #fff); opacity: 0; transition: opacity 3s, background 3s;
-    animation: drift calc(var(--d) * var(--cs, 1)) linear infinite; animation-delay: calc(var(--dl) * var(--cs, 1));
+    animation: drift var(--d) linear infinite; animation-delay: var(--dl);
   }
   .cloud::before, .cloud::after { content: ''; position: absolute; background: inherit; border-radius: 50%; }
   .cloud::before { width: 45%; aspect-ratio: 1; left: 15%; bottom: 30%; }
   .cloud::after { width: 32%; aspect-ratio: 1; left: 50%; bottom: 35%; }
-  .wind-w .cloud { animation-direction: reverse; }
   /* Ausgeblendete Wolken (und Nebel) stehen still: jede laufende Animation hält die Bildwiederholung in Gang */
   .cloud:not(.on), .scene:not(.foggy) .fog i { animation-play-state: paused; }
   .cloud.on { opacity: .92; }
@@ -3785,17 +4077,19 @@
   .scene.dusk { --cloud: #f1cfdd; }
   .scene.night { --cloud: #4a5674; }
   .scene.overcast { --cloud: #e1e6ea; }
-  .scene.storm { --cloud: #a9b2ba; }
+  .scene.storm { --cloud: #8b959f; }
   .scene.dusk.overcast { --cloud: #b9aab8; }
   .scene.night.overcast { --cloud: #3a4560; }
+  .scene.dusk.storm { --cloud: #7d7888; }
+  .scene.night.storm { --cloud: #2f384d; }
   @keyframes drift { to { transform: translateX(calc(var(--W) + var(--H) * 1.2)); } }
 
-  .hills { position: absolute; inset: 0; width: 100%; height: 100%; transition: filter 2.5s; }
+  .hills, .mtns { position: absolute; inset: 0; width: 100%; height: 100%; }
   .hills .h1 { fill: var(--h1); transition: fill 2.5s; }
   .hills .h2 { fill: var(--h2); transition: fill 2.5s; }
-  .scene.snowcover { --h1: #e9eff3; --h2: #dfe7ed; --h3: #cfdbe3; --h0: #d4e8f4; }
-  .scene.dusk.snowcover { --h1: #b9bdd0; --h2: #aeb4c8; --h3: #a1a9bf; --h0: #c9aac1; }
-  .scene.night.snowcover { --h1: #55627c; --h2: #4c5974; --h3: #44516b; --h0: #3c496d; }
+  /* Berge (Areal alpin) in eigener Ebene hinter Regenbogen, Wolken und Flugzeugen: Ein tiefer Anflug verschwände
+     sonst hinter dem Grat. Sonne, Mond und Sterne bleiben dahinter. Ihre Farben kommen wie die der Hügel fertig
+     gerechnet aus _light (--m1, --mcap): Dämmerung, Wolkendecke und Gewitter gleiten mit Himmel und Land. */
   .snowcover .flowers { opacity: 0; }
 
   /* ---- Prototyp Tiefe (depth: true) ----
@@ -3805,8 +4099,8 @@
      beim Verschieben ab. */
   .hills .h0 { display: none; fill: var(--h0); transition: fill 2.5s; }
   .tiefe .hills .h0 { display: inline; }
-  .tiefe .hills .mtn, .tiefe .hills .h0, .tiefe .hills .h1 { transform-box: view-box; transform-origin: 50% 100%; }
-  .tiefe .hills .mtn { transform: translateX(calc(var(--plx, 0) * 3.2px)) scaleX(1.08); transition: transform 4s ease-in-out; }
+  .tiefe .mtns .mtn, .tiefe .hills .h0, .tiefe .hills .h1 { transform-box: view-box; transform-origin: 50% 100%; }
+  .tiefe .mtns .mtn { transform: translateX(calc(var(--plx, 0) * 3.2px)) scaleX(1.08); transition: transform 4s ease-in-out; }
   .tiefe .hills .h0 { transform: translateX(calc(var(--plx, 0) * 2.4px)) scaleX(1.06); transition: fill 2.5s, transform 4s ease-in-out; }
   .tiefe .hills .h1 { transform: translateX(calc(var(--plx, 0) * 1.2px)) scaleX(1.03); transition: fill 2.5s, transform 4s ease-in-out; }
   /* Die Wolken-Ebene bekommt hier eine eigene Fläche: Mit transform ist sie der Bezugsrahmen ihrer Wolken, ohne Höhe
@@ -3826,21 +4120,22 @@
   .hinten .flowers, .hinten .foods, .hinten .gifts, .hinten .mice-f { z-index: var(--z-mid); }
   /* Die Ebenen füllen die ganze Szene: Tipps zum Pika durchlassen (Antippbares darin setzt selbst auto) */
   .hinten .flowers, .hinten .foods { pointer-events: none; }
-  @media (prefers-reduced-motion: reduce) { .tiefe .hills *, .tiefe .clouds { transition: none !important; } }
+  @media (prefers-reduced-motion: reduce) { .tiefe .hills *, .tiefe .mtns *, .tiefe .clouds { transition: none !important; } }
 
   .land, .flowers, .foods, .birds, .mice, .mice-f { position: absolute; inset: 0; transition: filter 2.5s, opacity 2s; }
   .birds, .mice, .mice-f { pointer-events: none; }
   .birds { z-index: var(--z-mid); } /* über der Festdeko am Bau (.fon), hinter Pika, Pino, Heu und Gras */
-  .day.overcast .land, .day.overcast .flowers, .day.overcast .hills, .day.overcast .fore,
-  .day.overcast .birds, .day.overcast .mice, .day.overcast .mice-f { filter: brightness(.9) saturate(.8); }
-  .dusk .land, .dusk .flowers, .dusk .foods, .dusk .fore, .dusk .birds, .dusk .mice, .dusk .mice-f { filter: brightness(.85) saturate(.85); }
-  .night .land, .night .flowers, .night .foods, .night .fore, .night .birds, .night .mice, .night .mice-f { filter: brightness(.5) saturate(.6); }
+  /* Licht auf allem, was auf dem Land steht: Helligkeit und Sättigung stufenlos aus Sonnenhöhe und Wetter (--lb, --ls;
+     --lbp für Requisiten, die nachts etwas heller bleiben). Bei vollem Tageslicht (ohne .shade) gar kein Filter.
+     Hügel, Wiese und Halme haben ihre Farben fertig gerechnet (--h1 bis --h3), die Blumen auch (_flowerTint): Sie
+     schaukeln ständig, ein Filter über ihrer Ebene müsste in jedem Bild neu gerechnet werden. */
+  .shade .land, .shade .foods, .shade .fore, .shade .birds, .shade .mice, .shade .mice-f { filter: brightness(var(--lb, 1)) saturate(var(--ls, 1)); }
   .burrow, .lights { position: absolute; }
   .lights { pointer-events: none; }
   .burrow svg, .lights svg { display: block; width: 100%; height: auto; overflow: visible; }
-  .mound { fill: var(--mound, #94c873); transition: fill 2.5s; }
+  .mound { fill: var(--mound, #94c873); stroke: var(--mound-s, #5f8f45); transition: fill 2.5s, stroke 2.5s; }
+  .mound-t { stroke: var(--mound-s, #5f8f45); transition: stroke 2.5s; }
   .stump-top { fill: #d9b07c; transition: fill 2.5s; }
-  .snowcover { --mound: #e6edf2; }
   .snowcover .stump-top { fill: #eef3f6; }
   .lt { opacity: 0; transition: opacity 2.5s; }
   .dusk .lt { opacity: .6; }
@@ -3871,8 +4166,7 @@
   @keyframes tvflk { 0%, 100% { opacity: .55; } 20% { opacity: .75; } 35% { opacity: .45; } 60% { opacity: .7; } 80% { opacity: .5; } }
   /* Drachen: Schnur und Drachen hängen an der Pfote (Ursprung), steigen auf und schwanken im Wind */
   .kites { position: absolute; inset: 0; pointer-events: none; transition: filter 2.5s; }
-  .day.overcast .kites { filter: brightness(.9) saturate(.8); }
-  .dusk .kites { filter: brightness(.85) saturate(.85); }
+  .shade .kites { filter: brightness(var(--lb, 1)) saturate(var(--ls, 1)); }
   .kite { position: absolute; width: 0; height: 0; transition: opacity .6s; }
   .kite.gone { opacity: 0; }
   .kite svg { position: absolute; left: 0; top: 0; overflow: visible; }
@@ -3898,20 +4192,16 @@
     15% { opacity: .75; }
     100% { transform: translate(var(--smx, -6px), -16px) scale(2.3); opacity: 0; }
   }
-  .hills .mtn { display: none; }
-  .areal-alpin .hills .mtn { display: inline; }
-  .m1 { fill: #8b9bb1; transition: fill 2.5s; }
-  .mcap { fill: #f4f7fa; transition: fill 2.5s; }
-  .dusk .m1 { fill: #6c6f8f; }
-  .dusk .mcap { fill: #e6d3de; }
-  .night .m1 { fill: #222c45; }
-  .night .mcap { fill: #7d88a0; }
+  .mtns .mtn { display: none; }
+  .areal-alpin .mtns .mtn { display: inline; }
+  .m1 { fill: var(--m1, #8b9bb1); transition: fill 2.5s; }
+  .mcap { fill: var(--mcap, #f4f7fa); transition: fill 2.5s; }
   .hay svg, .flower svg, .food svg { display: block; width: 100%; height: auto; overflow: visible; }
   /* Durchgehender Grasstreifen ganz vorn: Boden in Wiesenfarbe, davor Halme. Alles, was auf dem Boden
      steht, sinkt ein paar Pixel ein und verschwindet unten im Gras. */
   .grass {
     position: absolute; left: 0; right: 0; top: calc(var(--gy) - var(--H) * .045); bottom: 0;
-    pointer-events: none; z-index: var(--z-stage); transition: filter 2.5s;
+    pointer-events: none; z-index: var(--z-stage);
   }
   .grass svg { display: block; width: 100%; height: calc(var(--H) * .06); }
   .grass::after {
@@ -3920,7 +4210,6 @@
   }
   .grass .blades { fill: var(--h3); transition: fill 2.5s; }
   .grass .soil { fill: var(--h2); transition: fill 2.5s; }
-  .day.overcast .grass { filter: brightness(.9) saturate(.8); }
   /* Heuhaufen vor dem Pika, damit man sieht, wie er Blüten hineinlegt */
   .fore { position: absolute; inset: 0; pointer-events: none; z-index: var(--z-stage); transition: filter 2.5s; }
   .hay {
@@ -3952,6 +4241,7 @@
     position: absolute; left: calc(var(--xf) * var(--W) - var(--fw) / 2); bottom: calc(var(--gb) - 5px);
     width: var(--fw); transform-origin: 50% 100%; animation: sway 3.6s ease-in-out infinite alternate;
   }
+  .flower svg * { transition: fill 2.5s, stroke 2.5s; }
   .flower.grow { animation: grow 1.4s ease-out, sway 3.6s 1.4s ease-in-out infinite alternate; }
   @keyframes sway { from { transform: rotate(-4deg); } to { transform: rotate(4deg); } }
   .windy .flower { animation: sway-wind 1.1s ease-in-out infinite alternate; }
@@ -3966,6 +4256,9 @@
      Jede Ebene ist doppelt so hoch wie der Niederschlagsbereich und enthält ihr Muster zweimal übereinander.
      Sie rutscht genau eine Höhe nach unten und beginnt von vorn: nahtlos, ohne Wiederholung im Bild, und statt
      bis zu 55 Animationen laufen nur drei (Schnee: sechs, das Schaukeln liegt auf einer eigenen Hülle). */
+  /* Regen und Schnee je in einem eigenen Satz: Ändert sich die Stärke, blendet der neue ein und der alte aus */
+  .precip .pset { position: absolute; inset: 0; opacity: 0; transition: opacity 2.5s; }
+  .precip .pset.on { opacity: 1; }
   .precip .pl { position: absolute; left: 0; right: 0; top: -100%; height: 200%; animation: pfall var(--pd) linear infinite; }
   @keyframes pfall { to { transform: translateY(50%); } }
   .precip .pw { position: absolute; inset: 0; animation: psway var(--pw) ease-in-out infinite; }
@@ -3976,6 +4269,13 @@
     background: linear-gradient(rgba(255, 255, 255, 0), rgba(215, 232, 255, .85));
   }
   .precip .s { border-radius: 50%; background: #fff; }
+  /* Regenbogen nach dem Schauer: ein Ring um den Gegenpunkt der Sonne, hinter den Hügeln (die untere Hälfte liegt
+     unter dem Horizont). Ort, Größe und Deckkraft setzt _bowSync alle 20 s, die Deckkraft gleitet dazwischen. */
+  .rbow {
+    position: absolute; border-radius: 50%; pointer-events: none; opacity: 0; transition: opacity 20s linear;
+    background: radial-gradient(closest-side, transparent 80%, rgba(150, 110, 225, .8) 82.5%, rgba(80, 150, 240, .8) 85.5%,
+      rgba(90, 205, 130, .8) 88.5%, rgba(248, 228, 95, .85) 91.5%, rgba(250, 165, 70, .85) 94.5%, rgba(238, 95, 85, .85) 97%, transparent 99.5%);
+  }
   .fog { position: absolute; inset: 0; pointer-events: none; z-index: var(--z-wx); opacity: 0; transition: opacity 3s; }
   .foggy .fog { opacity: 1; }
   .fog i {
@@ -4726,9 +5026,7 @@
 
   /* Häufchen liegen vorn auf dem Boden (vor dem Gras). Die Tippfläche ist größer als die Köttelchen. */
   .poops { position: absolute; inset: 0; z-index: var(--z-stage); pointer-events: none; transition: filter 2.5s; }
-  .day.overcast .poops { filter: brightness(.9) saturate(.8); }
-  .dusk .poops { filter: brightness(.85) saturate(.85); }
-  .night .poops { filter: brightness(.55) saturate(.6); }
+  .shade .poops { filter: brightness(var(--lbp, 1)) saturate(var(--ls, 1)); }
   .poo {
     position: absolute; left: calc(var(--px) - 22px); bottom: calc(var(--gb) - var(--H) * .022 - 10px);
     width: 44px; padding: 14px 0 10px; display: flex; justify-content: center;
@@ -4856,7 +5154,7 @@
   /* ---- Sparen ---- */
   /* Niemand sieht hin (Tab versteckt, Karte aus dem Bild): alle Animationen anhalten, sie laufen danach weiter */
   .scene.paused, .scene.paused *, .scene.paused *::before, .scene.paused *::after { animation-play-state: paused !important; }
-  /* Nachts ohne Wind stehen die Blumen still (die Ebene ist dann gefiltert, jedes Schaukeln kostete ein Neufiltern);
+  /* Nachts ohne Wind stehen die Blumen still (man sieht es kaum, und das Tablet darf ruhen);
      eine nachwachsende wächst trotzdem fertig */
   .scene.night:not(.windy) .flower { animation-play-state: paused; }
   .scene.night:not(.windy) .flower.grow { animation-play-state: running, paused; }
@@ -5149,6 +5447,10 @@
         this._lastPrecip = pr;
         this._guard('Wetter', () => this._readWeather(w, pr));
       }
+      // Verbindung wieder da: Was in der Lücke am Wetter geschah, steht im Recorder
+      const conn = hass.connected !== false;
+      if (conn && this._wxConn === false) this._guard('Wetterverlauf', () => this._wxHistAsk());
+      this._wxConn = conn;
       const fl = c.flight_entity ? hass.states[c.flight_entity] : undefined;
       if (fl !== this._lastFlights) {
         this._lastFlights = fl;
@@ -5276,14 +5578,12 @@
         <ha-card>
           <div class="scene day">
             <div class="sky sky-day"></div><div class="sky sky-dusk"></div><div class="sky sky-night"></div>
-            <div class="sky sky-grey"></div>
+            <div class="sky sky-grey"></div><div class="sky sky-storm"></div>
             <div class="stars">${stars}</div>
             <div class="meteors"></div>
             <div class="sun"></div>
             <div class="moon"><svg viewBox="0 0 100 100"><circle class="moon-dark" cx="50" cy="50" r="50"/><path class="moon-lit"/></svg></div>
-            <div class="clouds">${clouds}</div>
-            <div class="planes"></div>
-            <svg class="hills" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
+            <svg class="mtns" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
               <g class="mtn">
                 <path class="m1" d="M0 58 L10 40 L17 46 L30 22 L40 36 L47 30 L60 50 L70 34 L78 40 L88 18 L100 36 V100 H0Z"/>
                 <path class="mcap" d="M30 22 L34.3 28 L32 27 L30.5 29 L28.5 27.2 L26.75 28Z"/>
@@ -5291,6 +5591,11 @@
                 <path class="mcap" d="M70 34 L74 37 L72 36.4 L70.5 37.6 L69 36.5 L68.1 37Z"/>
                 <path class="mcap" d="M47 30 L49.6 34 L48.3 33.5 L47 34.6 L45.8 33.6 L44.6 34Z"/>
               </g>
+            </svg>
+            <div class="rbow"></div>
+            <div class="clouds">${clouds}</div>
+            <div class="planes"></div>
+            <svg class="hills" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
               <path class="h0" d="M0 55 Q12 47 26 52 T56 48 T82 51 T100 46 V100 H0Z"/>
               <path class="h1" d="M0 64 Q16 50 36 60 T72 55 T100 50 V100 H0Z"/>
               <path class="h2" d="M0 83 Q25 79 50 83 T100 82 V100 H0Z"/>
@@ -5363,6 +5668,7 @@
         stS: $('.st-s'), stG: $('.st-g'), barC: $('.bar-c'), stC: $('.st-c'), poops: $('.poops'), feed: $('.feed'), say: $('.say'), think: $('.think'),
         sun: $('.sun'), moon: $('.moon'), moonLit: $('.moon-lit'), clouds: [...this.shadowRoot.querySelectorAll('.cloud')],
         precip: $('.precip'), flash: $('.flash'),
+        skyDusk: $('.sky-dusk'), skyNight: $('.sky-night'), skyGrey: $('.sky-grey'), skyStorm: $('.sky-storm'), rbow: $('.rbow'),
         burrow: $('.burrow'), lights: $('.lights'), clipw: $('.clipw'), depth: $('.depth'), rock: $('.lookout'),
         meteors: $('.meteors'), ff: $('.ff'), festB: $('.fest-b'), festF: $('.fest-f'), props: $('.props'), friends: $('.friends'),
         acts: $('.acts'), gifts: $('.gifts'), gbtn: $('.gbtn'), tbbtn: $('.tbbtn'),
@@ -6236,7 +6542,7 @@
     // Wiese, nimmt er die nächste und sie bekommt die Farbe.
     async _gather() {
       const S = this._slotFor('gather');
-      const pal = this._areal().flowers || FLOWER_COLORS;
+      const pal = this._flowerPal();
       const ci = Math.floor(S.r(2) * pal.length);
       const color = pal[ci];
       if (this._inside) await this._comeOut();
@@ -6247,6 +6553,7 @@
         if (f) {
           f.color = color;
           f.el.innerHTML = FLOWER_SVG(color);
+          this._flowerTint(f);
         }
       }
       if (f) {
@@ -7699,14 +8006,16 @@
     // eigene Tippfläche hat (Häufchen, Geschenk, Pino, Besucher, Flugzeuge, Geräte, Leiste, Knöpfe), fängt seinen
     // Klick vorher ab und behält so den Vorrang.
 
-    // Zeigt die Stelle freien Himmel? Davor liegen die gemalten Flächen von Hügeln und Bergen, Bau und Stein.
+    // Was zeigt die Stelle vom Himmel? 2: freien Himmel. 1: die Berge (Areal alpin), vor ihnen ziehen die Wolken, die
+    // Sterne stehen dahinter. 0: nichts, davor liegen die gemalten Flächen von Hügeln, Bau oder Stein.
     _skyAt(e) {
       const stack = this.shadowRoot.elementsFromPoint?.(e.clientX, e.clientY) || [];
-      return !stack.some((el) => el.matches?.('.hills *, .burrow svg *, .lookout svg *'));
+      if (stack.some((el) => el.matches?.('.hills *, .burrow svg *, .lookout svg *'))) return 0;
+      return stack.some((el) => el.matches?.('.mtns *')) ? 1 : 2;
     }
 
-    // Flächen der antippbaren Dinge in px der Szene, in Rangfolge und mit Tipp-Rand (worldPick). sky: Die Stelle zeigt
-    // freien Himmel, nur dann zählen Sterne und Wolken.
+    // Flächen der antippbaren Dinge in px der Szene, in Rangfolge und mit Tipp-Rand (worldPick). sky: was die Stelle
+    // vom Himmel zeigt (_skyAt). Wolken zählen vor freiem Himmel und vor den Bergen, Sterne nur vor freiem Himmel.
     _worldZones(sky) {
       const sc = this._el.scene;
       const sr = sc.getBoundingClientRect();
@@ -7725,7 +8034,7 @@
       const { hole } = this._g;
       Z.push({ k: 'door', l: hole.l, t: hole.top, r: hole.r, b: hole.lip, pad: 0 });
       if (!sky) return Z;
-      if (sc.classList.contains('night') || sc.classList.contains('dusk')) {
+      if (sky !== 1 && (sc.classList.contains('night') || sc.classList.contains('dusk'))) {
         for (const el of this._el.starEls) if (!el._fell && Number(getComputedStyle(el).opacity) > 0.25) add('star', el, 13);
       }
       for (const el of this._el.clouds) if (el.classList.contains('on')) add('cloud', el, 5);
@@ -8308,7 +8617,7 @@
     // Blüte mit Schleife vor ihm ins Gras legen; erst jetzt zählen die 90 Minuten bis zum nächsten Geschenk. Sie steht im
     // Tagesplan (fl), so liegt sie auf allen Geräten an derselben Stelle (siehe _flowerFromPlan).
     _flowerGiftDrop(color) {
-      const pal = this._areal().flowers || FLOWER_COLORS;
+      const pal = this._flowerPal();
       const x = clamp(this._liveX() + this._dir * this._g.pW * 0.45, this._g.pH * 0.35, this._W - this._g.pH * 0.35);
       this._planOp({ t: 'fdrop', f: { t: this._haNow(), c: Math.max(0, pal.indexOf(color)) % 10, x: Math.round((x / this._W) * 100), k: false } });
     }
@@ -8334,7 +8643,7 @@
         }
       }
       if (this._giftEl || left <= 0 || left > FLGIFT.life + 6e4) return;
-      const pal = this._areal().flowers || FLOWER_COLORS;
+      const pal = this._flowerPal();
       const g = document.createElement('div');
       g.className = 'pgift';
       g.innerHTML = `${GIFT_SVG(pal[f.c % pal.length])}<i class="pspk"></i><i class="pspk"></i><i class="pspk"></i>`;
@@ -8573,14 +8882,41 @@
         xf = rnd(fMin, fMax);
         if (this._flowers.every((f) => Math.abs(f.xf - xf) * this._W > 26)) break;
       }
-      const color = pick(this._areal().flowers || FLOWER_COLORS);
+      const color = pick(this._flowerPal());
       const el = document.createElement('div');
       el.className = grow ? 'flower grow' : 'flower';
       el.style.setProperty('--xf', xf.toFixed(4));
       el.style.animationDelay = grow ? '' : `${rnd(-3.6, 0).toFixed(2)}s`;
       el.innerHTML = FLOWER_SVG(color);
       this._el.flowers.appendChild(el);
-      this._flowers.push({ xf, color, el });
+      const f = { xf, color, el };
+      this._flowers.push(f);
+      this._flowerTint(f);
+    }
+
+    // Die fünf Blumenfarben dieses Areals in dieser Jahreszeit. Im Tagesplan stehen nur ihre Nummern (Vorrat,
+    // Blumengeschenk): Frühling und Sommer malen sie wie bis 0.30, Herbst und Winter in ihren eigenen Farben.
+    _flowerPal() {
+      this._seasonK ??= seasonKey(this._festNow(), this._viewN());
+      const own = this._areal().flowers;
+      return (own ? FLOWER_SEASON_ALPIN : FLOWER_SEASON)[this._seasonK] || own || FLOWER_COLORS;
+    }
+
+    // Blumen im Licht des Augenblicks, ohne Filter über der schaukelnden Ebene: je Blume Blüte und Mitte, an der
+    // Ebene Stiel und Blatt in den Farben der Jahreszeit. only: nur diese eine (neu gewachsen, umgefärbt).
+    _flowerTint(only) {
+      const L = this._lit;
+      if (!L) return;
+      const dim = (c) => rgbHex(dimRgb(c, L.lb, L.ls));
+      if (!only) {
+        const fs = this._el.flowers.style;
+        fs.setProperty('--fst', dim(L.pal.stem));
+        fs.setProperty('--flf', dim(L.pal.leaf));
+      }
+      for (const f of only ? [only] : this._flowers) {
+        f.el.style.setProperty('--fc', dim(hexRgb(f.color)));
+        f.el.style.setProperty('--fm', dim(hexRgb(flowerMid(f.color))));
+      }
     }
 
     _regrow() {
@@ -8620,8 +8956,8 @@
     _hayFromPlan() {
       if (!this._el) return;
       const { n, c } = hayNow(this._plan.hay, this._haNow());
-      const pal = this._areal().flowers || FLOWER_COLORS;
-      const key = `${n}|${c}|${this._arealKey}`;
+      const pal = this._flowerPal();
+      const key = `${n}|${c}|${this._arealKey}|${this._seasonK}`;
       if (key === this._hayKey) return;
       const more = this._hayKey != null && n > this._hay;
       this._hayKey = key;
@@ -11881,24 +12217,125 @@
       sc.toggle('summer', month >= 4 && month <= 8);
       sc.toggle('sun-low', e != null && e < 8);
       sc.toggle('sun-down', e != null && e < -1);
+      this._light(mode);
 
       const az = this._dbgAz ?? this._az;
       const vn = this._viewN();
-      if (e != null && az != null) this._place(this._el.sun, skyPos(az, e, vn));
+      // Im Areal alpin stehen Sonne und Mond über dem Grat (skyPos)
+      const ridge = this._arealKey === 'alpin';
+      if (e != null && az != null) this._place(this._el.sun, skyPos(az, e, vn, ridge));
 
       // Mond höchstens alle 30 s neu berechnen, er bewegt sich gemächlich
       const now = this._dbgDate ?? Date.now();
       const cfg = this._hass?.config;
-      if (cfg && Number.isFinite(cfg.latitude) && (this._dbgDate || !this._moonT || now - this._moonT > 30000)) {
+      const size = `${this._W}x${this._Hs}`;
+      if (cfg && Number.isFinite(cfg.latitude) && (this._dbgDate || !this._moonT || now - this._moonT > 30000 || this._moonRidge !== ridge)) {
         this._moonT = now;
+        this._moonRidge = ridge;
         const m = moonPosition(now, cfg.latitude, cfg.longitude);
         const ph = moonPhase(now);
-        this._place(this._el.moon, skyPos(m.az, m.alt, vn));
+        this._place(this._el.moon, skyPos(m.az, m.alt, vn, ridge));
         const d = moonPath(ph, vn);
         if (d !== this._moonD) this._el.moonLit.setAttribute('d', (this._moonD = d));
         this._moonUp = m.alt > 2 && ph > 0.03 && ph < 0.97;
-      }
+        this._starOcc();
+      } else if (this._starSize !== size) this._starOcc();
       sc.toggle('moon-up', !!this._moonUp);
+    }
+
+    // Licht der Szene: Schichten des Himmels, Farben von Hügel und Wiese, Helligkeit auf dem Land, Farben der Blumen.
+    // Alles stufenlos aus Sonnenhöhe, Jahreszeit, Wetter und Schneedecke (twilight, seasonPal, landColors). Läuft bei
+    // jedem hass-Update: Gerechnet und geschrieben wird nur, wenn sich etwas geändert hat (jede Variable an der Szene
+    // lässt den ganzen Baum neu berechnen); Stufen von 1/50 sieht man nicht.
+    _light(mode) {
+      const E = this._el;
+      const cl = E.scene.classList;
+      const e = this._dbgElev ?? this._elev;
+      mode ??= cl.contains('night') ? 'night' : cl.contains('dusk') ? 'dusk' : 'day';
+      // Ohne Sonnenstand richtet sich der Himmel nach der Schlafenszeit. Schläft er bei hoher Sonne (feste
+      // Schlafenszeit im Sommer), ist Abend.
+      const tw = e == null ? { d: mode === 'day' ? 0 : 1, n: mode === 'night' ? 1 : 0 } : twilight(mode === 'dusk' && e > 4 ? 2 : e);
+      const wx = this._wx;
+      const L = {
+        d: Math.round(tw.d * 50) / 50, n: Math.round(tw.n * 50) / 50,
+        grey: wx.cover >= 70 ? 1 : 0, storm: wx.storm ? 1 : 0, snow: wx.snow01 || 0,
+      };
+      const south = this._viewN();
+      const at = this._festNow(); // Vorschau: das gestellte Datum
+      const day = Math.floor((at - new Date(at).getTimezoneOffset() * 6e4) / 864e5);
+      const key = `${L.d}|${L.n}|${L.grey}|${L.storm}|${L.snow}|${day}|${south}`;
+      if (key === this._lightKey) return;
+      this._lightKey = key;
+      const pal = seasonPal(seasonPos(at, south));
+      const C = landColors(pal, L);
+      const st = E.scene.style;
+      for (const [k, v] of [['h0', C.h0], ['h1', C.h1], ['h2', C.h2], ['h3', C.h3], ['m1', C.m1], ['mcap', C.mcap],
+        ['mound', C.mound], ['mound-s', C.moundS],
+        ['lb', C.lb.toFixed(3)], ['ls', C.ls.toFixed(3)], ['lbp', C.lbp.toFixed(3)]]) st.setProperty(`--${k}`, v);
+      // Der Filter auf Land, Vordergrund und Besuchern kostet volle Leistung, auch wenn er nichts ändert: erst ab
+      // 4 % Unterschied (Sonne unter gut 7°, bedeckt, Gewitter). Das Zuschalten gleitet (transition: filter).
+      cl.toggle('shade', C.lb < 0.96 || C.ls < 0.96);
+      E.skyDusk.style.opacity = L.d;
+      E.skyNight.style.opacity = L.n;
+      E.skyGrey.style.setProperty('--gd', L.d);
+      E.skyGrey.style.setProperty('--gn', L.n);
+      // Der Gewitterschleier nimmt dem Tag das Licht; die Nacht ist schon dunkel
+      E.skyStorm.style.opacity = L.storm ? (1 - 0.75 * L.n).toFixed(2) : 0;
+      this._lit = { lb: C.lb, ls: C.ls, pal };
+      // Neue Jahreszeit (die Karte läuft monatelang): Blumen auf der Wiese und Blüten im Vorrat in den neuen Farben
+      const sk = seasonKey(at, south);
+      if (this._seasonK && this._seasonK !== sk) {
+        const from = this._flowerPal();
+        this._seasonK = sk;
+        const to = this._flowerPal();
+        for (const f of this._flowers) {
+          f.color = to[Math.max(0, from.indexOf(f.color))];
+          f.el.innerHTML = FLOWER_SVG(f.color);
+        }
+        if (this._plan) this._hayFromPlan();
+      }
+      this._seasonK = sk;
+      this._flowerTint();
+    }
+
+    // Sterne hinter der Mondscheibe ausblenden (ihre dunkle Seite ist durchscheinend gemalt)
+    _starOcc() {
+      const E = this._el;
+      const pos = E.moon._pos;
+      if (!pos || !this._W) return;
+      this._starSize = `${this._W}x${this._Hs}`;
+      const r = this._H * 0.06 + 2;
+      for (const el of E.starEls) {
+        el._at ??= [parseFloat(el.style.left), parseFloat(el.style.top)];
+        const dx = ((el._at[0] - pos.x) / 100) * this._W;
+        const dy = ((el._at[1] - pos.y) / 100) * this._Hs;
+        el.classList.toggle('occ', !!this._moonUp && dx * dx + dy * dy < r * r);
+      }
+    }
+
+    // Regenbogen nach dem Schauer (rainbow): gegenüber der Sonne, Scheitel umso tiefer, je höher sie steht
+    _bowSync() {
+      const el = this._el?.rbow;
+      if (!el || !this._W) return;
+      const e = this._dbgElev ?? this._elev;
+      const az = this._dbgAz ?? this._az;
+      const k = this._dbgBow ?? (e == null || this._asleep ? 0 : rainbow(this._wxLog || [], this._haNow(), e, this._wx.cover ?? 0));
+      const s = Math.round(k * 20) / 20;
+      // Sonne rechts: Bogen links. Solange er steht, bleibt er auf seiner Seite (mittags zieht die Sonne durch die Mitte)
+      if (!s || !this._bowKey || this._bowKey === '0') this._bowLeft = az != null && skyPos(az, e ?? 0, this._viewN()).x > 50;
+      const left = !!this._bowLeft;
+      const key = s ? `${s}|${Math.round(e)}|${left}|${this._W}x${this._Hs}` : '0';
+      if (key === this._bowKey) return;
+      this._bowKey = key;
+      el.style.opacity = (s * 0.6).toFixed(2);
+      if (!s) return;
+      // Kreis um den Gegenpunkt der Sonne: der liegt so weit unter dem Horizont (56 % der Höhe), wie die Sonne darüber
+      const r = this._H * 0.46;
+      const cx = this._W * (left ? 0.27 : 0.73);
+      const cy = this._Hs * 0.56 + (clamp(e, 0, 42) / 42) * r;
+      el.style.width = el.style.height = `${(2 * r).toFixed(1)}px`;
+      el.style.left = `${(cx - r).toFixed(1)}px`;
+      el.style.top = `${(cy - r).toFixed(1)}px`;
     }
 
     _place(el, { x, y }) {
@@ -11943,6 +12380,10 @@
       this._ffKey = null;
       this._skyState();
       if (!this._away()) this._meteorPlan();
+      // Neu eingehängt laufen die Wolken wieder mit ihrem Grundtempo: Wind neu stellen
+      this._cloudSig = null;
+      this._cloudWind();
+      this._wxHistAsk(15 * 60000, false);
     }
 
     _detachSky() {
@@ -11956,16 +12397,28 @@
       else {
         this._meteorPlan();
         this._skyState();
+        // erst im nächsten Bild: Dann laufen die Animationen wieder, und ein neues Tempo setzt an der Stelle an, an
+        // der die Wolken stehen
+        requestAnimationFrame(() => this._guard('Wolken', () => this._cloudWind()));
+        this._wxHistAsk(15 * 60000, false);
       }
     }
 
     _layoutSky(first) {
       // neue Größe: neue Orte und Wege (die alten lägen sonst über Statusleiste oder Futterknopf)
       if (this._ffSize !== `${this._W}x${this._Hs}`) this._ffPlace();
+      this._bowSync();
+      this._cloudWind();
     }
 
     _tickSky() {
       this._skyState();
+      // Schneedecke taut, Regenbogen kommt und geht: beides hängt an der Zeit, nicht nur an neuen Meldungen
+      this._applyWeather();
+      this._bowSync();
+      this._cloudWind();
+      // fälliger Abruf des Wetterverlaufs (erster Versuch gescheitert, Verbindung war weg)
+      this._wxHist();
     }
 
     _skyActs(ctx) {
@@ -12255,14 +12708,21 @@
       // wiedererkennen: jede Meldung gäbe ein neues Flugzeug, das alte flöge doppelt weiter. Solche auslassen.
       const idOf = (f) => String(f.id || f.callsign || f.flight_number || f.aircraft_registration || '');
       const list = [];
+      const ghosts = (this._ghosts ??= new Map());
+      const seen = new Set();
       for (const f of Array.isArray(st?.attributes?.flights) ? st.attributes.flights : []) {
         if (!f || typeof f !== 'object' || !idOf(f)) continue;
         const alt = Number(f.altitude);
-        const gs = Number(f.ground_speed);
+        const gs = Number(f.ground_speed) || 0;
         const lat = Number(f.latitude);
         const lon = Number(f.longitude);
-        // Rollt am Flughafen oder hat keine Position: nicht am Himmel
-        if (f.on_ground || !(alt > 80) || !(gs > 30) || !Number.isFinite(lat) || !Number.isFinite(lon)) continue;
+        // Rollt am Flughafen oder hat keine Position: nicht am Himmel (ein Hubschrauber darf schweben)
+        if (!flightAloft(f) || !Number.isFinite(lat) || !Number.isFinite(lon)) continue;
+        // Hängengebliebene Meldung: Dieser Flug ist mit genau dieser Position schon einmal ausgeflogen. Er käme sonst
+        // alle 75 s von derselben Stelle wieder, und der Pika erschräke jedes Mal. Erst eine neue Position zählt.
+        seen.add(idOf(f));
+        if (flightGhost(ghosts.get(idOf(f)), f)) continue;
+        ghosts.delete(idOf(f));
         const e = lonDiff(lon, cfg.longitude) * kx;
         const n = (lat - cfg.latitude) * 110.57;
         // Außerhalb von flight_radius (bzw. ganz am Rand, wo er schon ausgeblendet ist, vgl. pa in _planeTick)
@@ -12271,6 +12731,8 @@
         if (Math.max(Math.abs(e), Math.abs(n)) >= 0.99 * R) continue;
         list.push({ f, e, n, alt, gs, slant: Math.hypot(e, n, alt * 0.0003048) });
       }
+      // nicht mehr gemeldet: vergessen
+      for (const id of ghosts.keys()) if (!seen.has(id)) ghosts.delete(id);
       list.sort((a, b) => a.slant - b.slant);
       const max = Math.max(0, Math.round(Number(this._cfg.max_flights) || 0));
       // Wer schon am Himmel steht, behält seinen Platz, solange er gemeldet wird. Sonst tauschen zwei fast gleich
@@ -12294,14 +12756,27 @@
         // weiter von der alten Meldung aus rechnen, sonst springt der Flieger um eine Meldung zurück.
         const same = p.t0 != null && Number(p.f.latitude) === Number(s.f.latitude)
           && Number(p.f.longitude) === Number(s.f.longitude);
+        // Gibt es einen sichtbaren Punkt, den eine verspätete Position nicht zurückwerfen darf? Nicht bei einem neuen
+        // und nicht, wenn er ohnehin gleich an seinen Platz gesetzt wird (Karte war unsichtbar, neue Größe).
+        const had = p.t0 != null && !p.fresh && !p.snap;
         Object.assign(p, { f: s.f, gone: 0, dead: 0 });
+        // Schwebt er (unter 30 kn), ist dieselbe Position keine alte Meldung: Er bleibt, solange er gemeldet wird,
+        // höchstens zehn Minuten am selben Fleck (danach gilt auch das als hängengeblieben)
+        if (same && s.gs <= 30) {
+          p.still ||= now;
+          if (now - p.still < 600000) p.t0 = p.tm = t0;
+        } else p.still = 0;
         if (!same) {
           const v = (s.gs * 1.852) / 3600; // km/s
           const h = Number(s.f.heading) * RAD;
+          const ve = Number.isFinite(h) ? v * Math.sin(h) : 0;
+          const vn = Number.isFinite(h) ? v * Math.cos(h) : 0;
+          // Verspätete Position: Sie liegt hinter dem Punkt, an dem er im Bild schon ist, der nächste Schritt ginge
+          // rückwärts. Dann rechnet die Bahn eben von so viel früher an (planeLag): Er fliegt vom sichtbaren Punkt aus
+          // weiter, nur ein Versatz quer zur Bahn gleitet sich aus. Die Meldezeit (tm) bleibt, wie sie ist: An ihr
+          // hängt das Ausaltern (planeClock).
           Object.assign(p, {
-            e: s.e, n: s.n, alt: s.alt, t0,
-            ve: Number.isFinite(h) ? v * Math.sin(h) : 0,
-            vn: Number.isFinite(h) ? v * Math.cos(h) : 0,
+            e: s.e, n: s.n, alt: s.alt, ve, vn, ...planeClock(had ? p : null, { e: s.e, n: s.n, ve, vn }, now, t0),
             vz: clamp(Number(s.f.vertical_speed) || 0, -6000, 6000) / 60, // ft/s
           });
         }
@@ -12451,8 +12926,11 @@
         const sc = (clamp(1.6 / slant, 0.1, 0.36) / 0.3) * p.size;
         Object.assign(p, { x, y, slant, altNow: alt });
         const out = x < -W * 0.2 || x > W * 1.2;
-        // Ohne neue Meldung nach 75 s ausblenden, ein verlassenes spätestens nach 45 s
-        const ending = p.gone ? out || now - p.gone > 45000 : age > 75;
+        // Ohne neue Position nach 75 s (seit der Meldung, nicht seit dem vorverlegten Beginn der Bahn: planeStale)
+        // ausblenden, ein verlassenes spätestens nach 45 s
+        const ending = p.gone ? out || now - p.gone > 45000 : planeStale(p, now);
+        // Wird er mit dieser alten Position weiter gemeldet, kommt er nicht wieder (flightGhost in _readFlights)
+        if (ending && !p.dead && !p.gone) (this._ghosts ??= new Map()).set(id, { lat: Number(p.f.latitude), lon: Number(p.f.longitude) });
         if (ending && !p.dead) p.dead = now;
         if (p.dead && now - p.dead > 2500) {
           clearTimeout(p.openT);
@@ -12597,6 +13075,7 @@
     // ---------- Wetter ----------
 
     _readWeather(w, pr) {
+      this._wxNote(w);
       // Wetter kurz nicht erreichbar (Aussetzer des Dienstes, Integration lädt neu): Das letzte gilt bis zu WX_HOLD
       // weiter. Sonst wäre für die Dauer des Aussetzers Schönwetter, und er käme mitten im Gewitter heraus.
       const dead = !!w && (w.state === 'unavailable' || w.state === 'unknown');
@@ -12610,11 +13089,10 @@
         const a = w.attributes || {};
         let wind = Number(a.wind_speed);
         wind = windKmh(wind, a.wind_speed_unit);
-        let temp = Number(a.temperature);
-        if (a.temperature_unit === '°F') temp = (temp - 32) / 1.8;
+        const temp = wxTemp(a);
         this._wxRaw = {
           cond: w.state,
-          cover: Number(a.cloud_coverage),
+          cover: numAttr(a.cloud_coverage),
           wind: Number.isFinite(wind) ? wind : 0,
           bearing: windDeg(a.wind_bearing),
           temp: Number.isFinite(temp) ? temp : null,
@@ -12627,15 +13105,115 @@
       this._applyWeather();
     }
 
+    // Verlauf der Wetterlage für Schneedecke und Regenbogen fortschreiben (wxLogAdd): jede Meldung der Wetter-Entität
+    // mit ihrem Zeitstempel von HA, auch die Aussetzer. So kommen alle Geräte auf dieselbe Reihe. Was vorher war und
+    // was dieses Gerät verpasst hat, liefert der Recorder (_wxHist).
+    _wxNote(w) {
+      const id = this._cfg.weather_entity;
+      if (!w || !id) {
+        // Keine Wetter-Entität (entfernt, umbenannt, nicht eingestellt): kein Verlauf, also auch keine Schneedecke,
+        // die für immer liegen bliebe. Kommt sie wieder, wird der Recorder neu gefragt.
+        this._wxLog = [];
+        this._wxLogId = this._wxCur = null;
+        return;
+      }
+      if (this._wxLogId !== id) {
+        // neue oder andere Wetter-Entität (Editor): Der Verlauf der alten gilt nicht mehr
+        this._wxLogId = id;
+        this._wxLog = [];
+        this._wxCur = null;
+        this._wxHistFail = 0;
+        this._wxHistDue = 0;
+      }
+      const now = this._haNow();
+      const lu = Date.parse(w.last_updated);
+      const lc = Date.parse(w.last_changed);
+      const t = Number.isFinite(lu) ? lu : Number.isFinite(lc) ? lc : now;
+      const row = { t, c: w.state, T: wxTemp(w.attributes) };
+      const seen = this._wxCur;
+      this._wxCur = row;
+      // Was die Mitschrift nach dieser Meldung noch führt, kann nicht stimmen (Uhr verstellt) und fällt heraus
+      const log = (this._wxLog || []).filter((r) => r.t <= t);
+      // Erste Meldung (eben geladen): Die Lage gilt schon seit last_changed. Mit der Temperatur von jetzt ist das nur
+      // vorläufig; antwortet der Recorder, ersetzt sein Verlauf diesen Eintrag (wxLogMerge).
+      const first = !log.length && Number.isFinite(lc) && lc < t ? [{ ...row, t: lc }] : [];
+      this._wxLog = wxLogAdd(log, [...first, row], Math.max(now, t));
+      // Eine neue Meldung, die schon alt ankommt: Dazwischen war die Verbindung weg, der Recorder weiß mehr
+      if (seen && seen.t !== t && now - t > WX_LATE) this._wxHistAsk();
+      this._wxHist();
+    }
+
+    // Den Recorder (noch einmal) fragen, frühestens pause ms nach dem letzten Versuch (gegen Dauerabfragen): wenn die
+    // Verbindung wiederkommt oder eine Meldung verspätet eintrifft, nach einer Minute; ist die Karte wieder zu sehen
+    // oder neu eingehängt, nur wenn der letzte Versuch 15 Minuten her ist (wait false: sonst gar nicht).
+    _wxHistAsk(pause = 60000, wait = true) {
+      const at = (this._wxHistTry || 0) + pause;
+      if (wait || Date.now() >= at) this._wxHistDue = Math.min(this._wxHistDue ?? Infinity, at);
+      this._wxHist();
+    }
+
+    // Wetterlage der letzten drei Tage aus dem Recorder von HA: alle Meldungen der Wetter-Entität, ausgedünnt auf die
+    // Wechsel von Lage und Temperatur (wxRows, wxLogAdd). Damit weiß auch ein frisch geladenes Gerät, ob noch Schnee
+    // liegt und ob eben ein Schauer durchzog, und steht danach da wie eines, das mitgeschrieben hat (wxLogMerge).
+    // Gefragt wird, wenn ein Abruf fällig ist (_wxHistDue): beim Laden, bei einer anderen Wetter-Entität und auf
+    // Anfrage (_wxHistAsk). Schlägt er fehl, gilt solange, was das Gerät selbst gesehen hat, und der nächste Versuch
+    // folgt nach 1, 5, 15, dann alle 30 Minuten (WX_RETRY; angestoßen aus _tickSky und von jeder Wettermeldung).
+    async _wxHist() {
+      const id = this._cfg?.weather_entity;
+      const hass = this._hass;
+      if (!id || this._wxLogId !== id || this._wxHistBusy || !this._attached || !(Date.now() >= this._wxHistDue)
+        || hass?.connected === false || typeof hass?.callWS !== 'function' || !hass.states?.[id]) return;
+      this._wxHistBusy = true;
+      this._wxHistTry = Date.now();
+      this._wxHistDue = Infinity;
+      let rows = null;
+      try {
+        const now = this._haNow();
+        const res = await hass.callWS({
+          type: 'history/history_during_period', start_time: new Date(now - WX_KEEP).toISOString(), end_time: new Date(now + 60000).toISOString(),
+          // auch Meldungen, bei denen sich nur ein Attribut geändert hat: Die Temperatur gehört zum Verlauf
+          entity_ids: [id], minimal_response: false, no_attributes: false, significant_changes_only: false,
+        });
+        rows = wxRows(res?.[id]);
+      } catch (e) {
+        if (!this._wxHistWarned) console.warn('pika-pet-card: Verlauf der Wetterlage nicht lesbar (Schneedecke und Regenbogen vorerst nur aus dem, was dieses Gerät gesehen hat; neuer Versuch folgt)', e);
+        this._wxHistWarned = true;
+      }
+      this._wxHistBusy = false;
+      // inzwischen eine andere Wetter-Entität: Diese Antwort gilt nicht mehr, ihr eigener Abruf ist schon fällig
+      if (id === this._wxLogId) {
+        if (rows) {
+          this._wxHistFail = 0;
+          this._guard('Wetterverlauf', () => {
+            const now = Math.max(this._haNow(), this._wxCur?.t || 0);
+            this._wxLog = wxLogMerge([...(this._wxLog || []), this._wxCur], rows, now);
+            this._applyWeather();
+            this._bowSync();
+          });
+        } else {
+          const n = (this._wxHistFail = (this._wxHistFail || 0) + 1);
+          this._wxHistDue = Math.min(this._wxHistDue, Date.now() + WX_RETRY[Math.min(n, WX_RETRY.length) - 1] * 60000);
+        }
+      }
+      // während des Abrufs angemeldet (andere Entität, Verbindung kam wieder)
+      if (Date.now() >= this._wxHistDue) this._wxHist();
+    }
+
     _applyWeather() {
       if (!this._el) return;
       const raw = { cond: null, wind: 0, temp: null, ...(this._wxRaw || {}), ...(this._dbgWeather || {}) };
       // Vorhersagen melden "rainy" schon bei Niesel: unter rain_min mm/h ist es nur bewölkt
       const drizzle = raw.cond === 'rainy' && raw.precip < this._cfg.rain_min;
       const def = drizzle ? WEATHER.cloudy : WEATHER[raw.cond] || { cover: 25 };
-      // Bei trockener Lage zählt die gemeldete Bedeckung, bei Regen, Schnee & Co. die Wetterlage
+      // Bei trockener Lage zählt die gemeldete Bedeckung (im Rahmen der Lage, wxCover), bei Regen, Schnee & Co. die Wetterlage
       const dry = !def.rain && !def.snow && !def.storm && !def.fog;
-      const cover = dry && Number.isFinite(raw.cover) ? raw.cover : def.cover;
+      const cover = dry ? wxCover(def, raw.cover) : def.cover;
+      // Schneedecke: wächst bei Schneefall zu (ein Hauch liegt sofort), bleibt danach liegen und taut (snowDepth).
+      // In Stufen von 1/20, sonst gälte alle 20 s ein neues Wetter.
+      // (Schneeregen bei Frost: gerundet wie im Verlauf, wxLogAdd)
+      const snowing = raw.cond === 'snowy' || (raw.cond === 'snowy-rainy' && raw.temp != null && Math.round(raw.temp) <= 0);
+      const depth = this._dbgSnow ?? snowDepth(this._wxLog || [], this._haNow());
+      const snow01 = Math.round(clamp(Math.max(depth, snowing ? SNOW.show : 0), 0, 1) * 20) / 20;
       const fx = {
         cover,
         rain: def.rain || 0,
@@ -12647,8 +13225,12 @@
         windy: !!def.wind || raw.wind >= 30,
         cold: raw.temp != null && raw.temp < 3,
         chilly: raw.temp != null && raw.temp < 12, // Ofen an, Schornstein raucht
-        snowcover: raw.cond === 'snowy' || (raw.cond === 'snowy-rainy' && raw.temp != null && raw.temp <= 0),
+        // Schnee liegt: bei Schneefall sofort (wie bisher) und danach, bis die Decke unter SNOW.show getaut ist
+        snowcover: snowing || snow01 >= SNOW.show,
+        snow01,
       };
+      // Dichte Wolken: Mond und Sterne sind weg
+      fx.dense = cover >= 85 || fx.rain > 0 || fx.snow > 0 || fx.storm || fx.fog;
       fx.wet = fx.rain > 0 || fx.flash; // Blatt als Regenschirm
       fx.shelter = fx.storm; // bei Starkregen und Gewitter bleibt er vor seinem Bau
       // Windrichtung = woher der Wind kommt. Aus Westen ziehen Wolken nach Osten, im Bild (Blick nach Süden) also
@@ -12666,6 +13248,7 @@
 
       const sc = this._el.scene.classList;
       sc.toggle('overcast', cover >= 70);
+      sc.toggle('dense', fx.dense);
       sc.toggle('storm', fx.storm);
       sc.toggle('foggy', fx.fog);
       sc.toggle('windy', fx.windy);
@@ -12674,18 +13257,24 @@
       sc.toggle('wind-w', fromWest);
       const st = this._el.scene.style;
       const lean = Math.min(raw.wind * 0.7, 28) * (fromWest ? -1 : 1);
-      st.setProperty('--cs', clamp(1.3 - raw.wind / 35, 0.3, 1.3).toFixed(2));
+      // Wolken: bei Windstille gemächlich (0,77-fach), bei Sturm gut dreimal so schnell; fromWest: nach links
+      this._cloudRate = 1 / clamp(1.3 - raw.wind / 35, 0.3, 1.3);
+      this._cloudRev = fromWest;
       st.setProperty('--slant', `${lean.toFixed(1)}deg`);
       st.setProperty('--sw1', fromWest ? '-14deg' : '-2deg');
       st.setProperty('--sw2', fromWest ? '2deg' : '14deg');
       st.setProperty('--smx', `${((fromWest ? -1 : 1) * (4 + Math.min(raw.wind, 40) / 4)).toFixed(1)}px`);
-      st.setProperty('--starop', (0.85 * (1 - cover / 110)).toFixed(2));
+      st.setProperty('--starop', starOp(cover, fx.dense).toFixed(2));
       const n = Math.round((cover / 100) * this._el.clouds.length);
       this._el.clouds.forEach((c, i) => c.classList.toggle('on', i < n));
       this._setPrecip(fx.rain, fx.snow);
+      this._light();
+      this._bowSync();
       const p = this._el.pika.classList;
       p.toggle('wet', fx.wet);
       p.toggle('cold', fx.cold);
+      // Wolken zuletzt: Die Animationen zu befragen lässt den Browser alle Stiländerungen von oben sofort durchrechnen
+      this._cloudWind();
       if (fx.shelter && !wasShelter && !this._asleep && this._action !== 'eatFood') this._interrupt();
       // Fängt es an zu regnen oder zu schneien: eine Beschäftigung, die bei diesem Wetter nicht geht, einpacken
       // (sonst springt er Seil mit dem Blatt als Schirm oder liegt mit dem Tablet im Regen)
@@ -12693,32 +13282,99 @@
         && WX_STOP.includes(this._action) && !this._actOk(this._action)) this._interrupt();
     }
 
+    // Regen und Schnee je als eigener Satz von Teilchen. Ändert sich die Stärke, blendet der neue Satz ein und der alte
+    // aus, statt hart umzuschalten. Die Teilchen stehen fest (seeded, nach ihrer Nummer): Von Regen auf Starkregen
+    // bleiben die ersten 40 Tropfen, wo sie sind, es kommen nur welche dazu. Die Ebenen laufen nach der Uhr, ein
+    // neuer Satz fällt also im Gleichschritt mit dem alten.
     _setPrecip(rain, snow) {
-      const k = `${rain}/${snow}`;
-      if (k === this._precipKey) return;
-      this._precipKey = k;
+      this._precipSet('r', rain);
+      this._precipSet('s', snow);
+    }
+
+    _precipSet(kind, n) {
+      const sets = (this._precipSets ??= {});
+      const old = sets[kind];
+      if ((old?.n || 0) === n) return;
+      if (old) {
+        old.el.classList.remove('on');
+        setTimeout(() => old.el.remove(), 2700);
+      }
+      sets[kind] = null;
+      if (!n) return;
+      const snow = kind === 's';
+      const K = snow ? 2 : 1;
+      const u = (i, j, a, b) => a + seeded(K, i, j) * (b - a);
       // Jedes Teilchen steht zweimal in seiner Ebene, eine halbe Ebenenhöhe auseinander (siehe .precip .pl)
-      const twice = (cls, y, style) => `<i class="${cls}" style="top:${y.toFixed(1)}%;${style}"></i>`
-        + `<i class="${cls}" style="top:${(y + 50).toFixed(1)}%;${style}"></i>`;
-      // Dauer einer Runde (1,2 Kartenhöhen): Regen 1,85–2,75 Höhen/s, Schnee 0,14–0,21 Höhen/s wie bisher
-      const layers = (n, durs, sways, one) => durs.map((d, l) => {
+      const twice = (y, style) => `<i class="${kind}" style="top:${y.toFixed(1)}%;${style}"></i>`
+        + `<i class="${kind}" style="top:${(y + 50).toFixed(1)}%;${style}"></i>`;
+      const one = (i) => {
+        const at = `left:${u(i, 1, 0, 100).toFixed(1)}%`;
+        if (!snow) return twice(u(i, 0, 0, 50), `${at};opacity:${u(i, 2, 0.45, 0.95).toFixed(2)}`);
+        const s = u(i, 3, 2.5, 5).toFixed(1);
+        return twice(u(i, 0, 0, 50), `${at};width:${s}px;height:${s}px;opacity:${u(i, 2, 0.6, 1).toFixed(2)}`);
+      };
+      // Dauer einer Runde (1,2 Kartenhöhen): Regen 1,85–2,75 Höhen/s, Schnee 0,14–0,21 Höhen/s
+      const durs = snow ? [8.6, 7.1, 5.7] : [0.65, 0.53, 0.44];
+      const sways = snow ? [7.7, 6.3, 5.3] : null;
+      const t = Date.now() / 1000;
+      const el = document.createElement('div');
+      el.className = 'pset';
+      el.innerHTML = durs.map((d, l) => {
         let h = '';
-        for (let i = l; i < n; i += durs.length) h += one(rnd(0, 50));
-        const inner = sways ? `<div class="pw" style="--pw:${sways[l]}s">${h}</div>` : h;
-        return `<div class="pl" style="--pd:${d}s;animation-delay:${rnd(-d, 0).toFixed(2)}s">${inner}</div>`;
+        for (let i = l; i < n; i += durs.length) h += one(i);
+        const inner = sways ? `<div class="pw" style="--pw:${sways[l]}s;animation-delay:${(-(t % sways[l])).toFixed(2)}s">${h}</div>` : h;
+        return `<div class="pl" style="--pd:${d}s;animation-delay:${(-((t + seeded(K, l) * d) % d)).toFixed(2)}s">${inner}</div>`;
       }).join('');
-      let html = '';
-      if (rain) {
-        html += layers(rain, [0.65, 0.53, 0.44], null, (y) =>
-          twice('r', y, `left:${rnd(0, 100).toFixed(1)}%;opacity:${rnd(0.45, 0.95).toFixed(2)}`));
+      this._el.precip.appendChild(el);
+      void el.offsetWidth; // erst ohne Deckkraft im Bild, dann einblenden
+      el.classList.add('on');
+      sets[kind] = { n, el };
+    }
+
+    // Tempo und Richtung der Wolken an der laufenden Animation stellen. Dauer und Versatz im Stil stehen fest:
+    // Ein anderes Tempo (playbackRate) lässt jede Wolke von ihrer Stelle aus weiterziehen. Dreht der Wind, läuft
+    // die Animation andersherum, und ihre Zeit wird so gestellt, dass die Wolke bleibt, wo sie ist. Ohne die
+    // Schnittstelle (sehr alte Browser) ziehen die Wolken gleichmäßig nach rechts.
+    // Die Animationen zu befragen (playState) lässt den Browser offene Stiländerungen sofort durchrechnen: Darum
+    // steht der Aufruf am Ende von _applyWeather und _layoutSky, und er steigt aus, bevor er eine Animation anfasst,
+    // solange Tempo, Richtung und die eingeschalteten Wolken dieselben sind (_cloudSig; läuft auch im 20-s-Takt).
+    _cloudWind() {
+      // Unsichtbar ruhen die Animationen (.paused): erst beim Wiedersehen stellen (_hiddenSky)
+      if (this._away()) return;
+      const clouds = this._el?.clouds || [];
+      const rate = this._cloudRate || 1;
+      const dir = this._cloudRev ? 'reverse' : 'normal';
+      const sig = `${rate.toFixed(3)}|${dir}|${clouds.map((el) => (el.classList.contains('on') ? 1 : 0)).join('')}`;
+      if (sig === this._cloudSig) return;
+      this._cloudSig = sig;
+      for (const el of clouds) {
+        // Nur eingeschaltete: Eine ausgeblendete Wolke steht still (animation-play-state) und wird gestellt, sobald sie
+        // angeht. Das geschieht im selben Schritt nach dem Einschalten, sie zieht also nie erst falsch herum los.
+        if (!el.classList.contains('on')) continue;
+        // Die Animation je Wolke merken. Wird die Karte neu eingehängt, legt der Browser neue an (die alte ist „idle“).
+        let a = el._drift;
+        if (!a || a.playState === 'idle') {
+          a = el._drift = el.getAnimations?.().find((x) => x.animationName === 'drift') || null;
+        }
+        const fx = a?.effect;
+        if (!fx?.getComputedTiming || !fx.updateTiming) continue;
+        // Das zuletzt verlangte Tempo merken: playbackRate nennt bis zum nächsten Bild noch das alte
+        if (a._rate !== rate) {
+          a._rate = rate;
+          a.updatePlaybackRate(rate);
+        }
+        const T = fx.getComputedTiming();
+        if (T.direction === dir || !(T.duration > 0)) continue;
+        // Stelle im Durchlauf spiegeln: aus 30 % vorwärts werden 70 % rückwärts, das ist derselbe Ort
+        const local = Number(a.currentTime ?? 0) - T.delay;
+        const turn = Math.floor(local / T.duration);
+        const part = local / T.duration - turn;
+        // Die Zeit darf nicht unter null fallen (dort gälte die Animation als noch nicht begonnen): ganze Durchläufe dazu
+        let ct = (turn + 1 - part) * T.duration + T.delay;
+        while (ct < 0) ct += T.duration;
+        fx.updateTiming({ direction: dir });
+        a.currentTime = ct;
       }
-      if (snow) {
-        html += layers(snow, [8.6, 7.1, 5.7], [7.7, 6.3, 5.3], (y) => {
-          const s = rnd(2.5, 5).toFixed(1);
-          return twice('s', y, `left:${rnd(0, 100).toFixed(1)}%;width:${s}px;height:${s}px;opacity:${rnd(0.6, 1).toFixed(2)}`);
-        });
-      }
-      this._el.precip.innerHTML = html;
     }
 
     _lightning() {
@@ -16146,7 +16802,7 @@
         if (P) return P;
         const h = JSON.parse(localStorage.getItem('pika-pet-card-hay') || 'null');
         if (h && Number.isFinite(h.n) && Number.isFinite(h.t)) {
-          const pal = this._areal().flowers || FLOWER_COLORS;
+          const pal = this._flowerPal();
           const c = (Array.isArray(h.b) ? h.b : []).map((b) => Math.max(0, pal.indexOf(b?.color))).join('');
           return { ...planBlank(this._haNow()), hay: { n: clamp(h.n, 1, HAY_MAX), t: h.t, c, m: 0 } };
         }
@@ -16901,6 +17557,9 @@
       freshStats, serialize, parseStats, mergeStats, seedRnd, weightedR,
       sunTimes, festDay, festEaster, festAdvent1, festBirthdate,
       GAIN, PET_CALM, KRAUL, petGain, kraulGain, worldPick, MIMIK, FINDS, FIND_GROUPS, findsParse, findsSer,
+      WEATHER, twilight, wxCover, starOp, hexRgb, seasonPos, seasonKey, seasonPal, landColors, FLOWER_COLORS, FLOWER_SEASON,
+      wxLogAdd, wxLogMerge, wxRows, wxTemp, numAttr, WX_HOLD, snowDepth, snowHours, SNOW, rainbow, BOW, skyPos, flightAloft, flightGhost, planeLag,
+      planeClock, planeStale, PLANE_OLD,
     });
   }
 })();

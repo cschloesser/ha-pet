@@ -2,6 +2,26 @@
 
 Jede Version der Pika Pet Card, die neueste zuerst.
 
+## 0.31.0 (2026-11-11)
+
+Wetter mit Gewicht: Die Dämmerung kommt stufenlos, Gewitter wird dunkel, Schnee bleibt liegen, und die Wiese hat Jahreszeiten.
+
+- Dämmerung stufenlos aus der Sonnenhöhe: Abendrot ab 10° (ganz bei 2°), Nacht von −1° bis −9°. Himmel, Hügel, Wiese, Blumen, die Berge im Areal `alpin` und das Licht auf Bau, Stein und Requisiten gehen gemeinsam mit, statt bei 4° und −5° in 2,5 Sekunden umzuschalten.
+- Gewitter und Starkregen dunkeln Himmel, Wolken, Land und Berge ab (bisher sah Gewitter aus wie bedeckt); nachts bleibt es, wie es ist. Hinter dichten Wolken sind Mond und Sterne ganz weg: Bei Regen blieben 15 % der Sterne, der Mond schien durchs Gewitter, und Sterne schienen durch die dunkle Seite des Mondes.
+- „Teils bewölkt“ und „sonnig“ bleiben hell, auch wenn die Wetter-Entität dazu 70 % Bedeckung und mehr meldet (hohe Schleier): Die Bedeckung zählt nur noch im Rahmen der Wetterlage.
+- Wolken behalten bei Windwechsel ihren Platz. Bisher standen alle sechs bei jeder Änderung der Windstärke schlagartig woanders, bei gedrehtem Wind gespiegelt.
+- Niederschlag blendet über, statt hart umzuschalten; von Regen auf Starkregen kommen nur Tropfen dazu.
+- Jahreszeiten: Hügel und Wiese wechseln übers Jahr gleitend die Farbe (Mai und Juni wie bisher, Herbst gelbgrün, Winter matt), die Blumen blühen im Herbst als Goldrute, Heide und Aster und stehen im Winter als verblasste Samenstände. Südhalbkugel um ein halbes Jahr versetzt. Im Tagesplan stehen weiter nur die Nummern der Farben.
+- Schnee bleibt liegen und taut: Die Decke wächst bei Schneefall in zehn Minuten zu und hält danach je nach Temperatur anderthalb Stunden bis drei Tage (Regen und Sonne tauen schneller). Getaut wird Stück für Stück mit der Temperatur, die jeweils gemeldet war: Ohne neuen Schneefall nimmt die Decke nie zu, auch wenn es abends abkühlt, und Sensorrauschen schaltet sie nicht hin und her. Solange sie liegt, verhält sich der Pika wie bei Schnee.
+- Regenbogen nach dem Schauer, 20 Minuten lang gegenüber der tief stehenden Sonne; er bleibt, wenn die Lage in der Zeit zwischen sonnig und teils bewölkt wechselt.
+- Schneedecke und Regenbogen kommen aus dem Verlauf der Wetter-Entität: jede Meldung mit neuer Lage oder neuer Temperatur (ganze Grad) mit dem Zeitstempel von HA, mitgeschrieben und aus dem Recorder gelesen (drei Tage; beim Laden, nach einer Verbindungslücke, bei verspäteten Meldungen und beim Wiedersehen nach einer Viertelstunde). Ein frisch geladenes Gerät steht danach da wie eines, das mitlief: auf allen Geräten gleich, ohne neuen Eintrag in den Helfern. Scheitert der Abruf, folgt der nächste Versuch nach 1, 5, 15 und dann alle 30 Minuten; bis dahin weiß ein Gerät nur, was es selbst gesehen hat.
+- Fällt die Wetter-Entität länger als die Haltefrist von 30 Minuten aus, wächst die Schneedecke nicht weiter und taut (nach Schneefall wie bei unbekannter Temperatur); ohne Wetter-Entität liegt kein Schnee. `temperature: null` gilt als unbekannt, nicht als 0 °C.
+- Flugzeuge: Ein Flug, den die Integration mit alter Position weiterführt, startet nicht mehr alle 75 s von vorn (und erschreckt den Pika nicht mehr jedes Mal). Kommt eine Position verspätet, gleitet der Flieger nicht mehr kurz rückwärts; die 75 s zählen dabei weiter ab der Meldung, ein bremsender Anflug fliegt also nicht vorzeitig aus. Ein schwebender Hubschrauber bleibt am Himmel (bisher flog alles unter 30 Knoten heraus).
+- Areal `alpin`: Die Wintersonne steht über dem Grat (auf 50° Nord stand sie mittags von Ende November bis Mitte Januar ganz hinter den Bergen), der Mond ebenso. Die Berge liegen jetzt hinter Wolken und Flugzeugen, ein tiefer Anflug verschwindet nicht mehr hinter dem Grat; Wolken vor den Bergen lassen sich antippen.
+- Schonender fürs Tablet: Über den schaukelnden Blumen liegt kein Filter mehr (bei Dämmerung und bedecktem Himmel wurde die ganze Ebene in jedem Bild neu gefiltert), ihre Farben sind fertig gerechnet. Hügel, Berge und Grasstreifen kommen ganz ohne Filter aus, der Filter auf Bau, Stein und Requisiten schaltet sich erst zu, wenn er sichtbar etwas ändert. Hinter dichten Wolken funkeln die Sterne nicht unsichtbar weiter.
+- Vorschau: Die Wetter-Knöpfe melden `last_changed`, neu sind „Schnee taut“ und „nach dem Schauer“.
+- Entwicklung: `node --test` prüft zusätzlich Dämmerung, Farben der Landschaft und der Berge, Jahreszeit, Schneedecke (ein ganzer Tag mit Abkühlung am Abend, Sensorrauschen), Wetterverlauf (zwei Geräte mit verschiedenen Temperaturen beim Laden, fehlende Temperatur, Ausfall der Wetter-Entität, Recorder scheitert, Verbindungslücke), Regenbogen, Bedeckung, Flugzeug-Filter samt Meldezeit und Vorlauf und den Sonnenstand im Areal alpin (50 Tests).
+
 ## 0.30.0 (2026-11-11)
 
 Fingerspitzengefühl: Der Pika antwortet schon beim Aufsetzen des Fingers, Kraulen klappt auch am Handy, und die Welt um ihn lässt sich antippen.
