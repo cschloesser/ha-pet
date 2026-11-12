@@ -1,10 +1,14 @@
 // Stil der Päckchen und Schätze
 
 import { GILT_F } from '../grafik/paeckchen.js';
+import { BZ, LICHT_P } from '../logik/buehne.js';
 
 const STYLE_GIFT = `
-  .gifts { position: absolute; inset: 0; pointer-events: none; transition: filter 2.5s; }
-  .shade .gifts { filter: brightness(var(--lbp, 1)) saturate(var(--ls, 1)); }
+  /* Schätze, Päckchen, Ballon, Schild und Postkarte des Urlaubs, Garderobe: Ebene und Licht je Stück (Bühne). Wer
+     selbst einen Übergang hat (.gt-can, .gpar.fade, .ursign.out, .urcard, .sig-wear), nennt filter darin mit. */
+  .gifts { position: absolute; inset: 0; pointer-events: none; }
+  .gifts > * { z-index: ${BZ.schatz}; transition: filter 2.5s; }
+  .shade .gifts > * { filter: ${LICHT_P}; }
   .gifts svg { display: block; width: 100%; height: auto; overflow: visible; }
   .gold svg { filter: drop-shadow(0 0 3px rgba(255, 226, 120, .95)); }
 
@@ -34,7 +38,7 @@ const STYLE_GIFT = `
   .gpar .gp-lid.off { animation: glidoff .7s ease-out forwards; }
   @keyframes gbowoff { to { transform: translate(-30%, -260%) rotate(-40deg); opacity: 0; } }
   @keyframes glidoff { 30% { transform: translate(10%, -120%) rotate(18deg); opacity: 1; } to { transform: translate(60%, -260%) rotate(50deg); opacity: 0; } }
-  .gpar.fade { transition: opacity .8s; opacity: 0; }
+  .gpar.fade { transition: opacity .8s, filter 2.5s; opacity: 0; }
   .gitem { position: absolute; width: calc(var(--H) * .11); margin-left: calc(var(--H) * -.055); }
   .gitem svg { display: block; width: 100%; height: auto; overflow: visible; }
   .night .gitem { filter: brightness(.7) saturate(.8); }
@@ -47,7 +51,8 @@ const STYLE_GIFT = `
 
   /* Schätze in der Szene */
   .gt { position: absolute; }
-  .held { position: absolute; inset: 0; pointer-events: none; z-index: var(--z-stage); }
+  .held { position: absolute; inset: 0; pointer-events: none; }
+  .held > * { z-index: ${BZ.arm}; }
   .gt.new { animation: grow .7s cubic-bezier(.3, 1.6, .5, 1); transform-origin: 50% 100%; }
   .gt-wheel { width: calc(var(--H) * .14); bottom: calc(var(--gb) - 2px); margin-left: calc(var(--H) * -.07); }
   .gt-wheel .gwhl { transform-box: view-box; transform-origin: 12px 12px; animation: gspin var(--gws, 3s) linear infinite; }
@@ -58,7 +63,7 @@ const STYLE_GIFT = `
   @keyframes gring { from { transform: rotate(-18deg); } to { transform: rotate(18deg); } }
   .gt-yarn { width: calc(var(--H) * .075); margin-left: calc(var(--H) * -.0375); bottom: calc(var(--gb) - 3px); }
   .gt-yarn svg { transition: transform 1.2s ease-out; }
-  .gt-can { width: calc(var(--H) * .085); margin-left: calc(var(--H) * -.0425); bottom: calc(var(--gb) - 3px); transition: opacity .3s; }
+  .gt-can { width: calc(var(--H) * .085); margin-left: calc(var(--H) * -.0425); bottom: calc(var(--gb) - 3px); transition: opacity .3s, filter 2.5s; }
   .gt-can.away { opacity: 0; }
   .gt-ham { width: calc(var(--pw) * 1.25); margin-left: calc(var(--pw) * -.625); bottom: calc(var(--gb) - 2px); }
   .gt-ham .gnet { transform-box: view-box; transform-origin: 30px 3px; }
@@ -70,6 +75,8 @@ const STYLE_GIFT = `
   .night .gt-plush { filter: brightness(.72) saturate(.75); }
   /* Golden (Stufe 3): Farben nach Gold umgefärbt, leichter Schimmer */
   .gt.gilt, .gitem.gilt svg { filter: ${GILT_F} drop-shadow(0 0 2px rgba(255, 220, 110, .75)); }
+  /* … und in der Dämmerung danach das Licht (seit 0.38 je Stück, siehe .gifts > *) */
+  .shade .gifts > .gt.gilt { filter: ${GILT_F} drop-shadow(0 0 2px rgba(255, 220, 110, .75)) ${LICHT_P}; }
   .night .gt-plush.gilt { filter: ${GILT_F} brightness(.72); }
   /* Tricks: Schaukeln, Anpusten, Regenbogen */
   .gt-ham.swing .gnet { animation: gswing .9s ease-in-out infinite alternate; }

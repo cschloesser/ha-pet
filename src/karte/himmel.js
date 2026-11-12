@@ -280,7 +280,7 @@ export class Himmel {
 
   // Jedem Glühwürmchen einen Ort und einen eigenen Driftweg (vier Punkte, px) geben. Gut die Hälfte schwirrt
   // tief über der Wiese, ein Drittel um den Heuhaufen (--hl, --hw), der Rest etwas höher. Kein Weg führt
-  // über die Statusleiste oder die Knöpfe, durchs Heu oder ins Gras (beide liegen eine Ebene davor, --z-stage).
+  // über die Statusleiste oder die Knöpfe, durchs Heu oder ins Gras (beide stehen auf der Bühne davor).
   _ffPlace() {
     const g = this._g;
     const flies = this._el.ff.children;

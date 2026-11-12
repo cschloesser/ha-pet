@@ -2,10 +2,14 @@
 
 import { PROPS, KRAM } from '../logik/beschaeftigungen.js';
 import { PURZEL_ROLL } from '../logik/beschaeftigungen-klein.js';
+import { BZ, LICHT_P } from '../logik/buehne.js';
 
 const STYLE_ACT = `
-  .acts { position: absolute; inset: 0; pointer-events: none; transition: filter 2.5s; }
-  .shade .acts { filter: brightness(var(--lbp, 1)) saturate(var(--ls, 1)); }
+  /* Requisiten am Boden: Ebene und Licht je Stück (Bühne), hinter dem Pika in .acts, vorn in .actsf */
+  .acts, .actsf { position: absolute; inset: 0; pointer-events: none; }
+  .acts > * { z-index: ${BZ.requisit}; transition: filter 2.5s; }
+  .actsf > * { z-index: ${BZ.requisitVorn}; transition: filter 2.5s; }
+  .shade .acts > *, .shade .actsf > * { filter: ${LICHT_P}; }
 
   .band, .arms, .uke, .brush, .wand, .rope, .rgrip, .bar, .wpaw { display: none; }
   .music .uke, .painting .brush, .blowing .wand, .sport .band, .jjack .arms, .roping .rope, .roping .rgrip,
@@ -214,9 +218,7 @@ const STYLE_ACT = `
   .gliding .pgl, .pebble .peb, .boating .sboat { display: inline; }
 
   /* Requisiten am Boden (_aprop): hinter dem Pika in .acts, die Pfütze vorn auf dem Wiesenstreifen in .actsf */
-  .actsf { position: absolute; inset: 0; pointer-events: none; z-index: var(--z-stage); transition: filter 2.5s; }
-  .shade .actsf { filter: brightness(var(--lbp, 1)) saturate(var(--ls, 1)); }
-  .aprop { position: absolute; opacity: 0; transition: opacity .45s; }
+  .aprop { position: absolute; opacity: 0; transition: opacity .45s, filter 2.5s; }
   .aprop.on { opacity: 1; }
   .aprop > svg { display: block; width: 100%; height: 100%; overflow: visible; }
 
@@ -347,7 +349,7 @@ const STYLE_ACT = `
   .snowp.now .spl { transition: none; }
   .snowp.s1 .sp1, .snowp.s2 .sp2, .snowp.s3 .sp3, .snowp.s4 .sp4 { transform: none; }
   .snowp { transform-origin: 50% 100%; }
-  .snowp.off { transform: scaleY(.35); transition: opacity .6s, transform .6s ease-in; }
+  .snowp.off { transform: scaleY(.35); transition: opacity .6s, transform .6s ease-in, filter 2.5s; }
 
   /* Bewegung reduzieren: Nichts kreist, pendelt oder schaukelt von selbst; man sieht trotzdem, was er tut (Reifen
      schräg um den Bauch, Jo-Jo an halber Schnur, drei Beeren im Bogen). Steine und Schnee erscheinen ohne Federn. */

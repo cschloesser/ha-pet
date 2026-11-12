@@ -212,6 +212,7 @@ export class Aufbau {
       this._lift = 0;
       this._poseName = null;
       this._el.pika.classList.remove('sleeping', 'inside');
+      this._pikaZ();
       this._el.clipw.style.clipPath = '';
       this._layout();
       this._restartCritters();

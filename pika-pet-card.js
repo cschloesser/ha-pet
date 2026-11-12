@@ -60,7 +60,7 @@
  */
 (() => {
   // src/version.js
-  var VERSION = "0.37.0";
+  var VERSION = "0.38.0";
 
   // src/logik/hilfen.js
   var Cancel = class extends Error {
@@ -1545,6 +1545,206 @@
     return h === 1 ? "eine Stunde" : `${h} Stunden`;
   };
 
+  // src/logik/einstellungen.js
+  var screenElsewhere = () => typeof window.fully === "undefined" && !!window.matchMedia?.("(pointer: fine) and (hover: hover)").matches;
+  var WAKE_EVENTS = ["pointerdown", "keydown", "wheel", "touchstart"];
+  var LANE_DY = 0.075;
+  var LANE_S = 0.8;
+  var DEFAULTS = {
+    name: "Pika",
+    entity: null,
+    // Tagesplan (Vorrat, Frühsport, Verlauf der Beschäftigungen) für alle Geräte gemeinsam; ohne: je Gerät
+    plan_entity: null,
+    // Chronik: To-do-Liste von HA als Langzeitgedächtnis, je Pika-Tag ein Eintrag mit der Tagesbilanz (siehe
+    // src/logik/chronik.js). Nur mit beiden Helfern; ohne: keine Chronik, kein Aufruf an HA
+    chronicle_entity: null,
+    sleep_start: "sunset",
+    sleep_end: "sunrise",
+    sun_entity: "sun.sun",
+    weather_entity: "weather.forecast_home",
+    // Niederschlag in mm/h: Meldet das Wetter "rainy" bei weniger als rain_min, ist es nur bewölkt
+    precip_entity: null,
+    rain_min: 0.3,
+    areal: "huegel",
+    flight_entity: "sensor.flightradar24_current_in_area",
+    flight_radius: 15,
+    max_flights: 2,
+    show_stats: true,
+    height: 180,
+    // Haus-Bote: Geräte, deren Fortschritt und Fertig-Zustand der Pika zeigt (siehe src/karte/haus-bote.js)
+    appliances: null,
+    // Kaffee: Kaffeevollautomat, nach jedem Bezug trinkt der Pika mit (siehe src/karte/kaffee.js)
+    coffee: null,
+    // Festtage: Deko im Jahreslauf und Geburtstage [{ name, date: 'MM-DD' }]
+    festive: true,
+    birthdays: [],
+    // Freund-Pika, der zu Besuch kommt
+    friend: true,
+    friend_name: "Pino",
+    // Himmel: Sternschnuppen nachts, Glühwürmchen in Sommernächten
+    shooting_stars: true,
+    fireflies: true,
+    // Päckchen: für gute Pflege verdient, am Ballon verschenkt (siehe src/karte/paeckchen.js)
+    gifts: true,
+    // Prototyp: Kulisse mit Parallax, hintere Spur zum Herumhoppeln (nur YAML, nicht im Editor)
+    depth: false,
+    // Tagebuch: Antippen der Statusleiste zeigt, was er heute und gestern erlebt hat, und seine Schätze.
+    // diary_house: false lässt Kaffee und Haushaltsgeräte darin weg.
+    diary: true,
+    diary_house: true,
+    // Urlaub bei Pino: Schalter im Tagebuch (false = kein Schalter; einen laufenden Urlaub zeigt die Karte trotzdem)
+    vacation: true,
+    // Haus-Bote: über jedem Gerät all = Fortschritt (Balken, Restzeit) und „fertig“, done = nur „fertig“, none = nichts
+    appliance_labels: "all",
+    // Haus-Signale (siehe src/karte/signale.js): { waste: calendar.*, wardrobe: true, vacuum: vacuum.*, door: binary_sensor.* }
+    signals: null
+  };
+  var EDITOR_LABEL = {
+    name: "Name",
+    areal: "Bau",
+    entity: "Zustand (Text-Helfer, max. 100)",
+    plan_entity: "Tagesplan (Text-Helfer, max. 255)",
+    chronicle_entity: "Chronik (To-do-Liste)",
+    show_stats: "Balken anzeigen",
+    gifts: "Päckchen",
+    friend: "Pino kommt zu Besuch",
+    festive: "Festtage-Deko",
+    sleep_start: "Schlafenszeit",
+    sleep_end: "Aufwachzeit",
+    sun_entity: "Sonne",
+    weather_entity: "Wetter",
+    precip_entity: "Niederschlag (mm/h)",
+    rain_min: "Regen ab",
+    shooting_stars: "Sternschnuppen",
+    fireflies: "Glühwürmchen",
+    flight_entity: "Flüge (Flightradar24)",
+    flight_radius: "Radius",
+    max_flights: "Höchstens gleichzeitig",
+    friend_name: "Name des Freunds",
+    screen_entity: "Bildschirm-Schalter",
+    height: "Mindesthöhe",
+    birthdays: "Geburtstage",
+    appliances: "Haushaltsgeräte (Haus-Bote)",
+    coffee: "Kaffeevollautomat",
+    diary: "Tagebuch",
+    diary_house: "Haushalt im Tagebuch",
+    vacation: "Urlaubsschalter",
+    appliance_labels: "Anzeige an den Geräten",
+    waste: "Müllabfuhr (Kalender)",
+    wardrobe: "Garderobe aus der Vorhersage",
+    vacuum: "Saugroboter",
+    door: "Haustür (Kontakt)"
+  };
+  var EDITOR_HELP = {
+    entity: "Damit alle Geräte denselben Pika sehen. Leer: nur in diesem Browser.",
+    plan_entity: "Vorrat, Abwechslung, Päckchen und Träume für alle Geräte. Muss ein anderer Helfer sein als der Zustand.",
+    chronicle_entity: "Sein Langzeitgedächtnis: je Tag ein Eintrag mit der Tagesbilanz. Am besten eine eigene Liste; braucht beide Helfer. Leer: keine Chronik.",
+    diary: "Antippen der Leiste öffnet sein Tagebuch.",
+    diary_house: "Kaffee, Wäsche und Geschirr stehen mit Uhrzeit drin.",
+    appliance_labels: "Alles: Fortschrittsbalken, Restzeit („0:42“) und „fertig“. Nur fertig: wenn das Dashboard Fortschritt und Restzeit schon zeigt.",
+    waste: "Am Vortag der Abholung steht eine Tonne am Rand, bis man sie antippt („steht draußen“).",
+    wardrobe: "Von 6 bis 10 Uhr hängt an der Tür, was man heute braucht: Gummistiefel, Schirm, Mütze, Sonnenhut.",
+    vacuum: "Läuft der Sauger, fährt ein kleiner Roboter über die Wiese, und er fährt manchmal mit.",
+    door: "Geht die Haustür auf, spitzt er die Ohren.",
+    vacation: "Im Tagebuch: „Ferien bei Pino“. Solange er verreist ist, ruhen Hunger, Glück, Häufchen und Päckchen-Serie.",
+    sleep_start: "z. B. sunset, sunset+01:00 oder 21:00",
+    sleep_end: "z. B. sunrise, sunrise-30 oder 07:00",
+    rain_min: "Meldet das Wetter „rainy“ bei weniger, bleibt es trocken (nur mit Niederschlags-Sensor).",
+    flight_radius: "So groß wie der Radius der Flightradar24-Integration.",
+    screen_entity: "z. B. der Bildschirm-Schalter von Fully Kiosk: Bei „aus“ ruht die Karte auf dem Tablet (nicht auf Rechnern mit Maus), beim Einschalten winkt er.",
+    birthdays: '- name: Mia\n  date: "03-14"',
+    appliances: "- type: washer\n  state: sensor.waschmaschine_betriebszustand\n  progress: sensor.…_fortschritt\n  end: sensor.…_endzeit",
+    coffee: "active: select.…_aktives_programm\ncounter: sensor.…_tassen\nselected: select.…_ausgewahltes_programm"
+  };
+
+  // src/logik/buehne.js
+  var REIHE = { bau: -0.12, hinten: -LANE_DY, stein: -0.04, vorn: 0, rand: BOTE_FRONT_DY };
+  var RANG = [
+    "maus",
+    // Maus, Frosch, Schnecke hinter dem Stein (.mice)
+    "festHinten",
+    // Festdeko hinter dem Bau (Baum, Maibaum, Wimpel)
+    "bau",
+    "stein",
+    "licht",
+    "tv",
+    // Bau, Stein, Fensterlicht, Fernsehlicht im Eingang
+    "festBau",
+    // Lichter, Girlanden, Laterne am Bau (bis 0.37 über Blumen, Schätzen, Schildern: siehe CHANGELOG 0.38)
+    "drachen",
+    "blume",
+    "futter",
+    "schatz",
+    // Schätze, Päckchen, Schild und Postkarte des Urlaubs, Garderobe
+    "mausVorn",
+    // Besucher vor dem Stein (.mice-f)
+    "schild",
+    // Schild über einem Haushaltsgerät
+    "gluehwurm",
+    "requisit",
+    // Glühwürmchen; Requisiten am Boden hinter dem Pika (Staffelei, Steintürmchen …)
+    "vogel",
+    "pikaBau",
+    // Vögelchen; der Pika im Eingang des Baus
+    "pino",
+    "pika",
+    "arm",
+    // Pino, der Pika, der Plüsch-Pino
+    "heu",
+    "festVorn",
+    "gras",
+    "requisitVorn",
+    "haeufchen",
+    "geraet",
+    "balken",
+    "geraetVorn",
+    "tonne",
+    "sauger"
+    // vorderer Wiesenstreifen
+  ];
+  var RANG_N = 40;
+  var SPANNE = 300;
+  var buehneZ = (fuss, rang) => {
+    const r = typeof rang === "number" ? rang : RANG.indexOf(rang);
+    return 1 + (clamp(Math.round(fuss * 1e3), -SPANNE, SPANNE) + SPANNE) * RANG_N + Math.max(0, r);
+  };
+  var BUEHNE_MAX = buehneZ(SPANNE / 1e3, RANG_N - 1);
+  var BUEHNE = {
+    maus: "bau",
+    festHinten: "bau",
+    bau: "bau",
+    stein: "stein",
+    licht: "bau",
+    tv: "bau",
+    festBau: "bau",
+    drachen: "vorn",
+    blume: "vorn",
+    futter: "vorn",
+    schatz: "vorn",
+    mausVorn: "vorn",
+    schild: "vorn",
+    gluehwurm: "vorn",
+    requisit: "vorn",
+    vogel: "vorn",
+    pikaBau: "vorn",
+    pino: "vorn",
+    pika: "vorn",
+    arm: "vorn",
+    heu: "vorn",
+    festVorn: "vorn",
+    gras: "vorn",
+    requisitVorn: "vorn",
+    haeufchen: "vorn",
+    geraet: "rand",
+    balken: "rand",
+    geraetVorn: "rand",
+    tonne: "rand",
+    sauger: "rand"
+  };
+  var BZ = Object.fromEntries(Object.entries(BUEHNE).map(([art, reihe]) => [art, buehneZ(REIHE[reihe], art)]));
+  var LICHT = "brightness(var(--lb, 1)) saturate(var(--ls, 1))";
+  var LICHT_P = "brightness(var(--lbp, 1)) saturate(var(--ls, 1))";
+
   // src/logik/tagebuch.js
   var DIARY = { keep: 3 * 864e5, max: 400, close: 6e4, gap: 100 * 6e4, acts: 2 };
   var FIND_GROUPS = ["Streicheln", "Kümmern", "Meine Welt"];
@@ -1996,118 +2196,6 @@
       for (const x of les.slice(1)) out.push({ op: "remove", d, uid: x.uid });
     }
     return out;
-  };
-
-  // src/logik/einstellungen.js
-  var screenElsewhere = () => typeof window.fully === "undefined" && !!window.matchMedia?.("(pointer: fine) and (hover: hover)").matches;
-  var WAKE_EVENTS = ["pointerdown", "keydown", "wheel", "touchstart"];
-  var LANE_DY = 0.075;
-  var LANE_S = 0.8;
-  var DEFAULTS = {
-    name: "Pika",
-    entity: null,
-    // Tagesplan (Vorrat, Frühsport, Verlauf der Beschäftigungen) für alle Geräte gemeinsam; ohne: je Gerät
-    plan_entity: null,
-    // Chronik: To-do-Liste von HA als Langzeitgedächtnis, je Pika-Tag ein Eintrag mit der Tagesbilanz (siehe
-    // src/logik/chronik.js). Nur mit beiden Helfern; ohne: keine Chronik, kein Aufruf an HA
-    chronicle_entity: null,
-    sleep_start: "sunset",
-    sleep_end: "sunrise",
-    sun_entity: "sun.sun",
-    weather_entity: "weather.forecast_home",
-    // Niederschlag in mm/h: Meldet das Wetter "rainy" bei weniger als rain_min, ist es nur bewölkt
-    precip_entity: null,
-    rain_min: 0.3,
-    areal: "huegel",
-    flight_entity: "sensor.flightradar24_current_in_area",
-    flight_radius: 15,
-    max_flights: 2,
-    show_stats: true,
-    height: 180,
-    // Haus-Bote: Geräte, deren Fortschritt und Fertig-Zustand der Pika zeigt (siehe src/karte/haus-bote.js)
-    appliances: null,
-    // Kaffee: Kaffeevollautomat, nach jedem Bezug trinkt der Pika mit (siehe src/karte/kaffee.js)
-    coffee: null,
-    // Festtage: Deko im Jahreslauf und Geburtstage [{ name, date: 'MM-DD' }]
-    festive: true,
-    birthdays: [],
-    // Freund-Pika, der zu Besuch kommt
-    friend: true,
-    friend_name: "Pino",
-    // Himmel: Sternschnuppen nachts, Glühwürmchen in Sommernächten
-    shooting_stars: true,
-    fireflies: true,
-    // Päckchen: für gute Pflege verdient, am Ballon verschenkt (siehe src/karte/paeckchen.js)
-    gifts: true,
-    // Prototyp: Kulisse mit Parallax, hintere Spur zum Herumhoppeln (nur YAML, nicht im Editor)
-    depth: false,
-    // Tagebuch: Antippen der Statusleiste zeigt, was er heute und gestern erlebt hat, und seine Schätze.
-    // diary_house: false lässt Kaffee und Haushaltsgeräte darin weg.
-    diary: true,
-    diary_house: true,
-    // Urlaub bei Pino: Schalter im Tagebuch (false = kein Schalter; einen laufenden Urlaub zeigt die Karte trotzdem)
-    vacation: true,
-    // Haus-Bote: über jedem Gerät all = Fortschritt (Balken, Restzeit) und „fertig“, done = nur „fertig“, none = nichts
-    appliance_labels: "all",
-    // Haus-Signale (siehe src/karte/signale.js): { waste: calendar.*, wardrobe: true, vacuum: vacuum.*, door: binary_sensor.* }
-    signals: null
-  };
-  var EDITOR_LABEL = {
-    name: "Name",
-    areal: "Bau",
-    entity: "Zustand (Text-Helfer, max. 100)",
-    plan_entity: "Tagesplan (Text-Helfer, max. 255)",
-    chronicle_entity: "Chronik (To-do-Liste)",
-    show_stats: "Balken anzeigen",
-    gifts: "Päckchen",
-    friend: "Pino kommt zu Besuch",
-    festive: "Festtage-Deko",
-    sleep_start: "Schlafenszeit",
-    sleep_end: "Aufwachzeit",
-    sun_entity: "Sonne",
-    weather_entity: "Wetter",
-    precip_entity: "Niederschlag (mm/h)",
-    rain_min: "Regen ab",
-    shooting_stars: "Sternschnuppen",
-    fireflies: "Glühwürmchen",
-    flight_entity: "Flüge (Flightradar24)",
-    flight_radius: "Radius",
-    max_flights: "Höchstens gleichzeitig",
-    friend_name: "Name des Freunds",
-    screen_entity: "Bildschirm-Schalter",
-    height: "Mindesthöhe",
-    birthdays: "Geburtstage",
-    appliances: "Haushaltsgeräte (Haus-Bote)",
-    coffee: "Kaffeevollautomat",
-    diary: "Tagebuch",
-    diary_house: "Haushalt im Tagebuch",
-    vacation: "Urlaubsschalter",
-    appliance_labels: "Anzeige an den Geräten",
-    waste: "Müllabfuhr (Kalender)",
-    wardrobe: "Garderobe aus der Vorhersage",
-    vacuum: "Saugroboter",
-    door: "Haustür (Kontakt)"
-  };
-  var EDITOR_HELP = {
-    entity: "Damit alle Geräte denselben Pika sehen. Leer: nur in diesem Browser.",
-    plan_entity: "Vorrat, Abwechslung, Päckchen und Träume für alle Geräte. Muss ein anderer Helfer sein als der Zustand.",
-    chronicle_entity: "Sein Langzeitgedächtnis: je Tag ein Eintrag mit der Tagesbilanz. Am besten eine eigene Liste; braucht beide Helfer. Leer: keine Chronik.",
-    diary: "Antippen der Leiste öffnet sein Tagebuch.",
-    diary_house: "Kaffee, Wäsche und Geschirr stehen mit Uhrzeit drin.",
-    appliance_labels: "Alles: Fortschrittsbalken, Restzeit („0:42“) und „fertig“. Nur fertig: wenn das Dashboard Fortschritt und Restzeit schon zeigt.",
-    waste: "Am Vortag der Abholung steht eine Tonne am Rand, bis man sie antippt („steht draußen“).",
-    wardrobe: "Von 6 bis 10 Uhr hängt an der Tür, was man heute braucht: Gummistiefel, Schirm, Mütze, Sonnenhut.",
-    vacuum: "Läuft der Sauger, fährt ein kleiner Roboter über die Wiese, und er fährt manchmal mit.",
-    door: "Geht die Haustür auf, spitzt er die Ohren.",
-    vacation: "Im Tagebuch: „Ferien bei Pino“. Solange er verreist ist, ruhen Hunger, Glück, Häufchen und Päckchen-Serie.",
-    sleep_start: "z. B. sunset, sunset+01:00 oder 21:00",
-    sleep_end: "z. B. sunrise, sunrise-30 oder 07:00",
-    rain_min: "Meldet das Wetter „rainy“ bei weniger, bleibt es trocken (nur mit Niederschlags-Sensor).",
-    flight_radius: "So groß wie der Radius der Flightradar24-Integration.",
-    screen_entity: "z. B. der Bildschirm-Schalter von Fully Kiosk: Bei „aus“ ruht die Karte auf dem Tablet (nicht auf Rechnern mit Maus), beim Einschalten winkt er.",
-    birthdays: '- name: Mia\n  date: "03-14"',
-    appliances: "- type: washer\n  state: sensor.waschmaschine_betriebszustand\n  progress: sensor.…_fortschritt\n  end: sensor.…_endzeit",
-    coffee: "active: select.…_aktives_programm\ncounter: sensor.…_tassen\nselected: select.…_ausgewahltes_programm"
   };
 
   // src/grafik/areale.js
@@ -3325,19 +3413,16 @@
     font-family: var(--ha-font-family-body, var(--paper-font-body1_-_font-family, system-ui, sans-serif));
     --h1: #a9d68f; --h2: #86c46b; --h3: #7ab960;
     --h0: #b4dcc2; /* ferne Hügelkette (depth): --h1 halb mit dem Himmel auf ihrer Höhe gemischt, deckend */
-    /* Ebenen der Szene von hinten nach vorn, für alle Stilblöcke (STYLE, STYLE_FEST, STYLE_FRIEND, STYLE_BOTE,
-       STYLE_GIFT, STYLE_DIARY_BTN). Bei gleichem Wert entscheidet die Reihenfolge im DOM (siehe _build). Was keine
-       Ebene nennt (Himmel, Hügel, Bau, Blumen, Futter, Schätze, Besucher, Geräte hinten), liegt in DOM-Reihenfolge
-       darunter. Zahlen ohne Variable gelten nur innerhalb ihres Elternteils. */
-    --z-back: 1;  /* Deko am Bau; der Pika auf der hinteren Spur */
-    --z-mid: 2;   /* Vögel, Pika im Bau; hintere Spur: Blumen, Futter, Schätze und Mäuse vor ihm */
-    --z-stage: 3; /* Pino, Pika, Plüsch-Pino im Arm, Heu, Festdeko vorn, Gras, Häufchen */
-    --z-front: 4; /* Geräte vorn am Rand mit Balken, Werkzeug und Getragenem */
-    --z-wx: 5;    /* Regen, Schnee, Nebel, Blitz */
-    --z-talk: 6;  /* Sprech- und Denkblasen, zzz, Zeichen über dem Kopf; Tippflächen der Flugzeuge */
-    --z-ui: 7;    /* Statusleiste und Knöpfe */
-    --z-fx: 8;    /* Kurzlebiges: Herzchen, Funken, Noten, Staub, Geschenk */
-    --z-tag: 9;   /* Fähnchen von Flugzeugen und Geräten: die gefragte Auskunft liegt über allem */
+    /* Ebenen der Szene von hinten nach vorn, für alle Stilblöcke. Was keine Ebene hat (Himmel, Sonne, Wolken,
+       Flugzeuge, Hügel), liegt in DOM-Reihenfolge ganz unten. Darüber die Bühne: Jede Figur am Boden hat ihre
+       eigene Ebene aus ihrem Fußpunkt (buehneZ in src/logik/buehne.js, von 1 bis ${BUEHNE_MAX}; die Schichten
+       .mice … .poops sind nur Behälter ohne Ebene). Darüber folgen diese. Zahlen ohne Variable gelten nur innerhalb
+       ihres Elternteils. */
+    --z-wx: ${BUEHNE_MAX + 1};    /* Regen, Schnee, Nebel, Blitz */
+    --z-talk: ${BUEHNE_MAX + 2};  /* Sprech- und Denkblasen, zzz, Zeichen über dem Kopf; Tippflächen der Flugzeuge */
+    --z-ui: ${BUEHNE_MAX + 3};    /* Statusleiste und Knöpfe */
+    --z-fx: ${BUEHNE_MAX + 4};    /* Kurzlebiges: Herzchen, Funken, Noten, Staub, Geschenk */
+    --z-tag: ${BUEHNE_MAX + 5};   /* Fähnchen von Flugzeugen und Geräten: die gefragte Auskunft liegt über allem */
   }
   /* --h0 bis --h3, --m1, --mcap, --mound, --mound-s (Hügel, Wiese, Halme, Berge, Kuppe) und --lb, --ls, --lbp (Licht auf dem Land) setzt
      _light am Element: nach Jahreszeit, Sonnenhöhe, Wetter und Schneedecke (landColors). Oben stehen nur die
@@ -3429,7 +3514,7 @@
   /* Berge (Areal alpin) in eigener Ebene hinter Regenbogen, Wolken und Flugzeugen: Ein tiefer Anflug verschwände
      sonst hinter dem Grat. Sonne, Mond und Sterne bleiben dahinter. Ihre Farben kommen wie die der Hügel fertig
      gerechnet aus _light (--m1, --mcap): Dämmerung, Wolkendecke und Gewitter gleiten mit Himmel und Land. */
-  .snowcover .flowers { opacity: 0; }
+  .snowcover .flower { opacity: 0; } /* je Blume: Deckkraft an der Schicht machte sie zu einem eigenen Stapel */
 
   /* ---- Prototyp Tiefe (depth: true) ----
      Kulisse in Ebenen: Je weiter weg, desto mehr wandert sie mit dem Pika mit (--plx -1 … 1, die Wiese
@@ -3452,25 +3537,33 @@
   .pika.lane1 .shadow { opacity: .75; }
   .pika .br { transition: filter 1s; }
   .day:not(.overcast) .pika.lane1 .br { filter: saturate(.85) brightness(1.05); }
-  /* Hintere Spur (.hinten an der Szene, wechselt auf halbem Weg): Blumen, Futter, Geschenke und Mäuse vorn
-     liegen im DOM vor dem Pika und ohne Ebene, sonst stünde er vor ihnen. Darum der Pika unter sie,
-     über Bau, Stein und Festdeko am Bau (gleiche Ebene, im DOM davor), unter Vögeln, Pino, Heu und Gras. */
-  .hinten .pika { z-index: var(--z-back); }
-  .hinten .flowers, .hinten .foods, .hinten .gifts, .hinten .mice-f { z-index: var(--z-mid); }
-  /* Die Ebenen füllen die ganze Szene: Tipps zum Pika durchlassen (Antippbares darin setzt selbst auto) */
-  .hinten .flowers, .hinten .foods { pointer-events: none; }
+  /* Wer auf der hinteren Spur vor oder hinter ihm steht, folgt seit 0.38 aus dem Fußpunkt (Bühne, _pikaZ); den
+     Wechsel der Ebene setzt _walkTo auf halbem Weg. */
   @media (prefers-reduced-motion: reduce) { .tiefe .hills *, .tiefe .mtns *, .tiefe .clouds { transition: none !important; } }
 
-  .land, .flowers, .foods, .birds, .mice, .mice-f { position: absolute; inset: 0; transition: filter 2.5s, opacity 2s; }
+  /* Schichten der Bühne: nur Behälter, ohne Ebene und ohne Filter (beides machte sie zu einem eigenen Stapel, ihre
+     Figuren könnten sich dann nicht mit denen anderer Schichten überlappen). Die Ebene hat jede Figur selbst. */
+  .land, .flowers, .foods, .birds, .mice, .mice-f { position: absolute; inset: 0; }
   .birds, .mice, .mice-f { pointer-events: none; }
-  .birds { z-index: var(--z-mid); } /* über der Festdeko am Bau (.fon), hinter Pika, Pino, Heu und Gras */
+  .mice > * { z-index: ${BZ.maus}; }
+  .mice-f > * { z-index: ${BZ.mausVorn}; }
+  .birds > * { z-index: ${BZ.vogel}; } /* über der Festdeko am Bau, hinter Pika, Pino, Heu und Gras */
   /* Licht auf allem, was auf dem Land steht: Helligkeit und Sättigung stufenlos aus Sonnenhöhe und Wetter (--lb, --ls;
      --lbp für Requisiten, die nachts etwas heller bleiben). Bei vollem Tageslicht (ohne .shade) gar kein Filter.
      Hügel, Wiese und Halme haben ihre Farben fertig gerechnet (--h1 bis --h3), die Blumen auch (_flowerTint): Sie
-     schaukeln ständig, ein Filter über ihrer Ebene müsste in jedem Bild neu gerechnet werden. */
-  .shade .land, .shade .foods, .shade .fore, .shade .birds, .shade .mice, .shade .mice-f { filter: brightness(var(--lb, 1)) saturate(var(--ls, 1)); }
+     schaukeln ständig, ein Filter über ihnen müsste in jedem Bild neu gerechnet werden. Seit 0.38 liegt der Filter
+     auf jeder Figur (Bau, Stein, Futter, Heu, Vogel, Maus, Frosch, Schnecke, Drachen, Häufchen, Schätze,
+     Requisiten), nicht mehr auf ihrer Schicht; bei Vögeln und Besuchern auf der Grafik (.bw, .mw, .cw), die Hülle
+     selbst ist 0 × 0 groß. */
+  .burrow, .lookout, .food, .bw, .mw, .cw { transition: filter 2.5s; }
+  /* Blumen und Futter fangen keine Tipps: Wer dahinter steht (Pika auf der hinteren Spur), bekommt sie. Die Welt-Tipps
+     auf Blumen gehen über die Szene (_worldZones), wie bisher. */
+  .flower, .food { pointer-events: none; }
+  .shade .burrow, .shade .lookout, .shade .food, .shade .hay, .shade .bw, .shade .mw, .shade .cw, .shade .kite { filter: ${LICHT}; }
+  .shade .poo { filter: ${LICHT_P}; }
   .burrow, .lights { position: absolute; }
-  .lights { pointer-events: none; }
+  .burrow { z-index: ${BZ.bau}; }
+  .lights { pointer-events: none; z-index: ${BZ.licht}; }
   .burrow svg, .lights svg { display: block; width: 100%; height: auto; overflow: visible; }
   .mound { fill: var(--mound, #94c873); stroke: var(--mound-s, #5f8f45); transition: fill 2.5s, stroke 2.5s; }
   .mound-t { stroke: var(--mound-s, #5f8f45); transition: stroke 2.5s; }
@@ -3481,13 +3574,13 @@
   .night .lt { opacity: 1; }
   .night .lt.flk { animation: flicker 2.8s ease-in-out infinite alternate; }
   @keyframes flicker { 40% { opacity: .75; } 55% { opacity: 1; } 100% { opacity: .85; } }
-  .lookout { position: absolute; }
+  .lookout { position: absolute; z-index: ${BZ.stein}; }
   .lookout svg { display: block; width: 100%; height: auto; overflow: visible; }
   .rock-snow { display: none; }
   .snowcover .rock-snow { display: inline; }
   .rtuft { fill: var(--h3); transition: fill 2.5s; }
   /* Fernsehen: flackerndes Licht im Eingang (der Fernseher steht drinnen), Bau-Fenster flackert mit */
-  .tvl { position: absolute; pointer-events: none; overflow: hidden; opacity: 0; transition: opacity .8s; }
+  .tvl { position: absolute; pointer-events: none; overflow: hidden; opacity: 0; transition: opacity .8s; z-index: ${BZ.tv}; }
   .tv-on .tvl { opacity: 1; }
   .tvl i { position: absolute; display: block; }
   .tvl .tvg {
@@ -3504,11 +3597,10 @@
   .tv-on .tvw-x { opacity: 1; }
   @keyframes tvflk { 0%, 100% { opacity: .55; } 20% { opacity: .75; } 35% { opacity: .45; } 60% { opacity: .7; } 80% { opacity: .5; } }
   /* Drachen: Schnur und Drachen hängen an der Pfote (Ursprung), steigen auf und schwanken im Wind */
-  .kites { position: absolute; inset: 0; pointer-events: none; transition: filter 2.5s; }
-  .shade .kites { filter: brightness(var(--lb, 1)) saturate(var(--ls, 1)); }
-  .kite { position: absolute; width: 0; height: 0; transition: opacity .6s, transform .35s ease-out; }
+  .kites { position: absolute; inset: 0; pointer-events: none; }
+  .kite { position: absolute; width: 0; height: 0; z-index: ${BZ.drachen}; transition: opacity .6s, transform .35s ease-out, filter 2.5s; }
   /* Ruck: Die Pfote geht mit dem Pika nach hinten (.ktug), der Anfang der Schnur im selben Takt mit (--ktx, --kty) */
-  .kite.kpull { transform: translate(var(--ktx, 0px), var(--kty, 0px)); transition: opacity .6s, transform .18s ease-out; }
+  .kite.kpull { transform: translate(var(--ktx, 0px), var(--kty, 0px)); transition: opacity .6s, transform .18s ease-out, filter 2.5s; }
   .kite.gone { opacity: 0; }
   .kite svg { position: absolute; left: 0; top: 0; overflow: visible; }
   .kite .kl { transform-box: view-box; transform-origin: 0 0; transform: rotate(var(--k0, 0deg)) scale(.25); transition: transform 3s ease-out; }
@@ -3542,7 +3634,7 @@
      steht, sinkt ein paar Pixel ein und verschwindet unten im Gras. */
   .grass {
     position: absolute; left: 0; right: 0; top: calc(var(--gy) - var(--H) * .045); bottom: 0;
-    pointer-events: none; z-index: var(--z-stage);
+    pointer-events: none; z-index: ${BZ.gras};
   }
   .grass svg { display: block; width: 100%; height: calc(var(--H) * .06); }
   .grass::after {
@@ -3552,10 +3644,10 @@
   .grass .blades { fill: var(--h3); transition: fill 2.5s; }
   .grass .soil { fill: var(--h2); transition: fill 2.5s; }
   /* Heuhaufen vor dem Pika, damit man sieht, wie er Blüten hineinlegt */
-  .fore { position: absolute; inset: 0; pointer-events: none; z-index: var(--z-stage); transition: filter 2.5s; }
+  .fore { position: absolute; inset: 0; pointer-events: none; }
   .hay {
-    position: absolute; left: var(--hl); width: var(--hw); bottom: calc(var(--gb) - 4px);
-    transform-origin: 50% 100%; transform: scale(var(--hs, .6)); transition: transform .5s cubic-bezier(.3, 1.6, .5, 1);
+    position: absolute; left: var(--hl); width: var(--hw); bottom: calc(var(--gb) - 4px); z-index: ${BZ.heu};
+    transform-origin: 50% 100%; transform: scale(var(--hs, .6)); transition: transform .5s cubic-bezier(.3, 1.6, .5, 1), filter 2.5s;
   }
   .hay.boing { animation: boing .5s ease-out; }
   /* Areal mit Vorratsnische: kein Heuhaufen, die zuletzt abgelegte Blüte ploppt in der Nische auf */
@@ -3581,6 +3673,7 @@
   .flower {
     position: absolute; left: calc(var(--xf) * var(--W) - var(--fw) / 2); bottom: calc(var(--gb) - 5px);
     width: var(--fw); transform-origin: 50% 100%; animation: sway 3.6s ease-in-out infinite alternate;
+    z-index: ${BZ.blume}; transition: opacity 2s;
   }
   .flower svg * { transition: fill 2.5s, stroke 2.5s; }
   .flower.grow { animation: grow 1.4s ease-out, sway 3.6s 1.4s ease-in-out infinite alternate; }
@@ -3635,7 +3728,7 @@
   @keyframes picked { to { transform: translateY(-30%) scale(.2); opacity: 0; } }
   .food {
     position: absolute; left: calc(var(--xf) * var(--W) - var(--dw) / 2); bottom: calc(var(--gb) - 6px);
-    width: var(--dw); transform-origin: 50% 100%;
+    width: var(--dw); transform-origin: 50% 100%; z-index: ${BZ.futter};
   }
   .food.drop { animation: drop .8s cubic-bezier(.45, 0, .7, 1) both; }
   .food.gone { animation: picked .3s forwards; }
@@ -3662,7 +3755,7 @@
   /* ---- Pika ---- */
   .pika {
     position: absolute; left: 0; top: calc(var(--gy) - var(--ph) * .945); width: var(--pw); height: var(--ph);
-    z-index: var(--z-stage); cursor: pointer; will-change: transform; touch-action: pan-y; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none;
+    z-index: ${BZ.pika}; cursor: pointer; will-change: transform; touch-action: pan-y; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none;
     transform-origin: 50% 94.5%; /* Füße: auf dem Stein ist er etwas kleiner (weiter hinten) */
   }
   /* Unter den Füßen (y 90,5 von 100), 5 % über der Unterkante: Tiefer läge er zur Hälfte unter dem Boden des
@@ -3681,8 +3774,9 @@
     transform: translate(calc(var(--hc) - var(--hh) * var(--hd)), var(--dy)) scale(var(--ds));
   }
   .inside .shadow { opacity: 0; }
-  /* Im Bau liegt er hinter Pino, der draußen vor dem Eingang vorbeihoppelt; Vögel (gleiche Ebene) stehen im DOM davor */
-  .pika.inside { z-index: var(--z-mid); }
+  /* Im Bau liegt er hinter Pino, der draußen vor dem Eingang vorbeihoppelt, und vor den Vögeln. Die Ebene setzt
+     _pikaZ am Element (Rang pikaBau statt pika); diese Regel gilt nur, bis das Skript sie gesetzt hat. */
+  .pika.inside { z-index: ${BZ.pikaBau}; }
   /* In der Luft schrumpft und verblasst der Schatten, im Takt von hop, hops, hopb, jump und binky (--shs, --sho = am Scheitel) */
   .walking .shadow { --shs: .86; --sho: .66; animation: sh-hop .36s linear infinite; }
   .walking.trip .shadow { --shs: .93; --sho: .84; animation: sh-trip .24s linear infinite; }
@@ -4377,9 +4471,9 @@
   @keyframes squeak { 0% { opacity: 0; scale: .4; } 15% { opacity: 1; scale: 1; } 75% { opacity: 1; } 100% { opacity: 0; translate: 0 -6px; } }
 
   /* Häufchen liegen vorn auf dem Boden (vor dem Gras). Die Tippfläche ist größer als die Köttelchen. */
-  .poops { position: absolute; inset: 0; z-index: var(--z-stage); pointer-events: none; transition: filter 2.5s; }
-  .shade .poops { filter: brightness(var(--lbp, 1)) saturate(var(--ls, 1)); }
+  .poops { position: absolute; inset: 0; pointer-events: none; }
   .poo {
+    z-index: ${BZ.haeufchen}; transition: filter 2.5s;
     position: absolute; left: calc(var(--px) - 22px); bottom: calc(var(--gb) - var(--H) * .022 - 10px);
     width: 44px; padding: 14px 0 10px; display: flex; justify-content: center;
     pointer-events: auto; cursor: pointer;
@@ -4399,7 +4493,7 @@
     30% { transform: translateX(-2px) scale(1.06, .88); }
     to { transform: translate(calc(var(--H) * .05), calc(var(--H) * -.12)) scale(.35); opacity: 0; }
   }
-  .poo.gone { pointer-events: none; opacity: 0; transition: opacity .8s; }
+  .poo.gone { pointer-events: none; opacity: 0; transition: opacity .8s, filter 2.5s; }
   /* Alte Häufchen: eine kleine Fliege kreist darüber (nur bei Tag) */
   .fly { display: none; position: absolute; left: 50%; top: 6px; width: 0; height: 0; animation: buzz 2.6s linear infinite; }
   .poo.old .fly { display: block; }
@@ -4594,7 +4688,7 @@
   @keyframes met-flash { 30% { opacity: 1; } 100% { opacity: 0; } }
 
   /* Glühwürmchen: Ebene blendet sanft ein und aus (Sommernacht voll, späte Dämmerung schwach) */
-  .ff { position: absolute; inset: 0; pointer-events: none; opacity: 0; visibility: hidden; transition: opacity 3s, visibility 0s linear 3s; }
+  .ff { position: absolute; inset: 0; pointer-events: none; opacity: 0; visibility: hidden; transition: opacity 3s, visibility 0s linear 3s; z-index: ${BZ.gluehwurm}; }
   .ff.on, .ff.dim { visibility: visible; transition: opacity 3s, visibility 0s; }
   .ff.on { opacity: 1; }
   .ff.dim { opacity: .45; }
@@ -4632,9 +4726,11 @@
   // src/stil/feste.js
   var STYLE_FEST = `
   .fest-b, .fest-f, .fest-b > div, .fest-f > div { position: absolute; inset: 0; pointer-events: none; }
-  .fest-f { z-index: var(--z-stage); }
-  /* liegt auf dem Bau, aber hinter dem Pika */
-  .fest-b > .fon { z-index: var(--z-back); }
+  /* Bühne: Jede Gruppe hat eine Ebene (ihre Stücke haben alle denselben Rang). Hinter dem Bau Himmel und Baum,
+     am Bau Lichter und Girlanden (hinter dem Pika), vorn Kürbis, Stiefel, Kranz, Eier, Konfetti. */
+  .fest-b > .fsky, .fest-b > .fback { z-index: ${BZ.festHinten}; }
+  .fest-b > .fon { z-index: ${BZ.festBau}; }
+  .fest-f > div { z-index: ${BZ.festVorn}; }
   .fi { position: absolute; }
   .fi > svg { position: absolute; left: 0; top: 0; width: 100%; height: 100%; overflow: visible; }
   .fi .b { transition: filter 2.5s; }
@@ -4736,7 +4832,7 @@
   .friends { position: absolute; inset: 0; pointer-events: none; }
   .friend {
     position: absolute; left: 0; top: calc(var(--gy) - var(--ph) * .945); width: var(--pw); height: var(--ph);
-    z-index: var(--z-stage); cursor: pointer; pointer-events: auto; will-change: transform;
+    z-index: ${BZ.pino}; cursor: pointer; pointer-events: auto; will-change: transform;
   }
   /* Pinos Sprechblase: gleiche Lage wie .friend, aber in der Sprech-Ebene über dem Wetter */
   .frsay {
@@ -4760,7 +4856,8 @@
   .hb.hb-placed { transition: left .5s ease, top .5s ease, width .5s ease, opacity .5s; }
   .hb::after { content: ''; position: absolute; inset: -8px -4px 0; }
   /* Vorn auf dem Wiesenstreifen: näher am Betrachter, also vor Pika, Gras und Heu (unter Regen, Statusleiste, Futterknopf) */
-  .hb.hb-fr, .hb-bar { z-index: var(--z-front); }
+  .hb, .hb.hb-fr { z-index: ${BZ.geraet}; } /* auch vor dem ersten Platzieren */
+  .hb-bar { z-index: ${BZ.balken}; }
   .hb.hb-bye { opacity: 0; pointer-events: none; }
   /* Der Tageszeit-Filter liegt nur auf der Grafik: Das rote Ausrufezeichen (.hb-a) bleibt auch nachts rot */
   .hb-i { transform-origin: 50% 100%; transition: filter 2.5s; }
@@ -4852,7 +4949,7 @@
   /* Ebenen vor dem Pika: Werkzeug und Getragenes, Fähnchen über Statusleiste und Futterknopf.
      Der Fortschrittsbalken liegt wie sein Requisit: hinten unter dem Pika (über dem Gras), vorn davor. */
   .hb-f, .hb-t, .hb-bars { position: absolute; inset: 0; pointer-events: none; }
-  .hb-f { z-index: var(--z-front); }
+  .hb-f > * { z-index: ${BZ.geraetVorn}; }
   .hb-t { z-index: var(--z-tag); }
   .hb-bar {
     position: absolute; left: 0; top: 0; height: clamp(3px, calc(var(--H) * .018), 6px); border-radius: 99px; pointer-events: none;
@@ -4931,6 +5028,7 @@
   /* Schild über dem Gerät (appliance_labels): groß genug für drei Meter, Ziffern gleich breit */
   .hb-lab {
     position: absolute; left: 0; top: 0; padding: .05em .45em .1em; border-radius: .7em; pointer-events: none; white-space: nowrap;
+    z-index: ${BZ.schild};
     font: 800 clamp(11px, calc(var(--H) * .068), 20px)/1.25 system-ui, sans-serif; font-variant-numeric: tabular-nums;
     color: #3d2f22; background: rgba(255, 255, 255, .88); box-shadow: 0 1px 3px rgba(0, 0, 0, .2);
     opacity: 0; transition: opacity .5s, left .5s, top .5s;
@@ -5012,8 +5110,11 @@
 
   // src/stil/beschaeftigungen.js
   var STYLE_ACT = `
-  .acts { position: absolute; inset: 0; pointer-events: none; transition: filter 2.5s; }
-  .shade .acts { filter: brightness(var(--lbp, 1)) saturate(var(--ls, 1)); }
+  /* Requisiten am Boden: Ebene und Licht je Stück (Bühne), hinter dem Pika in .acts, vorn in .actsf */
+  .acts, .actsf { position: absolute; inset: 0; pointer-events: none; }
+  .acts > * { z-index: ${BZ.requisit}; transition: filter 2.5s; }
+  .actsf > * { z-index: ${BZ.requisitVorn}; transition: filter 2.5s; }
+  .shade .acts > *, .shade .actsf > * { filter: ${LICHT_P}; }
 
   .band, .arms, .uke, .brush, .wand, .rope, .rgrip, .bar, .wpaw { display: none; }
   .music .uke, .painting .brush, .blowing .wand, .sport .band, .jjack .arms, .roping .rope, .roping .rgrip,
@@ -5222,9 +5323,7 @@
   .gliding .pgl, .pebble .peb, .boating .sboat { display: inline; }
 
   /* Requisiten am Boden (_aprop): hinter dem Pika in .acts, die Pfütze vorn auf dem Wiesenstreifen in .actsf */
-  .actsf { position: absolute; inset: 0; pointer-events: none; z-index: var(--z-stage); transition: filter 2.5s; }
-  .shade .actsf { filter: brightness(var(--lbp, 1)) saturate(var(--ls, 1)); }
-  .aprop { position: absolute; opacity: 0; transition: opacity .45s; }
+  .aprop { position: absolute; opacity: 0; transition: opacity .45s, filter 2.5s; }
   .aprop.on { opacity: 1; }
   .aprop > svg { display: block; width: 100%; height: 100%; overflow: visible; }
 
@@ -5355,7 +5454,7 @@
   .snowp.now .spl { transition: none; }
   .snowp.s1 .sp1, .snowp.s2 .sp2, .snowp.s3 .sp3, .snowp.s4 .sp4 { transform: none; }
   .snowp { transform-origin: 50% 100%; }
-  .snowp.off { transform: scaleY(.35); transition: opacity .6s, transform .6s ease-in; }
+  .snowp.off { transform: scaleY(.35); transition: opacity .6s, transform .6s ease-in, filter 2.5s; }
 
   /* Bewegung reduzieren: Nichts kreist, pendelt oder schaukelt von selbst; man sieht trotzdem, was er tut (Reifen
      schräg um den Bauch, Jo-Jo an halber Schnur, drei Beeren im Bogen). Steine und Schnee erscheinen ohne Federn. */
@@ -5374,8 +5473,11 @@
 
   // src/stil/paeckchen.js
   var STYLE_GIFT = `
-  .gifts { position: absolute; inset: 0; pointer-events: none; transition: filter 2.5s; }
-  .shade .gifts { filter: brightness(var(--lbp, 1)) saturate(var(--ls, 1)); }
+  /* Schätze, Päckchen, Ballon, Schild und Postkarte des Urlaubs, Garderobe: Ebene und Licht je Stück (Bühne). Wer
+     selbst einen Übergang hat (.gt-can, .gpar.fade, .ursign.out, .urcard, .sig-wear), nennt filter darin mit. */
+  .gifts { position: absolute; inset: 0; pointer-events: none; }
+  .gifts > * { z-index: ${BZ.schatz}; transition: filter 2.5s; }
+  .shade .gifts > * { filter: ${LICHT_P}; }
   .gifts svg { display: block; width: 100%; height: auto; overflow: visible; }
   .gold svg { filter: drop-shadow(0 0 3px rgba(255, 226, 120, .95)); }
 
@@ -5405,7 +5507,7 @@
   .gpar .gp-lid.off { animation: glidoff .7s ease-out forwards; }
   @keyframes gbowoff { to { transform: translate(-30%, -260%) rotate(-40deg); opacity: 0; } }
   @keyframes glidoff { 30% { transform: translate(10%, -120%) rotate(18deg); opacity: 1; } to { transform: translate(60%, -260%) rotate(50deg); opacity: 0; } }
-  .gpar.fade { transition: opacity .8s; opacity: 0; }
+  .gpar.fade { transition: opacity .8s, filter 2.5s; opacity: 0; }
   .gitem { position: absolute; width: calc(var(--H) * .11); margin-left: calc(var(--H) * -.055); }
   .gitem svg { display: block; width: 100%; height: auto; overflow: visible; }
   .night .gitem { filter: brightness(.7) saturate(.8); }
@@ -5418,7 +5520,8 @@
 
   /* Schätze in der Szene */
   .gt { position: absolute; }
-  .held { position: absolute; inset: 0; pointer-events: none; z-index: var(--z-stage); }
+  .held { position: absolute; inset: 0; pointer-events: none; }
+  .held > * { z-index: ${BZ.arm}; }
   .gt.new { animation: grow .7s cubic-bezier(.3, 1.6, .5, 1); transform-origin: 50% 100%; }
   .gt-wheel { width: calc(var(--H) * .14); bottom: calc(var(--gb) - 2px); margin-left: calc(var(--H) * -.07); }
   .gt-wheel .gwhl { transform-box: view-box; transform-origin: 12px 12px; animation: gspin var(--gws, 3s) linear infinite; }
@@ -5429,7 +5532,7 @@
   @keyframes gring { from { transform: rotate(-18deg); } to { transform: rotate(18deg); } }
   .gt-yarn { width: calc(var(--H) * .075); margin-left: calc(var(--H) * -.0375); bottom: calc(var(--gb) - 3px); }
   .gt-yarn svg { transition: transform 1.2s ease-out; }
-  .gt-can { width: calc(var(--H) * .085); margin-left: calc(var(--H) * -.0425); bottom: calc(var(--gb) - 3px); transition: opacity .3s; }
+  .gt-can { width: calc(var(--H) * .085); margin-left: calc(var(--H) * -.0425); bottom: calc(var(--gb) - 3px); transition: opacity .3s, filter 2.5s; }
   .gt-can.away { opacity: 0; }
   .gt-ham { width: calc(var(--pw) * 1.25); margin-left: calc(var(--pw) * -.625); bottom: calc(var(--gb) - 2px); }
   .gt-ham .gnet { transform-box: view-box; transform-origin: 30px 3px; }
@@ -5441,6 +5544,8 @@
   .night .gt-plush { filter: brightness(.72) saturate(.75); }
   /* Golden (Stufe 3): Farben nach Gold umgefärbt, leichter Schimmer */
   .gt.gilt, .gitem.gilt svg { filter: ${GILT_F} drop-shadow(0 0 2px rgba(255, 220, 110, .75)); }
+  /* … und in der Dämmerung danach das Licht (seit 0.38 je Stück, siehe .gifts > *) */
+  .shade .gifts > .gt.gilt { filter: ${GILT_F} drop-shadow(0 0 2px rgba(255, 220, 110, .75)) ${LICHT_P}; }
   .night .gt-plush.gilt { filter: ${GILT_F} brightness(.72); }
   /* Tricks: Schaukeln, Anpusten, Regenbogen */
   .gt-ham.swing .gnet { animation: gswing .9s ease-in-out infinite alternate; }
@@ -5688,9 +5793,12 @@
   .ursign, .urcard { position: absolute; pointer-events: none; }
   .ursign { transform-origin: 50% 4%; animation: ursw 5s ease-in-out infinite; }
   .ursign.in { animation: urin .7s cubic-bezier(.3, 1.5, .5, 1), ursw 5s ease-in-out .7s infinite; }
-  .ursign.out { animation: none; transition: opacity .8s, transform .8s; opacity: 0; transform: translateY(-30%) rotate(-8deg); }
+  .ursign.out { animation: none; transition: opacity .8s, transform .8s, filter 2.5s; opacity: 0; transform: translateY(-30%) rotate(-8deg); }
   .ursign svg, .urcard svg { display: block; width: 100%; height: auto; overflow: visible; }
-  .urcard { transform: rotate(-9deg); filter: drop-shadow(0 1px 1.5px rgba(0, 0, 0, .3)); transition: opacity .8s; }
+  .urcard { transform: rotate(-9deg); filter: drop-shadow(0 1px 1.5px rgba(0, 0, 0, .3)); transition: opacity .8s, filter 2.5s; }
+  /* Das Licht liegt seit 0.38 auf jedem Stück (Bühne), nicht mehr auf .gifts: hier mit dem eigenen Filter zusammen, das
+     Licht zuletzt (so wirkte es auch über der Schicht) */
+  .shade .gifts > .urcard { filter: drop-shadow(0 1px 1.5px rgba(0, 0, 0, .3)) ${LICHT_P}; }
   .urcard.in { animation: urcin .8s cubic-bezier(.3, 1.4, .5, 1); }
   .urcard.out { opacity: 0; }
   .ursign.wig { animation: urwig .6s; }
@@ -5698,14 +5806,16 @@
   @keyframes urin { from { transform: translateY(-40%) rotate(-12deg); opacity: 0; } }
   @keyframes urcin { from { transform: translateY(-30%) rotate(-30deg) scale(.6); opacity: 0; } }
   @keyframes urwig { 25% { transform: rotate(-7deg); } 60% { transform: rotate(5deg); } }
-  .night .ursign, .night .urcard { filter: brightness(.7) saturate(.8); }
+  .night .gifts > .ursign, .night .gifts > .urcard { filter: brightness(.7) saturate(.8) ${LICHT_P}; }
   @media (prefers-reduced-motion: reduce) { .ursign, .ursign.in, .urcard.in, .ursign.wig { animation: none; } }
   `;
 
   // src/stil/signale.js
   var STYLE_SIG = `
   /* Tonne und Saugroboter stehen vorn wie die Haushaltsgeräte (vor dem Pika), die Garderobe hängt an der Tür */
-  .sig-bin, .sig-vac { position: absolute; left: 0; top: 0; z-index: var(--z-front); }
+  .sig-bin, .sig-vac { position: absolute; left: 0; top: 0; }
+  .sig-bin { z-index: ${BZ.tonne}; }
+  .sig-vac { z-index: ${BZ.sauger}; }
   .sig-bin { pointer-events: auto; cursor: pointer; transition: left .6s ease, opacity .6s; }
   .sig-bin::after { content: ''; position: absolute; inset: -8px -6px -2px; }
   .sig-bin.in { animation: sig-in .6s cubic-bezier(.3, 1.5, .5, 1); }
@@ -5719,11 +5829,11 @@
   .sig-vac.stuck .sig-led { fill: #e8584e; animation: sig-blink .8s steps(2) infinite; }
   .sig-vac.stop .sig-led { fill: #f2b632; }
   .sig-bin svg, .sig-vac svg, .sig-wear svg { display: block; width: 100%; height: auto; overflow: visible; }
-  .sig-wear { position: absolute; left: 0; top: 0; pointer-events: none; transition: opacity .6s; }
+  .sig-wear { position: absolute; left: 0; top: 0; pointer-events: none; transition: opacity .6s, filter 2.5s; }
   .sig-wear.in { animation: sig-in .6s cubic-bezier(.3, 1.5, .5, 1); }
   .sig-wear.out { opacity: 0; }
   .sig-wear.hang { transform-origin: 50% 0; animation: sig-sway 5s ease-in-out infinite; }
-  .sig-hold { position: absolute; pointer-events: none; z-index: var(--z-front); }
+  .sig-hold { position: absolute; pointer-events: none; z-index: 4; /* innerhalb von .fx */ }
   .sig-hold svg { display: block; width: 100%; height: auto; }
   @keyframes sig-in { from { transform: translateY(-25%) scale(.5); opacity: 0; } }
   @keyframes sig-sway { 50% { transform: rotate(2deg); } }
@@ -5966,6 +6076,7 @@
         this._lift = 0;
         this._poseName = null;
         this._el.pika.classList.remove("sleeping", "inside");
+        this._pikaZ();
         this._el.clipw.style.clipPath = "";
         this._layout();
         this._restartCritters();
@@ -6932,6 +7043,7 @@
       this._el.depth.style.transition = `transform ${tr}`;
       if (name === "out") {
         p.classList.remove("inside");
+        this._pikaZ();
         cw.style.clipPath = open;
         this._bubbleRefit();
         return;
@@ -6950,6 +7062,7 @@
       ts.setProperty("--ax", px(hole.r - L + hw * 0.02));
       ts.setProperty("--ay", px(hole.top - top + pH * 0.02));
       p.classList.add("inside");
+      this._pikaZ();
       this._bubbleRefit();
     }
     async _groom() {
@@ -9967,7 +10080,8 @@
       x = clamp(x, pW * 0.45, xR);
       const dx = x - this._x;
       lane = this._cfg.depth ? lane : 0;
-      const dl = lane !== (this._lane || 0);
+      const vor = this._lane || 0;
+      const dl = lane !== vor;
       if (Math.abs(dx) < 4 && !dl) return;
       if (Math.abs(dx) >= 4 && !back) this._face(dx > 0 ? 1 : -1);
       const dist = Math.max(Math.abs(dx), dl ? pW * 0.6 : 0);
@@ -9979,8 +10093,8 @@
       this._lane = lane;
       this._setX(x);
       if (dl) {
-        this._el.scene.classList.toggle("hinten", !lane);
-        this._laneZT = setTimeout(() => this._el.scene.classList.toggle("hinten", !!this._laneDy()), dur * 500);
+        this._pikaZ(vor);
+        this._laneZT = setTimeout(() => this._pikaZ(), dur * 500);
       }
       p.classList.add("walking");
       if (gait) p.classList.add(gait);
@@ -10036,10 +10150,18 @@
       t.transform = p.style.transform;
       p.classList.toggle("lane1", !!ly);
       clearTimeout(this._laneZT);
-      this._el.scene.classList.toggle("hinten", !!ly);
+      this._pikaZ();
       if (this._cfg.depth && this._W) this._el.scene.style.setProperty("--plx", clamp(x / this._W * 2 - 1, -1, 1).toFixed(3));
       if (instant) void p.offsetWidth;
       this._bubbleRefit();
+    }
+    // Bühne: Ebene des Pikas aus seinem Fußpunkt (lane: die Spur, sonst die jetzige). Im Bau zählt der Eingang (Rang
+    // pikaBau, vor den Vögeln, hinter Pino). Auf dem Stein, im Sprung und beim Mitfahren zählt der Fußpunkt, von dem er
+    // abgesprungen ist: Hochspringen geht nur von der vorderen Spur (_hopTo), die Höhe (_lift) zählt nicht.
+    _pikaZ(lane = this._lane) {
+      const p = this._el.pika;
+      const hinten = this._cfg.depth && lane && !(this._lift > 0) ? LANE_DY : 0;
+      p.style.zIndex = String(p.classList.contains("inside") ? buehneZ(0, "pikaBau") : buehneZ(-hinten, "pika"));
     }
     // y für den Anteil f der Größeneinheit, gemessen ab der Oberkante der Bühne (die unteren H px der Karte): für
     // alles in der Luft, das zum Pika gehört (Drachen, Ballon, Funkeln am Himmel). Auf normalen Karten H · f.
@@ -14481,7 +14603,7 @@
     }
     // Jedem Glühwürmchen einen Ort und einen eigenen Driftweg (vier Punkte, px) geben. Gut die Hälfte schwirrt
     // tief über der Wiese, ein Drittel um den Heuhaufen (--hl, --hw), der Rest etwas höher. Kein Weg führt
-    // über die Statusleiste oder die Knöpfe, durchs Heu oder ins Gras (beide liegen eine Ebene davor, --z-stage).
+    // über die Statusleiste oder die Knöpfe, durchs Heu oder ins Gras (beide stehen auf der Bühne davor).
     _ffPlace() {
       const g = this._g;
       const flies = this._el.ff.children;
@@ -19875,6 +19997,13 @@
     globalThis.__pikaTest({
       VERSION,
       PikaPetCard,
+      REIHE,
+      RANG,
+      RANG_N,
+      buehneZ,
+      BUEHNE_MAX,
+      BUEHNE,
+      BZ,
       PLAN_MIN,
       HAY_MAX,
       GIFT,

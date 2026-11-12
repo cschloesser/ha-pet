@@ -87,6 +87,7 @@ import { GIFT, giftLv, giftTre, giftMile, giftAllGold } from './logik/paeckchen.
 import { coffeeBrews, coffeeLabel, coffeeQueue, COFFEE_NEXT_GAP } from './logik/kaffee.js';
 import { SIG, sigTime, binKind, binPlan, binDone, wardrobePick, vacMode, vacRuns } from './logik/signale.js';
 import { URLAUB, urlaubAt, urlaubCut } from './logik/urlaub.js';
+import { REIHE, RANG, RANG_N, buehneZ, BUEHNE_MAX, BUEHNE, BZ } from './logik/buehne.js';
 import { FIND_GROUPS, FINDS, findsParse, findsSer, diaryDerive } from './logik/tagebuch.js';
 import {
   CHRONIK, chronikDatum, chronikTag, chronikStart, chronikVersatz, chronikZoneOk, chronikKod, chronikLies, chronikMisch, chronikBilanz,
@@ -110,7 +111,7 @@ if (!customElements.get('pika-pet-card')) {
 // __pikaTest, dort passiert nichts.
 if (typeof globalThis !== 'undefined' && typeof globalThis.__pikaTest === 'function') {
   globalThis.__pikaTest({
-    VERSION, PikaPetCard, PLAN_MIN, HAY_MAX, GIFT, ACT_LEN, hasKey, boteRow, clearSpot, sceneUnit,
+    VERSION, PikaPetCard, REIHE, RANG, RANG_N, buehneZ, BUEHNE_MAX, BUEHNE, BZ, PLAN_MIN, HAY_MAX, GIFT, ACT_LEN, hasKey, boteRow, clearSpot, sceneUnit,
     planBlank, planSer, planParse, planApply, hayNow, giftLv, pikaDay, MEM_GUT, giftTre, giftMile, giftAllGold,
     URLAUB, urlaubAt, urlaubCut, chronikUrlaub, coffeeBrews, coffeeLabel, coffeeQueue, COFFEE_NEXT_GAP, boteEmptyOn, boteMap, boteLabel, boteLabelMode, boteSmell,
     SIG, sigTime, binKind, binPlan, binDone, wardrobePick, vacMode, vacRuns, MEM_TONNE, MEM_TONNE2,

@@ -254,6 +254,7 @@ export class Alltag {
     this._el.depth.style.transition = `transform ${tr}`;
     if (name === 'out') {
       p.classList.remove('inside');
+      this._pikaZ();
       cw.style.clipPath = open;
       this._bubbleRefit();
       return;
@@ -276,6 +277,7 @@ export class Alltag {
     ts.setProperty('--ax', px(hole.r - L + hw * 0.02));
     ts.setProperty('--ay', px(hole.top - top + pH * 0.02));
     p.classList.add('inside');
+    this._pikaZ();
     this._bubbleRefit();
   }
 

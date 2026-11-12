@@ -1,8 +1,12 @@
 // Stil der Haus-Signale: Mülltonne, Saugroboter, Garderobe an der Tür
 
+import { BZ } from '../logik/buehne.js';
+
 const STYLE_SIG = `
   /* Tonne und Saugroboter stehen vorn wie die Haushaltsgeräte (vor dem Pika), die Garderobe hängt an der Tür */
-  .sig-bin, .sig-vac { position: absolute; left: 0; top: 0; z-index: var(--z-front); }
+  .sig-bin, .sig-vac { position: absolute; left: 0; top: 0; }
+  .sig-bin { z-index: ${BZ.tonne}; }
+  .sig-vac { z-index: ${BZ.sauger}; }
   .sig-bin { pointer-events: auto; cursor: pointer; transition: left .6s ease, opacity .6s; }
   .sig-bin::after { content: ''; position: absolute; inset: -8px -6px -2px; }
   .sig-bin.in { animation: sig-in .6s cubic-bezier(.3, 1.5, .5, 1); }
@@ -16,11 +20,11 @@ const STYLE_SIG = `
   .sig-vac.stuck .sig-led { fill: #e8584e; animation: sig-blink .8s steps(2) infinite; }
   .sig-vac.stop .sig-led { fill: #f2b632; }
   .sig-bin svg, .sig-vac svg, .sig-wear svg { display: block; width: 100%; height: auto; overflow: visible; }
-  .sig-wear { position: absolute; left: 0; top: 0; pointer-events: none; transition: opacity .6s; }
+  .sig-wear { position: absolute; left: 0; top: 0; pointer-events: none; transition: opacity .6s, filter 2.5s; }
   .sig-wear.in { animation: sig-in .6s cubic-bezier(.3, 1.5, .5, 1); }
   .sig-wear.out { opacity: 0; }
   .sig-wear.hang { transform-origin: 50% 0; animation: sig-sway 5s ease-in-out infinite; }
-  .sig-hold { position: absolute; pointer-events: none; z-index: var(--z-front); }
+  .sig-hold { position: absolute; pointer-events: none; z-index: 4; /* innerhalb von .fx */ }
   .sig-hold svg { display: block; width: 100%; height: auto; }
   @keyframes sig-in { from { transform: translateY(-25%) scale(.5); opacity: 0; } }
   @keyframes sig-sway { 50% { transform: rotate(2deg); } }

@@ -368,9 +368,16 @@
   // braucht daraus die Schreibweise der beiden Helfer, um vergangene Tage in den Verlauf zu legen.
   window.__pikaTest = (x) => (window.PIKA = x);
 </script>
-<script src="pika-pet-card.js"></script>
 <script>
-  const log = (t) => (document.getElementById('log').textContent = t);
+  // ?karte=dev/alt.js lädt eine andere gebaute Karte (z. B. git show 4f795f8:pika-pet-card.js > dev/alt.js), für
+  // Vergleiche vorher/nachher; ohne die gebaute Karte aus dem Wurzelverzeichnis
+  const KARTE = new URLSearchParams(location.search).get('karte') || 'pika-pet-card.js';
+  document.write(`<script src="${KARTE.replace(/[^\w./-]/g, '')}"><\/script>`);
+</script>
+<!-- Bühne: Mal-Reihenfolge aufnehmen (buehneAufnahme, buehneAlle), Lichtfilter zählen (buehneFilter) -->
+<script src="dev/buehne-aufnahme.js"></script>
+<script>
+  const log =(t) => (document.getElementById('log').textContent = t);
   const states = {
     // last_updated wie in HA (dort ändert sich sun.sun alle paar Minuten): Daran erkennt die Chronik, dass HA den
     // heutigen Tag erreicht hat, ohne Stempel prüfte sie in der Vorschau nie von selbst

@@ -1,5 +1,7 @@
 // Stil für Pino
 
+import { BZ } from '../logik/buehne.js';
+
 // Die Zustandsklassen (walking, blink, twitch-l, happy, groom, calling, look-f, left …) wirken über allgemeine
 // Regeln aus STYLE, die nicht an .pika hängen; Pino trägt sie an seinem eigenen .friend-Element. --ph/--pw
 // setzt das Skript an .friends auf Pinos Größe, damit Sprechblase, Schatten usw. mitskalieren.
@@ -7,7 +9,7 @@ const STYLE_FRIEND = `
   .friends { position: absolute; inset: 0; pointer-events: none; }
   .friend {
     position: absolute; left: 0; top: calc(var(--gy) - var(--ph) * .945); width: var(--pw); height: var(--ph);
-    z-index: var(--z-stage); cursor: pointer; pointer-events: auto; will-change: transform;
+    z-index: ${BZ.pino}; cursor: pointer; pointer-events: auto; will-change: transform;
   }
   /* Pinos Sprechblase: gleiche Lage wie .friend, aber in der Sprech-Ebene über dem Wetter */
   .frsay {

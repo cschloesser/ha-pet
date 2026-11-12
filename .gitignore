@@ -1,3 +1,6 @@
 .claude/
 mise.toml
 node_modules/
+
+# Vergleichskarte für die Vorschau (?karte=dev/alt.js), nicht einchecken
+dev/alt.js

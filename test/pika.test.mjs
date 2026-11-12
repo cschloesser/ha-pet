@@ -4232,3 +4232,102 @@ test('Haus-Signale: Läufe des Saugroboters aus dem Verlauf (12. 11. 2026: 11:27
   assert.deepEqual(plain(T.vacRuns(rows)), [{ t: t(11, 19, 2), end: t(11, 19, 15), min: 13 }, { t: t(12, 11, 27), end: t(12, 11, 51), min: 24 }]);
   assert.deepEqual(['cleaning', 'returning', 'paused', 'idle', 'error', 'docked', 'unavailable'].map(T.vacMode), ['drive', 'home', 'stop', 'stop', 'stuck', null, null]);
 });
+
+// ---- Bühne (0.38): Ordnung nach Fußpunkt ----
+const BUEHNE_SZENE = JSON.parse(fs.readFileSync(new URL('./buehne-szene.json', import.meta.url), 'utf8'));
+// Überlappen sich zwei Figuren (Rechteck [x, y, b, h], mehr als ein Pixel in beide Richtungen)?
+const deckt = (a, b) => Math.min(a[1] + a[3], b[1] + b[3]) - Math.max(a[1], b[1]) > 1 && Math.min(a[2] + a[4], b[2] + b[4]) - Math.max(a[2], b[2]) > 1;
+
+test('Bühne: weiter unten im Bild liegt davor, bei gleichem Fußpunkt entscheidet der Rang', () => {
+  const R = T.REIHE;
+  assert.ok(R.bau < R.hinten && R.hinten < R.stein && R.stein < R.vorn && R.vorn < R.rand, 'Reihen von hinten nach vorn');
+  assert.ok(T.RANG.length <= T.RANG_N, `${T.RANG.length} Ränge, Platz für ${T.RANG_N}`);
+  assert.equal(new Set(T.RANG).size, T.RANG.length, 'jeder Rang einmal');
+  // Ein Tausendstel H weiter vorn schlägt jeden Rang, gleicher Fußpunkt: der Rang
+  assert.ok(T.buehneZ(0.001, 'maus') > T.buehneZ(0, 'sauger'));
+  assert.ok(T.buehneZ(0, 'pika') > T.buehneZ(0, 'pino'));
+  assert.ok(T.buehneZ(-0.0004, 'pika') === T.buehneZ(0, 'pika'), 'gerundet auf Tausendstel H');
+  // Alles am Boden liegt zwischen 1 und BUEHNE_MAX (darüber Wetter, Sprechblasen, Leiste)
+  for (const f of [-1, -0.3, 0, 0.07, 0.3, 1]) for (const r of [0, T.RANG_N - 1]) {
+    const z = T.buehneZ(f, r);
+    assert.ok(z >= 1 && z <= T.BUEHNE_MAX, `buehneZ(${f}, ${r}) = ${z}`);
+  }
+  // Jede Art hat eine Reihe und einen Rang; die festen Ebenen passen dazu
+  for (const [art, reihe] of Object.entries(T.BUEHNE)) {
+    assert.ok(T.RANG.includes(art), `${art} ohne Rang`);
+    assert.ok(reihe in R, `${art}: Reihe ${reihe} unbekannt`);
+    assert.equal(T.BZ[art], T.buehneZ(R[reihe], art));
+  }
+  assert.ok(Number.isInteger(T.BUEHNE_MAX) && T.BUEHNE_MAX < 1e6);
+  // Der Stil nennt die Ebenen der Schichten nicht mehr (nur Wetter und darüber haben Variablen)
+  assert.doesNotMatch(quell, /--z-(back|mid|stage|front)\b/);
+  // Jede feste Art bekommt ihre Ebene im Stil (z-index: ${BZ.art}); der Pika setzt sie im Skript (_pikaZ)
+  for (const art of Object.keys(T.BUEHNE).filter((a) => !['pika', 'pikaBau'].includes(a))) {
+    assert.match(quell, new RegExp(`z-index: \\$\\{BZ\\.${art}\\}`), `${art}: keine Ebene im Stil`);
+  }
+});
+
+test('Bühne: volle Szenen ohne depth stehen in derselben Reihenfolge wie bis 0.37', () => {
+  // vorher: aufgenommen mit 0.37.0 (Schichten). Für jedes Paar, das sich überlappt, muss die Bühne dieselbe Seite
+  // wählen. Gleiche Art: gleiche Ebene, dann gilt wie bisher die Reihenfolge im DOM.
+  const ERLAUBT = new Map([
+    // Paar 'hinten/vorn' der Aufnahme (wie 0.37 malte) → Begründung (im CHANGELOG 0.38 einzeln genannt)
+    ['schatz/festBau', 'Glöckchen und Garderobe hängen vor der Wand des Baus, die Lichterkette auf ihr; 0.37 malte die '
+      + 'Festdeko am Bau (--z-back) über alle Schichten ohne Ebene. Mit der hinteren Spur muss die Deko hinter dem Pika liegen.'],
+    ['schild/festBau', 'Das Schild über der Waschmaschine gehört zum vorderen Rand und soll lesbar sein, nicht unter der Lichterkette liegen.'],
+  ]);
+  let paare = 0;
+  const abw = [];
+  for (const S of BUEHNE_SZENE.vorher) {
+    S.f.forEach((a, i) => S.f.slice(i + 1).forEach((b) => {
+      assert.ok(a[0] in T.BZ && b[0] in T.BZ, `${S.tag}: Art ${a[0]} / ${b[0]} ohne Platz auf der Bühne`);
+      if (a[0] === b[0] || !deckt(a, b)) return;
+      paare++;
+      if (T.BZ[a[0]] < T.BZ[b[0]]) return;
+      const k = `${a[0]}/${b[0]}`;
+      if (!ERLAUBT.has(k)) abw.push(`${S.tag}: ${k} (${a.slice(1)} / ${b.slice(1)})`);
+    }));
+  }
+  assert.deepEqual(abw, [], 'die Bühne stellt Figuren anders als 0.37');
+  assert.ok(paare > 300, `nur ${paare} überlappende Paare geprüft`);
+});
+
+test('Bühne: die Karte malt in der Reihenfolge der Bühne (Aufnahme nach dem Umbau)', () => {
+  // nachher: dieselben Szenen mit der Bühne aufgenommen. Die Reihenfolge, die der Browser malt, ist genau die der
+  // Ebenen aus BZ (also auch die von 0.37, siehe oben), für alle Paare, nicht nur überlappende.
+  assert.deepEqual(BUEHNE_SZENE.nachher.map((S) => S.tag), BUEHNE_SZENE.vorher.map((S) => S.tag));
+  for (const S of BUEHNE_SZENE.nachher) {
+    S.f.forEach((a, i) => S.f.slice(i + 1).forEach((b) => {
+      if (a[0] !== b[0]) assert.ok(T.BZ[a[0]] < T.BZ[b[0]], `${S.tag}: ${a[0]} vor ${b[0]} gemalt`);
+    }));
+  }
+  // Wo Besucher, Futter und Pino stehen, ist Zufall; zusammen kommen vorher und nachher dieselben Arten vor
+  const arten = (L) => [...new Set(L.flatMap((S) => S.f.map((f) => f[0])))].sort();
+  assert.deepEqual(arten(BUEHNE_SZENE.nachher), arten(BUEHNE_SZENE.vorher));
+});
+
+test('Bühne: Ebene des Pikas aus Spur, Bau und Sprung', () => {
+  const p = { classList: new Set(), style: {} };
+  p.classList.contains = p.classList.has;
+  const c = { _el: { pika: p }, _cfg: { depth: true }, _lane: 0, _lift: 0 };
+  const z = (lane) => {
+    T.PikaPetCard.prototype._pikaZ.call(c, lane);
+    return Number(p.style.zIndex);
+  };
+  assert.equal(z(0), T.BZ.pika);
+  // Hintere Spur: hinter Blumen, Futter, Schätzen, Heu, Pino und dem Stein, vor dem Bau
+  const h = z(1);
+  for (const art of ['blume', 'futter', 'schatz', 'mausVorn', 'heu', 'pino', 'gras', 'stein']) assert.ok(h < T.BZ[art], `hinten vor ${art}`);
+  assert.ok(h > T.BZ.bau && h > T.BZ.festHinten);
+  // Auf dem Stein oder im Sprung zählt die vordere Spur, von der er abgesprungen ist
+  c._lift = 30;
+  assert.equal(z(1), T.BZ.pika);
+  c._lift = 0;
+  // Ohne depth gibt es keine hintere Spur
+  c._cfg.depth = false;
+  assert.equal(z(1), T.BZ.pika);
+  // Im Bau: vor den Vögeln, hinter Pino
+  p.classList.add('inside');
+  assert.equal(z(0), T.BZ.pikaBau);
+  assert.ok(T.BZ.vogel < T.BZ.pikaBau && T.BZ.pikaBau < T.BZ.pino);
+});

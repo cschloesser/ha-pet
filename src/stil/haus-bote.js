@@ -1,5 +1,7 @@
 // Stil des Haus-Boten
 
+import { BZ } from '../logik/buehne.js';
+
 const STYLE_BOTE = `
   .props { position: absolute; inset: 0; pointer-events: none; }
   /* Requisit: left/top/width setzt das Skript, Boden der Grafik knapp unter der Bodenlinie (im Gras) */
@@ -7,7 +9,8 @@ const STYLE_BOTE = `
   .hb.hb-placed { transition: left .5s ease, top .5s ease, width .5s ease, opacity .5s; }
   .hb::after { content: ''; position: absolute; inset: -8px -4px 0; }
   /* Vorn auf dem Wiesenstreifen: näher am Betrachter, also vor Pika, Gras und Heu (unter Regen, Statusleiste, Futterknopf) */
-  .hb.hb-fr, .hb-bar { z-index: var(--z-front); }
+  .hb, .hb.hb-fr { z-index: ${BZ.geraet}; } /* auch vor dem ersten Platzieren */
+  .hb-bar { z-index: ${BZ.balken}; }
   .hb.hb-bye { opacity: 0; pointer-events: none; }
   /* Der Tageszeit-Filter liegt nur auf der Grafik: Das rote Ausrufezeichen (.hb-a) bleibt auch nachts rot */
   .hb-i { transform-origin: 50% 100%; transition: filter 2.5s; }
@@ -99,7 +102,7 @@ const STYLE_BOTE = `
   /* Ebenen vor dem Pika: Werkzeug und Getragenes, Fähnchen über Statusleiste und Futterknopf.
      Der Fortschrittsbalken liegt wie sein Requisit: hinten unter dem Pika (über dem Gras), vorn davor. */
   .hb-f, .hb-t, .hb-bars { position: absolute; inset: 0; pointer-events: none; }
-  .hb-f { z-index: var(--z-front); }
+  .hb-f > * { z-index: ${BZ.geraetVorn}; }
   .hb-t { z-index: var(--z-tag); }
   .hb-bar {
     position: absolute; left: 0; top: 0; height: clamp(3px, calc(var(--H) * .018), 6px); border-radius: 99px; pointer-events: none;
@@ -178,6 +181,7 @@ const STYLE_BOTE = `
   /* Schild über dem Gerät (appliance_labels): groß genug für drei Meter, Ziffern gleich breit */
   .hb-lab {
     position: absolute; left: 0; top: 0; padding: .05em .45em .1em; border-radius: .7em; pointer-events: none; white-space: nowrap;
+    z-index: ${BZ.schild};
     font: 800 clamp(11px, calc(var(--H) * .068), 20px)/1.25 system-ui, sans-serif; font-variant-numeric: tabular-nums;
     color: #3d2f22; background: rgba(255, 255, 255, .88); box-shadow: 0 1px 3px rgba(0, 0, 0, .2);
     opacity: 0; transition: opacity .5s, left .5s, top .5s;

@@ -1,5 +1,7 @@
 // Stil der Himmel-Extras: Sternschnuppen und Glühwürmchen
 
+import { BZ } from '../logik/buehne.js';
+
 const STYLE_SKY = `
   .meteors { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
   /* Sternschnuppe: Hülle steht am Startpunkt und ist in Flugrichtung gedreht, Kopf und Schweif laufen --len weit */
@@ -47,7 +49,7 @@ const STYLE_SKY = `
   @keyframes met-flash { 30% { opacity: 1; } 100% { opacity: 0; } }
 
   /* Glühwürmchen: Ebene blendet sanft ein und aus (Sommernacht voll, späte Dämmerung schwach) */
-  .ff { position: absolute; inset: 0; pointer-events: none; opacity: 0; visibility: hidden; transition: opacity 3s, visibility 0s linear 3s; }
+  .ff { position: absolute; inset: 0; pointer-events: none; opacity: 0; visibility: hidden; transition: opacity 3s, visibility 0s linear 3s; z-index: ${BZ.gluehwurm}; }
   .ff.on, .ff.dim { visibility: visible; transition: opacity 3s, visibility 0s; }
   .ff.on { opacity: 1; }
   .ff.dim { opacity: .45; }

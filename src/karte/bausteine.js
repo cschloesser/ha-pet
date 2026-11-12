@@ -4,6 +4,7 @@
 import { rnd, pick, clamp, hasKey } from '../logik/hilfen.js';
 import { calmMotion } from '../logik/bewegung-reduzieren.js';
 import { LANE_DY, LANE_S } from '../logik/einstellungen.js';
+import { buehneZ } from '../logik/buehne.js';
 import { FRIEND_SCALE } from '../logik/besucher.js';
 import { MIMIK, MIMIK_CLS } from '../logik/interaktion.js';
 import { HOP_MS, hopRound, EAR_SWING, jumpBusy } from '../logik/beschaeftigungen.js';
@@ -18,7 +19,8 @@ export class Bausteine {
     x = clamp(x, pW * 0.45, xR);
     const dx = x - this._x;
     lane = this._cfg.depth ? lane : 0;
-    const dl = lane !== (this._lane || 0);
+    const vor = this._lane || 0;
+    const dl = lane !== vor;
     if (Math.abs(dx) < 4 && !dl) return;
     if (Math.abs(dx) >= 4 && !back) this._face(dx > 0 ? 1 : -1);
     // Der Spurwechsel zählt wie ein kurzes Stück Weg
@@ -33,10 +35,10 @@ export class Bausteine {
     p.style.transition = `transform ${dur.toFixed(2)}s linear`;
     this._lane = lane;
     this._setX(x);
-    // Ebene vor/hinter dem Vordergrund erst auf halbem Weg wechseln
+    // Ebene (Bühne) erst auf halbem Weg wechseln: bis dahin steht er noch auf der alten Spur
     if (dl) {
-      this._el.scene.classList.toggle('hinten', !lane);
-      this._laneZT = setTimeout(() => this._el.scene.classList.toggle('hinten', !!this._laneDy()), dur * 500);
+      this._pikaZ(vor);
+      this._laneZT = setTimeout(() => this._pikaZ(), dur * 500);
     }
     p.classList.add('walking');
     if (gait) p.classList.add(gait);
@@ -99,11 +101,20 @@ export class Bausteine {
     t.transform = p.style.transform;
     p.classList.toggle('lane1', !!ly);
     clearTimeout(this._laneZT);
-    this._el.scene.classList.toggle('hinten', !!ly);
+    this._pikaZ();
     // Kulisse folgt dem Pika ein wenig (-1 links … 1 rechts), die Übergänge macht das CSS
     if (this._cfg.depth && this._W) this._el.scene.style.setProperty('--plx', clamp(x / this._W * 2 - 1, -1, 1).toFixed(3));
     if (instant) void p.offsetWidth;
     this._bubbleRefit();
+  }
+
+  // Bühne: Ebene des Pikas aus seinem Fußpunkt (lane: die Spur, sonst die jetzige). Im Bau zählt der Eingang (Rang
+  // pikaBau, vor den Vögeln, hinter Pino). Auf dem Stein, im Sprung und beim Mitfahren zählt der Fußpunkt, von dem er
+  // abgesprungen ist: Hochspringen geht nur von der vorderen Spur (_hopTo), die Höhe (_lift) zählt nicht.
+  _pikaZ(lane = this._lane) {
+    const p = this._el.pika;
+    const hinten = this._cfg.depth && lane && !(this._lift > 0) ? LANE_DY : 0;
+    p.style.zIndex = String(p.classList.contains('inside') ? buehneZ(0, 'pikaBau') : buehneZ(-hinten, 'pika'));
   }
 
   // y für den Anteil f der Größeneinheit, gemessen ab der Oberkante der Bühne (die unteren H px der Karte): für

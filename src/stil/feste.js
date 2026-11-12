@@ -1,10 +1,14 @@
 // Stil der Festtage
 
+import { BZ } from '../logik/buehne.js';
+
 const STYLE_FEST = `
   .fest-b, .fest-f, .fest-b > div, .fest-f > div { position: absolute; inset: 0; pointer-events: none; }
-  .fest-f { z-index: var(--z-stage); }
-  /* liegt auf dem Bau, aber hinter dem Pika */
-  .fest-b > .fon { z-index: var(--z-back); }
+  /* Bühne: Jede Gruppe hat eine Ebene (ihre Stücke haben alle denselben Rang). Hinter dem Bau Himmel und Baum,
+     am Bau Lichter und Girlanden (hinter dem Pika), vorn Kürbis, Stiefel, Kranz, Eier, Konfetti. */
+  .fest-b > .fsky, .fest-b > .fback { z-index: ${BZ.festHinten}; }
+  .fest-b > .fon { z-index: ${BZ.festBau}; }
+  .fest-f > div { z-index: ${BZ.festVorn}; }
   .fi { position: absolute; }
   .fi > svg { position: absolute; left: 0; top: 0; width: 100%; height: 100%; overflow: visible; }
   .fi .b { transition: filter 2.5s; }

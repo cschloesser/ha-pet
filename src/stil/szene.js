@@ -1,8 +1,9 @@
-// Stil der Szene: Karte, Ebenen (--z-back bis --z-tag), Himmel, Wetter, Land, Pika, Besucher, Leiste, Knöpfe
+// Stil der Szene: Karte, Ebenen (Bühne, darüber --z-wx bis --z-tag), Himmel, Wetter, Land, Pika, Besucher, Leiste, Knöpfe
 
 import { MIMIK_ON } from '../logik/interaktion.js';
 import { KITE_LEAN } from '../logik/beschaeftigungen.js';
 import { PK_DIM, PK_ACC } from '../grafik/pika.js';
+import { BZ, BUEHNE_MAX, LICHT, LICHT_P } from '../logik/buehne.js';
 
 const STYLE = `
   :host { display: block; height: 100%; }
@@ -17,19 +18,16 @@ const STYLE = `
     font-family: var(--ha-font-family-body, var(--paper-font-body1_-_font-family, system-ui, sans-serif));
     --h1: #a9d68f; --h2: #86c46b; --h3: #7ab960;
     --h0: #b4dcc2; /* ferne Hügelkette (depth): --h1 halb mit dem Himmel auf ihrer Höhe gemischt, deckend */
-    /* Ebenen der Szene von hinten nach vorn, für alle Stilblöcke (STYLE, STYLE_FEST, STYLE_FRIEND, STYLE_BOTE,
-       STYLE_GIFT, STYLE_DIARY_BTN). Bei gleichem Wert entscheidet die Reihenfolge im DOM (siehe _build). Was keine
-       Ebene nennt (Himmel, Hügel, Bau, Blumen, Futter, Schätze, Besucher, Geräte hinten), liegt in DOM-Reihenfolge
-       darunter. Zahlen ohne Variable gelten nur innerhalb ihres Elternteils. */
-    --z-back: 1;  /* Deko am Bau; der Pika auf der hinteren Spur */
-    --z-mid: 2;   /* Vögel, Pika im Bau; hintere Spur: Blumen, Futter, Schätze und Mäuse vor ihm */
-    --z-stage: 3; /* Pino, Pika, Plüsch-Pino im Arm, Heu, Festdeko vorn, Gras, Häufchen */
-    --z-front: 4; /* Geräte vorn am Rand mit Balken, Werkzeug und Getragenem */
-    --z-wx: 5;    /* Regen, Schnee, Nebel, Blitz */
-    --z-talk: 6;  /* Sprech- und Denkblasen, zzz, Zeichen über dem Kopf; Tippflächen der Flugzeuge */
-    --z-ui: 7;    /* Statusleiste und Knöpfe */
-    --z-fx: 8;    /* Kurzlebiges: Herzchen, Funken, Noten, Staub, Geschenk */
-    --z-tag: 9;   /* Fähnchen von Flugzeugen und Geräten: die gefragte Auskunft liegt über allem */
+    /* Ebenen der Szene von hinten nach vorn, für alle Stilblöcke. Was keine Ebene hat (Himmel, Sonne, Wolken,
+       Flugzeuge, Hügel), liegt in DOM-Reihenfolge ganz unten. Darüber die Bühne: Jede Figur am Boden hat ihre
+       eigene Ebene aus ihrem Fußpunkt (buehneZ in src/logik/buehne.js, von 1 bis ${BUEHNE_MAX}; die Schichten
+       .mice … .poops sind nur Behälter ohne Ebene). Darüber folgen diese. Zahlen ohne Variable gelten nur innerhalb
+       ihres Elternteils. */
+    --z-wx: ${BUEHNE_MAX + 1};    /* Regen, Schnee, Nebel, Blitz */
+    --z-talk: ${BUEHNE_MAX + 2};  /* Sprech- und Denkblasen, zzz, Zeichen über dem Kopf; Tippflächen der Flugzeuge */
+    --z-ui: ${BUEHNE_MAX + 3};    /* Statusleiste und Knöpfe */
+    --z-fx: ${BUEHNE_MAX + 4};    /* Kurzlebiges: Herzchen, Funken, Noten, Staub, Geschenk */
+    --z-tag: ${BUEHNE_MAX + 5};   /* Fähnchen von Flugzeugen und Geräten: die gefragte Auskunft liegt über allem */
   }
   /* --h0 bis --h3, --m1, --mcap, --mound, --mound-s (Hügel, Wiese, Halme, Berge, Kuppe) und --lb, --ls, --lbp (Licht auf dem Land) setzt
      _light am Element: nach Jahreszeit, Sonnenhöhe, Wetter und Schneedecke (landColors). Oben stehen nur die
@@ -121,7 +119,7 @@ const STYLE = `
   /* Berge (Areal alpin) in eigener Ebene hinter Regenbogen, Wolken und Flugzeugen: Ein tiefer Anflug verschwände
      sonst hinter dem Grat. Sonne, Mond und Sterne bleiben dahinter. Ihre Farben kommen wie die der Hügel fertig
      gerechnet aus _light (--m1, --mcap): Dämmerung, Wolkendecke und Gewitter gleiten mit Himmel und Land. */
-  .snowcover .flowers { opacity: 0; }
+  .snowcover .flower { opacity: 0; } /* je Blume: Deckkraft an der Schicht machte sie zu einem eigenen Stapel */
 
   /* ---- Prototyp Tiefe (depth: true) ----
      Kulisse in Ebenen: Je weiter weg, desto mehr wandert sie mit dem Pika mit (--plx -1 … 1, die Wiese
@@ -144,25 +142,33 @@ const STYLE = `
   .pika.lane1 .shadow { opacity: .75; }
   .pika .br { transition: filter 1s; }
   .day:not(.overcast) .pika.lane1 .br { filter: saturate(.85) brightness(1.05); }
-  /* Hintere Spur (.hinten an der Szene, wechselt auf halbem Weg): Blumen, Futter, Geschenke und Mäuse vorn
-     liegen im DOM vor dem Pika und ohne Ebene, sonst stünde er vor ihnen. Darum der Pika unter sie,
-     über Bau, Stein und Festdeko am Bau (gleiche Ebene, im DOM davor), unter Vögeln, Pino, Heu und Gras. */
-  .hinten .pika { z-index: var(--z-back); }
-  .hinten .flowers, .hinten .foods, .hinten .gifts, .hinten .mice-f { z-index: var(--z-mid); }
-  /* Die Ebenen füllen die ganze Szene: Tipps zum Pika durchlassen (Antippbares darin setzt selbst auto) */
-  .hinten .flowers, .hinten .foods { pointer-events: none; }
+  /* Wer auf der hinteren Spur vor oder hinter ihm steht, folgt seit 0.38 aus dem Fußpunkt (Bühne, _pikaZ); den
+     Wechsel der Ebene setzt _walkTo auf halbem Weg. */
   @media (prefers-reduced-motion: reduce) { .tiefe .hills *, .tiefe .mtns *, .tiefe .clouds { transition: none !important; } }
 
-  .land, .flowers, .foods, .birds, .mice, .mice-f { position: absolute; inset: 0; transition: filter 2.5s, opacity 2s; }
+  /* Schichten der Bühne: nur Behälter, ohne Ebene und ohne Filter (beides machte sie zu einem eigenen Stapel, ihre
+     Figuren könnten sich dann nicht mit denen anderer Schichten überlappen). Die Ebene hat jede Figur selbst. */
+  .land, .flowers, .foods, .birds, .mice, .mice-f { position: absolute; inset: 0; }
   .birds, .mice, .mice-f { pointer-events: none; }
-  .birds { z-index: var(--z-mid); } /* über der Festdeko am Bau (.fon), hinter Pika, Pino, Heu und Gras */
+  .mice > * { z-index: ${BZ.maus}; }
+  .mice-f > * { z-index: ${BZ.mausVorn}; }
+  .birds > * { z-index: ${BZ.vogel}; } /* über der Festdeko am Bau, hinter Pika, Pino, Heu und Gras */
   /* Licht auf allem, was auf dem Land steht: Helligkeit und Sättigung stufenlos aus Sonnenhöhe und Wetter (--lb, --ls;
      --lbp für Requisiten, die nachts etwas heller bleiben). Bei vollem Tageslicht (ohne .shade) gar kein Filter.
      Hügel, Wiese und Halme haben ihre Farben fertig gerechnet (--h1 bis --h3), die Blumen auch (_flowerTint): Sie
-     schaukeln ständig, ein Filter über ihrer Ebene müsste in jedem Bild neu gerechnet werden. */
-  .shade .land, .shade .foods, .shade .fore, .shade .birds, .shade .mice, .shade .mice-f { filter: brightness(var(--lb, 1)) saturate(var(--ls, 1)); }
+     schaukeln ständig, ein Filter über ihnen müsste in jedem Bild neu gerechnet werden. Seit 0.38 liegt der Filter
+     auf jeder Figur (Bau, Stein, Futter, Heu, Vogel, Maus, Frosch, Schnecke, Drachen, Häufchen, Schätze,
+     Requisiten), nicht mehr auf ihrer Schicht; bei Vögeln und Besuchern auf der Grafik (.bw, .mw, .cw), die Hülle
+     selbst ist 0 × 0 groß. */
+  .burrow, .lookout, .food, .bw, .mw, .cw { transition: filter 2.5s; }
+  /* Blumen und Futter fangen keine Tipps: Wer dahinter steht (Pika auf der hinteren Spur), bekommt sie. Die Welt-Tipps
+     auf Blumen gehen über die Szene (_worldZones), wie bisher. */
+  .flower, .food { pointer-events: none; }
+  .shade .burrow, .shade .lookout, .shade .food, .shade .hay, .shade .bw, .shade .mw, .shade .cw, .shade .kite { filter: ${LICHT}; }
+  .shade .poo { filter: ${LICHT_P}; }
   .burrow, .lights { position: absolute; }
-  .lights { pointer-events: none; }
+  .burrow { z-index: ${BZ.bau}; }
+  .lights { pointer-events: none; z-index: ${BZ.licht}; }
   .burrow svg, .lights svg { display: block; width: 100%; height: auto; overflow: visible; }
   .mound { fill: var(--mound, #94c873); stroke: var(--mound-s, #5f8f45); transition: fill 2.5s, stroke 2.5s; }
   .mound-t { stroke: var(--mound-s, #5f8f45); transition: stroke 2.5s; }
@@ -173,13 +179,13 @@ const STYLE = `
   .night .lt { opacity: 1; }
   .night .lt.flk { animation: flicker 2.8s ease-in-out infinite alternate; }
   @keyframes flicker { 40% { opacity: .75; } 55% { opacity: 1; } 100% { opacity: .85; } }
-  .lookout { position: absolute; }
+  .lookout { position: absolute; z-index: ${BZ.stein}; }
   .lookout svg { display: block; width: 100%; height: auto; overflow: visible; }
   .rock-snow { display: none; }
   .snowcover .rock-snow { display: inline; }
   .rtuft { fill: var(--h3); transition: fill 2.5s; }
   /* Fernsehen: flackerndes Licht im Eingang (der Fernseher steht drinnen), Bau-Fenster flackert mit */
-  .tvl { position: absolute; pointer-events: none; overflow: hidden; opacity: 0; transition: opacity .8s; }
+  .tvl { position: absolute; pointer-events: none; overflow: hidden; opacity: 0; transition: opacity .8s; z-index: ${BZ.tv}; }
   .tv-on .tvl { opacity: 1; }
   .tvl i { position: absolute; display: block; }
   .tvl .tvg {
@@ -196,11 +202,10 @@ const STYLE = `
   .tv-on .tvw-x { opacity: 1; }
   @keyframes tvflk { 0%, 100% { opacity: .55; } 20% { opacity: .75; } 35% { opacity: .45; } 60% { opacity: .7; } 80% { opacity: .5; } }
   /* Drachen: Schnur und Drachen hängen an der Pfote (Ursprung), steigen auf und schwanken im Wind */
-  .kites { position: absolute; inset: 0; pointer-events: none; transition: filter 2.5s; }
-  .shade .kites { filter: brightness(var(--lb, 1)) saturate(var(--ls, 1)); }
-  .kite { position: absolute; width: 0; height: 0; transition: opacity .6s, transform .35s ease-out; }
+  .kites { position: absolute; inset: 0; pointer-events: none; }
+  .kite { position: absolute; width: 0; height: 0; z-index: ${BZ.drachen}; transition: opacity .6s, transform .35s ease-out, filter 2.5s; }
   /* Ruck: Die Pfote geht mit dem Pika nach hinten (.ktug), der Anfang der Schnur im selben Takt mit (--ktx, --kty) */
-  .kite.kpull { transform: translate(var(--ktx, 0px), var(--kty, 0px)); transition: opacity .6s, transform .18s ease-out; }
+  .kite.kpull { transform: translate(var(--ktx, 0px), var(--kty, 0px)); transition: opacity .6s, transform .18s ease-out, filter 2.5s; }
   .kite.gone { opacity: 0; }
   .kite svg { position: absolute; left: 0; top: 0; overflow: visible; }
   .kite .kl { transform-box: view-box; transform-origin: 0 0; transform: rotate(var(--k0, 0deg)) scale(.25); transition: transform 3s ease-out; }
@@ -234,7 +239,7 @@ const STYLE = `
      steht, sinkt ein paar Pixel ein und verschwindet unten im Gras. */
   .grass {
     position: absolute; left: 0; right: 0; top: calc(var(--gy) - var(--H) * .045); bottom: 0;
-    pointer-events: none; z-index: var(--z-stage);
+    pointer-events: none; z-index: ${BZ.gras};
   }
   .grass svg { display: block; width: 100%; height: calc(var(--H) * .06); }
   .grass::after {
@@ -244,10 +249,10 @@ const STYLE = `
   .grass .blades { fill: var(--h3); transition: fill 2.5s; }
   .grass .soil { fill: var(--h2); transition: fill 2.5s; }
   /* Heuhaufen vor dem Pika, damit man sieht, wie er Blüten hineinlegt */
-  .fore { position: absolute; inset: 0; pointer-events: none; z-index: var(--z-stage); transition: filter 2.5s; }
+  .fore { position: absolute; inset: 0; pointer-events: none; }
   .hay {
-    position: absolute; left: var(--hl); width: var(--hw); bottom: calc(var(--gb) - 4px);
-    transform-origin: 50% 100%; transform: scale(var(--hs, .6)); transition: transform .5s cubic-bezier(.3, 1.6, .5, 1);
+    position: absolute; left: var(--hl); width: var(--hw); bottom: calc(var(--gb) - 4px); z-index: ${BZ.heu};
+    transform-origin: 50% 100%; transform: scale(var(--hs, .6)); transition: transform .5s cubic-bezier(.3, 1.6, .5, 1), filter 2.5s;
   }
   .hay.boing { animation: boing .5s ease-out; }
   /* Areal mit Vorratsnische: kein Heuhaufen, die zuletzt abgelegte Blüte ploppt in der Nische auf */
@@ -273,6 +278,7 @@ const STYLE = `
   .flower {
     position: absolute; left: calc(var(--xf) * var(--W) - var(--fw) / 2); bottom: calc(var(--gb) - 5px);
     width: var(--fw); transform-origin: 50% 100%; animation: sway 3.6s ease-in-out infinite alternate;
+    z-index: ${BZ.blume}; transition: opacity 2s;
   }
   .flower svg * { transition: fill 2.5s, stroke 2.5s; }
   .flower.grow { animation: grow 1.4s ease-out, sway 3.6s 1.4s ease-in-out infinite alternate; }
@@ -327,7 +333,7 @@ const STYLE = `
   @keyframes picked { to { transform: translateY(-30%) scale(.2); opacity: 0; } }
   .food {
     position: absolute; left: calc(var(--xf) * var(--W) - var(--dw) / 2); bottom: calc(var(--gb) - 6px);
-    width: var(--dw); transform-origin: 50% 100%;
+    width: var(--dw); transform-origin: 50% 100%; z-index: ${BZ.futter};
   }
   .food.drop { animation: drop .8s cubic-bezier(.45, 0, .7, 1) both; }
   .food.gone { animation: picked .3s forwards; }
@@ -354,7 +360,7 @@ const STYLE = `
   /* ---- Pika ---- */
   .pika {
     position: absolute; left: 0; top: calc(var(--gy) - var(--ph) * .945); width: var(--pw); height: var(--ph);
-    z-index: var(--z-stage); cursor: pointer; will-change: transform; touch-action: pan-y; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none;
+    z-index: ${BZ.pika}; cursor: pointer; will-change: transform; touch-action: pan-y; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none;
     transform-origin: 50% 94.5%; /* Füße: auf dem Stein ist er etwas kleiner (weiter hinten) */
   }
   /* Unter den Füßen (y 90,5 von 100), 5 % über der Unterkante: Tiefer läge er zur Hälfte unter dem Boden des
@@ -373,8 +379,9 @@ const STYLE = `
     transform: translate(calc(var(--hc) - var(--hh) * var(--hd)), var(--dy)) scale(var(--ds));
   }
   .inside .shadow { opacity: 0; }
-  /* Im Bau liegt er hinter Pino, der draußen vor dem Eingang vorbeihoppelt; Vögel (gleiche Ebene) stehen im DOM davor */
-  .pika.inside { z-index: var(--z-mid); }
+  /* Im Bau liegt er hinter Pino, der draußen vor dem Eingang vorbeihoppelt, und vor den Vögeln. Die Ebene setzt
+     _pikaZ am Element (Rang pikaBau statt pika); diese Regel gilt nur, bis das Skript sie gesetzt hat. */
+  .pika.inside { z-index: ${BZ.pikaBau}; }
   /* In der Luft schrumpft und verblasst der Schatten, im Takt von hop, hops, hopb, jump und binky (--shs, --sho = am Scheitel) */
   .walking .shadow { --shs: .86; --sho: .66; animation: sh-hop .36s linear infinite; }
   .walking.trip .shadow { --shs: .93; --sho: .84; animation: sh-trip .24s linear infinite; }
@@ -1069,9 +1076,9 @@ const STYLE = `
   @keyframes squeak { 0% { opacity: 0; scale: .4; } 15% { opacity: 1; scale: 1; } 75% { opacity: 1; } 100% { opacity: 0; translate: 0 -6px; } }
 
   /* Häufchen liegen vorn auf dem Boden (vor dem Gras). Die Tippfläche ist größer als die Köttelchen. */
-  .poops { position: absolute; inset: 0; z-index: var(--z-stage); pointer-events: none; transition: filter 2.5s; }
-  .shade .poops { filter: brightness(var(--lbp, 1)) saturate(var(--ls, 1)); }
+  .poops { position: absolute; inset: 0; pointer-events: none; }
   .poo {
+    z-index: ${BZ.haeufchen}; transition: filter 2.5s;
     position: absolute; left: calc(var(--px) - 22px); bottom: calc(var(--gb) - var(--H) * .022 - 10px);
     width: 44px; padding: 14px 0 10px; display: flex; justify-content: center;
     pointer-events: auto; cursor: pointer;
@@ -1091,7 +1098,7 @@ const STYLE = `
     30% { transform: translateX(-2px) scale(1.06, .88); }
     to { transform: translate(calc(var(--H) * .05), calc(var(--H) * -.12)) scale(.35); opacity: 0; }
   }
-  .poo.gone { pointer-events: none; opacity: 0; transition: opacity .8s; }
+  .poo.gone { pointer-events: none; opacity: 0; transition: opacity .8s, filter 2.5s; }
   /* Alte Häufchen: eine kleine Fliege kreist darüber (nur bei Tag) */
   .fly { display: none; position: absolute; left: 50%; top: 6px; width: 0; height: 0; animation: buzz 2.6s linear infinite; }
   .poo.old .fly { display: block; }
