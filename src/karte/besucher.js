@@ -3,6 +3,8 @@
 import { Cancel, rnd, pick, clamp, pause, weighted, seedRnd, clearSpot } from '../logik/hilfen.js';
 import { CRIT, CRIT_KINDS, CRIT_BACK, critJoin } from '../logik/besucher.js';
 import { BIRDS, BIRD_SVG, MOUSE_SVG, FROG_SVG, SNAILS, SNAIL_SVG } from '../grafik/besucher.js';
+import { LANE_DY, LANE_S } from '../logik/einstellungen.js';
+import { BZ, buehneZ } from '../logik/buehne.js';
 
 export class Besucher {
   // Zum Vögelchen hinschauen, piepsen – es zwitschert zurück
@@ -45,7 +47,9 @@ export class Besucher {
     await this._wait(rnd(900, 1600));
     if (m.out && Math.random() < 0.5) {
       p.classList.remove('look-f');
-      await this._walkTo(m.x - this._dir * this._g.pW * rnd(0.7, 1.1), 0.6);
+      // auf ihre Spur (depth), sonst stünde er vorn vor ihr statt neben ihr
+      const x = m.x - this._dir * this._g.pW * rnd(0.7, 1.1);
+      await this._walkTo(x, 0.6, false, this._critPikaLane(m, x));
       p.classList.add('look-f');
     }
     if (Math.random() < 0.4) this._say(pick(['mip?', 'iiep?']), 1000);
@@ -91,7 +95,13 @@ export class Besucher {
     await this._wait(rnd(900, 1500));
     if (!there() || Math.random() < 0.3) return this._wait(rnd(800, 1600));
     p.classList.remove('look-f', 'tilt');
-    await this._approach(s.x, 0.6);
+    if (s.lane) {
+      // wie _approach, aber auf ihrer Spur: auf der hinteren schnuppert er an ihr, nicht vorn an der Luft
+      const dir = Math.abs(s.x - this._x) < 2 ? this._dir : Math.sign(s.x - this._x);
+      const x = s.x - dir * this._g.pW * 0.36;
+      await this._walkTo(x, 0.6, false, this._critPikaLane(s, x));
+      this._face(s.x >= this._x ? 1 : -1);
+    } else await this._approach(s.x, 0.6);
     if (!there()) return;
     p.classList.add('sniff');
     await this._wait(500);
@@ -165,11 +175,13 @@ export class Besucher {
       return { bird: Math.floor(r(2) * BIRDS.length), spot: r(3), rockX: 35 + r(4) * 30,
         side: r(5) < 0.5 ? -1 : 1, out: r(6) < 0.5 ? -1 : 1, stay: 15000 + r(7) * 30000, alt: r(8) };
     }
-    // Frosch: wie weit auf die Wiese und wie lange; Schnecke: Hausfarbe und wie weit
-    if (kind === 'frog') return { x: r(2), stay: 12000 + r(3) * 14000 };
-    if (kind === 'snail') return { shell: Math.floor(r(2) * SNAILS.length), far: r(3) };
+    // Frosch: wie weit auf die Wiese und wie lange; Schnecke: Hausfarbe und wie weit. back (seit 0.39): mit depth
+    // auf der hinteren Spur über die Wiese, etwa jeder zweite Besuch (r(4) war frei: die übrigen bleiben, wie sie waren)
+    const back = r(4) < 0.5;
+    if (kind === 'frog') return { x: r(2), stay: 12000 + r(3) * 14000, back };
+    if (kind === 'snail') return { shell: Math.floor(r(2) * SNAILS.length), far: r(3), back };
     const k = r(2); // seitlich : oben : auf die Wiese = 2 : 1 : 5 (auf der Wiese sieht man sie am besten)
-    return { kind: k < 0.25 ? 'side' : k < 0.375 ? 'top' : 'run', x: 30 + r(3) * 40 };
+    return { kind: k < 0.25 ? 'side' : k < 0.375 ? 'top' : 'run', x: 30 + r(3) * 40, back };
   }
 
   _stopCritters() {
@@ -252,6 +264,58 @@ export class Besucher {
     p.classList.add(c);
     clearTimeout(this._lookT);
     this._lookT = setTimeout(() => p.classList.remove(c), 1800);
+  }
+
+  // Bühne (seit 0.39): Ebene von Maus, Frosch und Schnecke, statt sie zwischen zwei Schichten umzuhängen (.mice
+  // hinter dem Stein, .mice-f davor). Hinter dem Stein ganz hinten (Rang maus, Reihe des Baus); draußen auf der
+  // Wiese (out, Klasse vorn) auf ihrer Spur mit Rang mausVorn: vorn wie bis 0.38 vor Blumen und Futter und hinter dem
+  // Pika; auf der hinteren Spur (c.lane, Klasse lane1) hinter Heu, Stein und dem Pika vorn, vor dem Pika nur, wenn er
+  // auf der hinteren Spur steht und sie vorn.
+  _critZ(c, out) {
+    const hinten = !!(out && c.lane);
+    c.el.style.zIndex = String(!out ? BZ.maus : hinten ? buehneZ(-LANE_DY, 'mausVorn') : BZ.mausVorn);
+    c.el.classList.toggle('vorn', !!out);
+    c.el.classList.toggle('lane1', hinten);
+  }
+
+  // Tiefe: Spur eines Besuchs auf der Wiese (1 = hintere), a … b sein Bereich dort, w seine Breite (px). pk.back aus
+  // dem Seed (alle Geräte gleich), _critLaneNext erzwingt sie für den nächsten Besuch, der auf die Wiese kommt
+  // (Vorschau, wie _laneNext beim Pika). Hinten nur, wenn genug von a … b auf der hinteren Spur liegt (_laneRange).
+  _critLane(pk, a, b, w) {
+    const want = this._critLaneNext ?? (pk.back ? 1 : 0);
+    this._critLaneNext = null;
+    if (!this._cfg.depth || !want) return 0;
+    const [l, r] = this._laneRange(w);
+    return Math.min(b, r) - Math.max(a, l) >= w * 0.5 ? 1 : 0;
+  }
+
+  // Größe eines Besuchers mit den Füßen auf Höhe y: Wer die hintere Spur nimmt, wird mit der Höhe über seiner
+  // Laufhöhe c.yG stufenlos kleiner, bis LANE_S auf der Spur. So passt die Größe auch mitten im schrägen Weg vom
+  // Stein auf die Spur, und dieselbe transition trägt Weg und Größe. Ohne Spur (auch oben auf dem Stein) immer 1.
+  _critS(c, y) {
+    return c.lane ? 1 - (1 - LANE_S) * clamp((c.yG - y) / (this._H * LANE_DY), 0, 1) : 1;
+  }
+
+  // transform eines Besuchers, Füße bei (x, y). scale wirkt um den Ursprung der 0 × 0 großen Hülle, die Füße.
+  // Ohne hintere Spur genau wie bis 0.38 (nur translate).
+  _critXf(c, x, y) {
+    const s = this._critS(c, y);
+    return `translate(${x.toFixed(1)}px, ${y.toFixed(1)}px)` + (s !== 1 ? ` scale(${s.toFixed(3)})` : '');
+  }
+
+  // Wo ein Besucher gerade wirklich steht: mitten in einer Bewegung sind c.x und c.y schon das Ziel
+  _critLive(c) {
+    const t = getComputedStyle(c.el).transform;
+    if (!t || t === 'none') return { x: c.x, y: c.y };
+    const M = new DOMMatrixReadOnly(t);
+    return { x: M.m41, y: M.m42 };
+  }
+
+  // Spur, auf der der Pika zu einem Besucher c nach x geht: auf dessen Spur, wenn x auf der hinteren liegt
+  _critPikaLane(c, x) {
+    if (!c?.lane || !this._cfg.depth) return 0;
+    const [l, r] = this._laneRange();
+    return x >= l && x <= r ? 1 : 0;
   }
 
   // Vögelchen: fliegt im Bogen an, sitzt 15–45 s (Kopf schief, picken, hüpfen, zwitschern), fliegt weg
@@ -384,35 +448,37 @@ export class Besucher {
     const el = document.createElement('div');
     el.className = 'mouse';
     el.innerHTML = `<div class="mw" role="button" aria-label="Maus"><div class="mf"><div class="mb">${MOUSE_SVG}</div></div></div>`;
-    const m = this._critter({ el, x: 0, y: 0, dir: 1, visible: false, out: false });
+    const yG = gy - this._H * 0.022; // Laufweg knapp hinter dem Pika
+    // lane: Spur auf der Wiese (depth, siehe unten), yG: Laufhöhe, an der die Größe hängt (_critS)
+    const m = this._critter({ el, x: 0, y: 0, dir: 1, visible: false, out: false, lane: 0, yG });
     el.querySelector('.mw').addEventListener('click', (e) => (e.stopPropagation(), this._found('visitor'), m.scare()));
     this._keyTap(el.querySelector('.mw'));
     this._mouse = m;
+    this._critZ(m, false);
     this._el.mice.appendChild(el);
 
-    const yG = gy - this._H * 0.022; // Laufweg knapp hinter dem Pika
     const edge = rock.l + 7 * rock.ku; // linke Steinkante
     const hideX = edge + mw * 0.75;
     const peekX = edge + mw * 0.1;
     const door = edge - mw * 0.6; // ganz neben dem Stein: hier wechselt sie zwischen hinterer und vorderer Ebene
-    // Hinter dem Stein läuft sie in der Ebene hinter Bau und Stein, auf der Wiese vor den Blumen
-    // Umhängen setzt den Stil zurück: gleich neu berechnen, sonst spränge sie ohne Übergang ans nächste Ziel
-    const layer = (front) => {
-      (front ? this._el.miceF : this._el.mice).appendChild(el);
-      void el.offsetWidth;
-    };
+    // Hinter dem Stein läuft sie in der Ebene hinter Bau und Stein, auf der Wiese vor den Blumen (_critZ)
+    // Die Vorschau (_critLaneNext = 1) will sie auf der hinteren Spur sehen: dann geht sie auf die Wiese
+    const kind = this._cfg.depth && this._critLaneNext === 1 ? 'run' : pk.kind;
+    let minX = Math.max(this._g.fMin * this._W, mw);
+    // Tiefe: auf der hinteren Spur läuft sie auf der Wiese um LANE_DY höher (yW) und kleiner; vom Stein aus geht
+    // es schräg hinauf, versteckt und beim Herausschauen bleibt sie auf yG. Oben auf dem Stein oder nur seitlich
+    // herausschauen: keine Spur.
+    if (kind === 'run') m.lane = this._critLane(pk, minX, door, mw);
+    if (m.lane) minX = Math.max(minX, this._laneRange(mw)[0]);
+    const yW = m.lane ? yG - this._H * LANE_DY : yG;
     const topY = rock.top0 + 13.5 * rock.ku;
     const face = (d) => ((m.dir = d), el.classList.toggle('left', d < 0));
     const move = (x, y, ms = 0, ease = 'ease-out') => {
       el.style.transition = ms ? `transform ${ms}ms ${ease}` : 'none';
-      el.style.transform = `translate(${x.toFixed(1)}px, ${y.toFixed(1)}px)`;
+      el.style.transform = this._critXf(m, x, y);
       m.x = x;
       m.y = y;
       if (!ms) void el.offsetWidth;
-    };
-    const liveX = () => {
-      const t = getComputedStyle(el).transform;
-      return t && t !== 'none' ? new DOMMatrixReadOnly(t).m41 : m.x;
     };
     const pose = (c, on) => el.classList.toggle(c, on);
     // Warten; kommt der Pika zu nah, wird sie verscheucht
@@ -422,11 +488,12 @@ export class Besucher {
       if (m.out && Math.abs(this._liveX() - m.x) < pW * 0.55) m.scare();
       if (m.scared) throw FLEE;
     };
-    const run = async (x, speed = 1) => {
+    // Laufen nach (x, y); schräg (Spurwechsel) zählt die ganze Strecke
+    const run = async (x, speed = 1, y = yG) => {
       face(x >= m.x ? 1 : -1);
-      const ms = (Math.abs(x - m.x) / (this._H * 1.1 * speed)) * 1000;
+      const ms = (Math.hypot(x - m.x, y - m.y) / (this._H * 1.1 * speed)) * 1000;
       pose('run', true);
-      move(x, yG, ms, 'linear');
+      move(x, y, ms, 'linear');
       await step(ms);
       pose('run', false);
     };
@@ -458,7 +525,6 @@ export class Besucher {
         }
       }
     };
-    const kind = pk.kind;
     try {
       try {
         if (kind === 'top') {
@@ -483,12 +549,11 @@ export class Besucher {
           await step(500);
           await lookAround(kind === 'run' ? 1 + Math.floor(rnd(0, 2)) : 4 + Math.floor(rnd(0, 4)));
           if (kind === 'run') {
-            // raus auf die Wiese, schnuppern, Männchen machen, zurück
-            const minX = Math.max(this._g.fMin * this._W, mw);
-            await run(door);
-            layer(true);
+            // raus auf die Wiese (auf ihre Spur), schnuppern, Männchen machen, zurück
+            await run(door, 1, yW);
+            this._critZ(m, true);
             m.out = true;
-            await run(this._festClear(rnd(minX, Math.max(minX, door - mw * 0.7)), mw, minX, door));
+            await run(this._festClear(rnd(minX, Math.max(minX, door - mw * 0.7)), mw, minX, door), 1, yW);
             this._noticeCritter(m.x, false);
             await lookAround(2);
             if (Math.random() < 0.8) {
@@ -500,12 +565,12 @@ export class Besucher {
             await lookAround(2 + Math.floor(rnd(0, 3)));
             // ein, zwei Stückchen weiter über die Wiese, schnuppern
             for (let n = Math.random() < 0.5 ? 2 : 1; n > 0; n--) {
-              await run(this._festClear(clamp(m.x + rnd(-1, 1) * mw * 2.5, minX, door), mw, minX, door), 0.8);
+              await run(this._festClear(clamp(m.x + rnd(-1, 1) * mw * 2.5, minX, door), mw, minX, door), 0.8, yW);
               await lookAround(1 + Math.floor(rnd(0, 3)));
             }
-            await run(door);
+            await run(door, 1, yW);
             m.out = false;
-            layer(false);
+            this._critZ(m, false);
             await run(peekX);
             await step(rnd(300, 900));
           }
@@ -517,24 +582,26 @@ export class Besucher {
       } catch (e) {
         if (e !== FLEE) throw e;
         // piep! und schnell zurück hinter den Stein
-        const x = liveX();
-        move(x, m.y);
+        // mitten auf dem schrägen Weg zur Spur: dort stehen bleiben, wo sie ist (ohne Spur wie bis 0.38)
+        const at = this._critLive(m);
+        const x = at.x;
+        move(x, m.lane ? at.y : m.y);
         pose('run', false);
         pose('stand', false);
         m.out = m.visible = false;
-        this._peep(x, m.y - mh * 1.2, 'piep!');
+        this._peep(x, m.y - mh * 1.2 * this._critS(m, m.y), 'piep!');
         if (kind === 'top') move(x, topY + mh * 1.1, 180, 'ease-in');
         else {
           face(1);
           pose('run', true);
-          const dash = async (tx) => {
-            const ms = (Math.abs(tx - m.x) / (this._H * 2)) * 1000;
-            move(tx, yG, ms, 'linear');
+          const dash = async (tx, ty = yG) => {
+            const ms = (Math.hypot(tx - m.x, ty - m.y) / (this._H * 2)) * 1000;
+            move(tx, ty, ms, 'linear');
             await this._cw(id, ms);
           };
-          if (el.parentNode === this._el.miceF) {
-            await dash(door);
-            layer(false);
+          if (el.classList.contains('vorn')) {
+            await dash(door, yW);
+            this._critZ(m, false);
           }
           await dash(hideX);
         }
@@ -555,27 +622,33 @@ export class Besucher {
     el.className = 'frog left';
     el.innerHTML = `<div class="cw" role="button" aria-label="Frosch"><div class="cf"><div class="cb">${FROG_SVG}</div></div></div>`;
     const yG = gy - this._H * 0.02; // knapp hinter dem Pika
-    const f = this._critter({ el, x: 0, y: yG, w: fw, dir: -1, out: false });
+    const f = this._critter({ el, x: 0, y: yG, w: fw, dir: -1, out: false, lane: 0, yG });
     el.querySelector('.cw').addEventListener('click', (e) => (e.stopPropagation(), this._found('visitor'), f.scare()));
     this._keyTap(el.querySelector('.cw'));
     this._frog = f;
+    this._critZ(f, false);
     this._el.mice.appendChild(el);
 
     const edge = rock.l + 7 * rock.ku; // linke Steinkante
     const hideX = edge + fw * 0.8;
-    const door = edge - fw * 0.6; // neben dem Stein: hier wechselt er zwischen hinterer und vorderer Ebene
-    const minX = Math.min(Math.max(this._g.fMin * this._W, fw), door);
-    const maxX = Math.max(minX, door - fw * 0.7);
-    // Umhängen setzt den Stil zurück: gleich neu berechnen, sonst spränge das nächste Stück ohne Übergang ans Ziel
-    const layer = (front) => {
-      (front ? this._el.miceF : this._el.mice).appendChild(el);
-      void el.offsetWidth;
-    };
+    const door = edge - fw * 0.6; // neben dem Stein: hier wechselt er zwischen hinterer und vorderer Ebene (_critZ)
+    let minX = Math.min(Math.max(this._g.fMin * this._W, fw), door);
+    let maxX = Math.max(minX, door - fw * 0.7);
+    // Tiefe: auf der hinteren Spur sitzt er auf der Wiese um LANE_DY höher (yW) und kleiner, innerhalb _laneRange;
+    // vom Stein aus geht der erste Satz schräg hinauf
+    f.lane = this._critLane(pk, minX, maxX, fw);
+    if (f.lane) {
+      const [l, r] = this._laneRange(fw);
+      minX = Math.min(Math.max(minX, l), door);
+      maxX = Math.max(minX, Math.min(maxX, r));
+    }
+    const yW = f.lane ? yG - this._H * LANE_DY : yG;
     const face = (d) => ((f.dir = d), el.classList.toggle('left', d < 0));
-    const move = (x, ms = 0) => {
+    const move = (x, ms = 0, y = f.y) => {
       el.style.transition = ms ? `transform ${ms}ms linear` : 'none';
-      el.style.transform = `translate(${x.toFixed(1)}px, ${yG.toFixed(1)}px)`;
+      el.style.transform = this._critXf(f, x, y);
       f.x = x;
+      f.y = y;
       if (!ms) void el.offsetWidth;
     };
     // Warten; kommt der Pika zu nah, erschrickt er
@@ -585,8 +658,9 @@ export class Besucher {
       if (f.out && Math.abs(this._liveX() - f.x) < pW * 0.55) f.scare();
       if (f.scared) throw FLEE;
     };
-    // In Sätzen bis x. fast: große, schnelle Sätze auf der Flucht (dann erschrickt er nicht noch einmal)
-    const hop = async (x, fast = false) => {
+    // In Sätzen bis (x, y). fast: große, schnelle Sätze auf der Flucht (dann erschrickt er nicht noch einmal).
+    // Ändert sich y (Weg zwischen Stein und hinterer Spur), steigt jeder Satz anteilig mit.
+    const hop = async (x, fast = false, y = f.y) => {
       const L = this._H * (fast ? 0.34 : 0.22);
       while (Math.abs(x - f.x) > 1) {
         const d = clamp(x - f.x, -L, L);
@@ -596,16 +670,18 @@ export class Besucher {
         el.style.setProperty('--hd', `${ms}ms`);
         el.style.setProperty('--fh', `${-Math.round(40 + 80 * k)}%`);
         el.classList.add('leap');
-        move(f.x + d, ms);
+        move(f.x + d, ms, f.y + (y - f.y) * (d / (x - f.x)));
         await (fast ? this._cw(id, ms) : step(ms));
         el.classList.remove('leap');
         await (fast ? this._cw(id, 50) : step(rnd(140, 420)));
       }
+      if (Math.abs(y - f.y) > 0.5) move(f.x, 0, y); // schon an x (etwa verscheucht genau an der Tür): nur die Höhe
     };
-    // Nicht auf der Schnecke sitzen: liegt x zu nah an ihr, den Platz daneben nehmen (auf der Seite, wo Wiese ist)
+    // Nicht auf der Schnecke sitzen: liegt x zu nah an ihr, den Platz daneben nehmen (auf der Seite, wo Wiese ist).
+    // Auf der anderen Spur stört sie nicht.
     const free = (x) => {
       const s = this._snail;
-      if (!s?.out || Math.abs(x - s.x) >= fw) return x;
+      if (!s?.out || (s.lane || 0) !== f.lane || Math.abs(x - s.x) >= fw) return x;
       const side = (x < s.x && s.x - fw * 1.1 >= minX) || s.x + fw * 1.1 > maxX ? -1 : 1;
       return clamp(s.x + side * fw * 1.1, minX, maxX);
     };
@@ -613,8 +689,8 @@ export class Besucher {
       try {
         move(hideX);
         await step(60);
-        await hop(door);
-        layer(true);
+        await hop(door, false, yW);
+        this._critZ(f, true);
         f.out = true;
         // neue Ziele: neben der Festdeko statt dahinter
         const spot = (x) => free(this._festClear(x, fw, minX, maxX));
@@ -644,22 +720,23 @@ export class Besucher {
         }
         await hop(door);
         f.out = false;
-        layer(false);
-        await hop(hideX);
+        this._critZ(f, false);
+        await hop(hideX, false, yG);
       } catch (e) {
         if (e !== FLEE) throw e;
         // „quak!“ und mit großen Sätzen zurück hinter den Stein
-        const t = getComputedStyle(el).transform;
-        move(t && t !== 'none' ? new DOMMatrixReadOnly(t).m41 : f.x);
+        // mitten im Satz: dort bleiben, wo er ist (ohne Spur auf yG wie bis 0.38)
+        const at = this._critLive(f);
+        move(at.x, 0, f.lane ? at.y : f.y);
         el.classList.remove('leap', 'croak', 'zap');
         f.out = false;
-        this._peep(f.x, yG - fw * 0.95, 'quak!');
+        this._peep(f.x, f.y - fw * 0.95 * this._critS(f, f.y), 'quak!');
         await this._cw(id, 120);
-        if (el.parentNode === this._el.miceF) {
-          await hop(door, true);
-          layer(false);
+        if (el.classList.contains('vorn')) {
+          await hop(door, true, yW);
+          this._critZ(f, false);
         }
-        await hop(hideX, true);
+        await hop(hideX, true, yG);
         await this._cw(id, 200);
       }
     } finally {
@@ -677,7 +754,8 @@ export class Besucher {
     el.classList.add('croak');
     clearTimeout(f.croakT);
     f.croakT = setTimeout(() => el.classList.remove('croak'), 950);
-    this._peep(f.x + f.dir * f.w * 0.3, f.y - f.w * 0.85, pick(['quak!', 'quak!', 'quaak!']));
+    const k = this._critS(f, f.y); // auf der hinteren Spur kleiner
+    this._peep(f.x + f.dir * f.w * 0.3 * k, f.y - f.w * 0.85 * k, pick(['quak!', 'quak!', 'quaak!']));
   }
 
   // Schnecke (nur bei Regen): kriecht hinter dem Aussichtsstein hervor ein Stück über die Wiese, reckt die Fühler,
@@ -691,7 +769,7 @@ export class Besucher {
     el.className = 'snail left';
     el.innerHTML = `<div class="cw" role="button" aria-label="Schnecke"><div class="cf"><div class="cb">${SNAIL_SVG(SNAILS[pk.shell])}</div></div></div>`;
     const yG = gy - this._H * 0.02;
-    const s = { el, x: 0, y: yG, dir: -1, out: false, hidden: false, poked: false };
+    const s = { el, x: 0, y: yG, dir: -1, out: false, hidden: false, poked: false, lane: 0, yG };
     const wob = () => {
       el.classList.remove('wob');
       void el.offsetWidth;
@@ -705,30 +783,34 @@ export class Besucher {
     el.querySelector('.cw').addEventListener('click', (e) => (e.stopPropagation(), this._found('visitor'), s.poke()));
     this._keyTap(el.querySelector('.cw'));
     this._snail = s;
+    this._critZ(s, false);
     this._el.mice.appendChild(el);
 
     const edge = rock.l + 7 * rock.ku; // linke Steinkante
     const hideX = edge + sw * 0.8;
-    const door = edge - sw * 0.6; // neben dem Stein: Wechsel zwischen hinterer und vorderer Ebene
-    const minX = Math.min(Math.max(this._g.fMin * this._W, sw), door);
-    // Umhängen setzt den Stil zurück: gleich neu berechnen, sonst spränge das nächste Stück ohne Übergang ans Ziel
-    const layer = (front) => {
-      (front ? this._el.miceF : this._el.mice).appendChild(el);
-      void el.offsetWidth;
-    };
+    const door = edge - sw * 0.6; // neben dem Stein: Wechsel zwischen hinterer und vorderer Ebene (_critZ)
+    let minX = Math.min(Math.max(this._g.fMin * this._W, sw), door);
+    // Tiefe: auf der hinteren Spur kriecht sie auf der Wiese um LANE_DY höher (yW) und kleiner, innerhalb
+    // _laneRange; vom Stein aus schräg hinauf
+    s.lane = this._critLane(pk, minX, door, sw);
+    if (s.lane) minX = Math.min(Math.max(minX, this._laneRange(sw)[0]), door);
+    const yW = s.lane ? yG - this._H * LANE_DY : yG;
     const face = (d) => ((s.dir = d), el.classList.toggle('left', d < 0));
-    const liveX = () => {
-      const t = getComputedStyle(el).transform;
-      return t && t !== 'none' ? new DOMMatrixReadOnly(t).m41 : s.x;
-    };
-    // Ohne Dauer steht sie sofort dort; mit Dauer kriecht sie hin (s.x folgt in wait)
-    const put = (x, ms = 0) => {
+    // Ohne Dauer steht sie sofort dort; mit Dauer kriecht sie hin (s.x, auf der Spur auch s.y, folgt in wait)
+    const put = (x, ms = 0, y = s.y) => {
       el.style.transition = ms ? `transform ${ms}ms linear` : 'none';
-      el.style.transform = `translate(${x.toFixed(1)}px, ${yG.toFixed(1)}px)`;
+      el.style.transform = this._critXf(s, x, y);
       if (!ms) {
         s.x = x;
+        s.y = y;
         void el.offsetWidth;
       }
+    };
+    // Wo sie gerade ist; ohne Spur bleibt y fest auf yG (wie bis 0.38)
+    const live = () => {
+      const at = this._critLive(s);
+      if (!s.lane) at.y = s.y;
+      return at;
     };
     // Vor einem nahen Pika erschrickt sie einmal; erst wenn er wieder weg war, beim nächsten Mal wieder
     let shy = true;
@@ -743,13 +825,14 @@ export class Besucher {
       const end = Date.now() + ms;
       while (Date.now() < end) {
         await this._cw(id, clamp(end - Date.now(), 20, 200));
-        s.x = liveX();
+        ({ x: s.x, y: s.y } = live());
         if (s.poked || near()) return true;
       }
       return false;
     };
     const hide = async () => {
-      put(liveX());
+      const at = live();
+      put(at.x, 0, at.y);
       el.classList.remove('crawl', 'peer');
       el.classList.add('hide');
       s.hidden = true;
@@ -762,16 +845,17 @@ export class Besucher {
       near(); // steht der Pika noch da, erschrickt sie davor nicht gleich wieder
       await this._cw(id, 900);
     };
-    const crawl = async (x) => {
-      while (Math.abs(x - s.x) > 1) {
-        face(x > s.x ? 1 : -1);
-        const ms = (Math.abs(x - s.x) / v) * 1000;
+    // Kriechen nach (x, y); schräg (Weg zwischen Stein und hinterer Spur) zählt die ganze Strecke
+    const crawl = async (x, y = s.y) => {
+      while (Math.abs(x - s.x) > 1 || Math.abs(y - s.y) > 0.5) {
+        if (Math.abs(x - s.x) > 1) face(x > s.x ? 1 : -1);
+        const ms = (Math.hypot(x - s.x, y - s.y) / v) * 1000;
         el.classList.add('crawl');
-        put(x, ms);
+        put(x, ms, y);
         const hit = await wait(ms);
         el.classList.remove('crawl');
         if (hit) await hide();
-        else put(x);
+        else put(x, 0, y);
       }
     };
     const rest = async (ms) => {
@@ -786,8 +870,8 @@ export class Besucher {
     try {
       put(hideX);
       await this._cw(id, 60);
-      await crawl(door);
-      layer(true);
+      await crawl(door, yW);
+      this._critZ(s, true);
       s.out = true;
       this._noticeCritter(s.x, false);
       await crawl(this._festClear(door - (0.3 + 0.6 * pk.far) * Math.min(door - minX, this._H * 0.7), sw, minX, door));
@@ -795,8 +879,8 @@ export class Besucher {
       await rest(Math.max(1500, rnd(5000, 9000) - late));
       await crawl(door);
       s.out = false;
-      layer(false);
-      await crawl(hideX);
+      this._critZ(s, false);
+      await crawl(hideX, yG);
     } finally {
       if (this._snail === s) this._snail = null;
       el.remove();

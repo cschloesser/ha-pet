@@ -7,7 +7,7 @@
 (() => {
   // Figuren: Art und Auswahl im Schattenbaum. Gezählt wird, was zu sehen ist (Fläche, nicht unsichtbar).
   const ARTEN = [
-    ['maus', '.mice > *'],
+    ['maus', '.mice > :not(.vorn)'], // hinter dem Stein (seit 0.39 eine Schicht, Ebene je Besucher)
     ['festHinten', '.fest-b > :not(.fon) > *'],
     ['bau', '.burrow'],
     ['stein', '.lookout'],
@@ -18,7 +18,8 @@
     ['blume', '.flowers > *'],
     ['futter', '.foods > *'],
     ['schatz', '.gifts > *'],
-    ['mausVorn', '.mice-f > *'],
+    ['mausVorn', '.mice > .vorn:not(.lane1)'],
+    ['mausHinten', '.mice > .vorn.lane1'], // depth: auf der hinteren Spur
     ['geraet', '.props > .hb'],
     ['schild', '.hb-bars > .hb-lab'],
     ['balken', '.hb-bars > .hb-bar'],
@@ -123,7 +124,7 @@
       await warte(150);
     }
     for (const c of karten) {
-      if (!c._friend) c._friendCome(undefined, undefined, true);
+      if (!c._fr) c._friendCome(undefined, undefined, true);
       c._onFeed();
     }
     await warte(2500);
@@ -159,14 +160,14 @@
     await buehneSzene(karten, 'fels');
     buehneLicht(karten, 28);
     for (let n = 0; n < 120; n++) {
-      if (karten[0].shadowRoot.querySelector('.mice-f > *') && karten[0]._friend) break;
+      if (karten[0].shadowRoot.querySelector('.mice > .vorn') && karten[0]._fr) break;
       if (n % 30 === 29) for (const k of ['mouse', 'frog', 'snail']) karten[0]._visit(k, karten[0]._critId, true);
       await warte(250);
     }
     out.push(kurz(buehneAufnahme(karten[0]), 'besuch-vorn'));
     // Beschäftigungen ohne Pino und Besucher, im Areal fels
     for (const c of karten) {
-      if (c._friend) c._friendLeave(true);
+      if (c._fr) c._friendLeave(true);
       c.setConfig({ ...c._cfg, areal: 'fels' });
     }
     klick('[data-sun="180,28,0"]');

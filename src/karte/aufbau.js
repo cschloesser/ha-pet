@@ -75,7 +75,6 @@ export class Aufbau {
             <div class="flowers"></div>
             <div class="foods"></div>
             <div class="gifts"></div>
-            <div class="mice-f"></div>
             <div class="props"></div>
             <div class="friends"></div>
             <div class="ff">${flies}</div>
@@ -126,7 +125,7 @@ export class Aufbau {
       scene: $('.scene'), pika: $('.pika'), jump: $('.jump'), shadow: $('.pika .shadow'), mfood: $('.mfood'),
       flowers: $('.flowers'), foods: $('.foods'), fx: $('.fx'), hay: $('.hay'),
       stats: $('.stats'), name: $('.nm'), barS: $('.bar-s'), barG: $('.bar-g'),
-      birds: $('.birds'), mice: $('.mice'), miceF: $('.mice-f'), planes: $('.planes'), ptags: $('.ptags'), phits: $('.phits'),
+      birds: $('.birds'), mice: $('.mice'), planes: $('.planes'), ptags: $('.ptags'), phits: $('.phits'),
       tvl: $('.tvl'), kites: $('.kites'), bflip: $('.bflip'),
       stS: $('.st-s'), stG: $('.st-g'), barC: $('.bar-c'), stC: $('.st-c'), poops: $('.poops'), feed: $('.feed'), say: $('.say'), think: $('.think'),
       sun: $('.sun'), moon: $('.moon'), moonLit: $('.moon-lit'), clouds: [...this.shadowRoot.querySelectorAll('.cloud')],

@@ -4,7 +4,7 @@
 import { rnd, pick, clamp, hasKey } from '../logik/hilfen.js';
 import { calmMotion } from '../logik/bewegung-reduzieren.js';
 import { LANE_DY, LANE_S } from '../logik/einstellungen.js';
-import { buehneZ } from '../logik/buehne.js';
+import { buehneZ, REIHE } from '../logik/buehne.js';
 import { FRIEND_SCALE } from '../logik/besucher.js';
 import { MIMIK, MIMIK_CLS } from '../logik/interaktion.js';
 import { HOP_MS, hopRound, EAR_SWING, jumpBusy } from '../logik/beschaeftigungen.js';
@@ -92,7 +92,8 @@ export class Bausteine {
     // Auf dem Stein (weiter hinten) etwas kleiner, Ursprung sind die Füße. Prototyp Tiefe: auf der
     // hinteren Spur höher und kleiner
     const ly = this._laneDy();
-    const s = (this._lift > 0 ? 0.9 : 1) * (ly ? LANE_S : 1);
+    // Beim Mitfahren mit depth steht er vorn auf dem Roboter (_reiter): nicht weiter hinten, also nicht kleiner
+    const s = (this._lift > 0 && !this._reiter ? 0.9 : 1) * (ly ? LANE_S : 1);
     p.style.transform = `translate(${(x - this._g.pW / 2).toFixed(1)}px, ${(-this._lift - ly).toFixed(1)}px)`
       + (s !== 1 ? ` scale(${s.toFixed(3)})` : '');
     // Die Sprech-Ebene läuft mit: gleiche Überblendung (gesetzt in _walkTo, _hopTo oder hier), gleiches Ziel
@@ -108,13 +109,25 @@ export class Bausteine {
     this._bubbleRefit();
   }
 
+  // Tiefe (depth): Bereich der hinteren Spur für eine Figur der Breite w (px, Mitte der Figur). Sie führt über die
+  // ganze Wiese, hinter Heu und Stein vorbei (beide stehen davor, siehe REIHE): von der Mitte des Heuhaufens bzw.
+  // rechts neben der Nische bis an den rechten Rand. Links davon steht der Bau (er liegt hinter der Spur, seine
+  // Tür auf der Bodenlinie: Wer hinten an ihm vorbeiginge, stünde in der Wand).
+  _laneRange(w = this._g.pW) {
+    const g = this._g;
+    const l = g.stash ? g.hayR + w * 0.3 : g.hay;
+    return [l, Math.max(l, this._W - w * 0.45)];
+  }
+
   // Bühne: Ebene des Pikas aus seinem Fußpunkt (lane: die Spur, sonst die jetzige). Im Bau zählt der Eingang (Rang
   // pikaBau, vor den Vögeln, hinter Pino). Auf dem Stein, im Sprung und beim Mitfahren zählt der Fußpunkt, von dem er
-  // abgesprungen ist: Hochspringen geht nur von der vorderen Spur (_hopTo), die Höhe (_lift) zählt nicht.
+  // abgesprungen ist: Hochspringen geht nur von der vorderen Spur (_hopTo), die Höhe (_lift) zählt nicht. Ausnahme
+  // mit depth: Auf dem Saugroboter (_reiter, _sigRide) steht er vorn auf dem vorderen Wiesenstreifen, vor allem.
   _pikaZ(lane = this._lane) {
     const p = this._el.pika;
     const hinten = this._cfg.depth && lane && !(this._lift > 0) ? LANE_DY : 0;
-    p.style.zIndex = String(p.classList.contains('inside') ? buehneZ(0, 'pikaBau') : buehneZ(-hinten, 'pika'));
+    p.style.zIndex = String(p.classList.contains('inside') ? buehneZ(0, 'pikaBau')
+      : this._reiter ? buehneZ(REIHE.rand, 'reiter') : buehneZ(-hinten, 'pika'));
   }
 
   // y für den Anteil f der Größeneinheit, gemessen ab der Oberkante der Bühne (die unteren H px der Karte): für

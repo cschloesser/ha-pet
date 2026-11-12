@@ -60,7 +60,7 @@
  */
 (() => {
   // src/version.js
-  var VERSION = "0.38.0";
+  var VERSION = "0.39.0";
 
   // src/logik/hilfen.js
   var Cancel = class extends Error {
@@ -1661,7 +1661,7 @@
   var REIHE = { bau: -0.12, hinten: -LANE_DY, stein: -0.04, vorn: 0, rand: BOTE_FRONT_DY };
   var RANG = [
     "maus",
-    // Maus, Frosch, Schnecke hinter dem Stein (.mice)
+    // Maus, Frosch, Schnecke hinter dem Stein
     "festHinten",
     // Festdeko hinter dem Bau (Baum, Maibaum, Wimpel)
     "bau",
@@ -1677,7 +1677,7 @@
     "schatz",
     // Schätze, Päckchen, Schild und Postkarte des Urlaubs, Garderobe
     "mausVorn",
-    // Besucher vor dem Stein (.mice-f)
+    // Besucher draußen auf der Wiese (bis 0.38 eigene Schicht .mice-f); hinten: Reihe der hinteren Spur
     "schild",
     // Schild über einem Haushaltsgerät
     "gluehwurm",
@@ -1699,8 +1699,10 @@
     "balken",
     "geraetVorn",
     "tonne",
-    "sauger"
+    "sauger",
     // vorderer Wiesenstreifen
+    "reiter"
+    // depth: der Pika, der auf dem Saugroboter mitfährt, vor allem anderen (seit 0.39)
   ];
   var RANG_N = 40;
   var SPANNE = 300;
@@ -1739,7 +1741,8 @@
     balken: "rand",
     geraetVorn: "rand",
     tonne: "rand",
-    sauger: "rand"
+    sauger: "rand",
+    reiter: "rand"
   };
   var BZ = Object.fromEntries(Object.entries(BUEHNE).map(([art, reihe]) => [art, buehneZ(REIHE[reihe], art)]));
   var LICHT = "brightness(var(--lb, 1)) saturate(var(--ls, 1))";
@@ -3543,10 +3546,10 @@
 
   /* Schichten der Bühne: nur Behälter, ohne Ebene und ohne Filter (beides machte sie zu einem eigenen Stapel, ihre
      Figuren könnten sich dann nicht mit denen anderer Schichten überlappen). Die Ebene hat jede Figur selbst. */
-  .land, .flowers, .foods, .birds, .mice, .mice-f { position: absolute; inset: 0; }
-  .birds, .mice, .mice-f { pointer-events: none; }
-  .mice > * { z-index: ${BZ.maus}; }
-  .mice-f > * { z-index: ${BZ.mausVorn}; }
+  .land, .flowers, .foods, .birds, .mice { position: absolute; inset: 0; }
+  .birds, .mice { pointer-events: none; }
+  /* Maus, Frosch und Schnecke (.mice) bekommen ihre Ebene seit 0.39 vom Skript (_critZ): hinter dem Stein BZ.maus,
+     draußen auf der Wiese (.vorn) BZ.mausVorn, auf der hinteren Spur (.vorn.lane1) aus dem Fußpunkt */
   .birds > * { z-index: ${BZ.vogel}; } /* über der Festdeko am Bau, hinter Pika, Pino, Heu und Gras */
   /* Licht auf allem, was auf dem Land steht: Helligkeit und Sättigung stufenlos aus Sonnenhöhe und Wetter (--lb, --ls;
      --lbp für Requisiten, die nachts etwas heller bleiben). Bei vollem Tageslicht (ohne .shade) gar kein Filter.
@@ -4386,7 +4389,7 @@
     100% { transform: translate(var(--dx, 8px), calc(var(--H) * -.12)) scale(1) rotate(12deg); opacity: 0; }
   }
 
-  /* Maus: läuft hinter Stein und Bau (Ebene davor), translate setzt das Skript */
+  /* Maus: läuft hinter Stein und Bau (Ebene davor); translate (auf der hinteren Spur auch scale) und Ebene setzt das Skript */
   .mouse { position: absolute; left: 0; top: 0; width: 0; height: 0; --mw: calc(var(--H) * .15); }
   .mouse .mw {
     position: absolute; left: calc(var(--mw) * -.5 - 8px); bottom: -6px; width: var(--mw); padding: 10px 8px 6px;
@@ -4833,12 +4836,18 @@
   .friend {
     position: absolute; left: 0; top: calc(var(--gy) - var(--ph) * .945); width: var(--pw); height: var(--ph);
     z-index: ${BZ.pino}; cursor: pointer; pointer-events: auto; will-change: transform;
+    transform-origin: 50% 94.5%; /* Füße: auf der hinteren Spur (depth) kleiner, er bleibt auf ihr stehen */
   }
-  /* Pinos Sprechblase: gleiche Lage wie .friend, aber in der Sprech-Ebene über dem Wetter */
+  /* Pinos Sprechblase: gleiche Lage wie .friend, aber in der Sprech-Ebene über dem Wetter. Gleicher Ursprung, damit
+     sie beim Verkleinern auf der hinteren Spur über seinem Kopf bleibt. */
   .frsay {
     position: absolute; left: 0; top: calc(var(--gy) - var(--ph) * .945); width: var(--pw); height: var(--ph);
-    z-index: var(--z-talk); pointer-events: none;
+    z-index: var(--z-talk); pointer-events: none; transform-origin: 50% 94.5%;
   }
+  /* Hintere Spur: wie beim Pika Schatten etwas blasser, tagsüber ein Hauch Dunst. Die Ebene setzt _frZ (Bühne). */
+  .friend.lane1 .shadow { opacity: .75; }
+  .friend .br { transition: filter 1s; }
+  .day:not(.overcast) .friend.lane1 .br { filter: saturate(.85) brightness(1.05); }
   /* Nasenstupsen und Heranrücken: kurz nach vorn zum anderen lehnen (Pika und Pino) */
   .pika.nuzzle .hop, .friend.nuzzle .hop { animation: nuzzle .8s ease-in-out; }
   @keyframes nuzzle { 35%, 60% { transform: translateX(8%) rotate(5deg) scale(1.03, .97); } }
@@ -5903,7 +5912,6 @@
             <div class="flowers"></div>
             <div class="foods"></div>
             <div class="gifts"></div>
-            <div class="mice-f"></div>
             <div class="props"></div>
             <div class="friends"></div>
             <div class="ff">${flies}</div>
@@ -5965,7 +5973,6 @@
         barG: $(".bar-g"),
         birds: $(".birds"),
         mice: $(".mice"),
-        miceF: $(".mice-f"),
         planes: $(".planes"),
         ptags: $(".ptags"),
         phits: $(".phits"),
@@ -6841,16 +6848,15 @@
       if (this._wx.wet) x = rnd(home, home + this._W * 0.35);
       let lane = 0;
       if (this._cfg.depth) {
-        const g = this._g;
-        const l = g.stash ? g.fMin * this._W : g.hay;
-        const r = g.rock.l - pW * 0.55;
+        const [l, r] = this._laneRange();
         const want = this._laneNext ?? (this._wx.wet ? 0 : Math.random() < 0.4 ? 1 : 0);
         this._laneNext = null;
         if (want && r - l > pW * 0.3) {
           lane = 1;
-          x = rnd(l, r);
+          x = this._laneX != null ? clamp(this._laneX, l, r) : rnd(l, r);
         }
       }
+      this._laneX = null;
       await this._walkTo(x, 1, false, lane);
       await this._wait(rnd(400, 1400));
     }
@@ -7853,7 +7859,8 @@
       await this._wait(rnd(900, 1600));
       if (m.out && Math.random() < 0.5) {
         p.classList.remove("look-f");
-        await this._walkTo(m.x - this._dir * this._g.pW * rnd(0.7, 1.1), 0.6);
+        const x = m.x - this._dir * this._g.pW * rnd(0.7, 1.1);
+        await this._walkTo(x, 0.6, false, this._critPikaLane(m, x));
         p.classList.add("look-f");
       }
       if (Math.random() < 0.4) this._say(pick(["mip?", "iiep?"]), 1e3);
@@ -7897,7 +7904,12 @@
       await this._wait(rnd(900, 1500));
       if (!there() || Math.random() < 0.3) return this._wait(rnd(800, 1600));
       p.classList.remove("look-f", "tilt");
-      await this._approach(s.x, 0.6);
+      if (s.lane) {
+        const dir = Math.abs(s.x - this._x) < 2 ? this._dir : Math.sign(s.x - this._x);
+        const x = s.x - dir * this._g.pW * 0.36;
+        await this._walkTo(x, 0.6, false, this._critPikaLane(s, x));
+        this._face(s.x >= this._x ? 1 : -1);
+      } else await this._approach(s.x, 0.6);
       if (!there()) return;
       p.classList.add("sniff");
       await this._wait(500);
@@ -7969,10 +7981,11 @@
           alt: r(8)
         };
       }
-      if (kind === "frog") return { x: r(2), stay: 12e3 + r(3) * 14e3 };
-      if (kind === "snail") return { shell: Math.floor(r(2) * SNAILS.length), far: r(3) };
+      const back = r(4) < 0.5;
+      if (kind === "frog") return { x: r(2), stay: 12e3 + r(3) * 14e3, back };
+      if (kind === "snail") return { shell: Math.floor(r(2) * SNAILS.length), far: r(3), back };
       const k = r(2);
-      return { kind: k < 0.25 ? "side" : k < 0.375 ? "top" : "run", x: 30 + r(3) * 40 };
+      return { kind: k < 0.25 ? "side" : k < 0.375 ? "top" : "run", x: 30 + r(3) * 40, back };
     }
     _stopCritters() {
       this._critOn = false;
@@ -8044,6 +8057,52 @@
       p.classList.add(c);
       clearTimeout(this._lookT);
       this._lookT = setTimeout(() => p.classList.remove(c), 1800);
+    }
+    // Bühne (seit 0.39): Ebene von Maus, Frosch und Schnecke, statt sie zwischen zwei Schichten umzuhängen (.mice
+    // hinter dem Stein, .mice-f davor). Hinter dem Stein ganz hinten (Rang maus, Reihe des Baus); draußen auf der
+    // Wiese (out, Klasse vorn) auf ihrer Spur mit Rang mausVorn: vorn wie bis 0.38 vor Blumen und Futter und hinter dem
+    // Pika; auf der hinteren Spur (c.lane, Klasse lane1) hinter Heu, Stein und dem Pika vorn, vor dem Pika nur, wenn er
+    // auf der hinteren Spur steht und sie vorn.
+    _critZ(c, out) {
+      const hinten = !!(out && c.lane);
+      c.el.style.zIndex = String(!out ? BZ.maus : hinten ? buehneZ(-LANE_DY, "mausVorn") : BZ.mausVorn);
+      c.el.classList.toggle("vorn", !!out);
+      c.el.classList.toggle("lane1", hinten);
+    }
+    // Tiefe: Spur eines Besuchs auf der Wiese (1 = hintere), a … b sein Bereich dort, w seine Breite (px). pk.back aus
+    // dem Seed (alle Geräte gleich), _critLaneNext erzwingt sie für den nächsten Besuch, der auf die Wiese kommt
+    // (Vorschau, wie _laneNext beim Pika). Hinten nur, wenn genug von a … b auf der hinteren Spur liegt (_laneRange).
+    _critLane(pk, a, b, w) {
+      const want = this._critLaneNext ?? (pk.back ? 1 : 0);
+      this._critLaneNext = null;
+      if (!this._cfg.depth || !want) return 0;
+      const [l, r] = this._laneRange(w);
+      return Math.min(b, r) - Math.max(a, l) >= w * 0.5 ? 1 : 0;
+    }
+    // Größe eines Besuchers mit den Füßen auf Höhe y: Wer die hintere Spur nimmt, wird mit der Höhe über seiner
+    // Laufhöhe c.yG stufenlos kleiner, bis LANE_S auf der Spur. So passt die Größe auch mitten im schrägen Weg vom
+    // Stein auf die Spur, und dieselbe transition trägt Weg und Größe. Ohne Spur (auch oben auf dem Stein) immer 1.
+    _critS(c, y) {
+      return c.lane ? 1 - (1 - LANE_S) * clamp((c.yG - y) / (this._H * LANE_DY), 0, 1) : 1;
+    }
+    // transform eines Besuchers, Füße bei (x, y). scale wirkt um den Ursprung der 0 × 0 großen Hülle, die Füße.
+    // Ohne hintere Spur genau wie bis 0.38 (nur translate).
+    _critXf(c, x, y) {
+      const s = this._critS(c, y);
+      return `translate(${x.toFixed(1)}px, ${y.toFixed(1)}px)` + (s !== 1 ? ` scale(${s.toFixed(3)})` : "");
+    }
+    // Wo ein Besucher gerade wirklich steht: mitten in einer Bewegung sind c.x und c.y schon das Ziel
+    _critLive(c) {
+      const t = getComputedStyle(c.el).transform;
+      if (!t || t === "none") return { x: c.x, y: c.y };
+      const M = new DOMMatrixReadOnly(t);
+      return { x: M.m41, y: M.m42 };
+    }
+    // Spur, auf der der Pika zu einem Besucher c nach x geht: auf dessen Spur, wenn x auf der hinteren liegt
+    _critPikaLane(c, x) {
+      if (!c?.lane || !this._cfg.depth) return 0;
+      const [l, r] = this._laneRange();
+      return x >= l && x <= r ? 1 : 0;
     }
     // Vögelchen: fliegt im Bogen an, sitzt 15–45 s (Kopf schief, picken, hüpfen, zwitschern), fliegt weg
     async _birdVisit(id, force, pk, late = 0) {
@@ -8163,32 +8222,30 @@
       const el = document.createElement("div");
       el.className = "mouse";
       el.innerHTML = `<div class="mw" role="button" aria-label="Maus"><div class="mf"><div class="mb">${MOUSE_SVG}</div></div></div>`;
-      const m = this._critter({ el, x: 0, y: 0, dir: 1, visible: false, out: false });
+      const yG = gy - this._H * 0.022;
+      const m = this._critter({ el, x: 0, y: 0, dir: 1, visible: false, out: false, lane: 0, yG });
       el.querySelector(".mw").addEventListener("click", (e) => (e.stopPropagation(), this._found("visitor"), m.scare()));
       this._keyTap(el.querySelector(".mw"));
       this._mouse = m;
+      this._critZ(m, false);
       this._el.mice.appendChild(el);
-      const yG = gy - this._H * 0.022;
       const edge = rock.l + 7 * rock.ku;
       const hideX = edge + mw * 0.75;
       const peekX = edge + mw * 0.1;
       const door = edge - mw * 0.6;
-      const layer = (front) => {
-        (front ? this._el.miceF : this._el.mice).appendChild(el);
-        void el.offsetWidth;
-      };
+      const kind = this._cfg.depth && this._critLaneNext === 1 ? "run" : pk.kind;
+      let minX = Math.max(this._g.fMin * this._W, mw);
+      if (kind === "run") m.lane = this._critLane(pk, minX, door, mw);
+      if (m.lane) minX = Math.max(minX, this._laneRange(mw)[0]);
+      const yW = m.lane ? yG - this._H * LANE_DY : yG;
       const topY = rock.top0 + 13.5 * rock.ku;
       const face = (d) => (m.dir = d, el.classList.toggle("left", d < 0));
       const move = (x, y, ms = 0, ease = "ease-out") => {
         el.style.transition = ms ? `transform ${ms}ms ${ease}` : "none";
-        el.style.transform = `translate(${x.toFixed(1)}px, ${y.toFixed(1)}px)`;
+        el.style.transform = this._critXf(m, x, y);
         m.x = x;
         m.y = y;
         if (!ms) void el.offsetWidth;
-      };
-      const liveX = () => {
-        const t = getComputedStyle(el).transform;
-        return t && t !== "none" ? new DOMMatrixReadOnly(t).m41 : m.x;
       };
       const pose = (c, on) => el.classList.toggle(c, on);
       const FLEE = {};
@@ -8197,11 +8254,11 @@
         if (m.out && Math.abs(this._liveX() - m.x) < pW * 0.55) m.scare();
         if (m.scared) throw FLEE;
       };
-      const run = async (x, speed = 1) => {
+      const run = async (x, speed = 1, y = yG) => {
         face(x >= m.x ? 1 : -1);
-        const ms = Math.abs(x - m.x) / (this._H * 1.1 * speed) * 1e3;
+        const ms = Math.hypot(x - m.x, y - m.y) / (this._H * 1.1 * speed) * 1e3;
         pose("run", true);
-        move(x, yG, ms, "linear");
+        move(x, y, ms, "linear");
         await step(ms);
         pose("run", false);
       };
@@ -8231,7 +8288,6 @@
           }
         }
       };
-      const kind = pk.kind;
       try {
         try {
           if (kind === "top") {
@@ -8255,11 +8311,10 @@
             await step(500);
             await lookAround(kind === "run" ? 1 + Math.floor(rnd(0, 2)) : 4 + Math.floor(rnd(0, 4)));
             if (kind === "run") {
-              const minX = Math.max(this._g.fMin * this._W, mw);
-              await run(door);
-              layer(true);
+              await run(door, 1, yW);
+              this._critZ(m, true);
               m.out = true;
-              await run(this._festClear(rnd(minX, Math.max(minX, door - mw * 0.7)), mw, minX, door));
+              await run(this._festClear(rnd(minX, Math.max(minX, door - mw * 0.7)), mw, minX, door), 1, yW);
               this._noticeCritter(m.x, false);
               await lookAround(2);
               if (Math.random() < 0.8) {
@@ -8270,12 +8325,12 @@
               }
               await lookAround(2 + Math.floor(rnd(0, 3)));
               for (let n = Math.random() < 0.5 ? 2 : 1; n > 0; n--) {
-                await run(this._festClear(clamp(m.x + rnd(-1, 1) * mw * 2.5, minX, door), mw, minX, door), 0.8);
+                await run(this._festClear(clamp(m.x + rnd(-1, 1) * mw * 2.5, minX, door), mw, minX, door), 0.8, yW);
                 await lookAround(1 + Math.floor(rnd(0, 3)));
               }
-              await run(door);
+              await run(door, 1, yW);
               m.out = false;
-              layer(false);
+              this._critZ(m, false);
               await run(peekX);
               await step(rnd(300, 900));
             }
@@ -8286,24 +8341,25 @@
           }
         } catch (e) {
           if (e !== FLEE) throw e;
-          const x = liveX();
-          move(x, m.y);
+          const at = this._critLive(m);
+          const x = at.x;
+          move(x, m.lane ? at.y : m.y);
           pose("run", false);
           pose("stand", false);
           m.out = m.visible = false;
-          this._peep(x, m.y - mh * 1.2, "piep!");
+          this._peep(x, m.y - mh * 1.2 * this._critS(m, m.y), "piep!");
           if (kind === "top") move(x, topY + mh * 1.1, 180, "ease-in");
           else {
             face(1);
             pose("run", true);
-            const dash = async (tx) => {
-              const ms = Math.abs(tx - m.x) / (this._H * 2) * 1e3;
-              move(tx, yG, ms, "linear");
+            const dash = async (tx, ty = yG) => {
+              const ms = Math.hypot(tx - m.x, ty - m.y) / (this._H * 2) * 1e3;
+              move(tx, ty, ms, "linear");
               await this._cw(id, ms);
             };
-            if (el.parentNode === this._el.miceF) {
-              await dash(door);
-              layer(false);
+            if (el.classList.contains("vorn")) {
+              await dash(door, yW);
+              this._critZ(m, false);
             }
             await dash(hideX);
           }
@@ -8323,25 +8379,30 @@
       el.className = "frog left";
       el.innerHTML = `<div class="cw" role="button" aria-label="Frosch"><div class="cf"><div class="cb">${FROG_SVG}</div></div></div>`;
       const yG = gy - this._H * 0.02;
-      const f = this._critter({ el, x: 0, y: yG, w: fw, dir: -1, out: false });
+      const f = this._critter({ el, x: 0, y: yG, w: fw, dir: -1, out: false, lane: 0, yG });
       el.querySelector(".cw").addEventListener("click", (e) => (e.stopPropagation(), this._found("visitor"), f.scare()));
       this._keyTap(el.querySelector(".cw"));
       this._frog = f;
+      this._critZ(f, false);
       this._el.mice.appendChild(el);
       const edge = rock.l + 7 * rock.ku;
       const hideX = edge + fw * 0.8;
       const door = edge - fw * 0.6;
-      const minX = Math.min(Math.max(this._g.fMin * this._W, fw), door);
-      const maxX = Math.max(minX, door - fw * 0.7);
-      const layer = (front) => {
-        (front ? this._el.miceF : this._el.mice).appendChild(el);
-        void el.offsetWidth;
-      };
+      let minX = Math.min(Math.max(this._g.fMin * this._W, fw), door);
+      let maxX = Math.max(minX, door - fw * 0.7);
+      f.lane = this._critLane(pk, minX, maxX, fw);
+      if (f.lane) {
+        const [l, r] = this._laneRange(fw);
+        minX = Math.min(Math.max(minX, l), door);
+        maxX = Math.max(minX, Math.min(maxX, r));
+      }
+      const yW = f.lane ? yG - this._H * LANE_DY : yG;
       const face = (d) => (f.dir = d, el.classList.toggle("left", d < 0));
-      const move = (x, ms = 0) => {
+      const move = (x, ms = 0, y = f.y) => {
         el.style.transition = ms ? `transform ${ms}ms linear` : "none";
-        el.style.transform = `translate(${x.toFixed(1)}px, ${yG.toFixed(1)}px)`;
+        el.style.transform = this._critXf(f, x, y);
         f.x = x;
+        f.y = y;
         if (!ms) void el.offsetWidth;
       };
       const FLEE = {};
@@ -8350,7 +8411,7 @@
         if (f.out && Math.abs(this._liveX() - f.x) < pW * 0.55) f.scare();
         if (f.scared) throw FLEE;
       };
-      const hop = async (x, fast = false) => {
+      const hop = async (x, fast = false, y = f.y) => {
         const L = this._H * (fast ? 0.34 : 0.22);
         while (Math.abs(x - f.x) > 1) {
           const d = clamp(x - f.x, -L, L);
@@ -8360,15 +8421,16 @@
           el.style.setProperty("--hd", `${ms}ms`);
           el.style.setProperty("--fh", `${-Math.round(40 + 80 * k)}%`);
           el.classList.add("leap");
-          move(f.x + d, ms);
+          move(f.x + d, ms, f.y + (y - f.y) * (d / (x - f.x)));
           await (fast ? this._cw(id, ms) : step(ms));
           el.classList.remove("leap");
           await (fast ? this._cw(id, 50) : step(rnd(140, 420)));
         }
+        if (Math.abs(y - f.y) > 0.5) move(f.x, 0, y);
       };
       const free = (x) => {
         const s = this._snail;
-        if (!s?.out || Math.abs(x - s.x) >= fw) return x;
+        if (!s?.out || (s.lane || 0) !== f.lane || Math.abs(x - s.x) >= fw) return x;
         const side = x < s.x && s.x - fw * 1.1 >= minX || s.x + fw * 1.1 > maxX ? -1 : 1;
         return clamp(s.x + side * fw * 1.1, minX, maxX);
       };
@@ -8376,8 +8438,8 @@
         try {
           move(hideX);
           await step(60);
-          await hop(door);
-          layer(true);
+          await hop(door, false, yW);
+          this._critZ(f, true);
           f.out = true;
           const spot = (x) => free(this._festClear(x, fw, minX, maxX));
           await hop(spot(maxX - pk.x * Math.min(maxX - minX, this._H * 0.7)));
@@ -8404,21 +8466,21 @@
           }
           await hop(door);
           f.out = false;
-          layer(false);
-          await hop(hideX);
+          this._critZ(f, false);
+          await hop(hideX, false, yG);
         } catch (e) {
           if (e !== FLEE) throw e;
-          const t = getComputedStyle(el).transform;
-          move(t && t !== "none" ? new DOMMatrixReadOnly(t).m41 : f.x);
+          const at = this._critLive(f);
+          move(at.x, 0, f.lane ? at.y : f.y);
           el.classList.remove("leap", "croak", "zap");
           f.out = false;
-          this._peep(f.x, yG - fw * 0.95, "quak!");
+          this._peep(f.x, f.y - fw * 0.95 * this._critS(f, f.y), "quak!");
           await this._cw(id, 120);
-          if (el.parentNode === this._el.miceF) {
-            await hop(door, true);
-            layer(false);
+          if (el.classList.contains("vorn")) {
+            await hop(door, true, yW);
+            this._critZ(f, false);
           }
-          await hop(hideX, true);
+          await hop(hideX, true, yG);
           await this._cw(id, 200);
         }
       } finally {
@@ -8435,7 +8497,8 @@
       el.classList.add("croak");
       clearTimeout(f.croakT);
       f.croakT = setTimeout(() => el.classList.remove("croak"), 950);
-      this._peep(f.x + f.dir * f.w * 0.3, f.y - f.w * 0.85, pick(["quak!", "quak!", "quaak!"]));
+      const k = this._critS(f, f.y);
+      this._peep(f.x + f.dir * f.w * 0.3 * k, f.y - f.w * 0.85 * k, pick(["quak!", "quak!", "quaak!"]));
     }
     // Schnecke (nur bei Regen): kriecht hinter dem Aussichtsstein hervor ein Stück über die Wiese, reckt die Fühler,
     // schaut sich um und kriecht zurück. Weglaufen kann sie nicht: Antippen oder ein naher Pika, und sie zieht sich
@@ -8448,7 +8511,7 @@
       el.className = "snail left";
       el.innerHTML = `<div class="cw" role="button" aria-label="Schnecke"><div class="cf"><div class="cb">${SNAIL_SVG(SNAILS[pk.shell])}</div></div></div>`;
       const yG = gy - this._H * 0.02;
-      const s = { el, x: 0, y: yG, dir: -1, out: false, hidden: false, poked: false };
+      const s = { el, x: 0, y: yG, dir: -1, out: false, hidden: false, poked: false, lane: 0, yG };
       const wob = () => {
         el.classList.remove("wob");
         void el.offsetWidth;
@@ -8461,27 +8524,29 @@
       el.querySelector(".cw").addEventListener("click", (e) => (e.stopPropagation(), this._found("visitor"), s.poke()));
       this._keyTap(el.querySelector(".cw"));
       this._snail = s;
+      this._critZ(s, false);
       this._el.mice.appendChild(el);
       const edge = rock.l + 7 * rock.ku;
       const hideX = edge + sw * 0.8;
       const door = edge - sw * 0.6;
-      const minX = Math.min(Math.max(this._g.fMin * this._W, sw), door);
-      const layer = (front) => {
-        (front ? this._el.miceF : this._el.mice).appendChild(el);
-        void el.offsetWidth;
-      };
+      let minX = Math.min(Math.max(this._g.fMin * this._W, sw), door);
+      s.lane = this._critLane(pk, minX, door, sw);
+      if (s.lane) minX = Math.min(Math.max(minX, this._laneRange(sw)[0]), door);
+      const yW = s.lane ? yG - this._H * LANE_DY : yG;
       const face = (d) => (s.dir = d, el.classList.toggle("left", d < 0));
-      const liveX = () => {
-        const t = getComputedStyle(el).transform;
-        return t && t !== "none" ? new DOMMatrixReadOnly(t).m41 : s.x;
-      };
-      const put = (x, ms = 0) => {
+      const put = (x, ms = 0, y = s.y) => {
         el.style.transition = ms ? `transform ${ms}ms linear` : "none";
-        el.style.transform = `translate(${x.toFixed(1)}px, ${yG.toFixed(1)}px)`;
+        el.style.transform = this._critXf(s, x, y);
         if (!ms) {
           s.x = x;
+          s.y = y;
           void el.offsetWidth;
         }
+      };
+      const live = () => {
+        const at = this._critLive(s);
+        if (!s.lane) at.y = s.y;
+        return at;
       };
       let shy = true;
       const near = () => {
@@ -8494,13 +8559,14 @@
         const end = Date.now() + ms;
         while (Date.now() < end) {
           await this._cw(id, clamp(end - Date.now(), 20, 200));
-          s.x = liveX();
+          ({ x: s.x, y: s.y } = live());
           if (s.poked || near()) return true;
         }
         return false;
       };
       const hide = async () => {
-        put(liveX());
+        const at = live();
+        put(at.x, 0, at.y);
         el.classList.remove("crawl", "peer");
         el.classList.add("hide");
         s.hidden = true;
@@ -8513,16 +8579,16 @@
         near();
         await this._cw(id, 900);
       };
-      const crawl = async (x) => {
-        while (Math.abs(x - s.x) > 1) {
-          face(x > s.x ? 1 : -1);
-          const ms = Math.abs(x - s.x) / v * 1e3;
+      const crawl = async (x, y = s.y) => {
+        while (Math.abs(x - s.x) > 1 || Math.abs(y - s.y) > 0.5) {
+          if (Math.abs(x - s.x) > 1) face(x > s.x ? 1 : -1);
+          const ms = Math.hypot(x - s.x, y - s.y) / v * 1e3;
           el.classList.add("crawl");
-          put(x, ms);
+          put(x, ms, y);
           const hit = await wait(ms);
           el.classList.remove("crawl");
           if (hit) await hide();
-          else put(x);
+          else put(x, 0, y);
         }
       };
       const rest = async (ms) => {
@@ -8537,16 +8603,16 @@
       try {
         put(hideX);
         await this._cw(id, 60);
-        await crawl(door);
-        layer(true);
+        await crawl(door, yW);
+        this._critZ(s, true);
         s.out = true;
         this._noticeCritter(s.x, false);
         await crawl(this._festClear(door - (0.3 + 0.6 * pk.far) * Math.min(door - minX, this._H * 0.7), sw, minX, door));
         await rest(Math.max(1500, rnd(5e3, 9e3) - late));
         await crawl(door);
         s.out = false;
-        layer(false);
-        await crawl(hideX);
+        this._critZ(s, false);
+        await crawl(hideX, yG);
       } finally {
         if (this._snail === s) this._snail = null;
         el.remove();
@@ -10143,7 +10209,7 @@
       this._x = x;
       if (instant) p.style.transition = "none";
       const ly = this._laneDy();
-      const s = (this._lift > 0 ? 0.9 : 1) * (ly ? LANE_S : 1);
+      const s = (this._lift > 0 && !this._reiter ? 0.9 : 1) * (ly ? LANE_S : 1);
       p.style.transform = `translate(${(x - this._g.pW / 2).toFixed(1)}px, ${(-this._lift - ly).toFixed(1)}px)` + (s !== 1 ? ` scale(${s.toFixed(3)})` : "");
       const t = this._el.psay.style;
       t.transition = p.style.transition;
@@ -10155,13 +10221,23 @@
       if (instant) void p.offsetWidth;
       this._bubbleRefit();
     }
+    // Tiefe (depth): Bereich der hinteren Spur für eine Figur der Breite w (px, Mitte der Figur). Sie führt über die
+    // ganze Wiese, hinter Heu und Stein vorbei (beide stehen davor, siehe REIHE): von der Mitte des Heuhaufens bzw.
+    // rechts neben der Nische bis an den rechten Rand. Links davon steht der Bau (er liegt hinter der Spur, seine
+    // Tür auf der Bodenlinie: Wer hinten an ihm vorbeiginge, stünde in der Wand).
+    _laneRange(w = this._g.pW) {
+      const g = this._g;
+      const l = g.stash ? g.hayR + w * 0.3 : g.hay;
+      return [l, Math.max(l, this._W - w * 0.45)];
+    }
     // Bühne: Ebene des Pikas aus seinem Fußpunkt (lane: die Spur, sonst die jetzige). Im Bau zählt der Eingang (Rang
     // pikaBau, vor den Vögeln, hinter Pino). Auf dem Stein, im Sprung und beim Mitfahren zählt der Fußpunkt, von dem er
-    // abgesprungen ist: Hochspringen geht nur von der vorderen Spur (_hopTo), die Höhe (_lift) zählt nicht.
+    // abgesprungen ist: Hochspringen geht nur von der vorderen Spur (_hopTo), die Höhe (_lift) zählt nicht. Ausnahme
+    // mit depth: Auf dem Saugroboter (_reiter, _sigRide) steht er vorn auf dem vorderen Wiesenstreifen, vor allem.
     _pikaZ(lane = this._lane) {
       const p = this._el.pika;
       const hinten = this._cfg.depth && lane && !(this._lift > 0) ? LANE_DY : 0;
-      p.style.zIndex = String(p.classList.contains("inside") ? buehneZ(0, "pikaBau") : buehneZ(-hinten, "pika"));
+      p.style.zIndex = String(p.classList.contains("inside") ? buehneZ(0, "pikaBau") : this._reiter ? buehneZ(REIHE.rand, "reiter") : buehneZ(-hinten, "pika"));
     }
     // y für den Anteil f der Größeneinheit, gemessen ab der Oberkante der Bühne (die unteren H px der Karte): für
     // alles in der Luft, das zum Pika gehört (Drachen, Ballon, Funkeln am Himmel). Auf normalen Karten H · f.
@@ -13423,7 +13499,8 @@
       this._friendSettle(fr);
       fr.lift = 0;
       fr.mv = null;
-      const [lo, hi] = this._frRange();
+      if (!this._cfg.depth) fr.lane = 0;
+      const [lo, hi] = fr.lane ? this._laneRange(g.pW * FRIEND_SCALE) : this._frRange();
       this._frSetX(fr, clamp(fr.x * ratio, lo, hi));
     }
     _tickFriend() {
@@ -13599,6 +13676,7 @@
         x: 0,
         dir: 1,
         lift: 0,
+        lane: 0,
         tok: 0,
         arrived: false,
         greeted: false,
@@ -13611,6 +13689,7 @@
       el.addEventListener("click", (e) => (e.stopPropagation(), this._frPet(fr)));
       this._keyTap(el);
       el.classList.toggle("cold", !!this._wx.cold);
+      this._frZ(fr);
       this._el.friends.append(el, sw);
       return fr;
     }
@@ -13618,7 +13697,7 @@
     _friendGone(fr) {
       if (this._fr === fr) this._fr = null;
       this._frTake(fr);
-      for (const t of ["sayT", "callT", "jumpT", "happyT", "lookT", "untilT"]) clearTimeout(fr[t]);
+      for (const t of ["sayT", "callT", "jumpT", "happyT", "lookT", "untilT", "laneZT"]) clearTimeout(fr[t]);
       fr.el.remove();
       fr.sw.remove();
       if (FRIEND_ACTS.has(this._action)) this._interrupt();
@@ -13735,7 +13814,7 @@
         return;
       }
       const far = Math.abs(this._x - fr.x) > this._W * 0.35;
-      const act = weighted([
+      const act = this._frLaneNext != null ? "hop" : weighted([
         [fr.greeted ? 3 : 0.5, "hop"],
         [2, "look"],
         [fr.greeted ? 1.5 : 0.4, "groom"],
@@ -13745,7 +13824,11 @@
         [2, "sit"]
       ]);
       if (act === "hop") {
-        await this._friendWalkTo(fr, fr.x + rnd(0.5, 1.5) * pW * pick([-1, 1]), 0.9, w);
+        const want = this._cfg.depth ? this._frLaneNext ?? (this._wx.wet ? 0 : Math.random() < 0.35 ? 1 : 0) : 0;
+        this._frLaneNext = null;
+        const [l, r] = want ? this._laneRange(pW * FRIEND_SCALE) : [0, 0];
+        if (want && r - l > pW * 0.3) await this._friendWalkTo(fr, rnd(l, r), 0.9, w, false, 1);
+        else await this._friendWalkTo(fr, fr.x + rnd(0.5, 1.5) * pW * pick([-1, 1]), 0.9, w);
         await w(rnd(300, 900));
       } else if (act === "look") {
         const n = 1 + Math.floor(rnd(0, 3));
@@ -13796,8 +13879,8 @@
       k();
     }
     // Gemeinsames Spiel: Pino gehört solange der Aktion des Pikas. w(ms) wartet wie _wait und bricht ab,
-    // wenn Pino weg ist oder gehen will.
-    async _withFriend(fn) {
+    // wenn Pino weg ist oder gehen will. keepLane: Pino bleibt auf seiner Spur (Fangen wechselt sie selbst).
+    async _withFriend(fn, keepLane = false) {
       let fr = this._fr;
       for (let i = 0; fr && !fr.arrived && i < 40; i++) {
         await this._wait(200);
@@ -13813,6 +13896,7 @@
       };
       try {
         if (fr.lift > 0) await this._frHopDown(fr, w);
+        else if (fr.lane && !keepLane) await this._friendWalkTo(fr, fr.x, 1, w);
         await fn(fr, w);
       } finally {
         this._el.pika.classList.remove("nuzzle", "wiggle");
@@ -13831,18 +13915,22 @@
       const lo = Math.max(home + pW * 0.8, stash ? 0 : hay + this._H * 0.13 + pW * FRIEND_SCALE * 0.3);
       return [lo, Math.max(lo, this._W - pW * FRIEND_SCALE * 0.45)];
     }
-    // free: ohne Begrenzung auf die Wiese (herein- und hinaushoppeln)
-    async _friendWalkTo(fr, x, speed = 1, w, free = false) {
+    // free: ohne Begrenzung auf die Wiese (herein- und hinaushoppeln). lane (Tiefe): 1 = hintere Spur, im Bereich
+    // _laneRange; jeder Weg ohne lane führt auf die vordere zurück (wie beim Pika, _walkTo)
+    async _friendWalkTo(fr, x, speed = 1, w, free = false, lane = 0) {
       const { pW } = this._g;
+      lane = this._cfg.depth ? lane : 0;
       if (!free) {
-        const [lo, hi] = this._frRange();
+        const [lo, hi] = lane ? this._laneRange(pW * FRIEND_SCALE) : this._frRange();
         x = clamp(x, lo, hi);
       }
       const dx = x - fr.x;
-      if (Math.abs(dx) < 4) return;
-      this._frFace(fr, dx > 0 ? 1 : -1);
-      const dur = hopRound(Math.abs(dx) / (pW * 0.85 * speed) * 1e3, HOP_MS.hop) / 1e3;
-      this._frSetX(fr, x, dur * 1e3);
+      const dl = lane !== (fr.lane || 0);
+      if (Math.abs(dx) < 4 && !dl) return;
+      if (Math.abs(dx) >= 4) this._frFace(fr, dx > 0 ? 1 : -1);
+      const dist = Math.max(Math.abs(dx), dl ? pW * 0.6 : 0);
+      const dur = hopRound(dist / (pW * 0.85 * speed) * 1e3, HOP_MS.hop) / 1e3;
+      this._frSetX(fr, x, dur * 1e3, "linear", fr.lift, lane);
       fr.el.classList.add("walking");
       await w(dur * 1e3);
       fr.el.classList.remove("walking");
@@ -13852,7 +13940,7 @@
       fr.el.classList.add("crouch");
       await w(180);
       fr.el.classList.remove("crouch");
-      this._frSetX(fr, x, 550, "cubic-bezier(.3, .6, .4, 1)", lift);
+      this._frSetX(fr, x, 550, "cubic-bezier(.3, .6, .4, 1)", lift, 0);
       this._frJump(fr, "hop1", true);
       await w(620);
     }
@@ -13862,31 +13950,57 @@
       await this._frHop(fr, rock.cx + side * (rock.w / 2 + pW * 0.1), 0, w);
       this._puff(fr.x, gy, 2);
     }
-    // Pino nach x (und Höhe lift) bewegen, ms = Dauer der Überblendung (0 = sofort). Die Bewegung wird
+    // Pino nach x (und Höhe lift, Spur lane) bewegen, ms = Dauer der Überblendung (0 = sofort). Die Bewegung wird
     // mitgeschrieben, damit _frLive weiß, wo er gerade ist – auch wenn der Browser gerade nichts zeichnet.
-    _frSetX(fr, x, ms = 0, ease = "linear", lift = fr.lift) {
+    _frSetX(fr, x, ms = 0, ease = "linear", lift = fr.lift, lane = fr.lane) {
       const from = this._frLive(fr);
+      const vor = fr.lane;
       fr.x = x;
       fr.lift = lift;
-      fr.mv = ms > 0 ? { ...from, x1: x, l1: lift, t0: performance.now(), ms } : null;
+      fr.lane = lane;
+      const dy = this._frLaneDy(fr);
+      const sc = dy ? LANE_S : 1;
+      fr.mv = ms > 0 ? { ...from, x1: x, l1: lift, dy1: dy, t0: performance.now(), ms } : null;
       for (const s of [fr.el.style, fr.sw.style]) {
         s.transition = ms > 0 ? `transform ${Math.round(ms)}ms ${ease}` : "none";
-        s.transform = `translate(${(x - this._g.pW * FRIEND_SCALE / 2).toFixed(1)}px, ${(-lift).toFixed(1)}px)`;
+        s.transform = `translate(${(x - this._g.pW * FRIEND_SCALE / 2).toFixed(1)}px, ${(-lift - dy).toFixed(1)}px)` + (sc !== 1 ? ` scale(${sc.toFixed(3)})` : "");
       }
+      fr.el.classList.toggle("lane1", !!dy);
+      clearTimeout(fr.laneZT);
+      if (ms > 0 && (lane || 0) !== (vor || 0)) {
+        this._frZ(fr, vor);
+        fr.laneZT = setTimeout(() => this._frZ(fr), ms / 2);
+      } else this._frZ(fr);
       if (!(ms > 0)) void fr.el.offsetWidth;
-      this._bubbleFit(fr.say, x, this._g.pW * FRIEND_SCALE);
+      this._bubbleFit(fr.say, x, this._g.pW * FRIEND_SCALE, sc);
     }
-    // Wo Pino gerade wirklich steht (beim Hoppeln ist fr.x schon das Ziel)
+    // Tiefe (depth): Höhe der hinteren Spur über der Bodenlinie für Pino (px), sonst 0. Auf dem Stein zählt die vordere.
+    _frLaneDy(fr, lane = fr.lane) {
+      return this._cfg.depth && lane && !(fr.lift > 0) ? this._H * LANE_DY : 0;
+    }
+    // Bühne: Pinos Ebene aus seinem Fußpunkt (lane: die Spur, sonst die jetzige). Auf dem Stein zählt die Spur, von
+    // der er hochgesprungen ist, und das ist immer die vordere (_frHop). Auf derselben Spur steht der Pika vor ihm
+    // (Rang), auf verschiedenen der auf der vorderen. Ohne depth immer BZ.pino.
+    _frZ(fr, lane = fr.lane) {
+      const hinten = this._cfg.depth && lane && !(fr.lift > 0) ? LANE_DY : 0;
+      fr.el.style.zIndex = String(buehneZ(-hinten, "pino"));
+    }
+    // Wo Pino gerade wirklich steht (beim Hoppeln ist fr.x schon das Ziel). dy: wie hoch ihn die Spur gerade hebt
+    // (px, beim Spurwechsel dazwischen); lift zählt nur die Höhe auf dem Stein.
     _frLive(fr) {
       const m = fr.mv;
-      if (!m) return { x: fr.x, lift: fr.lift };
+      if (!m) return { x: fr.x, lift: fr.lift, dy: this._frLaneDy(fr) };
       const k = clamp((performance.now() - m.t0) / m.ms, 0, 1);
-      return { x: m.x + (m.x1 - m.x) * k, lift: m.lift + (m.l1 - m.lift) * k };
+      const dy0 = m.dy || 0;
+      return { x: m.x + (m.x1 - m.x) * k, lift: m.lift + (m.l1 - m.lift) * k, dy: dy0 + ((m.dy1 || 0) - dy0) * k };
     }
-    // Anhalten, wo er gerade ist, Haltungen zurücksetzen
+    // Anhalten, wo er gerade ist, Haltungen zurücksetzen. Mitten im Spurwechsel bleibt er auf der Spur, der er schon
+    // näher ist (wie der Pika, _freeze).
     _friendSettle(fr) {
       const live = this._frLive(fr);
-      this._frSetX(fr, live.x, 0, "linear", live.lift < 1 ? 0 : live.lift);
+      const lift = live.lift < 1 ? 0 : live.lift;
+      const lane = this._cfg.depth && !(lift > 0) && live.dy > this._H * LANE_DY / 2 ? 1 : 0;
+      this._frSetX(fr, live.x, 0, "linear", lift, lane);
       fr.el.classList.remove(...FRIEND_CLS);
       fr.mfood?.classList.remove("shrink");
     }
@@ -13894,7 +14008,7 @@
       fr.dir = dir;
       fr.el.classList.toggle("left", dir < 0);
       fr.sw.classList.toggle("left", dir < 0);
-      this._bubbleFit(fr.say, fr.x, this._g.pW * FRIEND_SCALE);
+      this._bubbleFit(fr.say, fr.x, this._g.pW * FRIEND_SCALE, this._frLaneDy(fr) ? LANE_S : 1);
     }
     // wie _jump: ein Sprung, der noch in der Luft ist, wird zu Ende gesprungen (fresh: _frHop trägt ihn woandershin)
     _frJump(fr, kind, fresh = false) {
@@ -13943,8 +14057,9 @@
       const fW = pW * FRIEND_SCALE;
       const fH = pH * FRIEND_SCALE;
       const live = this._frLive(fr);
-      const x = live.x + fr.dir * fW * 0.25;
-      const y = gy - fH * 0.945 + fH * 0.25 - live.lift;
+      const s = live.dy ? 1 - (1 - LANE_S) * Math.min(1, live.dy / (this._H * LANE_DY)) : 1;
+      const x = live.x + fr.dir * fW * 0.25 * s;
+      const y = gy - fH * 0.945 * s + fH * 0.25 * s - live.lift - live.dy;
       for (let i = 0; i < n; i++) {
         const h = document.createElement("span");
         h.className = "heart";
@@ -14060,38 +14175,60 @@
         }
       });
     }
-    // Fangen: abwechselnd hoppelt einer davon, der andere hinterher, mit Staubwölkchen
+    // Fangen: abwechselnd hoppelt einer davon, der andere hinterher, mit Staubwölkchen. Tiefe (depth): Sie spielen
+    // umeinander herum. Der Läufer nimmt die andere Spur als der Fänger; der folgt ihm mal auf seine Spur, mal bleibt
+    // er auf seiner. Stehen sie so auf verschiedenen Spuren, schlüpft der nächste Läufer manchmal mitten an ihm vorbei,
+    // vor oder hinter ihm. Zum Schluss kommen beide wieder nach vorn.
     async _chaseFriend() {
       await this._withFriend(async (fr, w) => {
         const { pW, gy } = this._g;
-        const [lo, hi] = this._frRange();
-        const mid = (lo + hi) / 2;
+        const front = this._frRange();
+        const back = this._cfg.depth ? this._laneRange(pW) : front;
+        const deep = !!this._cfg.depth && back[1] - back[0] > pW * 2;
+        const range = (l) => l ? back : front;
+        const lyOf = (l) => deep && l ? this._H * LANE_DY : 0;
         this._frFace(fr, this._x >= fr.x ? 1 : -1);
         this._frSay(fr, "fang mich!", 1400);
         this._frJump(fr, "hop1");
         await w(800);
-        const pino = (x, speed, delay) => (async () => {
+        const pino = (x, speed, delay, lane) => (async () => {
           if (delay) await w(delay);
-          await this._friendWalkTo(fr, x, speed, w, true);
+          await this._friendWalkTo(fr, x, speed, w, true, lane);
         })();
-        const pika = (x, speed, delay) => (async () => {
+        const pika = (x, speed, delay, lane) => (async () => {
           if (delay) await w(delay);
-          await this._walkTo(x, speed);
+          await this._walkTo(x, speed, false, lane);
         })();
         const rounds = 3 + Math.floor(rnd(0, 3));
         for (let i = 0; i < rounds; i++) {
           const pinoRuns = i % 2 === 0;
           const rx = pinoRuns ? fr.x : this._x;
           const cx = pinoRuns ? this._x : fr.x;
-          const far = chaseFar(rx, cx, lo, hi, pW);
-          const T = clamp(far ? rnd(Math.max(rx + pW, mid + (hi - mid) * 0.4), hi) : rnd(lo, Math.min(rx - pW, mid - (mid - lo) * 0.4)), lo, hi);
+          const rl0 = deep ? (pinoRuns ? fr.lane : this._lane) || 0 : 0;
+          const cl0 = deep ? (pinoRuns ? this._lane : fr.lane) || 0 : 0;
+          let rl = deep ? 1 - cl0 : 0;
+          let [lo, hi] = range(rl);
+          let far = chaseFar(rx, cx, lo, hi, pW);
+          const via = (f) => f ? cx > rx : cx < rx;
+          if (rl !== rl0 && via(far)) {
+            rl = rl0;
+            [lo, hi] = range(rl);
+            far = chaseFar(rx, cx, lo, hi, pW);
+          }
+          const around = rl0 !== cl0 && !via(far) && Math.random() < 0.5 && (rx < cx ? hi - cx : cx - lo) >= pW;
+          if (around) far = rx < cx;
+          const past = around || via(far);
+          const cl = past || !deep || Math.random() < 0.5 ? cl0 : rl;
+          const mid = (lo + hi) / 2;
+          const ref = around ? cx : rx;
+          const T = clamp(far ? rnd(Math.max(ref + pW, mid + (hi - mid) * 0.4), hi) : rnd(lo, Math.min(ref - pW, mid - (mid - lo) * 0.4)), lo, hi);
           const d = T > rx ? 1 : -1;
-          const C = clamp(T - d * pW * 0.7, lo, hi);
+          const C = clamp(T - d * pW * 0.7, ...range(cl));
           const speed = rnd(1.9, 2.4);
-          this._puff(fr.x, gy, 2);
-          this._puff(this._x, gy, 2);
-          await Promise.all(pinoRuns ? [pino(T, speed, 0), pika(C, speed, 280)] : [pika(T, speed, 0), pino(C, speed, 280)]);
-          this._puff(T, gy, 2);
+          this._puff(fr.x, gy - this._frLaneDy(fr), 2);
+          this._puff(this._x, gy - this._laneDy(), 2);
+          await Promise.all(pinoRuns ? [pino(T, speed, 0, rl), pika(C, speed, 280, cl)] : [pika(T, speed, 0, rl), pino(C, speed, 280, cl)]);
+          this._puff(T, gy - lyOf(rl), 2);
           if (pinoRuns) {
             this._frFace(fr, -d);
             this._frSay(fr, pick(["hihi!", "iiep!", "du!"]), 900);
@@ -14103,6 +14240,9 @@
           }
           await w(rnd(450, 800));
         }
+        if (deep && (fr.lane || this._lane)) {
+          await Promise.all([this._walkTo(this._x, 1.2), this._friendWalkTo(fr, fr.x, 1.2, w)]);
+        }
         this._face(fr.x >= this._x ? 1 : -1);
         this._frFace(fr, this._x >= fr.x ? 1 : -1);
         this._jump("binky");
@@ -14112,7 +14252,7 @@
         await w(1100);
         this._say("puh!", 1100);
         await w(rnd(900, 1500));
-      });
+      }, true);
     }
     // Zusammen sitzen: nebeneinander, beide schauen in dieselbe Richtung, Ohrenwackeln, einer putzt den anderen
     async _sitWithFriend() {
@@ -14303,6 +14443,8 @@
         if (dist > this._W * 0.4 || dist < pW * 0.6) {
           const d = fr.x >= this._x ? 1 : -1;
           await this._walkTo(fr.x - d * pW * rnd(1, 1.3));
+        } else if (this._cfg.depth && this._lane) {
+          await this._walkTo(this._x);
         }
         this._face(fr.x >= this._x ? 1 : -1);
         this._frFace(fr, this._x >= fr.x ? 1 : -1);
@@ -19560,7 +19702,8 @@
         this._face(-side);
         this._say(pick(["hopp!", "mitfahren!", "oh!"]), 1e3);
         await this._wait(500);
-        await this._hopTo(vx, Math.max(0, gy - V.top) + this._H * 0.02);
+        this._reiter = !!this._cfg.depth;
+        await this._hopTo(vx, this._reiter ? gy - (V.top + V.w * (18 / 44) * (7 / 18)) : Math.max(0, gy - V.top) + this._H * 0.02);
         on = true;
         this._say(pick(["juhu!", "wiii!", "brumm brumm!"]), 1600);
         const to = vx < this._W / 2 ? this._W * 0.7 : this._W * 0.3;
@@ -19575,13 +19718,16 @@
         p.classList.remove("happy");
         await this._hopTo(to + V.dir * pW * 0.8, 0);
         on = false;
+        this._reiter = false;
+        this._pikaZ();
         this._say(pick(["nochmal!", "lustig!", "hihi"]), 1200);
         await this._wait(900);
       } finally {
+        this._reiter = false;
         if (on) {
           this._lift = 0;
           this._setX(this._x, true);
-        }
+        } else this._pikaZ();
         p.classList.remove("happy");
         V.hold = false;
         if (this._sigVac === V) this._sigVacMove();

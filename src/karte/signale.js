@@ -411,7 +411,11 @@ export class Signale {
       this._face(-side);
       this._say(pick(['hopp!', 'mitfahren!', 'oh!']), 1000);
       await this._wait(500);
-      await this._hopTo(vx, Math.max(0, gy - V.top) + this._H * 0.02);
+      // Mit depth steht er vorn auf der Scheibe (Oberkante bei 7 von 18 der Grafik), vor dem Roboter und allem
+      // anderen (_reiter, Rang reiter); ohne steht er wie bisher knapp über der Kuppel, hinter dem Roboter.
+      this._reiter = !!this._cfg.depth;
+      // Die Scheibe liegt auf dem vorderen Wiesenstreifen, unter der Bodenlinie: dann ist die Höhe negativ (er steht tiefer)
+      await this._hopTo(vx, this._reiter ? gy - (V.top + V.w * (18 / 44) * (7 / 18)) : Math.max(0, gy - V.top) + this._H * 0.02);
       on = true;
       this._say(pick(['juhu!', 'wiii!', 'brumm brumm!']), 1600);
       const to = vx < this._W / 2 ? this._W * 0.7 : this._W * 0.3;
@@ -426,14 +430,18 @@ export class Signale {
       p.classList.remove('happy');
       await this._hopTo(to + V.dir * pW * 0.8, 0);
       on = false;
+      // unten angekommen: zurück auf die Bühne der Bodenlinie
+      this._reiter = false;
+      this._pikaZ();
       this._say(pick(['nochmal!', 'lustig!', 'hihi']), 1200);
       await this._wait(900);
     } finally {
+      this._reiter = false;
       if (on) {
         // unterbrochen, während er oben saß: wieder auf den Boden
         this._lift = 0;
         this._setX(this._x, true);
-      }
+      } else this._pikaZ();
       p.classList.remove('happy');
       V.hold = false;
       if (this._sigVac === V) this._sigVacMove();

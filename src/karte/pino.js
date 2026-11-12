@@ -3,6 +3,8 @@
 import { Cancel, rnd, pick, clamp, pause, weighted, seedRnd } from '../logik/hilfen.js';
 import { calmMotion } from '../logik/bewegung-reduzieren.js';
 import { SELF } from '../logik/zustand.js';
+import { LANE_DY, LANE_S } from '../logik/einstellungen.js';
+import { buehneZ } from '../logik/buehne.js';
 import { FRIEND_SCALE, FRIEND_WIN, FRIEND_LAST, FRIEND_ACTS, FRIEND_YIELD, FRIEND_CLS } from '../logik/besucher.js';
 import { HOP_MS, hopRound, jumpBusy, chaseFar } from '../logik/beschaeftigungen.js';
 import { ICON_HEART } from '../grafik/szene.js';
@@ -56,7 +58,9 @@ export class Pino {
     this._friendSettle(fr);
     fr.lift = 0;
     fr.mv = null;
-    const [lo, hi] = this._frRange();
+    // Auf der hinteren Spur bleibt er dort (ihr Bereich ist ein anderer), ohne depth gibt es sie nicht mehr
+    if (!this._cfg.depth) fr.lane = 0;
+    const [lo, hi] = fr.lane ? this._laneRange(g.pW * FRIEND_SCALE) : this._frRange();
     this._frSetX(fr, clamp(fr.x * ratio, lo, hi));
   }
 
@@ -259,12 +263,13 @@ export class Pino {
     sw.innerHTML = '<div class="anchor"><div class="bubble say"></div></div>';
     const fr = {
       el, sw, jump: el.querySelector('.jump'), say: sw.querySelector('.say'), mfood: el.querySelector('.mfood'),
-      x: 0, dir: 1, lift: 0, tok: 0, arrived: false, greeted: false, leaving: false, hurry: false, busy: false, want: null,
+      x: 0, dir: 1, lift: 0, lane: 0, tok: 0, arrived: false, greeted: false, leaving: false, hurry: false, busy: false, want: null,
     };
     fr.kickP = new Promise((r) => (fr.kick = r));
     el.addEventListener('click', (e) => (e.stopPropagation(), this._frPet(fr)));
     this._keyTap(el);
     el.classList.toggle('cold', !!this._wx.cold);
+    this._frZ(fr);
     this._el.friends.append(el, sw);
     return fr;
   }
@@ -273,7 +278,7 @@ export class Pino {
   _friendGone(fr) {
     if (this._fr === fr) this._fr = null;
     this._frTake(fr); // wartende Schritte wecken, sie brechen dann ab
-    for (const t of ['sayT', 'callT', 'jumpT', 'happyT', 'lookT', 'untilT']) clearTimeout(fr[t]);
+    for (const t of ['sayT', 'callT', 'jumpT', 'happyT', 'lookT', 'untilT', 'laneZT']) clearTimeout(fr[t]);
     fr.el.remove();
     fr.sw.remove();
     if (FRIEND_ACTS.has(this._action)) this._interrupt();
@@ -400,7 +405,8 @@ export class Pino {
       return;
     }
     const far = Math.abs(this._x - fr.x) > this._W * 0.35;
-    const act = weighted([
+    // Vorschau: _frLaneNext (0/1) macht den nächsten Schritt zu einem Hoppeln auf diese Spur
+    const act = this._frLaneNext != null ? 'hop' : weighted([
       [fr.greeted ? 3 : 0.5, 'hop'],
       [2, 'look'],
       [fr.greeted ? 1.5 : 0.4, 'groom'],
@@ -410,7 +416,13 @@ export class Pino {
       [2, 'sit'],
     ]);
     if (act === 'hop') {
-      await this._friendWalkTo(fr, fr.x + rnd(0.5, 1.5) * pW * pick([-1, 1]), 0.9, w);
+      // Tiefe: manchmal auf die hintere Spur, irgendwohin auf der ganzen Wiese hinter Heu und Stein (_laneRange);
+      // bei Nässe nicht. Jeder andere Weg führt ihn wieder nach vorn (_friendWalkTo, Spur 0).
+      const want = this._cfg.depth ? this._frLaneNext ?? (this._wx.wet ? 0 : Math.random() < 0.35 ? 1 : 0) : 0;
+      this._frLaneNext = null;
+      const [l, r] = want ? this._laneRange(pW * FRIEND_SCALE) : [0, 0];
+      if (want && r - l > pW * 0.3) await this._friendWalkTo(fr, rnd(l, r), 0.9, w, false, 1);
+      else await this._friendWalkTo(fr, fr.x + rnd(0.5, 1.5) * pW * pick([-1, 1]), 0.9, w);
       await w(rnd(300, 900));
     } else if (act === 'look') {
       const n = 1 + Math.floor(rnd(0, 3));
@@ -465,8 +477,8 @@ export class Pino {
   }
 
   // Gemeinsames Spiel: Pino gehört solange der Aktion des Pikas. w(ms) wartet wie _wait und bricht ab,
-  // wenn Pino weg ist oder gehen will.
-  async _withFriend(fn) {
+  // wenn Pino weg ist oder gehen will. keepLane: Pino bleibt auf seiner Spur (Fangen wechselt sie selbst).
+  async _withFriend(fn, keepLane = false) {
     let fr = this._fr;
     for (let i = 0; fr && !fr.arrived && i < 40; i++) {
       await this._wait(200);
@@ -482,6 +494,9 @@ export class Pino {
     };
     try {
       if (fr.lift > 0) await this._frHopDown(fr, w);
+      // Gespielt wird vorn, wie jede Aktion des Pikas dort stattfindet: von der hinteren Spur an derselben Stelle
+      // nach vorn (in den Bereich der vorderen, _frRange)
+      else if (fr.lane && !keepLane) await this._friendWalkTo(fr, fr.x, 1, w);
       await fn(fr, w);
     } finally {
       this._el.pika.classList.remove('nuzzle', 'wiggle');
@@ -504,19 +519,23 @@ export class Pino {
     return [lo, Math.max(lo, this._W - pW * FRIEND_SCALE * 0.45)];
   }
 
-  // free: ohne Begrenzung auf die Wiese (herein- und hinaushoppeln)
-  async _friendWalkTo(fr, x, speed = 1, w, free = false) {
+  // free: ohne Begrenzung auf die Wiese (herein- und hinaushoppeln). lane (Tiefe): 1 = hintere Spur, im Bereich
+  // _laneRange; jeder Weg ohne lane führt auf die vordere zurück (wie beim Pika, _walkTo)
+  async _friendWalkTo(fr, x, speed = 1, w, free = false, lane = 0) {
     const { pW } = this._g;
+    lane = this._cfg.depth ? lane : 0;
     if (!free) {
-      const [lo, hi] = this._frRange();
+      const [lo, hi] = lane ? this._laneRange(pW * FRIEND_SCALE) : this._frRange();
       x = clamp(x, lo, hi);
     }
     const dx = x - fr.x;
-    if (Math.abs(dx) < 4) return;
-    this._frFace(fr, dx > 0 ? 1 : -1);
-    // ganze Hopser wie beim Pika (_walkTo): Pino landet am Boden
-    const dur = hopRound((Math.abs(dx) / (pW * 0.85 * speed)) * 1000, HOP_MS.hop) / 1000;
-    this._frSetX(fr, x, dur * 1000);
+    const dl = lane !== (fr.lane || 0);
+    if (Math.abs(dx) < 4 && !dl) return;
+    if (Math.abs(dx) >= 4) this._frFace(fr, dx > 0 ? 1 : -1);
+    // ganze Hopser wie beim Pika (_walkTo): Pino landet am Boden. Der Spurwechsel zählt wie ein kurzes Stück Weg.
+    const dist = Math.max(Math.abs(dx), dl ? pW * 0.6 : 0);
+    const dur = hopRound((dist / (pW * 0.85 * speed)) * 1000, HOP_MS.hop) / 1000;
+    this._frSetX(fr, x, dur * 1000, 'linear', fr.lift, lane);
     fr.el.classList.add('walking');
     await w(dur * 1000);
     fr.el.classList.remove('walking');
@@ -527,7 +546,8 @@ export class Pino {
     fr.el.classList.add('crouch');
     await w(180);
     fr.el.classList.remove('crouch');
-    this._frSetX(fr, x, 550, 'cubic-bezier(.3, .6, .4, 1)', lift);
+    // Gesprungen wird von der vorderen Spur und auf sie (wie der Pika, _hopTo)
+    this._frSetX(fr, x, 550, 'cubic-bezier(.3, .6, .4, 1)', lift, 0);
     this._frJump(fr, 'hop1', true);
     await w(620);
   }
@@ -539,33 +559,64 @@ export class Pino {
     this._puff(fr.x, gy, 2);
   }
 
-  // Pino nach x (und Höhe lift) bewegen, ms = Dauer der Überblendung (0 = sofort). Die Bewegung wird
+  // Pino nach x (und Höhe lift, Spur lane) bewegen, ms = Dauer der Überblendung (0 = sofort). Die Bewegung wird
   // mitgeschrieben, damit _frLive weiß, wo er gerade ist – auch wenn der Browser gerade nichts zeichnet.
-  _frSetX(fr, x, ms = 0, ease = 'linear', lift = fr.lift) {
+  _frSetX(fr, x, ms = 0, ease = 'linear', lift = fr.lift, lane = fr.lane) {
     const from = this._frLive(fr);
+    const vor = fr.lane;
     fr.x = x;
     fr.lift = lift;
-    fr.mv = ms > 0 ? { ...from, x1: x, l1: lift, t0: performance.now(), ms } : null;
+    fr.lane = lane;
+    // Tiefe: auf der hinteren Spur höher und kleiner (Ursprung: die Füße, siehe STYLE_FRIEND), wie der Pika (_setX)
+    const dy = this._frLaneDy(fr);
+    const sc = dy ? LANE_S : 1;
+    fr.mv = ms > 0 ? { ...from, x1: x, l1: lift, dy1: dy, t0: performance.now(), ms } : null;
     for (const s of [fr.el.style, fr.sw.style]) {
       s.transition = ms > 0 ? `transform ${Math.round(ms)}ms ${ease}` : 'none';
-      s.transform = `translate(${(x - (this._g.pW * FRIEND_SCALE) / 2).toFixed(1)}px, ${(-lift).toFixed(1)}px)`;
+      s.transform = `translate(${(x - (this._g.pW * FRIEND_SCALE) / 2).toFixed(1)}px, ${(-lift - dy).toFixed(1)}px)`
+        + (sc !== 1 ? ` scale(${sc.toFixed(3)})` : '');
     }
+    fr.el.classList.toggle('lane1', !!dy);
+    // Bühne: Ebene erst auf halbem Weg wechseln, bis dahin steht er noch auf der alten Spur (wie _walkTo)
+    clearTimeout(fr.laneZT);
+    if (ms > 0 && (lane || 0) !== (vor || 0)) {
+      this._frZ(fr, vor);
+      fr.laneZT = setTimeout(() => this._frZ(fr), ms / 2);
+    } else this._frZ(fr);
     if (!(ms > 0)) void fr.el.offsetWidth;
-    this._bubbleFit(fr.say, x, this._g.pW * FRIEND_SCALE);
+    this._bubbleFit(fr.say, x, this._g.pW * FRIEND_SCALE, sc);
   }
 
-  // Wo Pino gerade wirklich steht (beim Hoppeln ist fr.x schon das Ziel)
+  // Tiefe (depth): Höhe der hinteren Spur über der Bodenlinie für Pino (px), sonst 0. Auf dem Stein zählt die vordere.
+  _frLaneDy(fr, lane = fr.lane) {
+    return this._cfg.depth && lane && !(fr.lift > 0) ? this._H * LANE_DY : 0;
+  }
+
+  // Bühne: Pinos Ebene aus seinem Fußpunkt (lane: die Spur, sonst die jetzige). Auf dem Stein zählt die Spur, von
+  // der er hochgesprungen ist, und das ist immer die vordere (_frHop). Auf derselben Spur steht der Pika vor ihm
+  // (Rang), auf verschiedenen der auf der vorderen. Ohne depth immer BZ.pino.
+  _frZ(fr, lane = fr.lane) {
+    const hinten = this._cfg.depth && lane && !(fr.lift > 0) ? LANE_DY : 0;
+    fr.el.style.zIndex = String(buehneZ(-hinten, 'pino'));
+  }
+
+  // Wo Pino gerade wirklich steht (beim Hoppeln ist fr.x schon das Ziel). dy: wie hoch ihn die Spur gerade hebt
+  // (px, beim Spurwechsel dazwischen); lift zählt nur die Höhe auf dem Stein.
   _frLive(fr) {
     const m = fr.mv;
-    if (!m) return { x: fr.x, lift: fr.lift };
+    if (!m) return { x: fr.x, lift: fr.lift, dy: this._frLaneDy(fr) };
     const k = clamp((performance.now() - m.t0) / m.ms, 0, 1);
-    return { x: m.x + (m.x1 - m.x) * k, lift: m.lift + (m.l1 - m.lift) * k };
+    const dy0 = m.dy || 0;
+    return { x: m.x + (m.x1 - m.x) * k, lift: m.lift + (m.l1 - m.lift) * k, dy: dy0 + ((m.dy1 || 0) - dy0) * k };
   }
 
-  // Anhalten, wo er gerade ist, Haltungen zurücksetzen
+  // Anhalten, wo er gerade ist, Haltungen zurücksetzen. Mitten im Spurwechsel bleibt er auf der Spur, der er schon
+  // näher ist (wie der Pika, _freeze).
   _friendSettle(fr) {
     const live = this._frLive(fr);
-    this._frSetX(fr, live.x, 0, 'linear', live.lift < 1 ? 0 : live.lift);
+    const lift = live.lift < 1 ? 0 : live.lift;
+    const lane = this._cfg.depth && !(lift > 0) && live.dy > this._H * LANE_DY / 2 ? 1 : 0;
+    this._frSetX(fr, live.x, 0, 'linear', lift, lane);
     fr.el.classList.remove(...FRIEND_CLS);
     fr.mfood?.classList.remove('shrink');
   }
@@ -574,7 +625,7 @@ export class Pino {
     fr.dir = dir;
     fr.el.classList.toggle('left', dir < 0);
     fr.sw.classList.toggle('left', dir < 0);
-    this._bubbleFit(fr.say, fr.x, this._g.pW * FRIEND_SCALE);
+    this._bubbleFit(fr.say, fr.x, this._g.pW * FRIEND_SCALE, this._frLaneDy(fr) ? LANE_S : 1);
   }
 
   // wie _jump: ein Sprung, der noch in der Luft ist, wird zu Ende gesprungen (fresh: _frHop trägt ihn woandershin)
@@ -629,8 +680,10 @@ export class Pino {
     const fW = pW * FRIEND_SCALE;
     const fH = pH * FRIEND_SCALE;
     const live = this._frLive(fr);
-    const x = live.x + fr.dir * fW * 0.25;
-    const y = gy - fH * 0.945 + fH * 0.25 - live.lift;
+    // Auf der hinteren Spur steht er höher und um LANE_S kleiner (um die Füße): der Kopf liegt entsprechend tiefer
+    const s = live.dy ? 1 - (1 - LANE_S) * Math.min(1, live.dy / (this._H * LANE_DY)) : 1;
+    const x = live.x + fr.dir * fW * 0.25 * s;
+    const y = gy - fH * 0.945 * s + fH * 0.25 * s - live.lift - live.dy;
     for (let i = 0; i < n; i++) {
       const h = document.createElement('span');
       h.className = 'heart';
@@ -757,42 +810,73 @@ export class Pino {
     });
   }
 
-  // Fangen: abwechselnd hoppelt einer davon, der andere hinterher, mit Staubwölkchen
+  // Fangen: abwechselnd hoppelt einer davon, der andere hinterher, mit Staubwölkchen. Tiefe (depth): Sie spielen
+  // umeinander herum. Der Läufer nimmt die andere Spur als der Fänger; der folgt ihm mal auf seine Spur, mal bleibt
+  // er auf seiner. Stehen sie so auf verschiedenen Spuren, schlüpft der nächste Läufer manchmal mitten an ihm vorbei,
+  // vor oder hinter ihm. Zum Schluss kommen beide wieder nach vorn.
   async _chaseFriend() {
     await this._withFriend(async (fr, w) => {
       const { pW, gy } = this._g;
-      const [lo, hi] = this._frRange();
-      const mid = (lo + hi) / 2;
+      // Bereich je Spur: vorn wie immer (_frRange), hinten _laneRange für die größere Figur (den Pika). Ist hinten
+      // kaum Platz (schmale Karte), bleiben beide vorn.
+      const front = this._frRange();
+      const back = this._cfg.depth ? this._laneRange(pW) : front;
+      const deep = !!this._cfg.depth && back[1] - back[0] > pW * 2;
+      const range = (l) => (l ? back : front);
+      const lyOf = (l) => (deep && l ? this._H * LANE_DY : 0);
       this._frFace(fr, this._x >= fr.x ? 1 : -1);
       this._frSay(fr, 'fang mich!', 1400);
       this._frJump(fr, 'hop1');
       await w(800);
-      const pino = (x, speed, delay) => (async () => {
+      const pino = (x, speed, delay, lane) => (async () => {
         if (delay) await w(delay);
-        await this._friendWalkTo(fr, x, speed, w, true);
+        await this._friendWalkTo(fr, x, speed, w, true, lane);
       })();
-      const pika = (x, speed, delay) => (async () => {
+      const pika = (x, speed, delay, lane) => (async () => {
         if (delay) await w(delay);
-        await this._walkTo(x, speed);
+        await this._walkTo(x, speed, false, lane);
       })();
       const rounds = 3 + Math.floor(rnd(0, 3));
       for (let i = 0; i < rounds; i++) {
         const pinoRuns = i % 2 === 0;
         const rx = pinoRuns ? fr.x : this._x;
         const cx = pinoRuns ? this._x : fr.x;
+        const rl0 = deep ? (pinoRuns ? fr.lane : this._lane) || 0 : 0;
+        const cl0 = deep ? (pinoRuns ? this._lane : fr.lane) || 0 : 0;
+        // Spur des Läufers: die andere als die des Fängers
+        let rl = deep ? 1 - cl0 : 0;
+        let [lo, hi] = range(rl);
         // weg vom Fänger (chaseFar): nach der Seite, auf der der Läufer von ihm aus steht. Bisher zählte nur, auf
         // welcher Hälfte der Fänger stand, die erste Runde führte darum oft mitten durch ihn hindurch. Ist am Rand
         // kein Platz mehr, rennt der Läufer an ihm vorbei auf die andere Seite.
-        const far = chaseFar(rx, cx, lo, hi, pW);
+        let far = chaseFar(rx, cx, lo, hi, pW);
+        const via = (f) => (f ? cx > rx : cx < rx); // liegt der Fänger auf dem Weg?
+        // An ihm vorbei nie mit Spurwechsel: Die Ebene wechselt erst auf halbem Weg, und das Vorbeilaufen liegt in
+        // der ersten Hälfte; er liefe sichtbar durch ihn hindurch. Dann bleibt er auf seiner Spur.
+        if (rl !== rl0 && via(far)) {
+          rl = rl0;
+          [lo, hi] = range(rl);
+          far = chaseFar(rx, cx, lo, hi, pW);
+        }
+        // Auf verschiedenen Spuren (ohne Wechsel, die Ebenen stimmen den ganzen Weg): manchmal mitten an ihm
+        // vorbei, wenn dahinter noch eine Pika-Breite Platz ist
+        const around = rl0 !== cl0 && !via(far) && Math.random() < 0.5 && (rx < cx ? hi - cx : cx - lo) >= pW;
+        if (around) far = rx < cx;
+        const past = around || via(far);
+        // Der Fänger folgt auf die Spur des Läufers, nach einem Vorbeilaufen nicht (er dreht nur um)
+        const cl = past || !deep || Math.random() < 0.5 ? cl0 : rl;
+        const mid = (lo + hi) / 2;
         // Ziel im äußeren Drittel der Fluchtseite, mindestens eine Pika-Breite weiter als der Läufer schon steht
-        const T = clamp(far ? rnd(Math.max(rx + pW, mid + (hi - mid) * 0.4), hi) : rnd(lo, Math.min(rx - pW, mid - (mid - lo) * 0.4)), lo, hi);
+        // (beim Vorbeilaufen: als der Fänger)
+        const ref = around ? cx : rx;
+        const T = clamp(far ? rnd(Math.max(ref + pW, mid + (hi - mid) * 0.4), hi) : rnd(lo, Math.min(ref - pW, mid - (mid - lo) * 0.4)), lo, hi);
         const d = T > rx ? 1 : -1;
-        const C = clamp(T - d * pW * 0.7, lo, hi);
+        const C = clamp(T - d * pW * 0.7, ...range(cl));
         const speed = rnd(1.9, 2.4);
-        this._puff(fr.x, gy, 2);
-        this._puff(this._x, gy, 2);
-        await Promise.all(pinoRuns ? [pino(T, speed, 0), pika(C, speed, 280)] : [pika(T, speed, 0), pino(C, speed, 280)]);
-        this._puff(T, gy, 2);
+        this._puff(fr.x, gy - this._frLaneDy(fr), 2);
+        this._puff(this._x, gy - this._laneDy(), 2);
+        await Promise.all(pinoRuns ? [pino(T, speed, 0, rl), pika(C, speed, 280, cl)] : [pika(T, speed, 0, rl), pino(C, speed, 280, cl)]);
+        this._puff(T, gy - lyOf(rl), 2);
         // eingeholt: umdrehen, kichern, Rollen tauschen
         if (pinoRuns) {
           this._frFace(fr, -d);
@@ -805,6 +889,10 @@ export class Pino {
         }
         await w(rnd(450, 800));
       }
+      // Tiefe: zum Schluss beide wieder auf die vordere Spur (Pino in ihren Bereich), dann erst Freudensprung
+      if (deep && (fr.lane || this._lane)) {
+        await Promise.all([this._walkTo(this._x, 1.2), this._friendWalkTo(fr, fr.x, 1.2, w)]);
+      }
       // außer Atem und glücklich
       this._face(fr.x >= this._x ? 1 : -1);
       this._frFace(fr, this._x >= fr.x ? 1 : -1);
@@ -815,7 +903,7 @@ export class Pino {
       await w(1100);
       this._say('puh!', 1100);
       await w(rnd(900, 1500));
-    });
+    }, true);
   }
 
   // Zusammen sitzen: nebeneinander, beide schauen in dieselbe Richtung, Ohrenwackeln, einer putzt den anderen
@@ -1015,6 +1103,8 @@ export class Pino {
       if (dist > this._W * 0.4 || dist < pW * 0.6) {
         const d = fr.x >= this._x ? 1 : -1;
         await this._walkTo(fr.x - d * pW * rnd(1, 1.3));
+      } else if (this._cfg.depth && this._lane) {
+        await this._walkTo(this._x); // Tiefe: von der hinteren Spur nach vorn zu Pino
       }
       this._face(fr.x >= this._x ? 1 : -1);
       this._frFace(fr, this._x >= fr.x ? 1 : -1);

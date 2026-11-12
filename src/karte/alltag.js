@@ -28,20 +28,19 @@ export class Alltag {
       : this._x + rnd(pW * 0.6, Math.max(pW, this._W * 0.4)) * pick([-1, 1]);
     // Bei Regen nicht weit weg vom Bau
     if (this._wx.wet) x = rnd(home, home + this._W * 0.35);
-    // Prototyp Tiefe: manchmal auf die hintere Spur, zwischen Heuhaufen (hinter ihm vorbei) und Stein,
-    // der vor der Spur liegt und ihn sonst nicht verdecken könnte. _laneNext erzwingt die Spur (Vorschau).
+    // Tiefe: manchmal auf die hintere Spur, über die ganze Wiese, hinter Heu und Stein vorbei (_laneRange; beide
+    // stehen auf der Bühne davor und verdecken ihn). _laneNext erzwingt die Spur, _laneX die Stelle (Vorschau).
     let lane = 0;
     if (this._cfg.depth) {
-      const g = this._g;
-      const l = g.stash ? g.fMin * this._W : g.hay;
-      const r = g.rock.l - pW * 0.55;
+      const [l, r] = this._laneRange();
       const want = this._laneNext ?? (this._wx.wet ? 0 : Math.random() < 0.4 ? 1 : 0);
       this._laneNext = null;
       if (want && r - l > pW * 0.3) {
         lane = 1;
-        x = rnd(l, r);
+        x = this._laneX != null ? clamp(this._laneX, l, r) : rnd(l, r);
       }
     }
+    this._laneX = null;
     await this._walkTo(x, 1, false, lane);
     await this._wait(rnd(400, 1400));
   }

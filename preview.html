@@ -20,6 +20,14 @@
   <button id="tiefe">Tiefe an/aus</button>
   <button data-lane="1">nach hinten hoppeln</button>
   <button data-lane="0">nach vorn hoppeln</button>
+  <button data-tief="heu">Pika hinter das Heu</button>
+  <button data-tief="stein">Pika hinter den Stein</button>
+  <button data-tief="pino">Pino hinten</button>
+  <button data-tief="besuch">Besucher hinten</button>
+  <button data-tief="fangen">Fangen</button>
+  <button data-tief="reiten">Mitfahren vorn</button>
+  <button data-tief="daemmerung">Dämmerung</button>
+  <button data-tief="tag">Tag</button>
   <button data-areal="huegel">Hügel</button>
   <button data-areal="fels">Fels</button>
   <button data-areal="stumpf">Stumpf</button>
@@ -565,6 +573,55 @@
   })));
   document.querySelectorAll('[data-areal]').forEach((b) => b.addEventListener('click', () =>
     cards.forEach((c) => c.setConfig({ ...c._cfg, areal: b.dataset.areal }))));
+  // Tiefe ausprobieren (depth wird dafür eingeschaltet): Pika auf der hinteren Spur hinter Heu bzw. Stein (_laneX),
+  // Pino und Besucher auf die hintere Spur (_frLaneNext, _critLaneNext: gilt für den nächsten Hopser bzw. Besuch),
+  // Fangen, Mitfahren auf dem Saugroboter, Licht der Dämmerung und des Tages (Datum bleibt)
+  const tief = (c) => {
+    if (!c._cfg.depth) c.setConfig({ ...c._cfg, depth: true });
+    tiefeMark();
+  };
+  document.querySelectorAll('[data-tief]').forEach((b) => b.addEventListener('click', () => {
+    const w = b.dataset.tief;
+    if (w === 'reiten') {
+      document.querySelector('[data-sig="vac-cleaning"]').click();
+      setTimeout(() => cards.forEach((c) => {
+        tief(c);
+        c._sigRideAt = 0;
+        c._next = 'sigRide';
+        c._interrupt();
+      }), 400);
+      return;
+    }
+    for (const c of cards) {
+      if (w === 'daemmerung' || w === 'tag') {
+        c._dbgElev = w === 'tag' ? 28 : 3;
+        c._dbgAz = w === 'tag' ? 180 : 245;
+        c._dbgSleep = false;
+        c._tick();
+        continue;
+      }
+      tief(c);
+      if (w === 'heu' || w === 'stein') {
+        c._laneNext = 1;
+        c._laneX = w === 'heu' ? c._g.hay : c._g.rock.cx;
+        c._next = 'wander';
+        c._interrupt();
+      } else if (w === 'pino' || w === 'fangen') {
+        if (!c._fr) c._friendCome(1, 9e4, true);
+        if (w === 'pino') {
+          c._frLaneNext = 1;
+          if (c._fr && !c._fr.busy) c._frTake(c._fr); // sein jetziger Schritt endet, der nächste geht nach hinten
+        }
+        else {
+          c._next = 'chaseFriend';
+          c._interrupt();
+        }
+      } else if (w === 'besuch') {
+        c._critLaneNext = 1;
+        c._visit(c._wx?.wet ? 'frog' : 'mouse', c._critId, true);
+      }
+    }
+  }));
 
   document.querySelectorAll('[data-sun]').forEach((b) =>
     b.addEventListener('click', () => {

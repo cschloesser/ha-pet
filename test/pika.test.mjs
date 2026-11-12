@@ -36,7 +36,7 @@ const WELT = {
     if (h && typeof h === 'object') abgeraeumt.add(h);
     return clearTimeout(h);
   },
-  setInterval, clearInterval, queueMicrotask, Date, Math, JSON, Promise, Intl, AbortController,
+  setInterval, clearInterval, queueMicrotask, Date, Math, JSON, Promise, Intl, AbortController, performance,
   __pikaTest: (x) => (T = x),
 };
 vm.runInNewContext(src, WELT, { filename: 'pika-pet-card.js' });
@@ -4261,8 +4261,9 @@ test('Bühne: weiter unten im Bild liegt davor, bei gleichem Fußpunkt entscheid
   assert.ok(Number.isInteger(T.BUEHNE_MAX) && T.BUEHNE_MAX < 1e6);
   // Der Stil nennt die Ebenen der Schichten nicht mehr (nur Wetter und darüber haben Variablen)
   assert.doesNotMatch(quell, /--z-(back|mid|stage|front)\b/);
-  // Jede feste Art bekommt ihre Ebene im Stil (z-index: ${BZ.art}); der Pika setzt sie im Skript (_pikaZ)
-  for (const art of Object.keys(T.BUEHNE).filter((a) => !['pika', 'pikaBau'].includes(a))) {
+  // Jede feste Art bekommt ihre Ebene im Stil (z-index: ${BZ.art}); Pika (_pikaZ) und seit 0.39 die Besucher (_critZ)
+  // setzen sie im Skript
+  for (const art of Object.keys(T.BUEHNE).filter((a) => !['pika', 'pikaBau', 'reiter', 'maus', 'mausVorn'].includes(a))) {
     assert.match(quell, new RegExp(`z-index: \\$\\{BZ\\.${art}\\}`), `${art}: keine Ebene im Stil`);
   }
 });
@@ -4330,4 +4331,125 @@ test('Bühne: Ebene des Pikas aus Spur, Bau und Sprung', () => {
   p.classList.add('inside');
   assert.equal(z(0), T.BZ.pikaBau);
   assert.ok(T.BZ.vogel < T.BZ.pikaBau && T.BZ.pikaBau < T.BZ.pino);
+});
+
+// ---- Tiefe (0.39): die Bühne nutzen ----
+test('Tiefe: die hintere Spur führt über die ganze Wiese, hinter Heu und Stein vorbei', () => {
+  const lr = (g, W = 600, w = 100) => plain(T.PikaPetCard.prototype._laneRange.call({ _g: { pW: w, ...g }, _W: W }, w));
+  // Heuhaufen: ab seiner Mitte bis an den rechten Rand (dort steht der Stein)
+  assert.deepEqual(lr({ stash: false, hay: 180, hayR: 215 }), [180, 555]);
+  // Nische im Bau: rechts daneben
+  assert.deepEqual(lr({ stash: true, hay: 205, hayR: 230 }), [260, 555]);
+  // sehr schmale Karte: nie verkehrt herum
+  assert.deepEqual(lr({ stash: true, hay: 205, hayR: 230 }, 240), [260, 260]);
+  // Hinter Heu und Stein heißt: beide stehen auf der Bühne davor, der Bau dahinter
+  const hinten = T.buehneZ(T.REIHE.hinten, 'pika');
+  assert.ok(hinten < T.BZ.heu && hinten < T.BZ.stein && hinten > T.BZ.bau && hinten > T.BZ.festBau);
+});
+
+test('Tiefe: beim Mitfahren steht der Pika vorn auf dem Roboter, vor allem anderen', () => {
+  const p = { classList: new Set(), style: {} };
+  p.classList.contains = p.classList.has;
+  const c = { _el: { pika: p }, _cfg: { depth: true }, _lane: 0, _lift: 20, _reiter: true };
+  T.PikaPetCard.prototype._pikaZ.call(c);
+  const z = Number(p.style.zIndex);
+  assert.equal(z, T.BZ.reiter);
+  for (const [art, bz] of Object.entries(T.BZ)) if (art !== 'reiter') assert.ok(z > bz, `vor ${art}`);
+  assert.ok(z <= T.BUEHNE_MAX);
+  // ohne _reiter (ohne depth setzt _sigRide es nicht): wie bisher hinter dem Roboter
+  c._reiter = false;
+  T.PikaPetCard.prototype._pikaZ.call(c);
+  assert.ok(Number(p.style.zIndex) < T.BZ.sauger);
+  // der Stil nennt den Reiter nicht (die Ebene setzt das Skript)
+  assert.match(quell, /this\._reiter = !!this\._cfg\.depth/);
+});
+
+test('Tiefe: Pino auf beiden Spuren, ohne depth wie bisher', async () => {
+  const P = T.PikaPetCard.prototype;
+  const kl = () => {
+    const s = new Set();
+    return { has: (c) => s.has(c), add: (c) => s.add(c), remove: (c) => s.delete(c), toggle: (c, on) => (on ? s.add(c) : s.delete(c)), contains: (c) => s.has(c) };
+  };
+  const karte = (depth) => ({
+    _cfg: { depth }, _H: 200, _W: 800, _g: { pW: 100, pH: 100, gy: 180, hay: 150, stash: false },
+    _bubbleFit() {}, _frRange: () => [200, 760],
+    _frLive: P._frLive, _frLaneDy: P._frLaneDy, _frZ: P._frZ, _frSetX: P._frSetX, _laneRange: P._laneRange,
+  });
+  const pino = () => ({ x: 100, lift: 0, lane: 0, el: { style: {}, classList: kl(), offsetWidth: 0 }, sw: { style: {}, classList: kl() }, say: {} });
+  // ohne depth: Spur 1 gibt es nicht, Ebene und Stelle wie bis 0.38
+  let c = karte(false);
+  let fr = pino();
+  c._frSetX(fr, 300);
+  assert.equal(fr.el.style.transform, 'translate(257.5px, 0.0px)');
+  assert.equal(fr.el.style.zIndex, String(T.BZ.pino));
+  c._frSetX(fr, 400, 1000, 'linear', 0, 1);
+  assert.doesNotMatch(fr.el.style.transform, /scale/);
+  assert.equal(fr.el.style.zIndex, String(T.BZ.pino));
+  // mit depth: hinten höher und kleiner, die Ebene wechselt auf halbem Weg
+  c = karte(true);
+  fr = pino();
+  c._frSetX(fr, 300);
+  c._frSetX(fr, 400, 200, 'linear', 0, 1);
+  assert.match(fr.el.style.transform, /-15\.0px\) scale\(0\.800\)$/);
+  assert.equal(fr.sw.style.transform, fr.el.style.transform, 'die Sprechblase geht mit');
+  assert.equal(fr.el.style.zIndex, String(T.buehneZ(0, 'pino')), 'erst noch vorn');
+  await new Promise((r) => setTimeout(r, 160));
+  assert.equal(fr.el.style.zIndex, String(T.buehneZ(T.REIHE.hinten, 'pino')), 'ab halbem Weg hinten');
+  clearTimeout(fr.laneZT);
+  // auf dem Stein (lift) zählt die vordere Spur
+  fr.lift = 30;
+  c._frZ(fr, 1);
+  assert.equal(fr.el.style.zIndex, String(T.BZ.pino));
+  assert.equal(c._frLaneDy(fr, 1), 0);
+});
+
+test('Tiefe: Maus, Frosch und Schnecke stehen in der Tiefe statt in zwei Schichten', () => {
+  const P = T.PikaPetCard.prototype;
+  const kl = () => {
+    const s = new Set();
+    return { has: (c) => s.has(c), toggle: (c, on) => (on ? s.add(c) : s.delete(c)), contains: (c) => s.has(c) };
+  };
+  const krit = (lane) => ({ el: { style: {}, classList: kl() }, lane, yG: 176 });
+  // hinter dem Stein, draußen vorn, draußen hinten
+  let c = krit(0);
+  P._critZ.call({}, c, false);
+  assert.equal(c.el.style.zIndex, String(T.BZ.maus));
+  assert.ok(!c.el.classList.has('vorn'));
+  P._critZ.call({}, c, true);
+  assert.equal(c.el.style.zIndex, String(T.BZ.mausVorn));
+  assert.ok(c.el.classList.has('vorn') && !c.el.classList.has('lane1'));
+  c = krit(1);
+  P._critZ.call({}, c, true);
+  const z = Number(c.el.style.zIndex);
+  assert.equal(z, T.buehneZ(T.REIHE.hinten, 'mausVorn'));
+  assert.ok(c.el.classList.has('lane1'));
+  for (const art of ['stein', 'heu', 'blume', 'mausVorn', 'pika']) assert.ok(z < T.BZ[art], `hinten hinter ${art}`);
+  assert.ok(z < T.buehneZ(T.REIHE.hinten, 'pika'), 'auf derselben Spur hinter dem Pika');
+  assert.ok(z > T.BZ.bau && z > T.BZ.maus);
+  P._critZ.call({}, c, false);
+  assert.equal(c.el.style.zIndex, String(T.BZ.maus));
+  assert.ok(!c.el.classList.has('vorn') && !c.el.classList.has('lane1'));
+  // Größe und Stelle: vorn wie bis 0.38 (nur translate), hinten stufenlos kleiner bis LANE_S
+  const k = { _H: 200, _critS: P._critS };
+  assert.equal(P._critXf.call(k, krit(0), 300, 176), 'translate(300.0px, 176.0px)');
+  assert.equal(P._critXf.call(k, krit(0), 300, 130), 'translate(300.0px, 130.0px)');
+  assert.equal(P._critXf.call(k, krit(1), 300, 161), 'translate(300.0px, 161.0px) scale(0.800)');
+  assert.equal(P._critXf.call(k, krit(1), 300, 176), 'translate(300.0px, 176.0px)');
+  assert.equal(P._critS.call(k, krit(1), 168.5), 0.9);
+  assert.equal(P._critS.call(k, krit(1), 100), 0.8);
+  // Spur je Besuch: aus dem Seed, nur mit depth, nur wenn genug Wiese hinten liegt; der Vorschau-Haken gilt einmal
+  const karte = (depth) => ({ _cfg: { depth }, _g: { pW: 100, stash: false, hay: 150, hayR: 178 }, _W: 600, _laneRange: P._laneRange });
+  let kk = karte(false);
+  kk._critLaneNext = 1;
+  assert.equal(P._critLane.call(kk, { back: true }, 200, 400, 26), 0);
+  assert.equal(kk._critLaneNext, null);
+  kk = karte(true);
+  assert.equal(P._critLane.call(kk, { back: true }, 200, 400, 26), 1);
+  assert.equal(P._critLane.call(kk, { back: false }, 200, 400, 26), 0);
+  kk._critLaneNext = 1;
+  assert.equal(P._critLane.call(kk, { back: false }, 200, 400, 26), 1);
+  assert.equal(kk._critLaneNext, null);
+  assert.equal(P._critLane.call(kk, { back: true }, 10, 40, 26), 0, 'links vom Heu gibt es keine hintere Spur');
+  // Die zweite Schicht gibt es nicht mehr
+  assert.doesNotMatch(quell, /miceF|class="mice-f"|\.mice-f\s*[>{,]/);
 });

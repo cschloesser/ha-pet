@@ -21,18 +21,19 @@ const REIHE = { bau: -0.12, hinten: -LANE_DY, stein: -0.04, vorn: 0, rand: BOTE_
 // Rangfolge bei gleichem Fußpunkt, hinten zuerst: die Mal-Reihenfolge der Schichten bis 0.37 (erst alles ohne
 // z-index in DOM-Reihenfolge, dann die Ebenen 1 bis 4: Deko am Bau, Vögel und Pika im Bau, Bühne, vorderer Rand)
 const RANG = [
-  'maus', // Maus, Frosch, Schnecke hinter dem Stein (.mice)
+  'maus', // Maus, Frosch, Schnecke hinter dem Stein
   'festHinten', // Festdeko hinter dem Bau (Baum, Maibaum, Wimpel)
   'bau', 'stein', 'licht', 'tv', // Bau, Stein, Fensterlicht, Fernsehlicht im Eingang
   'festBau', // Lichter, Girlanden, Laterne am Bau (bis 0.37 über Blumen, Schätzen, Schildern: siehe CHANGELOG 0.38)
   'drachen', 'blume', 'futter', 'schatz', // Schätze, Päckchen, Schild und Postkarte des Urlaubs, Garderobe
-  'mausVorn', // Besucher vor dem Stein (.mice-f)
+  'mausVorn', // Besucher draußen auf der Wiese (bis 0.38 eigene Schicht .mice-f); hinten: Reihe der hinteren Spur
   'schild', // Schild über einem Haushaltsgerät
   'gluehwurm', 'requisit', // Glühwürmchen; Requisiten am Boden hinter dem Pika (Staffelei, Steintürmchen …)
   'vogel', 'pikaBau', // Vögelchen; der Pika im Eingang des Baus
   'pino', 'pika', 'arm', // Pino, der Pika, der Plüsch-Pino
   'heu', 'festVorn', 'gras', 'requisitVorn', 'haeufchen',
   'geraet', 'balken', 'geraetVorn', 'tonne', 'sauger', // vorderer Wiesenstreifen
+  'reiter', // depth: der Pika, der auf dem Saugroboter mitfährt, vor allem anderen (seit 0.39)
 ];
 const RANG_N = 40; // Platz je Reihe (mehr Ränge als Platz: der Bau bricht über den Test ab)
 const SPANNE = 300; // Fußpunkte von −0,3 H bis +0,3 H, in Tausendsteln von H
@@ -53,7 +54,7 @@ const BUEHNE = {
   drachen: 'vorn', blume: 'vorn', futter: 'vorn', schatz: 'vorn', mausVorn: 'vorn', schild: 'vorn', gluehwurm: 'vorn',
   requisit: 'vorn', vogel: 'vorn', pikaBau: 'vorn', pino: 'vorn', pika: 'vorn', arm: 'vorn',
   heu: 'vorn', festVorn: 'vorn', gras: 'vorn', requisitVorn: 'vorn', haeufchen: 'vorn',
-  geraet: 'rand', balken: 'rand', geraetVorn: 'rand', tonne: 'rand', sauger: 'rand',
+  geraet: 'rand', balken: 'rand', geraetVorn: 'rand', tonne: 'rand', sauger: 'rand', reiter: 'rand',
 };
 // … und ihre Ebenen, für den Stil
 const BZ = Object.fromEntries(Object.entries(BUEHNE).map(([art, reihe]) => [art, buehneZ(REIHE[reihe], art)]));

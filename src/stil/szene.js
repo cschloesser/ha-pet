@@ -148,10 +148,10 @@ const STYLE = `
 
   /* Schichten der Bühne: nur Behälter, ohne Ebene und ohne Filter (beides machte sie zu einem eigenen Stapel, ihre
      Figuren könnten sich dann nicht mit denen anderer Schichten überlappen). Die Ebene hat jede Figur selbst. */
-  .land, .flowers, .foods, .birds, .mice, .mice-f { position: absolute; inset: 0; }
-  .birds, .mice, .mice-f { pointer-events: none; }
-  .mice > * { z-index: ${BZ.maus}; }
-  .mice-f > * { z-index: ${BZ.mausVorn}; }
+  .land, .flowers, .foods, .birds, .mice { position: absolute; inset: 0; }
+  .birds, .mice { pointer-events: none; }
+  /* Maus, Frosch und Schnecke (.mice) bekommen ihre Ebene seit 0.39 vom Skript (_critZ): hinter dem Stein BZ.maus,
+     draußen auf der Wiese (.vorn) BZ.mausVorn, auf der hinteren Spur (.vorn.lane1) aus dem Fußpunkt */
   .birds > * { z-index: ${BZ.vogel}; } /* über der Festdeko am Bau, hinter Pika, Pino, Heu und Gras */
   /* Licht auf allem, was auf dem Land steht: Helligkeit und Sättigung stufenlos aus Sonnenhöhe und Wetter (--lb, --ls;
      --lbp für Requisiten, die nachts etwas heller bleiben). Bei vollem Tageslicht (ohne .shade) gar kein Filter.
@@ -991,7 +991,7 @@ const STYLE = `
     100% { transform: translate(var(--dx, 8px), calc(var(--H) * -.12)) scale(1) rotate(12deg); opacity: 0; }
   }
 
-  /* Maus: läuft hinter Stein und Bau (Ebene davor), translate setzt das Skript */
+  /* Maus: läuft hinter Stein und Bau (Ebene davor); translate (auf der hinteren Spur auch scale) und Ebene setzt das Skript */
   .mouse { position: absolute; left: 0; top: 0; width: 0; height: 0; --mw: calc(var(--H) * .15); }
   .mouse .mw {
     position: absolute; left: calc(var(--mw) * -.5 - 8px); bottom: -6px; width: var(--mw); padding: 10px 8px 6px;
