@@ -140,8 +140,10 @@ const chronikMisch = (a, b) => {
   return e;
 };
 
-// Bilanz eines Pika-Tags (Index tag, von start bis end) aus dem Ergebnis von diaryDerive
-const chronikBilanz = (ev, pets, start, end, tag) => {
+// Bilanz eines Pika-Tags (Index tag, von start bis end) aus dem Ergebnis von diaryDerive. Seit 0.35 dazu (als Felder,
+// die 0.34 nicht kennt und beim Zusammenführen erhält): gut=1 an einem guten Tag (Freundschaftstag), urlaub=1, wenn er
+// an dem Tag (auch nur zeitweise) bei seinem Freund war. urlaub: [[Beginn, Ende]] aus diaryDerive.
+const chronikBilanz = (ev, pets, start, end, tag, urlaub = []) => {
   const e = { d: chronikDatum(tag), futter: 0, streicheln: Math.min(Math.max(0, Math.floor(Number(pets?.[tag]) || 0)), PET_CAP), putzen: 0, paeckchen: 0, besuch: [], x: {} };
   for (const v of ev) {
     if (!(v.t >= start && v.t < end)) continue;
@@ -149,10 +151,15 @@ const chronikBilanz = (ev, pets, start, end, tag) => {
     else if (v.k === 'clean') e.putzen += v.n || 0;
     else if (v.k === 'parcel') e.paeckchen++;
     else if (v.k === 'mem' && hasKey(CHRONIK_MEM, v.b)) e.besuch.push(CHRONIK_MEM[v.b]);
+    else if (v.k === 'mem' && v.b === 'gut') e.x.gut = '1';
   }
+  if (chronikUrlaub(urlaub, start, end)) e.x.urlaub = '1';
   e.besuch = gastSort(e.besuch);
   return e;
 };
+
+// Fällt [start, end) zum Teil in einen Urlaub?
+const chronikUrlaub = (urlaub, start, end) => (urlaub || []).some(([a, b]) => a < end && b > start);
 
 // Einträge der Liste ({ summary, uid, … }) nach Datum: lesbare (les: [{ uid, e }]) und ob ein „fremd für diesen
 // Tag“ dabei ist. Gelesen wird jeder Status, auch Abgehaktes.
@@ -216,6 +223,6 @@ const chronikPlan = (items, soll) => {
 };
 
 export {
-  CHRONIK, chronikDatum, chronikTag, chronikStart, chronikVersatz, chronikZoneOk, chronikKod, chronikLies, chronikMisch, chronikBilanz,
+  CHRONIK, chronikDatum, chronikTag, chronikStart, chronikVersatz, chronikZoneOk, chronikKod, chronikLies, chronikMisch, chronikBilanz, chronikUrlaub,
   chronikTage, chronikFehlt, chronikPlan,
 };

@@ -74,7 +74,7 @@ export class Schlaf {
   _dreamSvg() {
     const opts = [[1, 'lz'], [1, 'heart'], [0.6, 'klee']];
     const c = this._plan?.cute;
-    if (c && c.d >= pikaDay(this._haNow()) - 1) MEM_BITS.forEach((k, i) => c.m & (1 << i) && opts.push([3, k]));
+    if (c && c.d >= pikaDay(this._haNow()) - 1) MEM_BITS.forEach((k, i) => c.m & (1 << i) && DREAM[k] && opts.push([3, k]));
     return DREAM[weighted(opts)];
   }
 

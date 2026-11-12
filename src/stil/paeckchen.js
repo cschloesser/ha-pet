@@ -138,10 +138,13 @@ const STYLE_GIFT = `
   .gr1 { stroke: #f2b632; stroke-linecap: round; stroke-dasharray: var(--gp, 0) 100; transition: stroke-dasharray .8s, opacity .3s; }
   /* Fortschritt noch nicht berechnet (gerade geladen): kein Punkt bei 0 %, danach füllt sich der Ring */
   .gbtn.wait .gr1 { opacity: 0; }
-  .gbtn.warn .gr1 { stroke: #e8892a; animation: gwarn 1.6s ease-in-out infinite; }
-  /* Alles wieder über 50 %, nur selbst geknabbert: ruhig orange, eine Pflege-Aktion schließt die Lücke */
-  .gbtn.warn.ok .gr1 { animation: none; }
-  @keyframes gwarn { 50% { opacity: .3; } }
+  /* Toleranz läuft: der Ring zeigt in Orange, wie viel davon übrig ist (wird kürzer), ohne zu pulsieren. Auch wenn
+     schon alles wieder über 50 % ist (nur selbst geknabbert), schließt erst eine Pflege-Aktion die Lücke. */
+  .gbtn.warn .gr1 { stroke: #e8892a; }
+  .gbtn.warn.ok .gr1 { stroke: #eaa25a; }
+  /* Im Urlaub: blass, der Ring steht */
+  .gbtn.away .gico { opacity: .45; filter: grayscale(.8); }
+  .gbtn.away .gr1 { stroke: #c9c3b8; }
   /* Was fehlt (Satt, Glück, Sauber): kleines Zeichen links unten am Knopf */
   .gcrit { position: absolute; left: -5px; bottom: -5px; width: 16px; height: 16px; padding: 2px; box-sizing: border-box;
     border-radius: 50%; background: #fff; box-shadow: 0 1px 3px rgba(0, 0, 0, .25); }

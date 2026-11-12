@@ -2,8 +2,8 @@
 
 import { rnd, pick, clamp, seeded, seedRnd } from '../logik/hilfen.js';
 import { RATE, sec } from '../logik/zustand.js';
-import { PLAN_MIN, pikaDay, planParse } from '../logik/tagesplan.js';
-import { GIFT, GIFT_TRE, giftLv, giftLvs, giftOwned } from '../logik/paeckchen.js';
+import { PLAN_MIN, MEM_GUT, pikaDay, planParse } from '../logik/tagesplan.js';
+import { GIFT, GIFT_TRE, giftLv, giftLvs, giftOwned, giftTre, giftMile, giftAllGold } from '../logik/paeckchen.js';
 import {
   GIFT_LOW, GIFT_ITEMS, GIFT_PAPER, GIFT_BALLOONS, GIFT_GOLD, GIFT_TRICK, GIFT_GILT, GIFT_PARCEL, GIFT_BALLOON,
   GIFT_HAMMOCK, GIFT_WHEEL,
@@ -23,14 +23,22 @@ export class Paeckchen {
   // Pflege bewerten. Zwischen zwei Änderungen sinken alle drei Werte nur (satt und glücklich gleichmäßig, sauber nach dem
   // festen Häufchen-Plan). Seit wann einer unter GIFT.min liegt, lässt sich darum jederzeit ausrechnen, auch wenn keiner
   // zugeschaut hat. Läuft vor jeder Änderung (dann steht ein Absinken fest, bevor es überdeckt wird), danach mit user (du
-  // hast etwas getan: ist jetzt alles wieder darüber, endet die Lücke) und beim Tick. → { G, frac, left, warn, broken }
+  // hast etwas getan: ist jetzt alles wieder darüber, endet die Lücke) und beim Tick. Im Urlaub (und bis der Zustand
+  // danach neu angesetzt ist) ruht alles. → { G, frac, left, warn, broken, grace (restliche Toleranz, ms) }
   _careEval(user = false) {
     if (!this._giftOn() || !this._stats || !this._plan || !this._planOk || this._planStale) return null;
     if (this._cfg.entity && !this._noEntity && !this._synced) return null;
+    if (this._urlaubOn() || this._urlaubStale()) return null;
     const now = this._haNow();
     if (!this._plan.gift) this._planOp({ t: 'gstart', k: sec(now) });
     let G = this._plan.gift;
     if (!G) return null;
+    // Stand bis 0.34: Die Tage der laufenden Serie werden einmal zu Freundschaftstagen, so geht der Weg zu Gold nicht
+    // verloren (f % 7 ist der bisherige Fortschritt)
+    if (G.f == null) {
+      this._planOp({ t: 'gmig', k: G.k, f: Math.max(0, Math.floor((now - G.k) / 864e5)) });
+      G = this._plan.gift;
+    }
     const min = GIFT.min;
     const st = this._stats;
     const lowS = ['s', 'g'].filter((k) => this._raw(k) < min);
@@ -69,17 +77,39 @@ export class Paeckchen {
     const awake = Math.max(0, this._awakeMs(p, end));
     const de = Math.floor(awake / GIFT.every);
     if (de > 0 || G.p == null) this._planOp({ t: 'gearn', k: G.k, e: G.a + de, p: sec(this._awakeAdd(p, de * GIFT.every)) });
-    const w = Math.floor((now - G.k) / GIFT.gold);
-    if (!over && w > G.d) this._planOp({ t: 'ggold', k: G.k, w });
-    let res = { frac: (awake % GIFT.every) / GIFT.every, left: GIFT.every - (awake % GIFT.every), warn: G.b != null && !over, broken: over };
+    const grace = G.b != null && !over ? Math.max(0, GIFT.grace - this._awakeMs(G.b, now)) : GIFT.grace;
+    let res = { frac: (awake % GIFT.every) / GIFT.every, left: GIFT.every - (awake % GIFT.every), warn: G.b != null && !over, broken: over, grace };
     if (!bad && user && G.b != null) {
       this._planOp({ t: 'gok', k: G.k, b: G.b, brk: over, nk: sec(now) }); // nicht "at": das setzt _planOp
       res = over ? { frac: 0, left: GIFT.every, warn: false, broken: false } : { ...res, warn: false };
     }
+    if (!bad) this._careGood(now);
     res.G = this._plan.gift;
     this._care = res;
     this._giftRender();
     return res;
+  }
+
+  // Was heute für einen guten Tag fehlt: gefüttert (Futter von heute im Plan), gestreichelt (Zähler von heute) und einmal
+  // alle drei Werte zugleich über GIFT.min. Gezählt wird, sobald alles zusammenkommt, nicht erst am Ende des Tags; ein
+  // Riss der Pflege-Serie ist dafür egal. → { fed, pet, ok, good }
+  _careToday(now = this._haNow()) {
+    const d = pikaDay(now);
+    const c = this._cuteToday();
+    return {
+      fed: (this._plan?.fd || []).some((x) => pikaDay(x.t) === d),
+      pet: c.n > 0,
+      ok: !this._giftLow().length,
+      good: !!(c.m & MEM_GUT),
+    };
+  }
+
+  // Ein guter Tag: einmal je Pika-Tag ein Freundschaftstag mehr, jeder siebte bringt ein goldenes Päckchen (ggood)
+  _careGood(now) {
+    const G = this._plan?.gift;
+    if (!G || G.f == null) return;
+    const T = this._careToday(now);
+    if (!T.good && T.fed && T.pet && T.ok) this._planOp({ t: 'ggood', d: pikaDay(now) });
   }
 
   // Bis der Fortschritt einmal berechnet ist, alle 0,5 s versuchen (_careEval braucht Plan, Zustand aus HA und
@@ -141,11 +171,15 @@ export class Paeckchen {
     // nicht erst im nächsten Takt (_tick, alle 20 s)
     b.classList.toggle('wait', !this._care && !full);
     if (!this._care) this._careSoon();
-    b.style.setProperty('--gp', ((full ? 1 : c.frac || 0) * 100).toFixed(1));
-    b.classList.toggle('warn', !!c.warn);
+    // Im Urlaub blass, der Ring steht. Läuft die Toleranz, zeigt der Ring ruhig in Orange, wie viel davon noch übrig
+    // ist (er wird kürzer), statt zu pulsieren.
+    const away = this._urlaubOn();
+    b.classList.toggle('away', away);
+    b.style.setProperty('--gp', ((full ? 1 : c.warn ? c.grace / GIFT.grace : c.frac || 0) * 100).toFixed(1));
+    b.classList.toggle('warn', !!c.warn && !away);
     b.classList.toggle('broken', !!c.broken && !full);
     // Was fehlt, als Zeichen am Knopf. Ist schon wieder alles darüber (nur selbst geknabbert), pulsiert der Ring nicht.
-    const low = c.warn || (c.broken && !full) ? this._giftLow() : [];
+    const low = (c.warn || (c.broken && !full)) && !away ? this._giftLow() : [];
     b.classList.toggle('ok', !!c.warn && !low.length);
     const ce = b.querySelector('.gcrit');
     if (ce.dataset.k !== (low[0] || '')) {
@@ -158,7 +192,9 @@ export class Paeckchen {
     b.style.setProperty('--gpp', pp);
     b.style.setProperty('--gpr', pr);
     b.querySelector('.gnum').textContent = n ? String(n) : '';
-    b.title = n ? `Päckchen schenken (${n} da), lang drücken: Schätze` : 'Päckchen: gerade keins da, lang drücken: Schätze';
+    const tol = c.warn && !away ? `, noch ${Math.max(1, Math.round(c.grace / 6e4))} Min. Toleranz` : '';
+    b.title = away ? `Päckchen: ${this._cfg.name} ist verreist, lang drücken: Schätze`
+      : n ? `Päckchen schenken (${n} da${tol}), lang drücken: Schätze` : `Päckchen: gerade keins da${tol}, lang drücken: Schätze`;
   }
 
   _onGiftBtn() {
@@ -174,17 +210,20 @@ export class Paeckchen {
       b.classList.add('no');
     };
     // Höchstens ein Ballon zugleich
-    if (!G || !this._g || !this._planOk || G.z > G.o || !(G.n > 0 || G.y > 0)) return no();
+    if (!G || !this._g || !this._planOk || G.z > G.o || !(G.n > 0 || G.y > 0) || this._urlaubOn()) return no();
     const gold = G.y > 0;
     const z = G.z + 1;
     const i = this._giftPick(G, z, gold) + (gold ? 16 : 0);
     const x = sec(this._haNow());
-    this._planOp({ t: 'give', z, i, gold, x });
+    // r: Kennung dieses Geräts für dieses Päckchen. Schenken zwei Geräte in derselben Sekunde, haben beide dasselbe z,
+    // x und i; nur r zeigt dann, wessen Schenken im Helfer steht (bis 0.34 belohnten beide)
+    const r = Math.floor(Math.random() * 36);
+    this._planOp({ t: 'give', z, i, gold, x, r });
     if (this._plan.gift?.z !== z) return no();
     this._found('parcel');
     // Leckerli und Freude erst, wenn das Verschenken bestätigt ist (_giftCredit): Drückten zwei Geräte gleichzeitig,
     // gilt nur ein Päckchen, und nur dessen Gerät gibt die Belohnung
-    this._giftOwn = { z, i, x, at: this._haNow() };
+    this._giftOwn = { z, i, x, r, at: this._haNow() };
     this._giftCredit();
   }
 
@@ -198,21 +237,22 @@ export class Paeckchen {
     const G = (H || this._planBase)?.gift;
     if (G && G.z >= o.z) {
       this._giftOwn = null;
-      if (G.z !== o.z || G.x !== o.x || G.i !== o.i) return;
+      // (r fehlt, wenn eine ältere Karte den Plan inzwischen geschrieben hat: dann wie bisher)
+      if (G.z !== o.z || G.x !== o.x || G.i !== o.i || (G.r != null && G.r !== o.r)) return;
       if ((o.i & 15) >= GIFT_TRE) this._add('s', GIFT.treat, true);
       this._add('g', GIFT.joy, true);
     } else if (this._haNow() - o.at > 30 * 6e4) this._giftOwn = null;
   }
 
   // Inhalt des Päckchens Nummer z, auf allen Geräten gleich: Das erste und eins von je dreien ist ein Schatz (goldene
-  // immer), sonst ein Leckerli der Jahreszeit. Schatz heißt: erst einer, der noch fehlt, dann ein Trick für einen, der
+  // immer), nie mehr als zwei Leckerli in Folge (giftTre), sonst ein Leckerli der Jahreszeit. Schatz heißt: erst einer, der noch fehlt, dann ein Trick für einen, der
   // noch keinen hat. Goldene vergolden lieber einen mit Trick, bevor sie einen neuen Trick bringen. Hat jeder Schatz
   // alles, was er aus solchen Päckchen bekommen kann, gibt es nur noch Leckerli.
   _giftPick(G, z, gold) {
     const T = [...Array(GIFT_TRE).keys()];
     const at = (lv) => T.filter((t) => giftLv(G, t) === lv);
     const miss = at(0).length ? at(0) : gold && at(2).length ? at(2) : at(1);
-    const tre = miss.length && (gold || z === 1 || (z - 1) % 3 === Math.floor(seedRnd('gblk', Math.floor((z - 1) / 3)) * 3));
+    const tre = miss.length && (gold || giftTre(z));
     if (tre) return miss[Math.floor(seedRnd('gtre', z) * miss.length)];
     const south = (this._hass?.config?.latitude ?? 50) < 0;
     const mo = (new Date().getMonth() + (south ? 6 : 0)) % 12;
@@ -502,6 +542,9 @@ export class Paeckchen {
         await this._wait(1900);
         await this._giftStow(B.item, ie, lv);
       }
+      // Meilenstein (10., 25., 50., 100. Päckchen) und „alles golden“: eine kleine Feier hinterher
+      const all = lv === 3 && giftAllGold(this._plan?.gift);
+      if (all || giftMile(B.z)) await this._giftFeier(all ? 'gold' : B.z);
     } finally {
       B.el.classList.add('fade');
       const el = B.el;
@@ -513,6 +556,36 @@ export class Paeckchen {
       // dieses hier dem neuen Ballon im Weg (_giftFromPlan legt nur einen an, wenn keiner da ist). Jetzt kommt er.
       this._giftFromPlan();
     }
+  }
+
+  // Feier: Konfetti um ihn herum, Luftsprünge, ein Satz. what: 'gold' (alle Schätze golden) oder die Nummer des Päckchens
+  async _giftFeier(what) {
+    const { gy, pH } = this._g;
+    const gold = what === 'gold';
+    const cols = gold ? ['#f2c230', '#fff2b0', '#ffd75a', '#ffffff'] : GIFT_BALLOONS;
+    const burst = () => {
+      for (let i = 0; i < 14; i++) {
+        const c = document.createElement('span');
+        c.className = 'gconf';
+        const a = (i / 14) * Math.PI * 2 + rnd(-0.3, 0.3);
+        const d = this._H * rnd(0.08, 0.18);
+        c.style.cssText = `left:${this._x.toFixed(1)}px;top:${(gy - pH * 0.9).toFixed(1)}px;background:${cols[i % cols.length]};`
+          + `--dx:${(Math.cos(a) * d).toFixed(1)}px;--dy:${(Math.sin(a) * d + this._H * 0.06).toFixed(1)}px;--r:${rnd(-320, 320).toFixed(0)}deg`;
+        this._el.fx.appendChild(c);
+        setTimeout(() => c.remove(), 1050);
+      }
+    };
+    burst();
+    this._happy(2400);
+    this._say(gold ? 'Alles golden!' : `Mein ${what}. Päckchen!`, 2200);
+    this._jump('binky');
+    if (gold) for (const el of this._gtEls?.values() || []) el.classList.add('new');
+    await this._wait(900);
+    burst();
+    this._hearts(gold ? 5 : 3);
+    this._jump('binky');
+    await this._wait(1400);
+    for (const el of this._gtEls?.values() || []) el.classList.remove('new');
   }
 
   // Neuer Schatz an seinen Platz: fliegt hin und ploppt dort auf. Getragene probiert er gleich aus, einen neuen Trick
@@ -739,7 +812,7 @@ export class Paeckchen {
     this._giftGlint();
     // Voller Vorrat: der Knopf wackelt ab und zu
     const b = this._el.gbtn;
-    if (G.n >= GIFT.max && !b.hidden && Math.random() < 0.25) {
+    if (G.n >= GIFT.max && !b.hidden && !this._urlaubOn() && Math.random() < 0.25) {
       b.classList.remove('wig');
       void b.offsetWidth;
       b.classList.add('wig');
@@ -777,14 +850,22 @@ export class Paeckchen {
       const m = Math.max(1, Math.round(ms / 6e4));
       return m >= 60 ? `${Math.floor(m / 60)} Std.${m % 60 ? ` ${m % 60} Min.` : ''}` : `${m} Min.`;
     };
-    // Was fehlt, damit die Serie hält (bzw. wieder anfängt): "Hunger!", "Streicheln!", "Putzen!"
-    const low = c.warn || c.broken ? this._giftLow().map((k) => GIFT_LOW[k][0]).join(' ') : '';
-    const next = G.n >= GIFT.max ? `Vorrat voll${low ? ` · ${low}` : ''}` : c.broken ? `Serie gerissen${low ? `, neu ab 50 %: ${low}` : ''}`
-      : c.warn ? (low ? `schnell: ${low}` : 'einmal kümmern, dann läuft sie weiter') : `nächstes in ${fmt(c.left ?? GIFT.every)} Wachzeit`;
+    // Was fehlt, damit die Serie hält (bzw. wieder anfängt), in ruhigen Worten: „füttern und putzen“
+    const lw = c.warn || c.broken ? this._giftLow().map((k) => GIFT_LOW[k][0]) : [];
+    const low = lw.length > 1 ? `${lw.slice(0, -1).join(', ')} und ${lw.at(-1)}` : lw[0] || '';
+    const away = this._urlaubOn();
+    const next = away ? `ruht, solange ich bei ${this._frName()} bin` : G.n >= GIFT.max ? `Vorrat voll${low ? ` · bitte ${low}` : ''}`
+      : c.broken ? `die Serie fängt neu an, sobald alles über 50 % ist${low ? `: bitte ${low}` : ''}`
+        : c.warn ? (low ? `noch ${fmt(c.grace ?? GIFT.grace)} Toleranz: bitte ${low}` : 'einmal kümmern, dann läuft sie weiter')
+          : `nächstes in ${fmt(c.left ?? GIFT.every)} Wachzeit`;
+    const f = G.f ?? 0;
     return {
-      G, lvs, next, warn: !!(c.warn || c.broken),
+      G, lvs, next, warn: !!(c.warn || c.broken) && !away, away,
       have: lvs.filter((lv) => lv > 0).length,
-      days: c.broken ? 0 : Math.floor((this._haNow() - G.k) / 864e5),
+      // Freundschaftstage: alle, die bis zum nächsten goldenen fehlen, und was heute schon da ist
+      friends: f, dots: f % GIFT.goldDays, today: this._careToday(),
+      mile: [10, 25, 50, 100].find((m) => m > G.o) ?? (Math.floor(G.o / 100) + 1) * 100,
+      allGold: giftAllGold(G),
     };
   }
 }

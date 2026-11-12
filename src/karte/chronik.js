@@ -2,7 +2,9 @@
 
 import { pikaDay } from '../logik/tagesplan.js';
 import { diaryDerive } from '../logik/tagebuch.js';
-import { CHRONIK, chronikDatum, chronikStart, chronikZoneOk, chronikBilanz, chronikTage, chronikFehlt, chronikPlan } from '../logik/chronik.js';
+import {
+  CHRONIK, chronikDatum, chronikStart, chronikZoneOk, chronikBilanz, chronikUrlaub, chronikTage, chronikFehlt, chronikPlan,
+} from '../logik/chronik.js';
 
 export class Chronik {
   // Mit chronicle_entity (einer To-do-Liste von HA) trägt die Karte einmal am Tag nach, was an den vergangenen
@@ -198,8 +200,11 @@ export class Chronik {
         const b = chronikStart(tag + 1);
         const drin = (t) => t >= a && t < b;
         // Ein Tag ohne jede Änderung im Verlauf wird nicht geschrieben: Was kein Gerät gezeigt hat, erfindet die
-        // Chronik nicht (wie das Tagebuch, dort bleibt es „mein Geheimnis“)
-        if (R.stamps.some(drin) || R.ev.some((e) => drin(e.t))) soll.set(chronikDatum(tag), chronikBilanz(R.ev, R.pets, a, b, tag));
+        // Chronik nicht (wie das Tagebuch, dort bleibt es „mein Geheimnis“). Ein Urlaubstag steht da, auch wenn sich nichts
+        // tat: Dass er bei seinem Freund war, steht im Verlauf (der Abschnitt im Tagesplan).
+        if (R.stamps.some(drin) || R.ev.some((e) => drin(e.t)) || chronikUrlaub(R.urlaub, a, b)) {
+          soll.set(chronikDatum(tag), chronikBilanz(R.ev, R.pets, a, b, tag, R.urlaub));
+        }
       }
     }
     let n = await this._chronikDo(chronikPlan(items, soll), live, at);

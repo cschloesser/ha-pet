@@ -17,6 +17,7 @@ import { STYLE_COFFEE } from '../stil/kaffee.js';
 import { STYLE_ACT } from '../stil/beschaeftigungen.js';
 import { STYLE_GIFT } from '../stil/paeckchen.js';
 import { STYLE_DIARY_BTN } from '../stil/tagebuch.js';
+import { STYLE_URLAUB } from '../stil/urlaub.js';
 
 export class Aufbau {
   _build() {
@@ -34,7 +35,7 @@ export class Aufbau {
     ].map(([top, s, d, dl]) => `<div class="cloud" style="top:${top}%;--s:${s};--d:${d}s;--dl:${dl}s"></div>`).join('');
 
     this.shadowRoot.innerHTML = `
-        <style>${STYLE}${STYLE_SKY}${STYLE_FEST}${STYLE_FRIEND}${STYLE_BOTE}${STYLE_COFFEE}${STYLE_ACT}${STYLE_GIFT}${STYLE_DIARY_BTN}</style>
+        <style>${STYLE}${STYLE_SKY}${STYLE_FEST}${STYLE_FRIEND}${STYLE_BOTE}${STYLE_COFFEE}${STYLE_ACT}${STYLE_GIFT}${STYLE_DIARY_BTN}${STYLE_URLAUB}</style>
         <ha-card>
           <div class="scene day">
             <div class="sky sky-day"></div><div class="sky sky-dusk"></div><div class="sky sky-night"></div>

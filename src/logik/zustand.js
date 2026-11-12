@@ -10,9 +10,11 @@ const CLOCK_KEEP = 12;
 const CLOCK_STEP = 250;
 const GAIN = { feed: 25, pet: 8, clean: 10 };
 // Selbst gefressen (Wiesenblume, Heu): wenig und nur bis SELF_MAX. Jedes Gerät knabbert für sich und Blumen
-// wachsen alle 2,5 Min nach, ohne Grenze wäre er immer satt. Über die Hälfte bringt ihn nur das Füttern.
+// wachsen alle 2,5 Min nach, ohne Grenze wäre er immer satt. Bis 0.34 lag die Grenze bei 50: Solange ein Gerät
+// zusah, kam er nie unter 30 (Hunger). Jetzt hat er Hunger, wenn niemand füttert, und das Knabbern hält ihn nur über
+// 15 % (hängende Ohren). Für die Pflege-Serie zählt Selbstgefressenes ohnehin nicht.
 const SELF = { flower: 3, hay: 2 };
-const SELF_MAX = 50;
+const SELF_MAX = 25;
 // Häufchen: alle 80–140 Minuten Wachzeit eins, das erste 10–30 Minuten nach dem Aufwachen. Höchstens 8
 // seit dem letzten Großputz (einzeln weggemachte zählen mit), die ersten 3 in der Klo-Ecke am Stein. idx:
 // so viele Fälligkeiten rechnet die Karte höchstens (Bits der Maske für einzeln weggemachte Häufchen).

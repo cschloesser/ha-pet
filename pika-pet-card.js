@@ -60,7 +60,7 @@
  */
 (() => {
   // src/version.js
-  var VERSION = "0.34.0";
+  var VERSION = "0.35.0";
 
   // src/logik/hilfen.js
   var Cancel = class extends Error {
@@ -119,7 +119,7 @@
   var CLOCK_STEP = 250;
   var GAIN = { feed: 25, pet: 8, clean: 10 };
   var SELF = { flower: 3, hay: 2 };
-  var SELF_MAX = 50;
+  var SELF_MAX = 25;
   var POOP = { every: 80, spread: 60, morning: [10, 20], max: 8, latrine: 3, idx: 24, fly: 4, live: 3 };
   var sec = (ms) => Math.floor(ms / 1e3) * 1e3;
   var freshStats = (t = Date.now()) => {
@@ -523,7 +523,7 @@
   };
 
   // src/logik/paeckchen.js
-  var GIFT = { min: 50, grace: 60 * 6e4, every: 6 * 36e5, max: 3, gold: 7 * 864e5, goldMax: 2, arrive: 12e3, treat: 15, joy: 15 };
+  var GIFT = { min: 50, grace: 60 * 6e4, every: 6 * 36e5, max: 3, goldDays: 7, goldMax: 2, arrive: 12e3, treat: 15, joy: 15 };
   var GIFT_TRE = 8;
   var giftLv = (G, t) => !G || !(G.u & 1 << t) ? 0 : !(G.v & 1 << t) ? 1 : G.v & 1 << 8 + t ? 3 : 2;
   var giftLvs = (G, hide = null) => [...Array(GIFT_TRE).keys()].map((t) => {
@@ -531,13 +531,24 @@
     return Math.max(0, lv - (G && G.z > G.o && (G.i & 15) === t || hide === t ? 1 : 0));
   });
   var giftOwned = (G) => giftLvs(G).reduce((m, lv, t) => lv ? m | 1 << t : m, 0);
+  var giftTreM = [false];
+  var giftTre = (z) => {
+    if (!(z >= 1)) return false;
+    for (let n = giftTreM.length; n <= z; n++) {
+      const base = n === 1 || (n - 1) % 3 === Math.floor(seedRnd("gblk", Math.floor((n - 1) / 3)) * 3);
+      giftTreM[n] = base || n >= 3 && !giftTreM[n - 1] && !giftTreM[n - 2];
+    }
+    return giftTreM[z];
+  };
+  var giftMile = (o) => o === 10 || o === 25 || o === 50 || o >= 100 && o % 100 === 0;
+  var giftAllGold = (G) => !!G && (G.u & 255) === 255 && ((G.v || 0) & 65535) === 65535;
   var GIFT_CLS = ["sling", "aim", "snap", "spy", "wcan", "pour", "shup", "wink", "hswing", "puffy"];
 
   // src/logik/tagesplan.js
   var HAY_MAX = 12;
   var PLAN_REC = 4;
-  var PLAN_MIN = 165;
-  var planBlank = (now = Date.now()) => ({ hay: { n: 3, t: now, c: "", m: 0 }, sport: null, rec: [], cute: null, gift: null, fl: null, fd: [] });
+  var PLAN_MIN = 180;
+  var planBlank = (now = Date.now()) => ({ hay: { n: 3, t: now, c: "", m: 0 }, sport: null, rec: [], cute: null, gift: null, fl: null, fd: [], ur: null });
   var FOOD_MAX = 3;
   var FOOD_KINDS = ["lz", "klee"];
   var FLGIFT = { gap: 90 * 6e4, life: 12 * 6e4 };
@@ -545,8 +556,10 @@
   var GIFT_T = /* @__PURE__ */ new Set(["k", "b", "x"]);
   var PET_CLING = 10;
   var PET_CAP = 99;
-  var MEM_BITS = ["lz", "klee", "coffee", "heart", "pino", "plane", "bird", "note", "bfly"];
+  var MEM_BITS = ["lz", "klee", "coffee", "heart", "pino", "plane", "bird", "note", "bfly", "gut"];
+  var MEM_GUT = 1 << 9;
   var pikaDay = (t) => Math.floor((t - new Date(t).getTimezoneOffset() * 6e4 - 4 * 36e5) / 864e5);
+  var giftU = (G) => (G.u & 255) + (G.f != null ? (G.f + 1) * 256 : 0);
   var planSer = (P) => {
     const h = P.hay;
     const f = P.fl;
@@ -557,18 +570,25 @@
       (P.sport ? `${P.sport.d.toString(36)}.${P.sport.k.toString(36)}` : "-") + (P.fd || []).map((f2) => `_${Math.round(f2.t / 1e3).toString(36)}-${f2.x.toString(36).padStart(2, "0")}${(f2.k ? 1 : 0) + (f2.e ? 2 : 0)}`).join(""),
       P.rec.map(([k, a, v]) => v ? `${k.toString(36)}:${a}:${v}` : `${k.toString(36)}:${a}`).join(",") || "-",
       (P.cute ? [P.cute.d, P.cute.n, P.cute.m].map((x) => x.toString(36)).join(".") : "-") + (P.fu ? `_${Math.round(P.fu / 1e3).toString(36)}` : ""),
-      ...P.gift ? [GIFT_F.map((f2) => P.gift[f2] == null ? "-" : Math.round(GIFT_T.has(f2) ? P.gift[f2] / 1e3 : P.gift[f2]).toString(36) + (f2 === "a" && P.gift.p != null ? `_${Math.round(P.gift.p / 1e3).toString(36)}` : "") + (f2 === "u" && P.gift.v != null ? `_${P.gift.v.toString(36)}` : "")).join(".")] : []
+      ...P.gift ? [GIFT_F.map((f2) => P.gift[f2] == null ? "-" : (f2 === "u" ? giftU(P.gift) : Math.round(GIFT_T.has(f2) ? P.gift[f2] / 1e3 : P.gift[f2])).toString(36) + (f2 === "a" && P.gift.p != null ? `_${Math.round(P.gift.p / 1e3).toString(36)}` : "") + (f2 === "u" && P.gift.v != null ? `_${P.gift.v.toString(36)}` : "") + (f2 === "x" && P.gift.r != null ? `_${P.gift.r.toString(36)}` : "")).join(".")] : P.ur ? ["-"] : [],
+      ...P.ur ? [`u${Math.round(P.ur.t / 1e3).toString(36)}${P.ur.d != null ? `.${Math.round(P.ur.d / 6e4).toString(36)}` : ""}`] : []
     ].join("|");
   };
   var planParse = (str) => {
     const p = String(str ?? "").split("|");
-    if (p.length < 4 || p.length > 6 || p[0] !== "p1") return null;
+    if (p.length < 4 || p.length > 7 || p[0] !== "p1") return null;
+    let ur = null;
+    if (p.length === 7) {
+      const m2 = /^u([0-9a-z]+)(?:\.([0-9a-z]+))?$/.exec(p[6]);
+      if (!m2) return null;
+      ur = { t: parseInt(m2[1], 36) * 1e3, d: m2[2] != null ? parseInt(m2[2], 36) * 6e4 : null };
+    }
     const h = p[1].split(".");
     const n = Number(h[0]);
     const t = parseInt(h[1], 36) * 1e3;
     const m = parseInt(h[3], 36);
     if (h.length !== 4 || !Number.isFinite(n) || !Number.isFinite(t) || !Number.isFinite(m)) return null;
-    const P = { hay: { n: clamp(n, 1, HAY_MAX), t, c: h[2] === "-" ? "" : h[2].replace(/\D/g, ""), m }, sport: null, rec: [], cute: null, gift: null, fl: null, fd: [] };
+    const P = { hay: { n: clamp(n, 1, HAY_MAX), t, c: h[2] === "-" ? "" : h[2].replace(/\D/g, ""), m }, sport: null, rec: [], cute: null, gift: null, fl: null, fd: [], ur };
     const fq = h[3].split("_");
     if (fq.length === 3 && /^\d[0-9a-z]{2}[01]$/.test(fq[2])) {
       const ft = parseInt(fq[1], 36) * 1e3;
@@ -583,6 +603,12 @@
       const gv = parseInt(gq[3].split("_")[1] ?? "", 36);
       G.v = Number.isFinite(gv) ? gv & 65535 : 0;
       if (!Number.isFinite(gv)) G.nov = true;
+      if (Number.isFinite(G.u)) {
+        G.f = G.u >= 256 ? Math.floor(G.u / 256) - 1 : null;
+        G.u &= 255;
+      }
+      const gr = parseInt(gq[7].split("_")[1] ?? "", 36);
+      G.r = Number.isFinite(gr) ? gr : null;
       if (GIFT_F.every((f) => f === "b" || Number.isFinite(G[f]))) P.gift = G;
     }
     const [cq, fuq] = (p[4] || "-").split("_");
@@ -605,31 +631,33 @@
     }
     return P;
   };
-  var GIFT_OPS = /* @__PURE__ */ new Set(["gstart", "gbad", "gok", "gearn", "ggold", "give", "gopen", "gdbg"]);
+  var GIFT_OPS = /* @__PURE__ */ new Set(["gstart", "gbad", "gok", "gearn", "gmig", "give", "gopen", "gdbg"]);
+  var urOn = (P) => !!P?.ur && P.ur.d == null;
   var giftApply = (out, op) => {
     const G = out.gift;
     if (op.t === "gstart") {
-      if (!G) out.gift = { k: op.k, a: 0, n: 0, u: 0, v: 0, z: 0, o: 0, b: null, x: 0, y: 0, d: 0, i: 0, p: op.k };
+      if (!G) out.gift = { k: op.k, a: 0, n: 0, u: 0, v: 0, z: 0, o: 0, b: null, x: 0, y: 0, d: 0, i: 0, p: op.k, f: 0, r: null };
       return;
     }
     if (!G) return;
     if (op.t === "gbad") {
-      if (G.k === op.k && G.b == null) G.b = op.b;
+      if (G.k === op.k && G.b == null && !(urOn(out) && op.b >= out.ur.t)) G.b = op.b;
     } else if (op.t === "gok") {
       if (G.k === op.k && G.b === op.b) Object.assign(G, op.brk ? { k: op.nk, a: 0, b: null, d: 0, p: op.nk } : { b: null });
     } else if (op.t === "gearn") {
+      if (urOn(out) && op.p != null && op.p > out.ur.t) return;
       if (G.k === op.k && (op.e > G.a || op.e === G.a && G.p == null && op.p != null)) {
         G.n = Math.min(GIFT.max, G.n + op.e - G.a);
         G.a = op.e;
         if (op.p != null) G.p = op.p;
       }
-    } else if (op.t === "ggold") {
-      if (G.k === op.k && op.w > G.d) Object.assign(G, { y: Math.min(GIFT.goldMax, G.y + op.w - G.d), d: op.w });
+    } else if (op.t === "gmig") {
+      if (G.f == null && G.k === op.k) G.f = op.f;
     } else if (op.t === "give") {
       if (op.z !== G.z + 1 || G.o < G.z || !(op.gold ? G.y > 0 : G.n > 0)) return;
       if (op.gold) G.y--;
       else G.n--;
-      Object.assign(G, { z: op.z, x: op.x, i: op.i });
+      Object.assign(G, { z: op.z, x: op.x, i: op.i, r: op.r ?? null });
       const t = op.i & 15;
       if (t < GIFT_TRE) {
         const lv = giftLv(G, t);
@@ -649,9 +677,34 @@
     return { n, c: h.c.slice(-n) };
   };
   var planApply = (P, op, now) => {
-    const out = { hay: { ...P.hay }, sport: P.sport, rec: P.rec.map((e) => [...e]), cute: P.cute, gift: P.gift && { ...P.gift }, fl: P.fl, fd: P.fd || [], fu: P.fu || 0 };
+    const out = { hay: { ...P.hay }, sport: P.sport, rec: P.rec.map((e) => [...e]), cute: P.cute, gift: P.gift && { ...P.gift }, fl: P.fl, fd: P.fd || [], fu: P.fu || 0, ur: P.ur || null };
     if (GIFT_OPS.has(op.t)) {
       giftApply(out, op);
+      return out;
+    }
+    if (op.t === "ggood") {
+      const c = out.cute;
+      const G = out.gift;
+      if (!G || G.f == null || c && (c.d > op.d || c.d === op.d && c.m & MEM_GUT)) return out;
+      out.cute = c?.d === op.d ? { ...c, m: c.m | MEM_GUT } : { d: op.d, n: 0, m: MEM_GUT };
+      G.f++;
+      if (G.f % GIFT.goldDays === 0) G.y = Math.min(GIFT.goldMax, G.y + 1);
+      return out;
+    }
+    if (op.t === "von") {
+      if (!out.ur || out.ur.d != null && op.t0 >= out.ur.t + out.ur.d) out.ur = { t: op.t0, d: null };
+      return out;
+    }
+    if (op.t === "voff") {
+      if (out.ur?.t !== op.t0 || out.ur.d != null) return out;
+      out.ur = { t: op.t0, d: op.d };
+      if (out.gift && op.gp != null && out.gift.p != null) out.gift.p = op.gp;
+      if (out.gift && op.gb != null && out.gift.b != null) out.gift.b = op.gb;
+      if (op.ht != null) out.hay.t = op.ht;
+      return out;
+    }
+    if (op.t === "vclear") {
+      if (out.ur?.t === op.t0 && out.ur.d != null) out.ur = null;
       return out;
     }
     if (op.t === "rec") {
@@ -1280,6 +1333,23 @@
   var PROPS = (pre) => PROP_SEL.map((s) => `${pre} ${s}`).join(", ");
   var KRAM = { in: 240, out: 200 };
 
+  // src/logik/urlaub.js
+  var URLAUB = { keep: 24 * 36e5, restore: 15 * 6e4, min: 30 * 6e4 };
+  var urlaubAt = (ur, t) => !!ur && t >= ur.t && (ur.d == null || t < ur.t + ur.d);
+  var urlaubEnd = (ur) => !ur ? -Infinity : ur.d == null ? Infinity : ur.t + ur.d;
+  var urlaubCut = (ur, a, b) => {
+    if (!ur || !(b > a)) return null;
+    const x = Math.max(a, ur.t);
+    const y = Math.min(b, urlaubEnd(ur));
+    return y > x ? [x, y] : null;
+  };
+  var urlaubDauer = (ms) => {
+    const d = Math.round(ms / 864e5);
+    if (d >= 1) return d === 1 ? "einen Tag" : `${d} Tage`;
+    const h = Math.max(1, Math.round(ms / 36e5));
+    return h === 1 ? "eine Stunde" : `${h} Stunden`;
+  };
+
   // src/logik/tagebuch.js
   var DIARY = { keep: 3 * 864e5, max: 400, close: 6e4, gap: 100 * 6e4, acts: 2 };
   var FIND_GROUPS = ["Streicheln", "Kümmern", "Meine Welt"];
@@ -1368,7 +1438,13 @@
     heart: ["So viel gestreichelt worden. Mein Fell steht noch ganz flauschig ab.", "Ganz viele Streicheleinheiten bekommen. Ich bin fast geschmolzen."],
     parcel: ["Ein Päckchen am Ballon! Ich hab es mit der Zwille heruntergeholt.", "Ein Päckchen! Schleife auf, Deckel ab."],
     earn: ["Du kümmerst dich so gut um mich, dass ein Päckchen für mich bereitliegt.", "Ein neues Päckchen wartet auf mich. Danke fürs Kümmern!"],
-    earnGold: ["Eine ganze Woche am Stück gut umsorgt: Dafür gibt es ein goldenes Päckchen!"],
+    earnGold: ["Sieben gute Tage zusammen! Dafür gibt es ein goldenes Päckchen.", "Wieder sieben gute Tage. Ein goldenes Päckchen liegt für mich bereit!"],
+    gut: ["Heute war ein guter Tag: gefüttert, gestreichelt und rundum zufrieden.", "Gefüttert, gestreichelt, alles bestens. Das war ein guter Tag."],
+    urlaub: ["Ich bin zu {n} gefahren. Mein Bau wartet so lange auf mich.", "Rucksack auf und los: Ich besuche {n}!"],
+    urlaubTag: ["Ich bin bei {n}.", "Heute bin ich noch bei {n}."],
+    heim: ["Wieder zu Hause! {d} war ich bei {n}. Hier ist meine Postkarte.", "Da bin ich wieder! {d} bei {n}, es war schön. Die Postkarte ist für euch."],
+    mile: ["Das war mein {z}. Päckchen! Ich hab ein bisschen gefeiert."],
+    allGold: ["Jetzt sind alle meine Schätze golden. Was für ein Fest!"],
     flowerTaken: ["Ich hab dir eine Blume gepflückt und ins Gras gelegt. Du hast sie genommen!", "Für dich: eine Blume mit Schleife. Du hast sie angenommen, da hab ich mich gefreut."],
     flowerWait: ["Ich hab dir eine Blume ins Gras gelegt. Sie wartet auf dich."],
     flowerWilt: ["Ich hab dir eine Blume hingelegt. Sie ist leider verwelkt. Ich pflück dir bald eine neue."],
@@ -1377,7 +1453,7 @@
     hungry: ["Mein Bauch hat geknurrt. Zum Glück gab es bald etwas zu knabbern."],
     hungryNow: ["Mein Bauch hat geknurrt. Ich hab ganz fest an Löwenzahn gedacht."],
     clean: ["Alles blitzblank! Danke fürs Saubermachen, da hab ich einen Freudensprung gemacht.", "Meine Wiese ist wieder sauber. Sie funkelt richtig!"],
-    streak: ["Meine Päckchen-Serie fängt von vorn an. Macht nichts, das schaffen wir zusammen."],
+    streak: ["Meine Päckchen-Serie fängt neu an. Das macht nichts, meine guten Tage behalte ich."],
     secret: [
       "Da steht nichts in meinem Tagebuch. Was ich gemacht habe, bleibt mein Geheimnis.",
       "Da steht nichts. Vielleicht hab ich Purzelbäume geübt. Vielleicht auch nicht."
@@ -1446,6 +1522,21 @@
     let pend = null;
     const petMax = (c) => c && (pets[c.d] = Math.max(pets[c.d] || 0, c.n));
     petMax(P[0]?.v.cute);
+    const p0 = P[0]?.v;
+    const mem = {};
+    if (p0?.cute) mem[p0.cute.d] = p0.cute.m;
+    const hays = new Set(p0 ? [`${p0.hay.m}.${p0.hay.c}`] : []);
+    let hayM = p0 ? p0.hay.m : -Infinity;
+    const fls = new Set(p0?.fl ? [p0.fl.t] : []);
+    const g00 = p0?.gift;
+    let maxO = g00 ? g00.o : -Infinity;
+    let maxZ = g00 ? g00.z : -Infinity;
+    let maxK = g00 ? g00.k : -Infinity;
+    let maxF = g00?.f ?? null;
+    const maxA = g00 ? { [g00.k]: g00.a } : {};
+    const urs = /* @__PURE__ */ new Map();
+    const urSee = (ur) => ur && (!urs.has(ur.t) || urs.get(ur.t) == null) && urs.set(ur.t, ur.d);
+    urSee(p0?.ur);
     for (let i = 1; i < P.length; i++) {
       const a = P[i - 1].v;
       const b = P[i].v;
@@ -1460,9 +1551,14 @@
           if (t >= from) ev.push(e);
         }
       }
-      if (b.hay.c !== a.hay.c || b.hay.m > a.hay.m) add(t, "gather");
-      if (b.fl && b.fl.t !== a.fl?.t) add(b.fl.t, "flower", { id: b.fl.t, taken: !!b.fl.k });
-      else if (b.fl?.k && !a.fl?.k) {
+      const hk = `${b.hay.m}.${b.hay.c}`;
+      if (!hays.has(hk) && (b.hay.m > hayM || b.hay.c !== a.hay.c)) add(t, "gather");
+      hays.add(hk);
+      hayM = Math.max(hayM, b.hay.m);
+      if (b.fl && !fls.has(b.fl.t)) {
+        fls.add(b.fl.t);
+        add(b.fl.t, "flower", { id: b.fl.t, taken: !!b.fl.k });
+      } else if (b.fl?.k && !a.fl?.k) {
         const e = ev.find((x) => x.k === "flower" && x.id === b.fl.t);
         if (e) e.taken = true;
         else add(t, "flower", { id: b.fl.t, taken: true });
@@ -1475,30 +1571,50 @@
       const c = b.cute;
       if (c) {
         petMax(c);
-        const neu = c.m & ~(a.cute?.d === c.d ? a.cute.m : 0);
+        const neu = c.m & ~(mem[c.d] || 0);
+        mem[c.d] = (mem[c.d] || 0) | c.m;
         MEM_BITS.forEach((name, bit) => neu & 1 << bit && add(t, "mem", { b: name }));
       }
+      urSee(b.ur);
       const g0 = a.gift;
       const g1 = b.gift;
       if (g0 && g1) {
-        if (g1.k === g0.k && g1.a > g0.a) add(t, "earn");
-        if (g1.k === g0.k && g1.d > g0.d) add(t, "earnGold");
-        if (g1.k !== g0.k && g0.b != null && g1.a === 0) add(t, "streak");
-        if (g1.z > g0.z) {
+        if (g1.k === g0.k && g1.a > (maxA[g1.k] ?? g0.a) && g0.n < GIFT.max) add(t, "earn");
+        if (g1.k === g0.k) maxA[g1.k] = Math.max(maxA[g1.k] ?? g1.a, g1.a);
+        if (g1.f != null) {
+          if (maxF != null && Math.floor(g1.f / GIFT.goldDays) > Math.floor(maxF / GIFT.goldDays)) add(t, "earnGold");
+          maxF = Math.max(maxF ?? g1.f, g1.f);
+        }
+        if (g1.k !== g0.k && g1.k > maxK && g0.b != null && g1.a === 0) add(t, "streak");
+        maxK = Math.max(maxK, g1.k);
+        if (g1.z > maxZ) {
+          maxZ = g1.z;
           const it = g1.i & 15;
           const bit = 1 << it;
           const v0 = g0.v || 0;
           const v1 = g1.v || 0;
           pend = { z: g1.z, it, gold: !!(g1.i & 16), what: it >= GIFT_TRE ? "treat" : !(g0.u & bit) ? "new" : v1 & bit << 8 && !(v0 & bit << 8) ? "gilt" : v1 & bit && !(v0 & bit) ? "trick" : "new" };
         }
-        if (g1.o > g0.o) {
+        if (g1.o > maxO) {
+          maxO = g1.o;
           const it = g1.i & 15;
-          add(t, "parcel", pend && pend.z <= g1.o ? pend : { it, gold: !!(g1.i & 16), what: it >= GIFT_TRE ? "treat" : "new" });
+          const e = pend && pend.z <= g1.o ? pend : { it, gold: !!(g1.i & 16), what: it >= GIFT_TRE ? "treat" : "new" };
+          add(t, "parcel", { ...e, o: g1.o, mile: giftMile(g1.o), all: e.what === "gilt" && giftAllGold(g1) });
           pend = null;
         }
       }
     }
+    const urlaub = [];
+    for (const [t0, d] of urs) {
+      urlaub.push([t0, d == null ? Infinity : t0 + d]);
+      if (d != null && d < URLAUB.min) continue;
+      add(t0, "urlaub", { id: t0, d });
+      if (d != null) add(t0 + d, "heim", { id: t0, d });
+    }
+    const rebase = (v) => v.st === v.c && v.gt === v.c && urlaub.some(([, e]) => v.c >= e - 6e4 && v.c - e < URLAUB.keep);
     let food = S[0]?.v;
+    let maxC = S[0]?.v.c ?? -Infinity;
+    const masks = new Map(S[0] ? [[S[0].v.c, S[0].v.m]] : []);
     const growl = (v, end, eaten) => {
       if (!v || !(v.s > 30)) return;
       const x = decayAt(v.st, (v.s - 30) / RATE.s);
@@ -1509,15 +1625,19 @@
       const b = S[i].v;
       const t = S[i].t;
       stamps.push(t);
-      if (b.c > a.c) add(t, "clean", { n: 1, all: true });
-      else if (b.c === a.c && b.m & ~a.m) add(t, "clean", { n: bitCount(b.m & ~a.m) });
+      const seen = masks.get(b.c) || 0;
+      if (b.c > maxC && !rebase(b)) add(t, "clean", { n: 1, all: true });
+      else if (b.c === a.c && b.m & ~seen) add(t, "clean", { n: bitCount(b.m & ~seen) });
+      masks.set(b.c, seen | b.m);
+      maxC = Math.max(maxC, b.c);
       if (b.st !== food.st) {
         growl(food, b.st, true);
         food = b;
       }
     }
     growl(food, until, false);
-    return { ev, stamps: stamps.sort((x, y) => x - y), pets };
+    const inU = (x) => urlaub.some(([a, b]) => x.t > a && x.t < b);
+    return { ev: ev.filter((x) => x.k === "urlaub" || x.k === "heim" || !inU(x)), stamps: stamps.sort((x, y) => x - y), pets, urlaub };
   };
 
   // src/logik/chronik.js
@@ -1618,7 +1738,7 @@
     e.x = Object.fromEntries(Object.keys(e.x).sort().map((k) => [k, e.x[k]]));
     return e;
   };
-  var chronikBilanz = (ev, pets, start, end, tag) => {
+  var chronikBilanz = (ev, pets, start, end, tag, urlaub = []) => {
     const e = { d: chronikDatum(tag), futter: 0, streicheln: Math.min(Math.max(0, Math.floor(Number(pets?.[tag]) || 0)), PET_CAP), putzen: 0, paeckchen: 0, besuch: [], x: {} };
     for (const v of ev) {
       if (!(v.t >= start && v.t < end)) continue;
@@ -1626,10 +1746,13 @@
       else if (v.k === "clean") e.putzen += v.n || 0;
       else if (v.k === "parcel") e.paeckchen++;
       else if (v.k === "mem" && hasKey(CHRONIK_MEM, v.b)) e.besuch.push(CHRONIK_MEM[v.b]);
+      else if (v.k === "mem" && v.b === "gut") e.x.gut = "1";
     }
+    if (chronikUrlaub(urlaub, start, end)) e.x.urlaub = "1";
     e.besuch = gastSort(e.besuch);
     return e;
   };
+  var chronikUrlaub = (urlaub, start, end) => (urlaub || []).some(([a, b]) => a < end && b > start);
   var chronikGruppen = (items) => {
     const G = /* @__PURE__ */ new Map();
     for (const it of Array.isArray(items) ? items : []) {
@@ -1719,7 +1842,9 @@
     // Tagebuch: Antippen der Statusleiste zeigt, was er heute und gestern erlebt hat, und seine Schätze.
     // diary_house: false lässt Kaffee und Haushaltsgeräte darin weg.
     diary: true,
-    diary_house: true
+    diary_house: true,
+    // Urlaub bei Pino: Schalter im Tagebuch (false = kein Schalter; einen laufenden Urlaub zeigt die Karte trotzdem)
+    vacation: true
   };
   var EDITOR_LABEL = {
     name: "Name",
@@ -1749,7 +1874,8 @@
     appliances: "Haushaltsgeräte (Haus-Bote)",
     coffee: "Kaffeevollautomat",
     diary: "Tagebuch",
-    diary_house: "Haushalt im Tagebuch"
+    diary_house: "Haushalt im Tagebuch",
+    vacation: "Urlaubsschalter"
   };
   var EDITOR_HELP = {
     entity: "Damit alle Geräte denselben Pika sehen. Leer: nur in diesem Browser.",
@@ -1757,6 +1883,7 @@
     chronicle_entity: "Sein Langzeitgedächtnis: je Tag ein Eintrag mit der Tagesbilanz. Am besten eine eigene Liste; braucht beide Helfer. Leer: keine Chronik.",
     diary: "Antippen der Leiste öffnet sein Tagebuch.",
     diary_house: "Kaffee, Wäsche und Geschirr stehen mit Uhrzeit drin.",
+    vacation: "Im Tagebuch: „Ferien bei Pino“. Solange er verreist ist, ruhen Hunger, Glück, Häufchen und Päckchen-Serie.",
     sleep_start: "z. B. sunset, sunset+01:00 oder 21:00",
     sleep_end: "z. B. sunrise, sunrise-30 oder 07:00",
     rain_min: "Meldet das Wetter „rainy“ bei weniger, bleibt es trocken (nur mit Niederschlags-Sensor).",
@@ -1996,7 +2123,8 @@
             { name: "friend", selector: bool, default: true },
             { name: "festive", selector: bool, default: true },
             { name: "diary", selector: bool, default: true },
-            { name: "diary_house", selector: bool, default: true }
+            { name: "diary_house", selector: bool, default: true },
+            { name: "vacation", selector: bool, default: true }
           ] },
           group("Schlaf, Wetter und Himmel", "mdi:weather-night", [
             { type: "grid", name: "", schema: [
@@ -2582,7 +2710,7 @@
   </svg>`;
 
   // src/grafik/paeckchen.js
-  var GIFT_LOW = { s: ["Hunger!", ICON_LEAF], g: ["Streicheln!", ICON_HEART], c: ["Putzen!", ICON_SPARK] };
+  var GIFT_LOW = { s: ["füttern", ICON_LEAF], g: ["streicheln", ICON_HEART], c: ["putzen", ICON_SPARK] };
   var GIFT_ITEMS = [
     { key: "yarn", name: "Wollknäuel", say: "ein Wollknäuel!", svg: `<svg viewBox="0 0 24 24" aria-hidden="true">
       <path d="M18.4 17.6 q3.6 1.6 1.6 4 q-2 1.6 -4.4 .2" stroke="#f28fb1" stroke-width="1.2" fill="none" stroke-linecap="round"/>
@@ -5124,10 +5252,13 @@
   .gr1 { stroke: #f2b632; stroke-linecap: round; stroke-dasharray: var(--gp, 0) 100; transition: stroke-dasharray .8s, opacity .3s; }
   /* Fortschritt noch nicht berechnet (gerade geladen): kein Punkt bei 0 %, danach füllt sich der Ring */
   .gbtn.wait .gr1 { opacity: 0; }
-  .gbtn.warn .gr1 { stroke: #e8892a; animation: gwarn 1.6s ease-in-out infinite; }
-  /* Alles wieder über 50 %, nur selbst geknabbert: ruhig orange, eine Pflege-Aktion schließt die Lücke */
-  .gbtn.warn.ok .gr1 { animation: none; }
-  @keyframes gwarn { 50% { opacity: .3; } }
+  /* Toleranz läuft: der Ring zeigt in Orange, wie viel davon übrig ist (wird kürzer), ohne zu pulsieren. Auch wenn
+     schon alles wieder über 50 % ist (nur selbst geknabbert), schließt erst eine Pflege-Aktion die Lücke. */
+  .gbtn.warn .gr1 { stroke: #e8892a; }
+  .gbtn.warn.ok .gr1 { stroke: #eaa25a; }
+  /* Im Urlaub: blass, der Ring steht */
+  .gbtn.away .gico { opacity: .45; filter: grayscale(.8); }
+  .gbtn.away .gr1 { stroke: #c9c3b8; }
   /* Was fehlt (Satt, Glück, Sauber): kleines Zeichen links unten am Knopf */
   .gcrit { position: absolute; left: -5px; bottom: -5px; width: 16px; height: 16px; padding: 2px; box-sizing: border-box;
     border-radius: 50%; background: #fff; box-shadow: 0 1px 3px rgba(0, 0, 0, .25); }
@@ -5229,6 +5360,26 @@
   .row .w { color: #d9622b; font-weight: 800; }
   .dots { display: inline-flex; gap: 3px; margin-left: 6px; vertical-align: -1px; }
   .dots u { width: 9px; height: 9px; border-radius: 50%; box-shadow: inset 0 0 0 1px rgba(90, 64, 48, .35); }
+  /* Gute Tage: sieben Punkte bis zum goldenen Päckchen */
+  .d7 { display: flex !important; gap: 4px; margin: 3px 0 2px; }
+  .d7 u { width: 11px; height: 11px; border-radius: 50%; box-shadow: inset 0 0 0 1.5px var(--acc); }
+  .d7 u.on { background: #f2b632; box-shadow: inset 0 0 0 1px rgba(90, 64, 48, .35); }
+  /* Ferien bei Pino: Kasten mit Knöpfen (Heute) und die Postkarte im Eintrag der Rückkehr */
+  .ur { display: grid; grid-template-columns: 46px minmax(0, 1fr); gap: 10px; align-items: start; margin: 16px 0 6px; padding: 12px;
+    border-radius: 14px; background: var(--tab); }
+  .ur.on { margin-top: 6px; background: rgba(217, 168, 115, .24); }
+  .ur > i { display: block; width: 46px; margin-top: 2px; }
+  .ur > i svg { display: block; width: 100%; height: auto; }
+  .ur b { display: block; font-size: 15px; font-weight: 800; line-height: 1.25; }
+  .ur span { display: block; margin-top: 2px; font-size: 13px; line-height: 1.4; color: var(--soft); }
+  .ur .bt { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 9px; }
+  .ur button { min-height: 38px; padding: 0 14px; border-radius: 12px; background: var(--acc); color: #fff; font-size: 14px; font-weight: 800; }
+  .night .ur button { color: #2a2238; }
+  .ur button.no { background: none; color: var(--soft); box-shadow: inset 0 0 0 1.5px var(--line); }
+  .ur button:disabled { opacity: .45; cursor: default; }
+  .ur .nt { font-size: 12px; }
+  .post { display: block; width: 150px; margin: 8px 0 2px 2px; transform: rotate(-3deg); filter: drop-shadow(0 2px 4px rgba(0, 0, 0, .25)); }
+  .post svg { display: block; width: 100%; height: auto; }
   /* Entdeckungen: eine Zeile je Sache, davor ein leerer Kreis oder (schon ausprobiert) ein Pfotenabdruck */
   .fd { display: grid; grid-template-columns: 24px minmax(0, 1fr); gap: 10px; padding: 8px 0; border-bottom: 1px dashed var(--line); }
   .fd > i { display: block; width: 22px; height: 22px; margin-top: 1px; box-sizing: border-box; border-radius: 50%; border: 1.5px dashed var(--soft); opacity: .6; }
@@ -5273,6 +5424,27 @@
   .night .tbbtn { background: rgba(15, 22, 45, .55); }
   `;
 
+  // src/stil/urlaub.js
+  var STYLE_URLAUB = `
+  /* Verreist: nicht zu sehen (Tippen geht durch, er ist ja nicht da) */
+  .pika.fort { visibility: hidden; }
+  .ursign, .urcard { position: absolute; pointer-events: none; }
+  .ursign { transform-origin: 50% 4%; animation: ursw 5s ease-in-out infinite; }
+  .ursign.in { animation: urin .7s cubic-bezier(.3, 1.5, .5, 1), ursw 5s ease-in-out .7s infinite; }
+  .ursign.out { animation: none; transition: opacity .8s, transform .8s; opacity: 0; transform: translateY(-30%) rotate(-8deg); }
+  .ursign svg, .urcard svg { display: block; width: 100%; height: auto; overflow: visible; }
+  .urcard { transform: rotate(-9deg); filter: drop-shadow(0 1px 1.5px rgba(0, 0, 0, .3)); transition: opacity .8s; }
+  .urcard.in { animation: urcin .8s cubic-bezier(.3, 1.4, .5, 1); }
+  .urcard.out { opacity: 0; }
+  .ursign.wig { animation: urwig .6s; }
+  @keyframes ursw { 50% { transform: rotate(2.5deg); } }
+  @keyframes urin { from { transform: translateY(-40%) rotate(-12deg); opacity: 0; } }
+  @keyframes urcin { from { transform: translateY(-30%) rotate(-30deg) scale(.6); opacity: 0; } }
+  @keyframes urwig { 25% { transform: rotate(-7deg); } 60% { transform: rotate(5deg); } }
+  .night .ursign, .night .urcard { filter: brightness(.7) saturate(.8); }
+  @media (prefers-reduced-motion: reduce) { .ursign, .ursign.in, .urcard.in, .ursign.wig { animation: none; } }
+  `;
+
   // src/karte/aufbau.js
   var Aufbau = class {
     _build() {
@@ -5293,7 +5465,7 @@
         [18, 0.95, 120, -95]
       ].map(([top, s, d, dl]) => `<div class="cloud" style="top:${top}%;--s:${s};--d:${d}s;--dl:${dl}s"></div>`).join("");
       this.shadowRoot.innerHTML = `
-        <style>${STYLE}${STYLE_SKY}${STYLE_FEST}${STYLE_FRIEND}${STYLE_BOTE}${STYLE_COFFEE}${STYLE_ACT}${STYLE_GIFT}${STYLE_DIARY_BTN}</style>
+        <style>${STYLE}${STYLE_SKY}${STYLE_FEST}${STYLE_FRIEND}${STYLE_BOTE}${STYLE_COFFEE}${STYLE_ACT}${STYLE_GIFT}${STYLE_DIARY_BTN}${STYLE_URLAUB}</style>
         <ha-card>
           <div class="scene day">
             <div class="sky sky-day"></div><div class="sky sky-dusk"></div><div class="sky sky-night"></div>
@@ -5707,7 +5879,7 @@
     _dreamSvg() {
       const opts = [[1, "lz"], [1, "heart"], [0.6, "klee"]];
       const c = this._plan?.cute;
-      if (c && c.d >= pikaDay(this._haNow()) - 1) MEM_BITS.forEach((k, i) => c.m & 1 << i && opts.push([3, k]));
+      if (c && c.d >= pikaDay(this._haNow()) - 1) MEM_BITS.forEach((k, i) => c.m & 1 << i && DREAM[k] && opts.push([3, k]));
       return DREAM[weighted(opts)];
     }
     // Denkblase nach Traum oder Kaffeeduft wieder mit dem Löwenzahn füllen (für „hat Hunger“): erst, wenn sie
@@ -6114,6 +6286,11 @@
         this._el.pika.classList.remove(...PET_HOLD);
       }
       if (!this._g) return this._wait(500);
+      const ur = this._urlaubNext();
+      if (ur) {
+        this._next = null;
+        return this._run(ur);
+      }
       if (TOUCH_NEXT.has(this._next) && Date.now() - (this._nextAt || 0) > TOUCH_TTL) this._next = null;
       if (!(this._lift > 0)) this._onHam = false;
       if (this._lift > 0 && this._onHam) return this._run("giftHamDown");
@@ -6232,6 +6409,7 @@
         this._tickBote,
         this._tickCoffee,
         this._tickGift,
+        this._tickUrlaub,
         this._diaryDot
       ]) {
         this._guard(f.name, () => f.call(this));
@@ -6646,7 +6824,8 @@
     }
     _onFeed() {
       if (!this._g) return;
-      if (this._foods.length >= 3) {
+      if (this._foods.length >= 3 || this._urlaubOn()) {
+        if (this._urlaubOn()) this._urlaubPeep();
         const b = this._el.feed;
         b.classList.remove("no");
         void b.offsetWidth;
@@ -6779,7 +6958,8 @@
     // Vorrat aus dem Tagesplan zeigen; wippt, wenn ein Bündel dazukam
     _hayFromPlan() {
       if (!this._el) return;
-      const { n, c } = hayNow(this._plan.hay, this._haNow());
+      const ur = this._plan.ur;
+      const { n, c } = hayNow(this._plan.hay, ur && ur.d == null ? Math.min(this._haNow(), ur.t) : this._haNow());
       const pal = this._flowerPal();
       const key = `${n}|${c}|${this._arealKey}|${this._seasonK}`;
       if (key === this._hayKey) return;
@@ -6911,9 +7091,15 @@
     // wurde, steht nicht im Zustand, mit der Maske würde ein späterer Putz rückwirkend verschieben, wo ein schon
     // liegendes Häufchen hinkam. Frei wird alles erst beim Großputz (das letzte Häufchen weg).
     // at: zu einem anderen Zeitpunkt (Uhr der Häufchen) rechnen, ohne den Zwischenspeicher
+    // Urlaub: Ab seinem Beginn kommt nichts dazu und nichts altert (bis der Zustand nach der Rückkehr neu angesetzt ist)
     _poops(at) {
       const st = this._stats;
-      const now = at ?? this._now();
+      let now = at ?? this._now();
+      const ur = this._plan?.ur;
+      if (st && ur && st.c < urlaubEnd(ur)) {
+        const t0 = ur.t + (this._now() - this._haNow());
+        if (now > t0) now = t0;
+      }
       const key = st && `${st.c},${st.m},${st.l},${Math.floor(now / 1e4)},${this._cfg.sleep_start},${this._cfg.sleep_end}`;
       if (at == null && this._poopCache?.key === key) return this._poopCache;
       const res = { key, piles: [], clean: 100 };
@@ -7063,6 +7249,7 @@
     }
     // Antippen: Schaufel kommt, Häufchen weg, Funkeln. Ist alles weg, gilt das als Großputz.
     _cleanPile(key) {
+      if (this._urlaubOn()) return;
       const el = this._pileEls.get(key);
       if (!el || el.classList.contains("scooped")) return;
       const p = el._pile;
@@ -10368,6 +10555,7 @@
           if (Math.random() < 0.6) this._say(pick(["oh!", "ooh!"]), 900);
         }
       } else if (z.k === "door") {
+        if (this._urlaubDoor()) return this._found("door");
         if (!awake) this._cls("stw", 550, true);
         else {
           this._knock();
@@ -10482,6 +10670,7 @@
       const y = e.clientY - sr.top;
       const hit = e.target?.closest?.(".stats, button, .ptag") ? null : worldPick(x, y, this._worldZones(this._skyAt(e)));
       if (hit) this._worldTap(hit);
+      if (this._fort) return;
       if (this._asleep || this._action === "eatFood" || this._inside || p.classList.contains("tv")) return;
       const up = hit?.k === "cloud" || hit?.k === "star";
       this._glance(up ? "look-up" : Math.sign(x - this._liveX()) === this._dir ? "look-f" : "look-b");
@@ -10497,6 +10686,33 @@
       }
     }
   };
+
+  // src/grafik/urlaub.js
+  var OUT2 = "#5a4030";
+  var URLAUB_SIGN = (name) => `<svg viewBox="0 0 60 34" aria-hidden="true">
+    <path d="M14 13 L30 1.5 L46 13" stroke="${OUT2}" stroke-width="1" fill="none"/>
+    <circle cx="30" cy="1.8" r="1.4" fill="${OUT2}"/>
+    <rect x="3" y="12" width="54" height="20" rx="3" fill="#d9a873" stroke="${OUT2}" stroke-width="1.1"/>
+    <path d="M6 18 h48 M6 25 h48" stroke="#c08a55" stroke-width=".7" opacity=".7"/>
+    <circle cx="7" cy="16" r=".9" fill="${OUT2}"/><circle cx="53" cy="16" r=".9" fill="${OUT2}"/>
+    <text x="30" y="25.6" text-anchor="middle" font-family="Comic Sans MS, Chalkboard SE, system-ui, sans-serif" font-size="9"
+      font-weight="700" fill="#4a2e1c"${String(name).length > 4 ? ' textLength="48" lengthAdjust="spacingAndGlyphs"' : ""}>Bin bei ${esc(name)}</text>
+  </svg>`;
+  var URLAUB_CARD = (sea = false) => `<svg viewBox="0 0 60 40" aria-hidden="true">
+    <rect x=".6" y=".6" width="58.8" height="38.8" rx="2" fill="#fffaf0" stroke="${OUT2}" stroke-width=".9"/>
+    <clipPath id="urp"><rect x="3" y="3" width="28" height="34" rx="1"/></clipPath>
+    <g clip-path="url(#urp)">
+      <rect x="3" y="3" width="28" height="34" fill="#9fd4f2"/>
+      <circle cx="24" cy="10" r="3.4" fill="#ffd75a"/>
+      ${sea ? '<rect x="3" y="24" width="28" height="13" fill="#4aa3d8"/><path d="M3 27 q3.5 -2 7 0 t7 0 t7 0 t7 0" stroke="#fff" stroke-width=".8" fill="none" opacity=".8"/><rect x="3" y="33" width="28" height="4" fill="#f2d8a0"/>' : '<path d="M3 30 L12 15 L18 24 L23 17 L31 30 Z" fill="#8aa0b8"/><path d="M12 15 l-2.6 4.4 h5.2 Z M23 17 l-2 3.3 h4 Z" fill="#fff"/><rect x="3" y="29" width="28" height="8" fill="#7cbf5e"/>'}
+      <circle cx="11" cy="31.5" r="2.6" fill="#c49a74" stroke="${OUT2}" stroke-width=".5"/><circle cx="17" cy="31.5" r="2.6" fill="#f2b36e" stroke="${OUT2}" stroke-width=".5"/>
+    </g>
+    <path d="M33.5 6 v28" stroke="${OUT2}" stroke-width=".5" opacity=".4"/>
+    <rect x="47" y="4" width="9.5" height="11" fill="#f28fb1" stroke="${OUT2}" stroke-width=".6" stroke-dasharray="1 .8"/>
+    <path d="M49 12 q2.7 -5 5.5 0" stroke="#fff" stroke-width=".9" fill="none"/>
+    <path d="M37 20 h19 M37 25 h19 M37 30 h14" stroke="${OUT2}" stroke-width=".6" opacity=".55"/>
+    <path d="M37 13 q2 -2.5 4 0 t4 0" stroke="#4a6fb0" stroke-width=".7" fill="none"/>
+  </svg>`;
 
   // src/karte/tagebuch.js
   var Tagebuch = class {
@@ -10545,10 +10761,12 @@
       if (this._W) this._btnFit();
       this._diaryDot();
     }
-    // Punkt am Buch: ein neuer Tag oder ein ausgepacktes Päckchen seit dem letzten Aufschlagen (je Gerät gemerkt)
+    // Punkt am Buch: ein neuer Tag oder ein ausgepacktes Päckchen seit dem letzten Aufschlagen (je Gerät gemerkt). Nur
+    // o (ausgepackt): Album und Stufen ändern sich schon beim Verschenken, bis 0.34 leuchtete der Punkt darum je Schatz
+    // zweimal (beim Verschenken und beim Auspacken).
     _diarySig() {
       const G = this._plan?.gift;
-      return `${pikaDay(this._haNow())}.${G ? `${G.o}.${G.u}.${G.v || 0}` : "-"}`;
+      return `${pikaDay(this._haNow())}.${G ? G.o : "-"}`;
     }
     _diaryDot() {
       if (!this._el || !this._planOk) return;
@@ -10695,7 +10913,15 @@
       const put = (t, icon, text, x) => out.push({ t, icon, text, ...x });
       const house = this._cfg.diary_house !== false;
       const until = Math.min(end, now);
-      if (ws >= start && ws <= until) {
+      const U = [...R.urlaub || []];
+      const pu = this._plan?.ur;
+      if (pu && !U.some(([a]) => a === pu.t)) U.push([pu.t, urlaubEnd(pu)]);
+      const inU = (t) => U.some(([a, b]) => t >= a && t < b);
+      const away = U.some(([a, b]) => a < until && b > start);
+      if (inU(Math.max(start, ws)) && !R.ev.some((e) => e.k === "urlaub" && e.t >= start && e.t < end)) {
+        put(Math.max(start, Math.min(ws, until)), "urlaub", tx(T.urlaubTag, "urt", start), { svg: URLAUB_SIGN(fr), dim: true });
+      }
+      if (ws >= start && ws <= until && !inU(ws)) {
         const favs = this._tagesform(ws).fav.map((a) => T.actNoun[a]).join(" und ");
         put(ws, "wake", `${tx(T.wake, "wake", ws)} Heute hab ich Lust auf ${favs}.`);
         const f = this._festToday(start + 8 * 36e5);
@@ -10726,9 +10952,22 @@
           else out.push(gather = { t, icon: "gather", c: 1 });
         } else if (e.k === "mem") {
           if (["pino", "bird", "plane", "bfly", "heart"].includes(e.b) || e.b === "coffee" && house) put(t, e.b, tx(T[e.b], e.b, t));
+          else if (e.b === "gut") put(t, "gut", tx(T.gut, "gut", t), { svg: ICON_HEART });
         } else if (e.k === "parcel") {
           one.add("parcel");
           put(t, "parcel", this._diaryParcel(e, t), { svg: GIFT_ITEMS[e.it]?.svg });
+          if (e.all) put(t + 1, "parcel", tx(T.allGold, "allg", t), { svg: GIFT_ITEMS[e.it]?.svg });
+          else if (e.mile) put(t + 1, "parcel", tx(T.mile, "mile", t).replace("{z}", e.o), { svg: GIFT_PARCEL });
+        } else if (e.k === "urlaub") {
+          put(t, "urlaub", tx(T.urlaub, "ur", t), { svg: URLAUB_SIGN(fr) });
+        } else if (e.k === "heim") {
+          const sea = this._urlaubSea({ t: e.id });
+          put(
+            t,
+            "heim",
+            tx(T.heim, "heim", t).replace("{d}", urlaubDauer(e.d).replace(/^./, (c) => c.toUpperCase())),
+            { svg: URLAUB_CARD(sea), pic: `<span class="post">${URLAUB_CARD(sea)}</span>` }
+          );
         } else if (e.k === "earn") {
           if (once("earn")) put(t, "parcel", tx(T.earn, "earn", t));
         } else if (e.k === "earnGold") put(t, "parcel", tx(T.earnGold, "gold", t));
@@ -10769,7 +11008,7 @@
       }
       const a0 = Math.max(ws, start);
       const b0 = Math.min(we, until);
-      if (!fail && R.data && b0 - a0 >= DIARY.gap) {
+      if (!fail && R.data && !away && b0 - a0 >= DIARY.gap) {
         const ts = [a0, ...R.stamps.filter((t) => t > a0 && t < b0), b0];
         let bi = 1;
         for (let i = 2; i < ts.length; i++) if (ts[i] - ts[i - 1] > ts[bi] - ts[bi - 1]) bi = i;
@@ -10777,7 +11016,7 @@
           put(ts[bi - 1] + 2, "secret", tx(T.secret, "secret", ts[bi - 1]), { dim: true, tm: `${diaryTime(ts[bi - 1])} bis ${diaryTime(ts[bi])}` });
         }
       }
-      if (we > start && we <= until) put(we, "sleep", tx(T.sleep, "sleep", we), { part: hourPart(we) });
+      if (we > start && we <= until && !inU(we)) put(we, "sleep", tx(T.sleep, "sleep", we), { part: hourPart(we) });
       for (const e of out) e.part ??= partOf(e.t);
       for (const m of out.filter((e) => e.last)) m.t = Math.max(...out.filter((e) => e.part === m.part && !e.last).map((e) => e.t), m.t) + 1;
       out.sort((a, b) => a.t - b.t);
@@ -10791,14 +11030,16 @@
         const s = this._get("s");
         const g = this._get("g");
         const c = this._poopsSeen().clean;
-        fazit = this._sleepTime() ? "Psst, ich schlafe gerade. Blättere ruhig leise." : s < 30 ? "Liebes Tagebuch, mein Bauch knurrt gerade ein bisschen." : c < 30 ? "Liebes Tagebuch, auf meiner Wiese müsste mal jemand sauber machen." : g < 30 ? "Liebes Tagebuch, ich hätte gern ein paar Streicheleinheiten." : one.has("parcel") ? "Liebes Tagebuch, heute ist ein aufregender Tag: Es gab ein Päckchen!" : Math.min(s, g, c) >= 70 ? "Liebes Tagebuch, heute geht es mir richtig gut." : "Liebes Tagebuch, heute ist ein gemütlicher Tag.";
+        fazit = this._urlaubOn() ? `Liebes Tagebuch, ich bin gerade bei ${fr}. Bis bald!` : this._sleepTime() ? "Psst, ich schlafe gerade. Blättere ruhig leise." : s < 30 ? "Liebes Tagebuch, mein Bauch knurrt gerade ein bisschen." : c < 30 ? "Liebes Tagebuch, auf meiner Wiese müsste mal jemand sauber machen." : g < 30 ? "Liebes Tagebuch, ich hätte gern ein paar Streicheleinheiten." : one.has("parcel") ? "Liebes Tagebuch, heute ist ein aufregender Tag: Es gab ein Päckchen!" : Math.min(s, g, c) >= 70 ? "Liebes Tagebuch, heute geht es mir richtig gut." : "Liebes Tagebuch, heute ist ein gemütlicher Tag.";
       } else {
-        fazit = !mine.length ? "Liebes Tagebuch, über gestern weiß ich leider nichts mehr." : one.has("parcel") ? "Liebes Tagebuch, gestern war ein aufregender Tag: Es gab ein Päckchen!" : one.has("hungry") && pet >= 10 ? "Liebes Tagebuch, gestern hat mein Bauch mal geknurrt. Aber gestreichelt wurde ich ganz viel." : one.has("hungry") ? "Liebes Tagebuch, gestern hat mein Bauch mal geknurrt. Sonst war es schön." : pet >= 10 ? "Liebes Tagebuch, gestern wurde ich ganz viel gestreichelt. Das war schön." : "Liebes Tagebuch, gestern war ein schöner Tag.";
+        fazit = inU(start) && inU(Math.min(end, now) - 1) ? `Liebes Tagebuch, gestern war ich bei ${fr}.` : !mine.length ? "Liebes Tagebuch, über gestern weiß ich leider nichts mehr." : one.has("parcel") ? "Liebes Tagebuch, gestern war ein aufregender Tag: Es gab ein Päckchen!" : one.has("hungry") && pet >= 10 ? "Liebes Tagebuch, gestern hat mein Bauch mal geknurrt. Aber gestreichelt wurde ich ganz viel." : one.has("hungry") ? "Liebes Tagebuch, gestern hat mein Bauch mal geknurrt. Sonst war es schön." : pet >= 10 ? "Liebes Tagebuch, gestern wurde ich ganz viel gestreichelt. Das war schön." : "Liebes Tagebuch, gestern war ein schöner Tag.";
       }
       return { start, entries: out, chips, fazit, early: today && ws > now };
     }
     _diaryPage(M, today, fail, none) {
-      let h = `<p class="fazit">${esc(M.fazit)}</p>`;
+      const box = today ? this._urlaubBox() : "";
+      let h = this._urlaubOn() ? box : "";
+      h += `<p class="fazit">${esc(M.fazit)}</p>`;
       if (M.chips.length) h += `<div class="chips">${M.chips.map(([i, t]) => `<span><i>${i}</i>${esc(t)}</span>`).join("")}</div>`;
       let part = null;
       for (const e of M.entries) {
@@ -10812,9 +11053,24 @@
       if (!M.entries.length) {
         h += `<p class="none">${M.early ? "Der Tag hat noch nicht angefangen." : today ? "Hier steht noch nichts. Das kommt noch!" : "Diese Seite ist leer geblieben."}</p>`;
       } else h += `<div class="sign">${esc(this._cfg.name)}<i>${DIARY_PAW}</i></div>`;
+      if (!this._urlaubOn()) h += box;
       if (fail) h += '<p class="note">Ich finde nicht alle Seiten: Der Verlauf von Home Assistant antwortet gerade nicht.</p>';
       else if (none) h += '<p class="note">Ich finde nicht alle Seiten: Home Assistant zeichnet für meine Helfer keinen Verlauf auf (Recorder).</p>';
       return h;
+    }
+    // Schalter „Ferien bei Pino“ (unten auf der Seite Heute; läuft der Urlaub, steht er oben). Mit vacation: false gibt
+    // es keinen Knopf, ein laufender Urlaub steht trotzdem da.
+    _urlaubBox() {
+      const fr = esc(this._frName());
+      const may = this._urlaubMay();
+      if (this._urlaubOn()) {
+        const t = new Date(this._plan.ur.t).toLocaleString("de-DE", { weekday: "long", hour: "2-digit", minute: "2-digit" });
+        return `<div class="ur on"><i>${URLAUB_SIGN(this._frName())}</i><div><b>Ich bin bei ${fr}</b><span>seit ${esc(t)} Uhr. Hunger, Glück, Häufchen und meine Päckchen-Serie ruhen so lange, auf allen Geräten.</span>${may ? '<div class="bt"><button data-ur="back">Zurückholen</button></div>' : ""}</div></div>`;
+      }
+      if (!may) return "";
+      const busy = this._urlaubBusy();
+      const ask = !!this._dia?.urAsk && !busy;
+      return `<div class="ur"><i>${URLAUB_CARD(false)}</i><div><b>Ferien bei ${fr}</b><span>${ask ? "Wirklich? Dann packe ich meine Sachen. Das gilt für alle Geräte." : `Fahrt ihr weg? Dann besuche ich so lange ${fr}. Hunger, Glück, Häufchen und meine Päckchen-Serie ruhen, bis ihr mich zurückholt.`}</span><div class="bt">${ask ? '<button data-ur="go">Ja, los</button><button data-ur="no" class="no">Nein</button>' : `<button data-ur="ask"${busy ? " disabled" : ""}>Zu ${fr} schicken</button>`}</div>${busy ? '<span class="nt">Erst das Päckchen auspacken.</span>' : ""}</div></div>`;
     }
     // Reiter „Schätze“ (früher das Album am Päckchen-Knopf): alle acht mit Stufe, Päckchen, Serie, Vorrat
     _diaryTreasures() {
@@ -10833,7 +11089,12 @@
         }).join("")}</div>`;
         const n = G.n + G.y;
         h += row(GIFT_PARCEL, "Päckchen", esc(`${n ? `${n} im Vorrat${G.y ? ` (${G.y === n ? "golden" : `${G.y} golden`})` : ""}` : "gerade keins da"} · ${I.next}`), I.warn);
-        h += row(ICON_HEART, "Pflege-Serie", esc(I.days === 1 ? "1 Tag am Stück" : `${I.days} Tage am Stück`));
+        const T = I.today;
+        const ck = (ok, w) => `${w} ${ok ? "✓" : "–"}`;
+        const left = GIFT.goldDays - I.dots;
+        const dots2 = [...Array(GIFT.goldDays).keys()].map((i) => `<u${i < I.dots ? ' class="on"' : ""}></u>`).join("");
+        h += row(ICON_HEART, "Gute Tage", `<span class="d7">${dots2}</span>${esc(`${I.away ? "ruhen gerade" : left === 1 ? "noch einer bis zum goldenen Päckchen" : `noch ${left} bis zum goldenen Päckchen`} · ${I.friends === 1 ? "1 Freundschaftstag" : `${I.friends} Freundschaftstage`}`)}<span>${esc(I.away ? "" : T.good ? "Heute ist ein guter Tag ✓" : `Heute: ${ck(T.fed, "gefüttert")} · ${ck(T.pet, "gestreichelt")} · ${ck(T.ok, "alles über 50 %")}`)}</span>`);
+        h += row(GIFT_PARCEL, "Ausgepackt", esc(`${G.o === 1 ? "1 Päckchen" : `${G.o} Päckchen`}${I.allGold ? " · alle Schätze golden!" : ` · nächster Meilenstein beim ${I.mile}.`}`));
       } else h += '<p class="fazit">Hier sammle ich, was mir gehört.</p>';
       const dots = this._blooms.map((b) => `<u style="background:${esc(b.color)}"></u>`).join("");
       const k = this._blooms.length;
@@ -10915,9 +11176,22 @@
       for (const t of ["pointerdown", "keydown", "wheel", "touchmove"]) host.addEventListener(t, poke, { passive: true });
       root.querySelector(".page").addEventListener("scroll", poke, { passive: true });
       poke();
+      root.querySelector(".page").addEventListener("click", (e) => {
+        const b = e.target.closest?.("[data-ur]");
+        if (!b || b.disabled) return;
+        const a = b.dataset.ur;
+        if (a === "ask") D.urAsk = true;
+        else if (a === "no") D.urAsk = false;
+        else if (a === "go") {
+          D.urAsk = false;
+          this._urlaubStart();
+        } else if (a === "back") this._urlaubEnde();
+        this._diaryRender(true);
+      });
       this._diaryRender();
       root.querySelector(".sheet").focus();
       if (only) return;
+      this._urlaubCardSeen();
       try {
         localStorage.setItem(`pika-pet-diary-seen:${this._cfg.name}`, this._diarySig());
       } catch (e) {
@@ -10939,10 +11213,12 @@
       this._dia.tab = this._diaryOn() ? tab : "schatz";
       this._diaryRender();
     }
-    _diaryRender() {
+    // keep: an der Stelle bleiben (Klick auf den Schalter), sonst nach oben
+    _diaryRender(keep = false) {
       const D = this._dia;
       if (!D) return;
       const pg = D.root.querySelector(".page");
+      const top = pg.scrollTop;
       D.root.querySelectorAll("[data-tab]").forEach((b) => b.setAttribute("aria-selected", String(b.dataset.tab === D.tab)));
       const dt = D.root.querySelector(".dt");
       const today = D.tab === "heute";
@@ -10960,7 +11236,7 @@
         dt.textContent = `${date}${wx ? ` · ${wx}` : ""}`;
         pg.innerHTML = !D.data ? '<p class="wait">Ich blättere …</p>' : M ? this._diaryPage(M, today, D.data.fail, D.data.none) : '<p class="none">Mein Tagebuch klemmt gerade. Versuch es gleich noch einmal.</p>';
       }
-      pg.scrollTop = 0;
+      pg.scrollTop = keep ? top : 0;
       const errs = this._errs || [];
       D.root.querySelector(".ft").innerHTML = `<span>Pika Pet Card ${VERSION}</span>${errs.length ? `<details><summary>${errs.length === 1 ? "1 Fehler" : `${errs.length} Fehler`} seit dem Laden</summary><ul>${errs.map((e) => `<li>${esc(new Date(e.t).toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" }))} · ${esc(e.where)}${e.n > 1 ? ` (${e.n}×)` : ""}: ${esc(e.msg)}</li>`).join("")}</ul></details>` : ""}`;
     }
@@ -11349,7 +11625,7 @@
       await this._wait(600);
       await this._walkTo(this._W * 0.5, 1.8);
       p.classList.add("waving");
-      this._say(pick(["Da bist du ja endlich!", "Du warst lange weg!", "Juhuu, du bist da!"]), 2200, true);
+      this._say(pick(["Da bist du ja!", "Schön, dass du da bist!", "Juhuu, du bist da!"]), 2200, true);
       this._blush(4500);
       await this._wait(1800);
       p.classList.remove("waving");
@@ -12405,16 +12681,22 @@
       if (!this._stats) return 70;
       const t = this._stats[k + "t"];
       const now = this._haNow();
-      const key = `${t}|${Math.floor(now / 1e3)}|${this._wdSig}`;
+      const ur = this._plan?.ur;
+      const key = `${t}|${Math.floor(now / 1e3)}|${this._wdSig}|${ur ? `${ur.t}.${ur.d}` : ""}`;
       const M = this._rawM ??= {};
       if (M[k]?.key !== key) M[k] = { key, h: this._decayH(t, now) };
       return clamp(this._stats[k] - M[k].h * RATE[k], 0, 100);
     }
-    // Abbau-Stunden zwischen t1 und t2: wach voll, im Schlaf SLEEP_DECAY (Wachfenster wie bei Schlafenszeit und Häufchen)
+    // Abbau-Stunden zwischen t1 und t2: wach voll, im Schlaf SLEEP_DECAY (Wachfenster wie bei Schlafenszeit und Häufchen).
+    // Die Zeit eines Urlaubs (Tagesplan) zählt nicht: Solange er läuft, stehen die Werte.
     _decayH(t1, t2) {
       if (!(t2 > t1)) return (t2 - t1) / 36e5;
-      const aw = this._awakeMs(t1, t2);
-      return (aw + SLEEP_DECAY * (t2 - t1 - aw)) / 36e5;
+      const h = (a, b) => {
+        const aw = this._awakeMs(a, b);
+        return (aw + SLEEP_DECAY * (b - a - aw)) / 36e5;
+      };
+      const cut = urlaubCut(this._plan?.ur, t1, t2);
+      return h(t1, t2) - (cut ? h(cut[0], cut[1]) : 0);
     }
     // Umkehrung: wann ab t h Abbau-Stunden vergangen sind (wann ein Wert unter eine Grenze fällt)
     _decayAt(t, h) {
@@ -12773,12 +13055,13 @@
       if (this._g && !this._friendBad()) this._friendCome(s.side, s.stayMs);
       else this._frT = setTimeout(() => this._friendDue(), 2e4);
     }
-    // Was gegen Besuch spricht (Bits): 1 Pika schläft oder geht schlafen, 2 Regen/Gewitter, 4 nicht Tag
+    // Was gegen Besuch spricht (Bits): 1 Pika schläft oder geht schlafen, 2 Regen/Gewitter, 4 nicht Tag, 8 Urlaub (er ist
+    // ja bei Pino)
     _friendBad() {
       const sleepy = this._asleep || this._sleepTime() || this._action === "goSleep";
       const wx = this._wx;
       const e = this._dbgElev ?? this._elev;
-      return (sleepy ? 1 : 0) | (wx.wet || wx.storm || wx.shelter ? 2 : 0) | ((e == null ? sleepy : e <= 3) ? 4 : 0);
+      return (sleepy ? 1 : 0) | (wx.wet || wx.storm || wx.shelter ? 2 : 0) | ((e == null ? sleepy : e <= 3) ? 4 : 0) | (this._urlaubOn() || this._fort ? 8 : 0);
     }
     // Bei jedem hass-Update und alle 20 s: abgeschaltet? Plan da? Muss Pino gehen?
     _friendCheck() {
@@ -15740,14 +16023,20 @@
     // Pflege bewerten. Zwischen zwei Änderungen sinken alle drei Werte nur (satt und glücklich gleichmäßig, sauber nach dem
     // festen Häufchen-Plan). Seit wann einer unter GIFT.min liegt, lässt sich darum jederzeit ausrechnen, auch wenn keiner
     // zugeschaut hat. Läuft vor jeder Änderung (dann steht ein Absinken fest, bevor es überdeckt wird), danach mit user (du
-    // hast etwas getan: ist jetzt alles wieder darüber, endet die Lücke) und beim Tick. → { G, frac, left, warn, broken }
+    // hast etwas getan: ist jetzt alles wieder darüber, endet die Lücke) und beim Tick. Im Urlaub (und bis der Zustand
+    // danach neu angesetzt ist) ruht alles. → { G, frac, left, warn, broken, grace (restliche Toleranz, ms) }
     _careEval(user = false) {
       if (!this._giftOn() || !this._stats || !this._plan || !this._planOk || this._planStale) return null;
       if (this._cfg.entity && !this._noEntity && !this._synced) return null;
+      if (this._urlaubOn() || this._urlaubStale()) return null;
       const now = this._haNow();
       if (!this._plan.gift) this._planOp({ t: "gstart", k: sec(now) });
       let G = this._plan.gift;
       if (!G) return null;
+      if (G.f == null) {
+        this._planOp({ t: "gmig", k: G.k, f: Math.max(0, Math.floor((now - G.k) / 864e5)) });
+        G = this._plan.gift;
+      }
       const min = GIFT.min;
       const st = this._stats;
       const lowS = ["s", "g"].filter((k) => this._raw(k) < min);
@@ -15779,17 +16068,37 @@
       const awake = Math.max(0, this._awakeMs(p, end));
       const de = Math.floor(awake / GIFT.every);
       if (de > 0 || G.p == null) this._planOp({ t: "gearn", k: G.k, e: G.a + de, p: sec(this._awakeAdd(p, de * GIFT.every)) });
-      const w = Math.floor((now - G.k) / GIFT.gold);
-      if (!over && w > G.d) this._planOp({ t: "ggold", k: G.k, w });
-      let res = { frac: awake % GIFT.every / GIFT.every, left: GIFT.every - awake % GIFT.every, warn: G.b != null && !over, broken: over };
+      const grace = G.b != null && !over ? Math.max(0, GIFT.grace - this._awakeMs(G.b, now)) : GIFT.grace;
+      let res = { frac: awake % GIFT.every / GIFT.every, left: GIFT.every - awake % GIFT.every, warn: G.b != null && !over, broken: over, grace };
       if (!bad && user && G.b != null) {
         this._planOp({ t: "gok", k: G.k, b: G.b, brk: over, nk: sec(now) });
         res = over ? { frac: 0, left: GIFT.every, warn: false, broken: false } : { ...res, warn: false };
       }
+      if (!bad) this._careGood(now);
       res.G = this._plan.gift;
       this._care = res;
       this._giftRender();
       return res;
+    }
+    // Was heute für einen guten Tag fehlt: gefüttert (Futter von heute im Plan), gestreichelt (Zähler von heute) und einmal
+    // alle drei Werte zugleich über GIFT.min. Gezählt wird, sobald alles zusammenkommt, nicht erst am Ende des Tags; ein
+    // Riss der Pflege-Serie ist dafür egal. → { fed, pet, ok, good }
+    _careToday(now = this._haNow()) {
+      const d = pikaDay(now);
+      const c = this._cuteToday();
+      return {
+        fed: (this._plan?.fd || []).some((x) => pikaDay(x.t) === d),
+        pet: c.n > 0,
+        ok: !this._giftLow().length,
+        good: !!(c.m & MEM_GUT)
+      };
+    }
+    // Ein guter Tag: einmal je Pika-Tag ein Freundschaftstag mehr, jeder siebte bringt ein goldenes Päckchen (ggood)
+    _careGood(now) {
+      const G = this._plan?.gift;
+      if (!G || G.f == null) return;
+      const T = this._careToday(now);
+      if (!T.good && T.fed && T.pet && T.ok) this._planOp({ t: "ggood", d: pikaDay(now) });
     }
     // Bis der Fortschritt einmal berechnet ist, alle 0,5 s versuchen (_careEval braucht Plan, Zustand aus HA und
     // abgeglichenen Stand). Unsichtbar übernimmt das der Tick beim Sichtbarwerden.
@@ -15845,10 +16154,12 @@
       const full = G.n >= GIFT.max;
       b.classList.toggle("wait", !this._care && !full);
       if (!this._care) this._careSoon();
-      b.style.setProperty("--gp", ((full ? 1 : c.frac || 0) * 100).toFixed(1));
-      b.classList.toggle("warn", !!c.warn);
+      const away = this._urlaubOn();
+      b.classList.toggle("away", away);
+      b.style.setProperty("--gp", ((full ? 1 : c.warn ? c.grace / GIFT.grace : c.frac || 0) * 100).toFixed(1));
+      b.classList.toggle("warn", !!c.warn && !away);
       b.classList.toggle("broken", !!c.broken && !full);
-      const low = c.warn || c.broken && !full ? this._giftLow() : [];
+      const low = (c.warn || c.broken && !full) && !away ? this._giftLow() : [];
       b.classList.toggle("ok", !!c.warn && !low.length);
       const ce = b.querySelector(".gcrit");
       if (ce.dataset.k !== (low[0] || "")) {
@@ -15861,7 +16172,8 @@
       b.style.setProperty("--gpp", pp);
       b.style.setProperty("--gpr", pr);
       b.querySelector(".gnum").textContent = n ? String(n) : "";
-      b.title = n ? `Päckchen schenken (${n} da), lang drücken: Schätze` : "Päckchen: gerade keins da, lang drücken: Schätze";
+      const tol = c.warn && !away ? `, noch ${Math.max(1, Math.round(c.grace / 6e4))} Min. Toleranz` : "";
+      b.title = away ? `Päckchen: ${this._cfg.name} ist verreist, lang drücken: Schätze` : n ? `Päckchen schenken (${n} da${tol}), lang drücken: Schätze` : `Päckchen: gerade keins da${tol}, lang drücken: Schätze`;
     }
     _onGiftBtn() {
       if (this._albumHeld) {
@@ -15875,15 +16187,16 @@
         void b.offsetWidth;
         b.classList.add("no");
       };
-      if (!G || !this._g || !this._planOk || G.z > G.o || !(G.n > 0 || G.y > 0)) return no();
+      if (!G || !this._g || !this._planOk || G.z > G.o || !(G.n > 0 || G.y > 0) || this._urlaubOn()) return no();
       const gold = G.y > 0;
       const z = G.z + 1;
       const i = this._giftPick(G, z, gold) + (gold ? 16 : 0);
       const x = sec(this._haNow());
-      this._planOp({ t: "give", z, i, gold, x });
+      const r = Math.floor(Math.random() * 36);
+      this._planOp({ t: "give", z, i, gold, x, r });
       if (this._plan.gift?.z !== z) return no();
       this._found("parcel");
-      this._giftOwn = { z, i, x, at: this._haNow() };
+      this._giftOwn = { z, i, x, r, at: this._haNow() };
       this._giftCredit();
     }
     // Belohnung für das eigene Verschenken, sobald es im bestätigten Plan steht (mit Helfer: Stand von HA, sonst der
@@ -15896,20 +16209,20 @@
       const G = (H || this._planBase)?.gift;
       if (G && G.z >= o.z) {
         this._giftOwn = null;
-        if (G.z !== o.z || G.x !== o.x || G.i !== o.i) return;
+        if (G.z !== o.z || G.x !== o.x || G.i !== o.i || G.r != null && G.r !== o.r) return;
         if ((o.i & 15) >= GIFT_TRE) this._add("s", GIFT.treat, true);
         this._add("g", GIFT.joy, true);
       } else if (this._haNow() - o.at > 30 * 6e4) this._giftOwn = null;
     }
     // Inhalt des Päckchens Nummer z, auf allen Geräten gleich: Das erste und eins von je dreien ist ein Schatz (goldene
-    // immer), sonst ein Leckerli der Jahreszeit. Schatz heißt: erst einer, der noch fehlt, dann ein Trick für einen, der
+    // immer), nie mehr als zwei Leckerli in Folge (giftTre), sonst ein Leckerli der Jahreszeit. Schatz heißt: erst einer, der noch fehlt, dann ein Trick für einen, der
     // noch keinen hat. Goldene vergolden lieber einen mit Trick, bevor sie einen neuen Trick bringen. Hat jeder Schatz
     // alles, was er aus solchen Päckchen bekommen kann, gibt es nur noch Leckerli.
     _giftPick(G, z, gold) {
       const T = [...Array(GIFT_TRE).keys()];
       const at = (lv) => T.filter((t) => giftLv(G, t) === lv);
       const miss = at(0).length ? at(0) : gold && at(2).length ? at(2) : at(1);
-      const tre = miss.length && (gold || z === 1 || (z - 1) % 3 === Math.floor(seedRnd("gblk", Math.floor((z - 1) / 3)) * 3));
+      const tre = miss.length && (gold || giftTre(z));
       if (tre) return miss[Math.floor(seedRnd("gtre", z) * miss.length)];
       const south = (this._hass?.config?.latitude ?? 50) < 0;
       const mo = ((/* @__PURE__ */ new Date()).getMonth() + (south ? 6 : 0)) % 12;
@@ -16182,6 +16495,8 @@
           await this._wait(1900);
           await this._giftStow(B.item, ie, lv);
         }
+        const all = lv === 3 && giftAllGold(this._plan?.gift);
+        if (all || giftMile(B.z)) await this._giftFeier(all ? "gold" : B.z);
       } finally {
         B.el.classList.add("fade");
         const el = B.el;
@@ -16191,6 +16506,34 @@
         if (this._gb === B) this._gb = null;
         this._giftFromPlan();
       }
+    }
+    // Feier: Konfetti um ihn herum, Luftsprünge, ein Satz. what: 'gold' (alle Schätze golden) oder die Nummer des Päckchens
+    async _giftFeier(what) {
+      const { gy, pH } = this._g;
+      const gold = what === "gold";
+      const cols = gold ? ["#f2c230", "#fff2b0", "#ffd75a", "#ffffff"] : GIFT_BALLOONS;
+      const burst = () => {
+        for (let i = 0; i < 14; i++) {
+          const c = document.createElement("span");
+          c.className = "gconf";
+          const a = i / 14 * Math.PI * 2 + rnd(-0.3, 0.3);
+          const d = this._H * rnd(0.08, 0.18);
+          c.style.cssText = `left:${this._x.toFixed(1)}px;top:${(gy - pH * 0.9).toFixed(1)}px;background:${cols[i % cols.length]};--dx:${(Math.cos(a) * d).toFixed(1)}px;--dy:${(Math.sin(a) * d + this._H * 0.06).toFixed(1)}px;--r:${rnd(-320, 320).toFixed(0)}deg`;
+          this._el.fx.appendChild(c);
+          setTimeout(() => c.remove(), 1050);
+        }
+      };
+      burst();
+      this._happy(2400);
+      this._say(gold ? "Alles golden!" : `Mein ${what}. Päckchen!`, 2200);
+      this._jump("binky");
+      if (gold) for (const el of this._gtEls?.values() || []) el.classList.add("new");
+      await this._wait(900);
+      burst();
+      this._hearts(gold ? 5 : 3);
+      this._jump("binky");
+      await this._wait(1400);
+      for (const el of this._gtEls?.values() || []) el.classList.remove("new");
     }
     // Neuer Schatz an seinen Platz: fliegt hin und ploppt dort auf. Getragene probiert er gleich aus, einen neuen Trick
     // führt er gleich vor, golden funkelt er.
@@ -16397,7 +16740,7 @@
       this._el.pika.classList.toggle("cool", cool);
       this._giftGlint();
       const b = this._el.gbtn;
-      if (G.n >= GIFT.max && !b.hidden && Math.random() < 0.25) {
+      if (G.n >= GIFT.max && !b.hidden && !this._urlaubOn() && Math.random() < 0.25) {
         b.classList.remove("wig");
         void b.offsetWidth;
         b.classList.add("wig");
@@ -16433,15 +16776,24 @@
         const m = Math.max(1, Math.round(ms / 6e4));
         return m >= 60 ? `${Math.floor(m / 60)} Std.${m % 60 ? ` ${m % 60} Min.` : ""}` : `${m} Min.`;
       };
-      const low = c.warn || c.broken ? this._giftLow().map((k) => GIFT_LOW[k][0]).join(" ") : "";
-      const next = G.n >= GIFT.max ? `Vorrat voll${low ? ` · ${low}` : ""}` : c.broken ? `Serie gerissen${low ? `, neu ab 50 %: ${low}` : ""}` : c.warn ? low ? `schnell: ${low}` : "einmal kümmern, dann läuft sie weiter" : `nächstes in ${fmt(c.left ?? GIFT.every)} Wachzeit`;
+      const lw = c.warn || c.broken ? this._giftLow().map((k) => GIFT_LOW[k][0]) : [];
+      const low = lw.length > 1 ? `${lw.slice(0, -1).join(", ")} und ${lw.at(-1)}` : lw[0] || "";
+      const away = this._urlaubOn();
+      const next = away ? `ruht, solange ich bei ${this._frName()} bin` : G.n >= GIFT.max ? `Vorrat voll${low ? ` · bitte ${low}` : ""}` : c.broken ? `die Serie fängt neu an, sobald alles über 50 % ist${low ? `: bitte ${low}` : ""}` : c.warn ? low ? `noch ${fmt(c.grace ?? GIFT.grace)} Toleranz: bitte ${low}` : "einmal kümmern, dann läuft sie weiter" : `nächstes in ${fmt(c.left ?? GIFT.every)} Wachzeit`;
+      const f = G.f ?? 0;
       return {
         G,
         lvs,
         next,
-        warn: !!(c.warn || c.broken),
+        warn: !!(c.warn || c.broken) && !away,
+        away,
         have: lvs.filter((lv) => lv > 0).length,
-        days: c.broken ? 0 : Math.floor((this._haNow() - G.k) / 864e5)
+        // Freundschaftstage: alle, die bis zum nächsten goldenen fehlen, und was heute schon da ist
+        friends: f,
+        dots: f % GIFT.goldDays,
+        today: this._careToday(),
+        mile: [10, 25, 50, 100].find((m) => m > G.o) ?? (Math.floor(G.o / 100) + 1) * 100,
+        allGold: giftAllGold(G)
       };
     }
   };
@@ -16973,6 +17325,7 @@
       this._flowerFromPlan();
       this._foodFromPlan();
       this._friendFromPlan();
+      this._urlaubFromPlan();
       this._giftCredit();
       if (incoming && (this._planOps.length || lost) && planSer(P) !== planSer(this._planBase)) this._planSave();
       return changed;
@@ -17868,7 +18221,9 @@
           const a = chronikStart(tag);
           const b = chronikStart(tag + 1);
           const drin = (t) => t >= a && t < b;
-          if (R.stamps.some(drin) || R.ev.some((e) => drin(e.t))) soll.set(chronikDatum(tag), chronikBilanz(R.ev, R.pets, a, b, tag));
+          if (R.stamps.some(drin) || R.ev.some((e) => drin(e.t)) || chronikUrlaub(R.urlaub, a, b)) {
+            soll.set(chronikDatum(tag), chronikBilanz(R.ev, R.pets, a, b, tag, R.urlaub));
+          }
         }
       }
       let n = await this._chronikDo(chronikPlan(items, soll), live, at);
@@ -17957,6 +18312,296 @@
         }, ms) };
         this._chronikW = w;
       });
+    }
+  };
+
+  // src/karte/urlaub.js
+  var Urlaub = class {
+    // Fahren alle weg, besucht er so lange seinen Freund. Eingeschaltet wird das im Tagebuch, es gilt für alle Geräte
+    // (Tagesplan, Feld ur). Solange er weg ist, ruhen Satt, Glück, Häufchen, Pflege-Serie und Vorrat: Der Abbau rechnet
+    // die Urlaubszeit heraus (_decayH), die Häufchen bleiben auf dem Stand vom Beginn (_poops), die Serie wartet
+    // (_careEval). Bei der Rückkehr rücken Fortschritt und Toleranz der Serie um die Urlaubszeit (voff), und der Zustand
+    // wird neu angesetzt: dieselben Werte wie bei der Abreise, alles sauber.
+    // Läuft gerade ein Urlaub?
+    _urlaubOn() {
+      return urOn(this._plan);
+    }
+    // Urlaub vorbei, aber der Zustand im Helfer ist noch der von vorher (das Neuansetzen ist unterwegs oder ging
+    // verloren): Bis es da ist, ruht die Serie noch, die Werte rechnen die Urlaubszeit weiter heraus
+    _urlaubStale() {
+      const ur = this._plan?.ur;
+      const st = this._stats;
+      if (!ur || ur.d == null || !st) return false;
+      const end = urlaubEnd(ur);
+      return st.st < end || st.gt < end || st.c < end;
+    }
+    // Darf dieses Gerät den Schalter zeigen? Nicht mit vacation: false, nicht ohne Tagebuch, und nur, wenn der Urlaub dort
+    // gilt, wo auch der Zustand liegt: Mit Zustand in HA braucht es den Tagesplan in HA (sonst wäre er nur auf diesem
+    // Gerät verreist, und die anderen ließen ihn hungern).
+    _urlaubMay() {
+      const c = this._cfg;
+      if (c.vacation === false || c.diary === false || !this._planOk || this._planNewer) return false;
+      if (!c.plan_entity) return !c.entity;
+      return !!this._hass?.states[c.plan_entity] && this._planMax() >= PLAN_MIN;
+    }
+    // Ein Päckchen fliegt noch oder liegt noch verpackt: erst auspacken
+    _urlaubBusy() {
+      const G = this._plan?.gift;
+      return !!G && G.z > G.o;
+    }
+    // Schalter: verreisen
+    _urlaubStart() {
+      if (!this._urlaubMay() || this._urlaubOn() || this._urlaubBusy()) return false;
+      this._careEval();
+      this._planOp({ t: "von", t0: sec(this._haNow()) });
+      this._urlaubFromPlan();
+      return this._urlaubOn();
+    }
+    // Schalter: zurückholen
+    _urlaubEnde() {
+      const P = this._plan;
+      if (!this._urlaubOn()) return false;
+      const now = sec(this._haNow());
+      const t0 = P.ur.t;
+      const d = Math.max(0, now - t0);
+      const op = { t: "voff", t0, d, ht: P.hay.t < t0 ? Math.min(now, P.hay.t + d) : P.hay.t };
+      const G = P.gift;
+      if (G?.p != null) op.gp = sec(this._awakeBack(now, this._awakeMs(G.p, t0)));
+      if (G?.b != null) op.gb = sec(this._awakeBack(now, this._awakeMs(G.b, t0)));
+      this._planOp(op);
+      this._urlaubRebase();
+      this._urlaubFromPlan();
+      return true;
+    }
+    // Wann vor t genau ms Wachzeit beginnen (Umkehrung von _awakeMs für ein festes Ende)
+    _awakeBack(t, ms) {
+      if (!(ms > 0)) return t;
+      let lo = t - ms;
+      for (let i = 0; i < 400 && this._awakeMs(lo, t) < ms; i++) lo -= 864e5;
+      let hi = t;
+      for (let i = 0; i < 40; i++) {
+        const m = (lo + hi) / 2;
+        if (this._awakeMs(m, t) > ms) lo = m;
+        else hi = m;
+      }
+      return hi;
+    }
+    // Nach der Rückkehr den Zustand neu ansetzen: die Werte von der Abreise (der Abbau lässt die Urlaubszeit aus), alle
+    // Zeiten jetzt, alles sauber. Jedes Gerät, das den alten Stand noch sieht, tut es (dasselbe Ergebnis).
+    _urlaubRebase() {
+      if (!this._urlaubStale()) return;
+      if (this._cfg.entity && !this._noEntity && !this._synced) return;
+      const t = sec(this._haNow());
+      const s = this._raw("s");
+      const g = this._raw("g");
+      this._stats = { ...this._stats, s, st: t, g, gt: t, c: t, m: 0, l: t };
+      this._rawM = null;
+      this._poopCache = null;
+      this._save();
+      this._renderStats();
+    }
+    // Plan geändert: Schild und Postkarte nachziehen, die Schleife umlenken, einen überschriebenen Urlaub wieder
+    // eintragen, ein lange bekanntes Ende wegräumen
+    _urlaubFromPlan() {
+      if (!this._el) return;
+      const on = this._urlaubOn();
+      const B = this._cfg.plan_entity ? this._planBase?.ur : null;
+      if (B && B.d == null) this._urSeen = { t: B.t, at: Date.now() };
+      else if (B) this._urSeen = null;
+      else if (this._urSeen && !on && this._planOk) {
+        const S = this._urSeen;
+        this._urSeen = null;
+        if (Date.now() - S.at < URLAUB.restore) setTimeout(() => this._planOp({ t: "von", t0: S.t }), 0);
+      }
+      if (on !== !!this._urWas) {
+        this._urWas = on;
+        if (this._running) this._interrupt();
+        this._diaryRender(true);
+      }
+      this._urlaubScene();
+      this._urlaubRebase();
+    }
+    _tickUrlaub() {
+      const ur = this._plan?.ur;
+      if (ur && ur.d != null && this._haNow() > urlaubEnd(ur) + URLAUB.keep && this._planOk && !this._planNewer) {
+        this._planOp({ t: "vclear", t0: ur.t });
+      }
+      this._urlaubRebase();
+      this._urlaubScene();
+    }
+    // Postkarte an der Tür: nach einer Rückkehr URLAUB.keep lang, bis dieses Gerät das Tagebuch aufgeschlagen hat
+    _urlaubCard() {
+      const ur = this._plan?.ur;
+      if (!ur || ur.d == null || ur.d < URLAUB.min || this._haNow() > urlaubEnd(ur) + URLAUB.keep) return null;
+      try {
+        if (localStorage.getItem(`pika-pet-post:${this._cfg.name}`) === String(ur.t)) return null;
+      } catch (e) {
+      }
+      return ur;
+    }
+    _urlaubCardSeen() {
+      const ur = this._urlaubCard();
+      if (!ur) return;
+      try {
+        localStorage.setItem(`pika-pet-post:${this._cfg.name}`, String(ur.t));
+      } catch (e) {
+      }
+      this._urlaubScene();
+    }
+    // Meer im Sommer, Berge sonst (auf allen Geräten gleich, nach dem Beginn)
+    _urlaubSea(ur) {
+      const m = new Date(ur.t).getMonth();
+      const south = (this._hass?.config?.latitude ?? 50) < 0;
+      return (south ? [11, 0, 1] : [5, 6, 7]).includes(m);
+    }
+    // Schild und Postkarte an der Tür
+    _urlaubScene() {
+      if (!this._el || !this._g) return;
+      const { hole } = this._g;
+      const H = this._H;
+      const on = this._urlaubOn();
+      let el = this._el.ursign;
+      if (on && !el) {
+        el = document.createElement("div");
+        el.className = "ursign in";
+        el.innerHTML = URLAUB_SIGN(this._frName());
+        this._el.gifts.appendChild(el);
+        this._el.ursign = el;
+        setTimeout(() => el.classList.remove("in"), 800);
+      } else if (!on && el) {
+        this._el.ursign = null;
+        el.classList.add("out");
+        setTimeout(() => el.remove(), 900);
+        el = null;
+      }
+      if (el) {
+        const w = Math.min(H * 0.24, (hole.r - hole.l) * 1.25);
+        el.style.width = `${w.toFixed(1)}px`;
+        el.style.left = `${(hole.cx - w / 2).toFixed(1)}px`;
+        el.style.top = `${(hole.top + (hole.lip - hole.top) * 0.18).toFixed(1)}px`;
+      }
+      const ur = on ? null : this._urlaubCard();
+      let pc = this._el.urcard;
+      if (ur && !pc) {
+        pc = document.createElement("div");
+        pc.className = "urcard in";
+        pc.innerHTML = URLAUB_CARD(this._urlaubSea(ur));
+        this._el.gifts.appendChild(pc);
+        this._el.urcard = pc;
+      } else if (!ur && pc) {
+        this._el.urcard = null;
+        pc.classList.add("out");
+        setTimeout(() => pc.remove(), 900);
+        pc = null;
+      }
+      if (pc) {
+        const w = H * 0.15;
+        pc.style.width = `${w.toFixed(1)}px`;
+        pc.style.left = `${(hole.cx + (hole.r - hole.cx) * 0.2 - w / 2).toFixed(1)}px`;
+        pc.style.top = `${(hole.top + (hole.lip - hole.top) * 0.3).toFixed(1)}px`;
+      }
+    }
+    // Das Schild sagt etwas (Futterknopf, Tür, Päckchen-Knopf im Urlaub)
+    _urlaubPeep() {
+      const el = this._el?.ursign;
+      if (!el) return;
+      el.classList.remove("wig");
+      void el.offsetWidth;
+      el.classList.add("wig");
+      const r = el.getBoundingClientRect();
+      const s = this._el.scene.getBoundingClientRect();
+      this._peep(r.left - s.left + r.width / 2, r.top - s.top, `Bin bei ${this._frName()}!`);
+    }
+    // Tür angetippt: im Urlaub Schild und Tagebuch, nach der Rückkehr die Postkarte. → true, wenn das die Antwort war
+    _urlaubDoor() {
+      if (this._urlaubOn()) {
+        this._urlaubPeep();
+        if (this._diaryOn()) setTimeout(() => this._diaryOpen("heute"), 500);
+        return true;
+      }
+      if (this._el?.urcard && this._diaryOn()) {
+        this._diaryOpen("heute");
+        return true;
+      }
+      return false;
+    }
+    // ---------- Schleife ----------
+    // Welche Aktion die Schleife wählt, solange er verreist ist oder eben zurückkommt (null: wie sonst)
+    _urlaubNext() {
+      if (this._urlaubOn()) return this._fort ? "urlFort" : "urlAbreise";
+      return this._fort ? "urlHeim" : null;
+    }
+    // Abreise: Hat es eben erst angefangen und schaut jemand zu, winkt er und hoppelt aus dem Bild (zu Pino). Sonst
+    // (Neuladen mitten im Urlaub, er schlief, im Bau) ist er einfach weg.
+    async _urlAbreise() {
+      const p = this._el.pika;
+      const fresh = this._haNow() - this._plan.ur.t < 2 * 6e4;
+      if (!fresh || this._asleep || this._inside || this._sleepTime()) return this._urlaubWeg();
+      try {
+        if (this._lift > 0) await (this._onHam ? this._giftHamDown() : this._hopDown());
+        this._face(this._x < this._W / 2 ? -1 : 1);
+        this._say(pick([`Ich besuche ${this._frName()}!`, "Bis bald!", "Tschüss!"]), 1800);
+        p.classList.add("waving");
+        await this._wait(1600);
+        p.classList.remove("waving");
+        this._jump("hop1");
+        await this._wait(400);
+        const side = this._x < this._W / 2 ? -1 : 1;
+        await this._urlaubLauf(side < 0 ? -this._g.pW : this._W + this._g.pW);
+      } finally {
+        p.classList.remove("waving");
+        this._urlaubWeg();
+      }
+    }
+    _urlaubWeg() {
+      this._fort = true;
+      this._el.pika.classList.add("fort");
+      this._el.psay?.classList.add("fort");
+    }
+    // Weg: nur warten (eine Änderung des Plans weckt die Schleife)
+    async _urlFort() {
+      await this._wait(6e4);
+    }
+    // Zurück: Er hoppelt von der Seite herein und freut sich (nachts liegt er gleich wieder im Bau)
+    async _urlHeim() {
+      const p = this._el.pika;
+      this._fort = false;
+      this._el.psay?.classList.remove("fort");
+      if (this._sleepTime()) {
+        this._sleepNow(true);
+        p.classList.remove("fort");
+        return;
+      }
+      if (this._asleep || this._inside) this._sleepNow(false);
+      const side = Math.random() < 0.5 ? -1 : 1;
+      this._setX(side < 0 ? -this._g.pW : this._W + this._g.pW, true);
+      p.classList.remove("fort");
+      await this._urlaubLauf(this._W * rnd(0.4, 0.55));
+      this._face(1);
+      p.classList.add("waving");
+      this._say("Da bin ich wieder!", 2200, true);
+      this._blush(3e3);
+      await this._wait(1700);
+      p.classList.remove("waving");
+      this._jump("binky");
+      this._hearts(3);
+      await this._wait(1200);
+    }
+    // Geradeaus laufen, auch über den Rand hinaus (_walkTo bleibt auf der Wiese)
+    async _urlaubLauf(x) {
+      const p = this._el.pika;
+      const dist = Math.abs(x - this._x);
+      if (dist < 4) return;
+      const dur = dist / (this._g.pW * 0.85 * 1.4);
+      this._face(x > this._x ? 1 : -1);
+      p.style.transition = `transform ${dur.toFixed(2)}s linear`;
+      this._setX(x);
+      p.classList.add("walking");
+      try {
+        await this._wait(dur * 1e3);
+      } finally {
+        p.classList.remove("walking");
+      }
     }
   };
 
@@ -18289,7 +18934,8 @@
     Schaetze,
     Tagesplan,
     BeschaeftigungenKlein,
-    Chronik
+    Chronik,
+    Urlaub
   ];
   for (const Teil of TEILE) {
     for (const k of Reflect.ownKeys(Teil.prototype)) {
@@ -18332,6 +18978,14 @@
       hayNow,
       giftLv,
       pikaDay,
+      MEM_GUT,
+      giftTre,
+      giftMile,
+      giftAllGold,
+      URLAUB,
+      urlaubAt,
+      urlaubCut,
+      chronikUrlaub,
       freshStats,
       serialize,
       parseStats,

@@ -5,6 +5,7 @@ import {
   RATE, SLEEP_DECAY, CLOCK_KEEP, CLOCK_STEP, SELF_MAX, freshStats, serialize, parseStats,
 } from '../logik/zustand.js';
 import { CRIT_KINDS } from '../logik/besucher.js';
+import { urlaubCut } from '../logik/urlaub.js';
 
 export class Zustand {
   // Die gemeinsame Uhr wurde nachgestellt: wartende Besuche und den Beginn der nächsten Beschäftigung neu planen
@@ -43,17 +44,23 @@ export class Zustand {
     const t = this._stats[k + 't'];
     const now = this._haNow();
     // Wird oft gefragt (Balken, Auswahl der Aktionen): je Sekunde einmal rechnen
-    const key = `${t}|${Math.floor(now / 1000)}|${this._wdSig}`;
+    const ur = this._plan?.ur;
+    const key = `${t}|${Math.floor(now / 1000)}|${this._wdSig}|${ur ? `${ur.t}.${ur.d}` : ''}`;
     const M = (this._rawM ??= {});
     if (M[k]?.key !== key) M[k] = { key, h: this._decayH(t, now) };
     return clamp(this._stats[k] - M[k].h * RATE[k], 0, 100);
   }
 
-  // Abbau-Stunden zwischen t1 und t2: wach voll, im Schlaf SLEEP_DECAY (Wachfenster wie bei Schlafenszeit und Häufchen)
+  // Abbau-Stunden zwischen t1 und t2: wach voll, im Schlaf SLEEP_DECAY (Wachfenster wie bei Schlafenszeit und Häufchen).
+  // Die Zeit eines Urlaubs (Tagesplan) zählt nicht: Solange er läuft, stehen die Werte.
   _decayH(t1, t2) {
     if (!(t2 > t1)) return (t2 - t1) / 3.6e6; // Stand aus der Zukunft (Uhr): gleichmäßig
-    const aw = this._awakeMs(t1, t2);
-    return (aw + SLEEP_DECAY * (t2 - t1 - aw)) / 3.6e6;
+    const h = (a, b) => {
+      const aw = this._awakeMs(a, b);
+      return (aw + SLEEP_DECAY * (b - a - aw)) / 3.6e6;
+    };
+    const cut = urlaubCut(this._plan?.ur, t1, t2);
+    return h(t1, t2) - (cut ? h(cut[0], cut[1]) : 0);
   }
 
   // Umkehrung: wann ab t h Abbau-Stunden vergangen sind (wann ein Wert unter eine Grenze fällt)

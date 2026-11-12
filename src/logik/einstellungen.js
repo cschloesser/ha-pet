@@ -52,6 +52,8 @@ const DEFAULTS = {
   // diary_house: false lässt Kaffee und Haushaltsgeräte darin weg.
   diary: true,
   diary_house: true,
+  // Urlaub bei Pino: Schalter im Tagebuch (false = kein Schalter; einen laufenden Urlaub zeigt die Karte trotzdem)
+  vacation: true,
 };
 
 // Karten-Editor (getConfigForm): Beschriftungen und Hilfetexte der Felder
@@ -64,7 +66,7 @@ const EDITOR_LABEL = {
   flight_entity: 'Flüge (Flightradar24)', flight_radius: 'Radius', max_flights: 'Höchstens gleichzeitig',
   friend_name: 'Name des Freunds', screen_entity: 'Bildschirm-Schalter', height: 'Mindesthöhe',
   birthdays: 'Geburtstage', appliances: 'Haushaltsgeräte (Haus-Bote)', coffee: 'Kaffeevollautomat',
-  diary: 'Tagebuch', diary_house: 'Haushalt im Tagebuch',
+  diary: 'Tagebuch', diary_house: 'Haushalt im Tagebuch', vacation: 'Urlaubsschalter',
 };
 const EDITOR_HELP = {
   entity: 'Damit alle Geräte denselben Pika sehen. Leer: nur in diesem Browser.',
@@ -72,6 +74,7 @@ const EDITOR_HELP = {
   chronicle_entity: 'Sein Langzeitgedächtnis: je Tag ein Eintrag mit der Tagesbilanz. Am besten eine eigene Liste; braucht beide Helfer. Leer: keine Chronik.',
   diary: 'Antippen der Leiste öffnet sein Tagebuch.',
   diary_house: 'Kaffee, Wäsche und Geschirr stehen mit Uhrzeit drin.',
+  vacation: 'Im Tagebuch: „Ferien bei Pino“. Solange er verreist ist, ruhen Hunger, Glück, Häufchen und Päckchen-Serie.',
   sleep_start: 'z. B. sunset, sunset+01:00 oder 21:00',
   sleep_end: 'z. B. sunrise, sunrise-30 oder 07:00',
   rain_min: 'Meldet das Wetter „rainy“ bei weniger, bleibt es trocken (nur mit Niederschlags-Sensor).',

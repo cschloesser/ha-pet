@@ -31,6 +31,7 @@ import { Schaetze } from './karte/schaetze.js';
 import { Tagesplan } from './karte/tagesplan.js';
 import { BeschaeftigungenKlein } from './karte/beschaeftigungen-klein.js';
 import { Chronik } from './karte/chronik.js';
+import { Urlaub } from './karte/urlaub.js';
 
 class PikaPetCard extends HTMLElement {
   constructor() {
@@ -394,7 +395,7 @@ class PikaPetCard extends HTMLElement {
 const TEILE = [
   Editor, Aufbau, Schlaf, Lebensschleife, Alltag, Wiese, Haeufchen, Besucher, Flugzeuge, Beschaeftigungen,
   BeschaeftigungenGross, Bausteine, Interaktion, Tagebuch, Momente, Feste, Zustand, Pino, Himmel, Wetter, HausBote,
-  Kaffee, Paeckchen, Schaetze, Tagesplan, BeschaeftigungenKlein, Chronik,
+  Kaffee, Paeckchen, Schaetze, Tagesplan, BeschaeftigungenKlein, Chronik, Urlaub,
 ];
 for (const Teil of TEILE) {
   for (const k of Reflect.ownKeys(Teil.prototype)) {

@@ -166,12 +166,14 @@ export class Pino {
     else this._frT = setTimeout(() => this._friendDue(), 20000);
   }
 
-  // Was gegen Besuch spricht (Bits): 1 Pika schläft oder geht schlafen, 2 Regen/Gewitter, 4 nicht Tag
+  // Was gegen Besuch spricht (Bits): 1 Pika schläft oder geht schlafen, 2 Regen/Gewitter, 4 nicht Tag, 8 Urlaub (er ist
+  // ja bei Pino)
   _friendBad() {
     const sleepy = this._asleep || this._sleepTime() || this._action === 'goSleep';
     const wx = this._wx;
     const e = this._dbgElev ?? this._elev;
-    return (sleepy ? 1 : 0) | (wx.wet || wx.storm || wx.shelter ? 2 : 0) | ((e == null ? sleepy : e <= 3) ? 4 : 0);
+    return (sleepy ? 1 : 0) | (wx.wet || wx.storm || wx.shelter ? 2 : 0) | ((e == null ? sleepy : e <= 3) ? 4 : 0)
+      | (this._urlaubOn() || this._fort ? 8 : 0);
   }
 
   // Bei jedem hass-Update und alle 20 s: abgeschaltet? Plan da? Muss Pino gehen?

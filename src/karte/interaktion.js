@@ -620,6 +620,7 @@ export class Interaktion {
         if (Math.random() < 0.6) this._say(pick(['oh!', 'ooh!']), 900);
       }
     } else if (z.k === 'door') {
+      if (this._urlaubDoor()) return this._found('door');
       // Klopf, klopf. Ist er im Bau, linst er heraus; schläft er, zuckt nur ein Ohr.
       if (!awake) this._cls('stw', 550, true);
       else {
@@ -745,6 +746,7 @@ export class Interaktion {
     // Leiste und Knöpfe (bei diary: false reicht die Leiste ihren Klick hierher durch) sind keine Welt
     const hit = e.target?.closest?.('.stats, button, .ptag') ? null : worldPick(x, y, this._worldZones(this._skyAt(e)));
     if (hit) this._worldTap(hit);
+    if (this._fort) return; // verreist: niemand, der hinschaut
     // Im Bau (auch beim Fernsehen, Rückansicht) schaut er nicht herum
     if (this._asleep || this._action === 'eatFood' || this._inside || p.classList.contains('tv')) return;
     const up = hit?.k === 'cloud' || hit?.k === 'star';

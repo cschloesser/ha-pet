@@ -5,7 +5,8 @@ import { OUT } from './pika.js';
 import { ICON_LEAF, ICON_HEART, ICON_SPARK } from './szene.js';
 
 // Was die Serie gerade gefährdet (unter GIFT.min): Hinweis im Album und Zeichen am Knopf
-const GIFT_LOW = { s: ['Hunger!', ICON_LEAF], g: ['Streicheln!', ICON_HEART], c: ['Putzen!', ICON_SPARK] };
+// Was für die Serie fehlt: Wort im Album (ruhig, seit 0.35 ohne Ausrufezeichen) und Zeichen am Knopf
+const GIFT_LOW = { s: ['füttern', ICON_LEAF], g: ['streicheln', ICON_HEART], c: ['putzen', ICON_SPARK] };
 const GIFT_ITEMS = [
   { key: 'yarn', name: 'Wollknäuel', say: 'ein Wollknäuel!', svg: `<svg viewBox="0 0 24 24" aria-hidden="true">
       <path d="M18.4 17.6 q3.6 1.6 1.6 4 q-2 1.6 -4.4 .2" stroke="#f28fb1" stroke-width="1.2" fill="none" stroke-linecap="round"/>

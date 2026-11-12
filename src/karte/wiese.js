@@ -140,7 +140,8 @@ export class Wiese {
 
   _onFeed() {
     if (!this._g) return;
-    if (this._foods.length >= 3) {
+    if (this._foods.length >= 3 || this._urlaubOn()) {
+      if (this._urlaubOn()) this._urlaubPeep();
       const b = this._el.feed;
       b.classList.remove('no');
       void b.offsetWidth;
@@ -292,7 +293,9 @@ export class Wiese {
   // Vorrat aus dem Tagesplan zeigen; wippt, wenn ein Bündel dazukam
   _hayFromPlan() {
     if (!this._el) return;
-    const { n, c } = hayNow(this._plan.hay, this._haNow());
+    // (im Urlaub verfällt nichts: Stand vom Beginn; bei der Rückkehr rückt der Anker um die Urlaubszeit, voff)
+    const ur = this._plan.ur;
+    const { n, c } = hayNow(this._plan.hay, ur && ur.d == null ? Math.min(this._haNow(), ur.t) : this._haNow());
     const pal = this._flowerPal();
     const key = `${n}|${c}|${this._arealKey}|${this._seasonK}`;
     if (key === this._hayKey) return;

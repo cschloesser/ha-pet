@@ -3796,3 +3796,250 @@ test('Chronik, zwei Geräte an einer Liste: in jeder Reihenfolge der Aufrufe ble
     assert.ok(zahl.doppelt >= F.min / 2 && zahl.nurA > 0 && zahl.nurB > 0 && zahl.zuSpaet > 0 && zahl.laengster >= 12, `${F.name}: ${JSON.stringify(zahl)}`);
   }
 });
+
+// ==================== 0.35 Faire Päckchen: gute Tage, Pech-Schutz, Meilensteine, Urlaub ====================
+
+// Die Karte von 0.34 (aus git), um zu prüfen, was ein Gerät mit zwischengespeicherter alter Version mit den neuen
+// Ständen macht. Ohne git (z. B. ein ausgepacktes Archiv) werden diese Tests übersprungen.
+let ALT = null;
+try {
+  const altSrc = (await import('node:child_process')).execSync('git show f95604f:pika-pet-card.js', {
+    cwd: new URL('..', import.meta.url), encoding: 'utf8', maxBuffer: 1 << 26, stdio: ['ignore', 'pipe', 'ignore'],
+  });
+  vm.runInNewContext(altSrc, { ...WELT, __pikaTest: (x) => (ALT = x) }, { filename: 'alt-0.34.js' });
+} catch (e) { ALT = null; }
+
+// Ein voller Plan mit allem, was 0.35 dazubringt: Freundschaftstage, Kennung des Schenkers, Ende eines Urlaubs
+const fullPlan35 = (rec) => {
+  const P = fullPlan(rec);
+  P.gift = { ...P.gift, f: 1500, r: 35 };
+  P.ur = { t: sek(NOW - 9 * 864e5), d: 30 * 864e5 };
+  return P;
+};
+
+test('Tagesplan 0.35: Freundschaftstage, Schenker und Urlaub kommen heil hin und zurück', () => {
+  const k = Math.floor(NOW / 840000);
+  const s = T.planSer(fullPlan35([[k, 'paint', 'flieger']]));
+  const P = T.planParse(s);
+  assert.equal(T.planSer(P), s);
+  assert.equal(P.gift.f, 1500);
+  assert.equal(P.gift.u, 255);
+  assert.equal(P.gift.r, 35);
+  assert.deepEqual(plain(P.ur), { t: sek(NOW - 9 * 864e5), d: 30 * 864e5 });
+  // läuft: ohne Dauer; ohne Päckchen steht davor ein „-“
+  const L = T.planParse(T.planSer({ ...T.planBlank(NOW), ur: { t: sek(NOW), d: null } }));
+  assert.deepEqual(plain(L.ur), { t: sek(NOW), d: null });
+  assert.equal(L.gift, null);
+  assert.match(T.planSer(L), /\|-\|u[0-9a-z]+$/);
+  // f: 0 ist ein Wert (übernommen, noch kein guter Tag), null heißt „noch nicht übernommen“
+  const G0 = T.planParse(T.planSer({ ...T.planBlank(NOW), gift: { ...fullPlan([]).gift, f: 0 } })).gift;
+  assert.equal(G0.f, 0);
+  const Gn = T.planParse(T.planSer({ ...T.planBlank(NOW), gift: { ...fullPlan([]).gift, f: null } })).gift;
+  assert.equal(Gn.f, null);
+  // Etwas anderes als ein Urlaub an siebter Stelle, oder acht Abschnitte: unbekannt
+  assert.equal(T.planParse(`${T.planSer(T.planBlank(NOW))}|-|x12`), null);
+  assert.equal(T.planParse(`${T.planSer(fullPlan35([]))}|u1`), null);
+});
+
+test('Tagesplan 0.35: passt in den Helfer, PLAN_MIN reicht ohne Verlauf', () => {
+  const k = Math.floor(NOW / 840000);
+  const ohne = T.planSer(fullPlan35([]));
+  assert.ok(ohne.length <= T.PLAN_MIN, `ohne Verlauf ${ohne.length} Zeichen, PLAN_MIN ist ${T.PLAN_MIN}`);
+  const voll = T.planSer(fullPlan35([[k, 'paint', 'flieger'], [k - 1, 'bubbles', ''], [k - 2, 'tablet', ''], [k - 3, 'music', '']]));
+  assert.ok(voll.length <= 255, `mit Verlauf ${voll.length} Zeichen, ein input_text fasst 255`);
+  assert.ok(T.PLAN_MIN <= 255);
+  // Schlimmster Fall (viermal Malen mit dem längsten Motiv): Die Karte lässt ältere Einträge des Verlaufs weg
+  const c = Object.create(T.PikaPetCard.prototype);
+  c._cfg = { plan_entity: 'input_text.p' };
+  c._hass = { states: { 'input_text.p': { state: '', attributes: { max: 255 } } } };
+  const F = c._planFit(fullPlan35([0, 1, 2, 3].map((i) => [k - i, 'paint', 'regenbogen'])));
+  assert.ok(T.planSer(F).length <= 255 && F.rec.length >= 3, `${T.planSer(F).length} Zeichen, ${F.rec.length} im Verlauf`);
+});
+
+test('Gute Tage: einmal je Tag, jeder siebte bringt ein goldenes, höchstens zwei im Vorrat', () => {
+  let P = T.planApply(T.planBlank(NOW), { t: 'gstart', k: sek(NOW) }, NOW);
+  assert.equal(P.gift.f, 0);
+  const tag = T.pikaDay(NOW);
+  for (let i = 0; i < 21; i++) {
+    const op = { t: 'ggood', d: tag + i };
+    const a = T.planApply(P, op, NOW);
+    // wiederholbar: dasselbe zweimal zählt einmal
+    assert.equal(T.planSer(T.planApply(a, op, NOW)), T.planSer(a));
+    P = a;
+    // am nächsten Tag streichelt jemand (neuer Tag im Plan), das Bit „gut“ gilt nur für seinen Tag
+    P = T.planApply(P, { t: 'pet', d: tag + i + 1, n: 1 }, NOW);
+  }
+  assert.equal(P.gift.f, 21);
+  assert.equal(P.gift.y, 2); // drei verdient, zwei passen in den Vorrat
+  // ein später Eintrag für einen Tag, den der Plan schon hinter sich hat, zählt nicht
+  const spaet = T.planApply(P, { t: 'ggood', d: tag + 3 }, NOW);
+  assert.equal(spaet.gift.f, 21);
+  // nicht übernommen (f fehlt): keine Zählung, bis gmig
+  const Q = T.planApply(T.planBlank(NOW), { t: 'gstart', k: sek(NOW) }, NOW);
+  Q.gift.f = null;
+  assert.equal(T.planApply(Q, { t: 'ggood', d: tag }, NOW).gift.f, null);
+  const M = T.planApply(Q, { t: 'gmig', k: Q.gift.k, f: 9 }, NOW);
+  assert.equal(M.gift.f, 9);
+  assert.equal(T.planApply(M, { t: 'gmig', k: Q.gift.k, f: 2 }, NOW).gift.f, 9); // nur einmal
+  // Das Bit „gut“ ist keins der Erlebnisse, von denen er träumt
+  assert.equal(T.MEM_GUT, 1 << 9);
+});
+
+test('Pech-Schutz: nie mehr als zwei Leckerli in Folge, das erste ist ein Schatz, auf allen Geräten gleich', () => {
+  let run = 0;
+  let schaetze = 0;
+  assert.equal(T.giftTre(1), true);
+  for (let z = 1; z <= 2000; z++) {
+    if (T.giftTre(z)) {
+      schaetze++;
+      run = 0;
+    } else assert.ok(++run <= 2, `Päckchen ${z}: ${run} Leckerli in Folge`);
+  }
+  // etwa jedes dritte bis zweite ist ein Schatz (vorher genau eins von dreien)
+  assert.ok(schaetze > 2000 / 3 && schaetze < 2000 / 2, `${schaetze} Schätze`);
+  assert.deepEqual([10, 25, 50, 100, 200, 300].map(T.giftMile), [true, true, true, true, true, true]);
+  assert.deepEqual([1, 9, 11, 26, 75, 150].map(T.giftMile), [false, false, false, false, false, false]);
+  assert.equal(T.giftAllGold({ u: 255, v: 0xffff }), true);
+  assert.equal(T.giftAllGold({ u: 255, v: 0x7fff }), false);
+});
+
+test('Urlaub: an, zurück, weg; was ein Gerät ohne Wissen davon rechnete, gilt nicht', () => {
+  const t0 = sek(NOW);
+  let P = T.planApply(T.planBlank(NOW - 864e5), { t: 'gstart', k: sek(NOW - 864e5) }, NOW);
+  P = T.planApply(P, { t: 'von', t0 }, NOW);
+  assert.deepEqual(plain(P.ur), { t: t0, d: null });
+  // ein zweites „an“ (anderes Gerät, später) ändert nichts
+  assert.equal(T.planApply(P, { t: 'von', t0: t0 + 6e4 }, NOW).ur.t, t0);
+  // Warnung und Verdientes aus der Urlaubszeit gelten nicht; von davor schon
+  assert.equal(T.planApply(P, { t: 'gbad', k: P.gift.k, b: t0 + 36e5 }, NOW).gift.b, null);
+  assert.equal(T.planApply(P, { t: 'gbad', k: P.gift.k, b: t0 - 36e5 }, NOW).gift.b, t0 - 36e5);
+  assert.equal(T.planApply(P, { t: 'gearn', k: P.gift.k, e: 1, p: t0 + 36e5 }, NOW).gift.a, 0);
+  // zurück: einmal, nur für diesen Urlaub, Anker der Serie und des Vorrats rücken
+  const off = { t: 'voff', t0, d: 3 * 864e5, gp: t0 + 3 * 864e5, ht: P.hay.t + 3 * 864e5 };
+  const Q = T.planApply(P, off, NOW);
+  assert.deepEqual(plain(Q.ur), { t: t0, d: 3 * 864e5 });
+  assert.equal(Q.gift.p, t0 + 3 * 864e5);
+  assert.equal(Q.hay.t, P.hay.t + 3 * 864e5);
+  assert.equal(T.planSer(T.planApply(Q, off, NOW)), T.planSer(Q));
+  assert.equal(T.planApply(Q, { ...off, t0: t0 + 1000 }, NOW).ur.d, 3 * 864e5);
+  // ein neuer Urlaub erst nach dem Ende des alten; vclear räumt nur das bekannte Ende weg
+  assert.equal(T.planApply(Q, { t: 'von', t0: t0 + 864e5 }, NOW).ur.t, t0);
+  assert.equal(T.planApply(Q, { t: 'von', t0: t0 + 4 * 864e5 }, NOW).ur.t, t0 + 4 * 864e5);
+  assert.equal(T.planApply(Q, { t: 'vclear', t0 }, NOW).ur, null);
+  assert.equal(T.planApply(P, { t: 'vclear', t0 }, NOW).ur.t, t0); // läuft noch: bleibt
+});
+
+test('Urlaub: Satt und Glück stehen, solange er läuft, und rechnen danach ohne die Urlaubszeit', () => {
+  const c = Object.create(T.PikaPetCard.prototype);
+  c._cfg = { sleep_start: '21:00', sleep_end: '07:00' };
+  const day = new Date(2026, 10, 2, 12).getTime();
+  const t0 = day + 2 * 36e5;
+  const h = (a, b) => c._decayH(a, b);
+  c._plan = { ur: null };
+  const ohne = h(day, t0);
+  c._plan = { ur: { t: t0, d: null } };
+  assert.equal(h(day, t0 + 5 * 864e5), ohne); // im Urlaub kein Abbau
+  c._plan = { ur: { t: t0, d: 5 * 864e5 } };
+  // danach: Abbau vor dem Urlaub plus Abbau nach der Rückkehr
+  c._plan = { ur: null };
+  const nach = h(t0 + 5 * 864e5, t0 + 5 * 864e5 + 36e5);
+  c._plan = { ur: { t: t0, d: 5 * 864e5 } };
+  assert.ok(Math.abs(h(day, t0 + 5 * 864e5 + 36e5) - (ohne + nach)) < 1e-9);
+  // Wachzeit rückwärts: dieselbe Wachzeit wie bis zur Abreise, jetzt bis zur Rückkehr
+  const back = c._awakeBack(t0 + 5 * 864e5, c._awakeMs(day, t0));
+  assert.ok(Math.abs(c._awakeMs(back, t0 + 5 * 864e5) - c._awakeMs(day, t0)) < 1000);
+  assert.deepEqual(plain(T.urlaubCut({ t: t0, d: 864e5 }, day, t0 + 2 * 864e5)), [t0, t0 + 864e5]);
+  assert.equal(T.urlaubCut({ t: t0, d: 864e5 }, day, t0), null);
+});
+
+test('Tagebuch: zwei Geräte fast gleichzeitig, jedes Ereignis steht nur einmal da', () => {
+  const d = T.pikaDay(NOW);
+  let P0 = T.planApply(T.planBlank(NOW), { t: 'gstart', k: NOW - 864e5 }, NOW);
+  P0.gift = { ...P0.gift, n: 1, a: 1, z: 2, o: 2 };
+  const A = T.planApply(T.planApply(P0, { t: 'mem', d, b: 16 }, NOW), { t: 'give', z: 3, i: 9, gold: false, x: NOW }, NOW);
+  const A2 = T.planApply(A, { t: 'gopen', z: 3 }, NOW);
+  const B = T.planApply(P0, { t: 'gather', c: '2', m: 999 }, NOW);
+  const M = T.planApply(T.planApply(T.planApply(A2, { t: 'gather', c: '2', m: 999 }, NOW), { t: 'mem', d, b: 16 }, NOW), { t: 'gopen', z: 3 }, NOW);
+  const P = [P0, A2, B, M].map((v, i) => ({ t: NOW + i * 1000, v: T.planParse(T.planSer(v)) }));
+  // Zustand: zwei Geräte putzen je ein Häufchen, der dritte Stand führt beide zusammen
+  const s0 = { s: 80, st: NOW, g: 80, gt: NOW, c: NOW - 864e5, m: 0, l: NOW };
+  const S = [s0, { ...s0, m: 1 }, { ...s0, m: 2 }, { ...s0, m: 3 }].map((v, i) => ({ t: NOW + i * 1000, v }));
+  const r = T.diaryDerive(S, P, NOW - 1e7, { decayAt: () => Infinity, until: NOW + 1e4 });
+  const n = (k, b) => r.ev.filter((e) => e.k === k && (b == null || e.b === b)).length;
+  assert.equal(n('mem', 'pino'), 1);
+  assert.equal(n('parcel'), 1);
+  assert.equal(n('gather'), 1);
+  assert.equal(r.ev.filter((e) => e.k === 'clean').reduce((x, e) => x + e.n, 0), 2);
+});
+
+test('Tagebuch: „ein Päckchen wartet“ nur, wenn eins in den Vorrat kam; Gold nach sieben guten Tagen', () => {
+  const k = sek(NOW - 864e5);
+  let F = T.planApply(T.planBlank(NOW), { t: 'gstart', k }, NOW);
+  F.gift = { ...F.gift, n: 3, a: 5, f: 6 };
+  const voll = T.planApply(F, { t: 'gearn', k, e: 6, p: NOW }, NOW);
+  const H = (L) => L.map((v, i) => ({ t: NOW + i, v: T.planParse(T.planSer(v)) }));
+  const ev = (L) => plain(T.diaryDerive([], H(L), NOW - 1e7, { decayAt: () => Infinity, until: NOW + 1e4 }).ev.map((e) => e.k));
+  assert.deepEqual(ev([F, voll]), []);
+  const zwei = { ...F, gift: { ...F.gift, n: 2 } };
+  assert.deepEqual(ev([zwei, T.planApply(zwei, { t: 'gearn', k, e: 6, p: NOW }, NOW)]), ['earn']);
+  const gut = T.planApply(F, { t: 'ggood', d: T.pikaDay(NOW) }, NOW);
+  assert.deepEqual(ev([F, gut]), ['mem', 'earnGold']);
+});
+
+test('Tagebuch: Urlaub mit Abreise und Rückkehr, das Neuansetzen danach ist kein Putzen, ein ganz kurzer steht nicht da', () => {
+  const t0 = sek(NOW - 3 * 864e5);
+  const t1 = sek(NOW - 36e5);
+  const P0 = T.planBlank(NOW - 4 * 864e5);
+  const P1 = T.planApply(P0, { t: 'von', t0 }, NOW);
+  const P2 = T.planApply(P1, { t: 'voff', t0, d: t1 - t0 }, NOW);
+  const P = [[NOW - 4 * 864e5, P0], [t0, P1], [t1, P2]].map(([t, v]) => ({ t, v: T.planParse(T.planSer(v)) }));
+  // eine Stunde vor der Abreise 40 % satt: ohne Urlaub knurrte der Bauch eine Stunde nach der Abreise
+  const s0 = { s: 40, st: t0 - 36e5, g: 80, gt: t0 - 36e5, c: NOW - 4 * 864e5, m: 0, l: NOW - 4 * 864e5 };
+  const S = [{ t: s0.st, v: s0 }, { t: t1 + 2000, v: { ...s0, st: t1, gt: t1, c: t1, l: t1 } }];
+  const r = T.diaryDerive(S, P, NOW - 5 * 864e5, { decayAt: (t, h) => t + h * 36e5, until: NOW });
+  const ks = r.ev.map((e) => e.k);
+  assert.ok(ks.includes('urlaub') && ks.includes('heim'), ks.join(' '));
+  assert.ok(!ks.includes('clean'), 'Neuansetzen gilt als Putzen');
+  assert.ok(!ks.includes('hungry'), 'Hunger mitten im Urlaub');
+  assert.deepEqual(plain(r.urlaub), [[t0, t1]]);
+  // eine Minute lang (aus Versehen): kein Eintrag, die Zeit zählt trotzdem als Urlaub
+  const Q = [[NOW - 4 * 864e5, P0], [t0, P1], [t0 + 6e4, T.planApply(P1, { t: 'voff', t0, d: 6e4 }, NOW)]]
+    .map(([t, v]) => ({ t, v: T.planParse(T.planSer(v)) }));
+  const q = T.diaryDerive([], Q, NOW - 5 * 864e5, { decayAt: () => Infinity, until: NOW });
+  assert.deepEqual(plain(q.ev.map((e) => e.k)), []);
+  assert.deepEqual(plain(q.urlaub), [[t0, t0 + 6e4]]);
+  // Chronik: gut=1 und urlaub=1 als Felder, die 0.34 erhält
+  const tag = T.pikaDay(t0 + 36e5);
+  const a = T.chronikStart(tag);
+  const e = T.chronikBilanz([{ t: a + 36e5, k: 'mem', b: 'gut' }], {}, a, a + 864e5, tag, [[t0, t1]]);
+  assert.match(T.chronikKod(e), / gut=1 urlaub=1$/);
+  assert.equal(T.chronikUrlaub([[t0, t1]], t1, t1 + 864e5), false);
+});
+
+test('Ältere Karte (0.34) und Stände von 0.35: nichts geht verloren, im Urlaub schreibt sie den Plan nicht', { skip: !ALT && 'git oder der Stand f95604f fehlt' }, () => {
+  const k = Math.floor(NOW / 840000);
+  // Ohne Urlaub liest 0.34 den Plan, schreibt ihn mit Freundschaftstagen zurück (sie stecken in u), nur die Kennung
+  // des Schenkers fällt weg (dann gilt die alte Prüfung)
+  const P = fullPlan35([[k, 'read', '']]);
+  P.ur = null;
+  const s = T.planSer(P);
+  const alt = ALT.planParse(s);
+  assert.ok(alt, '0.34 liest den Plan nicht');
+  const zurueck = T.planParse(ALT.planSer(ALT.planApply(alt, { t: 'gopen', z: P.gift.z }, NOW)));
+  assert.equal(zurueck.gift.f, 1500);
+  assert.equal(zurueck.gift.u, 255);
+  assert.equal(zurueck.gift.r, null);
+  // 0.34 verschenkt (Album-Bit dazu): die Freundschaftstage bleiben
+  const Q = T.planParse(T.planSer({ ...T.planBlank(NOW), gift: { ...P.gift, u: 0, v: 0, z: 0, o: 0, n: 1, f: 12 } }));
+  const gab = ALT.planApply(ALT.planParse(T.planSer(Q)), { t: 'give', z: 1, i: 2, gold: false, x: NOW }, NOW);
+  assert.equal(T.planParse(ALT.planSer(gab)).gift.f, 12);
+  assert.equal(T.planParse(ALT.planSer(gab)).gift.u, 4);
+  // Im Urlaub (siebter Abschnitt): 0.34 kennt das Format nicht, liest nichts und hält es für das einer neueren Karte
+  // (dann schreibt sie den Plan nicht, siehe _hassPlan in 0.34)
+  const U = T.planSer({ ...P, ur: { t: sek(NOW), d: null } });
+  assert.equal(ALT.planParse(U), null);
+  assert.ok(/^p\d+\|/.test(U) && (!U.startsWith('p1|') || U.split('|').length > 6));
+  // Der Zustand hat sein Format behalten: 0.34 liest, was 0.35 schreibt
+  const st = { s: 61.5, st: sek(NOW), g: 40, gt: sek(NOW), c: sek(NOW), m: 5, l: sek(NOW) };
+  assert.deepEqual(plain(ALT.parseStats(T.serialize(st))), plain(st));
+});

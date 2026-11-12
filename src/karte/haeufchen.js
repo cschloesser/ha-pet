@@ -4,6 +4,7 @@ import { rnd, pick, seeded } from '../logik/hilfen.js';
 import { GAIN, POOP, sec } from '../logik/zustand.js';
 import { poopClean, poopWhen } from '../logik/beschaeftigungen.js';
 import { POO_SVG, SCOOP_SVG } from '../grafik/szene.js';
+import { urlaubEnd } from '../logik/urlaub.js';
 
 export class Haeufchen {
   // Geschäft machen: mit dem Po über die Stelle, Hocke, Wackeln, plopp – dann ein Hüpfer nach vorn
@@ -103,9 +104,15 @@ export class Haeufchen {
   // wurde, steht nicht im Zustand, mit der Maske würde ein späterer Putz rückwirkend verschieben, wo ein schon
   // liegendes Häufchen hinkam. Frei wird alles erst beim Großputz (das letzte Häufchen weg).
   // at: zu einem anderen Zeitpunkt (Uhr der Häufchen) rechnen, ohne den Zwischenspeicher
+  // Urlaub: Ab seinem Beginn kommt nichts dazu und nichts altert (bis der Zustand nach der Rückkehr neu angesetzt ist)
   _poops(at) {
     const st = this._stats;
-    const now = at ?? this._now();
+    let now = at ?? this._now();
+    const ur = this._plan?.ur;
+    if (st && ur && st.c < urlaubEnd(ur)) {
+      const t0 = ur.t + (this._now() - this._haNow());
+      if (now > t0) now = t0;
+    }
     const key = st && `${st.c},${st.m},${st.l},${Math.floor(now / 1e4)},${this._cfg.sleep_start},${this._cfg.sleep_end}`;
     if (at == null && this._poopCache?.key === key) return this._poopCache;
     const res = { key, piles: [], clean: 100 };
@@ -275,6 +282,7 @@ export class Haeufchen {
 
   // Antippen: Schaufel kommt, Häufchen weg, Funkeln. Ist alles weg, gilt das als Großputz.
   _cleanPile(key) {
+    if (this._urlaubOn()) return; // er ist verreist, die Wiese wartet
     const el = this._pileEls.get(key);
     if (!el || el.classList.contains('scooped')) return;
     const p = el._pile;

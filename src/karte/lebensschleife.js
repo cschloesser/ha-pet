@@ -246,6 +246,12 @@ export class Lebensschleife {
       this._el.pika.classList.remove(...PET_HOLD);
     }
     if (!this._g) return this._wait(500);
+    // Urlaub bei Pino: Abreise, weg sein, Rückkehr gehen allem anderen vor (er ist ja nicht da)
+    const ur = this._urlaubNext();
+    if (ur) {
+      this._next = null;
+      return this._run(ur);
+    }
     // Eine Berührung von vor Kaffee, Schlafengehen oder Begrüßung ist vorbei: nicht Minuten später darauf reagieren
     if (TOUCH_NEXT.has(this._next) && Date.now() - (this._nextAt || 0) > TOUCH_TTL) this._next = null;
     // In der Hängematte unterbrochen: aus ihr heraus (nicht zum Stein). Am Boden (z. B. schon beim Anlauf
@@ -382,7 +388,7 @@ export class Lebensschleife {
     this._watchdog();
     // Ein Fehler in einem Teil soll die anderen nicht mitreißen (wie in set hass)
     for (const f of [this._tickCore, this._tickSky, this._tickFest, this._tickFriend, this._tickBote, this._tickCoffee,
-      this._tickGift, this._diaryDot]) {
+      this._tickGift, this._tickUrlaub, this._diaryDot]) {
       this._guard(f.name, () => f.call(this));
     }
     // Chronik (nur mit chronicle_entity): einmal am Tag die Tagesbilanz nachtragen

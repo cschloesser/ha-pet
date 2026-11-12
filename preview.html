@@ -290,6 +290,21 @@
 </div>
 <!-- ==================== Ende Päckchen ==================== -->
 
+<!-- ==================== Vorschau-Knöpfe Faire Päckchen (gute Tage, Pech-Schutz, Meilensteine, Urlaub) ==================== -->
+<div class="bar" id="bar-fair"><b>Gute Tage, Urlaub</b>
+  <button id="ur-a">Urlaub an/aus (links)</button>
+  <button id="ur-b">Urlaub an/aus (rechts)</button>
+  <button id="ur-3d">Urlaub seit 3 Tagen</button>
+  <button id="good-today">heute guter Tag</button>
+  <button id="good-1">+1 guter Tag</button>
+  <button id="good-6">6 gute Tage</button>
+  <button id="treat-run">Leckerli-Folge</button>
+  <button id="mile-10">Meilenstein (10.)</button>
+  <button id="all-gold">alles golden</button>
+  <button id="fair-state">Stand</button>
+</div>
+<!-- ==================== Ende Faire Päckchen ==================== -->
+
 <!-- ==================== Vorschau-Knöpfe Tagebuch ==================== -->
 <div class="bar" id="bar-diary"><b>Tagebuch</b>
   <button id="diary-open">öffnen (links)</button>
@@ -1121,6 +1136,72 @@
   });
   document.getElementById('gift-rbow').addEventListener('click', () => cards.forEach((c) => cuteGo(c, 'giftWater')));
   // ==================== Ende Päckchen ====================
+
+  // ==================== Faire Päckchen ====================
+  // Urlaub geht über den Tagesplan an beide Karten (wie zwei Geräte); gute Tage und Meilensteine setzen den Stand links
+  const fairLog = () => {
+    const c = cards[0];
+    const G = c._plan.gift;
+    const ur = c._plan.ur;
+    const I = c._giftOn() && G ? c._giftInfo() : null;
+    log(`${ur ? `Urlaub seit ${new Date(ur.t).toLocaleString('de-DE')}${ur.d != null ? `, zurück nach ${Math.round(ur.d / 6e4)} Min.` : ' (läuft)'}` : 'kein Urlaub'}`
+      + (I ? ` · Freundschaftstage ${I.friends} (${I.dots}/7) · heute: ${I.today.good ? 'gut' : `Futter ${I.today.fed ? '✓' : '–'} Streicheln ${I.today.pet ? '✓' : '–'} über 50 % ${I.today.ok ? '✓' : '–'}`}` : '')
+      + ` · Plan ${String(c._planSt || '').length} Zeichen · Satt ${Math.round(c._get('s'))} Glück ${Math.round(c._get('g'))}`);
+  };
+  const urToggle = (c) => {
+    const ok = c._urlaubOn() ? c._urlaubEnde() : c._urlaubStart();
+    if (!ok) log('Urlaub: geht gerade nicht (Päckchen unterwegs, Schalter aus oder Plan noch nicht da)');
+    setTimeout(fairLog, 600);
+  };
+  document.getElementById('ur-a').addEventListener('click', () => urToggle(cards[0]));
+  document.getElementById('ur-b').addEventListener('click', () => urToggle(cards[1]));
+  document.getElementById('ur-3d').addEventListener('click', () => {
+    const c = cards[0];
+    if (c._urlaubOn()) c._urlaubEnde();
+    setTimeout(() => {
+      c._planOp({ t: 'vclear', t0: c._plan.ur?.t });
+      c._planOp({ t: 'von', t0: Math.floor((c._haNow() - 3 * 864e5) / 1000) * 1000 });
+      setTimeout(fairLog, 600);
+    }, 300);
+  });
+  document.getElementById('good-today').addEventListener('click', () => {
+    const c = cards[0];
+    gift();
+    if (!c._careToday().fed) c._onFeed();
+    if (!c._careToday().pet) c._petCount();
+    c._stats.s = Math.max(c._stats.s, 80);
+    c._stats.g = Math.max(c._stats.g, 80);
+    c._stats.st = c._stats.gt = c._haNow();
+    c._save();
+    setTimeout(() => { c._careEval(true); fairLog(); }, 500);
+  });
+  const goodAdd = (n) => {
+    gift();
+    const G = cards[0]._plan.gift;
+    giftSet({ f: (G.f ?? 0) + n, ...(Math.floor(((G.f ?? 0) + n) / 7) > Math.floor((G.f ?? 0) / 7) ? { y: Math.min(2, G.y + 1) } : {}) });
+    fairLog();
+  };
+  document.getElementById('good-1').addEventListener('click', () => goodAdd(1));
+  document.getElementById('good-6').addEventListener('click', () => { gift(); giftSet({ f: 6 }); fairLog(); });
+  document.getElementById('treat-run').addEventListener('click', () => {
+    const z = [...Array(36).keys()].map((i) => (PIKA.giftTre(i + 1) ? 'S' : 'l')).join('');
+    log(`Päckchen 1–36 (S Schatz, l Leckerli, solange noch ein Schatz fehlt): ${z} · längste Leckerli-Folge ${Math.max(...z.split('S').map((x) => x.length))}`);
+  });
+  // Stand setzen, dann verschenken. gdbg ist nicht wiederholbar und bliebe 15 s lang in den eigenen Änderungen: Kommt
+  // in der Zeit der Stand mit dem Verschenkten zurück, setzte es ihn wieder auf den Vorschau-Stand. Darum erst aus
+  // den Änderungen nehmen, wenn es im Helfer steht.
+  const giftSetGive = (f) => {
+    giftSet(f);
+    setTimeout(() => {
+      cards[0]._planOps = cards[0]._planOps.filter((o) => o.t !== 'gdbg');
+      cards[0]._onGiftBtn();
+    }, 1000);
+  };
+  document.getElementById('mile-10').addEventListener('click', () => giftSetGive({ z: 9, o: 9, n: Math.max(1, gift().n), u: 255, v: 0 }));
+  // alle mit Trick, sieben golden, ein goldenes Päckchen im Vorrat: Das bringt den letzten
+  document.getElementById('all-gold').addEventListener('click', () => giftSetGive({ u: 255, v: 255 | (0x7f << 8), y: 1, n: 0 }));
+  document.getElementById('fair-state').addEventListener('click', fairLog);
+  // ==================== Ende Faire Päckchen ====================
 
   // ==================== Tagebuch ====================
   // Echt: Füttern, Streicheln, Putzen, Päckchen und Beschäftigungen aus dem Plan („Uhr vor“) landen im Verlauf oben und

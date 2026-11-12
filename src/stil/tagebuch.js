@@ -85,6 +85,26 @@ const STYLE_DIARY = `
   .row .w { color: #d9622b; font-weight: 800; }
   .dots { display: inline-flex; gap: 3px; margin-left: 6px; vertical-align: -1px; }
   .dots u { width: 9px; height: 9px; border-radius: 50%; box-shadow: inset 0 0 0 1px rgba(90, 64, 48, .35); }
+  /* Gute Tage: sieben Punkte bis zum goldenen Päckchen */
+  .d7 { display: flex !important; gap: 4px; margin: 3px 0 2px; }
+  .d7 u { width: 11px; height: 11px; border-radius: 50%; box-shadow: inset 0 0 0 1.5px var(--acc); }
+  .d7 u.on { background: #f2b632; box-shadow: inset 0 0 0 1px rgba(90, 64, 48, .35); }
+  /* Ferien bei Pino: Kasten mit Knöpfen (Heute) und die Postkarte im Eintrag der Rückkehr */
+  .ur { display: grid; grid-template-columns: 46px minmax(0, 1fr); gap: 10px; align-items: start; margin: 16px 0 6px; padding: 12px;
+    border-radius: 14px; background: var(--tab); }
+  .ur.on { margin-top: 6px; background: rgba(217, 168, 115, .24); }
+  .ur > i { display: block; width: 46px; margin-top: 2px; }
+  .ur > i svg { display: block; width: 100%; height: auto; }
+  .ur b { display: block; font-size: 15px; font-weight: 800; line-height: 1.25; }
+  .ur span { display: block; margin-top: 2px; font-size: 13px; line-height: 1.4; color: var(--soft); }
+  .ur .bt { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 9px; }
+  .ur button { min-height: 38px; padding: 0 14px; border-radius: 12px; background: var(--acc); color: #fff; font-size: 14px; font-weight: 800; }
+  .night .ur button { color: #2a2238; }
+  .ur button.no { background: none; color: var(--soft); box-shadow: inset 0 0 0 1.5px var(--line); }
+  .ur button:disabled { opacity: .45; cursor: default; }
+  .ur .nt { font-size: 12px; }
+  .post { display: block; width: 150px; margin: 8px 0 2px 2px; transform: rotate(-3deg); filter: drop-shadow(0 2px 4px rgba(0, 0, 0, .25)); }
+  .post svg { display: block; width: 100%; height: auto; }
   /* Entdeckungen: eine Zeile je Sache, davor ein leerer Kreis oder (schon ausprobiert) ein Pfotenabdruck */
   .fd { display: grid; grid-template-columns: 24px minmax(0, 1fr); gap: 10px; padding: 8px 0; border-bottom: 1px dashed var(--line); }
   .fd > i { display: block; width: 22px; height: 22px; margin-top: 1px; box-sizing: border-box; border-radius: 50%; border: 1.5px dashed var(--soft); opacity: .6; }

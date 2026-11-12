@@ -142,6 +142,7 @@ export class Tagesplan {
     this._flowerFromPlan();
     this._foodFromPlan();
     this._friendFromPlan();
+    this._urlaubFromPlan();
     this._giftCredit();
     // Fehlt dem fremden Stand etwas von hier: noch einmal schreiben
     if (incoming && (this._planOps.length || lost) && planSer(P) !== planSer(this._planBase)) this._planSave();

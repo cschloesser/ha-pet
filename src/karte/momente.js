@@ -400,7 +400,7 @@ export class Momente {
     await this._wait(600);
     await this._walkTo(this._W * 0.5, 1.8);
     p.classList.add('waving');
-    this._say(pick(['Da bist du ja endlich!', 'Du warst lange weg!', 'Juhuu, du bist da!']), 2200, true);
+    this._say(pick(['Da bist du ja!', 'Schön, dass du da bist!', 'Juhuu, du bist da!']), 2200, true);
     this._blush(4500);
     await this._wait(1800);
     p.classList.remove('waving');

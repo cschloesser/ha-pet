@@ -30,6 +30,7 @@ export class Editor {
           { name: 'festive', selector: bool, default: true },
           { name: 'diary', selector: bool, default: true },
           { name: 'diary_house', selector: bool, default: true },
+          { name: 'vacation', selector: bool, default: true },
         ] },
         group('Schlaf, Wetter und Himmel', 'mdi:weather-night', [
           { type: 'grid', name: '', schema: [
