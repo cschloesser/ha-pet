@@ -56,6 +56,8 @@ const DEFAULTS = {
   vacation: true,
   // Haus-Bote: über jedem Gerät all = Fortschritt (Balken, Restzeit) und „fertig“, done = nur „fertig“, none = nichts
   appliance_labels: 'all',
+  // Haus-Signale (siehe src/karte/signale.js): { waste: calendar.*, wardrobe: true, vacuum: vacuum.*, door: binary_sensor.* }
+  signals: null,
 };
 
 // Karten-Editor (getConfigForm): Beschriftungen und Hilfetexte der Felder
@@ -69,6 +71,7 @@ const EDITOR_LABEL = {
   friend_name: 'Name des Freunds', screen_entity: 'Bildschirm-Schalter', height: 'Mindesthöhe',
   birthdays: 'Geburtstage', appliances: 'Haushaltsgeräte (Haus-Bote)', coffee: 'Kaffeevollautomat',
   diary: 'Tagebuch', diary_house: 'Haushalt im Tagebuch', vacation: 'Urlaubsschalter', appliance_labels: 'Anzeige an den Geräten',
+  waste: 'Müllabfuhr (Kalender)', wardrobe: 'Garderobe aus der Vorhersage', vacuum: 'Saugroboter', door: 'Haustür (Kontakt)',
 };
 const EDITOR_HELP = {
   entity: 'Damit alle Geräte denselben Pika sehen. Leer: nur in diesem Browser.',
@@ -77,6 +80,10 @@ const EDITOR_HELP = {
   diary: 'Antippen der Leiste öffnet sein Tagebuch.',
   diary_house: 'Kaffee, Wäsche und Geschirr stehen mit Uhrzeit drin.',
   appliance_labels: 'Alles: Fortschrittsbalken, Restzeit („0:42“) und „fertig“. Nur fertig: wenn das Dashboard Fortschritt und Restzeit schon zeigt.',
+  waste: 'Am Vortag der Abholung steht eine Tonne am Rand, bis man sie antippt („steht draußen“).',
+  wardrobe: 'Von 6 bis 10 Uhr hängt an der Tür, was man heute braucht: Gummistiefel, Schirm, Mütze, Sonnenhut.',
+  vacuum: 'Läuft der Sauger, fährt ein kleiner Roboter über die Wiese, und er fährt manchmal mit.',
+  door: 'Geht die Haustür auf, spitzt er die Ohren.',
   vacation: 'Im Tagebuch: „Ferien bei Pino“. Solange er verreist ist, ruhen Hunger, Glück, Häufchen und Päckchen-Serie.',
   sleep_start: 'z. B. sunset, sunset+01:00 oder 21:00',
   sleep_end: 'z. B. sunrise, sunrise-30 oder 07:00',

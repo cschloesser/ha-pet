@@ -208,6 +208,28 @@
 </div>
 <!-- ==================== Ende Kaffee ==================== -->
 
+<!-- ==================== Vorschau-Knöpfe Haus-Signale ==================== -->
+<div class="bar" id="bar-sig"><b>Haus-Signale</b>
+  <button data-sig="bin-gelb">Tonne: Wertstoff in 2 Std.</button>
+  <button data-sig="bin-rest">Restmüll in 2 Std.</button>
+  <button data-sig="bin-none">keine Abholung</button>
+  <button data-sig="bin-go">Pika: Tonne erinnern</button>
+  <i style="flex-basis:100%"></i><b></b>
+  <button data-sig="ward-cold">Garderobe: kalt (Mütze)</button>
+  <button data-sig="ward-rain">Regen (Stiefel, Schirm)</button>
+  <button data-sig="ward-sun">Sonne (Sonnenhut)</button>
+  <button data-sig="ward-none">nichts</button>
+  <button data-sig="ward-go">Pika: anprobieren</button>
+  <i style="flex-basis:100%"></i><b></b>
+  <button data-sig="vac-cleaning">Sauger: putzt</button>
+  <button data-sig="vac-returning">fährt heim</button>
+  <button data-sig="vac-error">steckt fest</button>
+  <button data-sig="vac-docked">in der Station</button>
+  <button data-sig="vac-ride">Pika: mitfahren</button>
+  <button data-sig="door">Haustür auf</button>
+</div>
+<!-- ==================== Ende Haus-Signale ==================== -->
+
 <!-- ==================== Vorschau-Knöpfe Aktivitäten ==================== -->
 <div class="bar" id="bar-act"><b>Aktivitäten</b>
   <button data-act="music">Musik</button>
@@ -1039,6 +1061,48 @@
     }, 1500);
   });
   // ==================== Ende Vorschau Kaffee ====================
+
+  // ==================== Vorschau Haus-Signale ====================
+  // Kalender, Sauger und Tür wie bei HA. Die Uhr der Garderobe ist 6 bis 10 Uhr: Außerhalb davon zeigt die Vorschau
+  // sie trotzdem (_dbgWardAlways). Die Vorhersage setzt der Knopf direkt (in HA kommt sie über ein Abo).
+  const SG = { waste: 'calendar.abfall', vacuum: 'vacuum.morten_pufke', door: 'binary_sensor.eingangstuer' };
+  const sgDay = (n, hh) => { const d = new Date(); d.setDate(d.getDate() + n); d.setHours(hh, 0, 0, 0); return d; };
+  const sgFmt = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}:00`;
+  hbSet(SG.waste, 'off', { message: 'Wertstofftonne', start_time: sgFmt(sgDay(6, 7)) }, 300);
+  hbSet(SG.vacuum, 'docked', { friendly_name: 'Morten Pufke' }, 300);
+  hbSet(SG.door, 'off', { device_class: 'door' }, 300);
+  cards.forEach((c) => c.setConfig({ ...c._cfg, signals: { waste: SG.waste, wardrobe: true, vacuum: SG.vacuum, door: SG.door } }));
+  push();
+  const sgFc = (temp, rain, uv) => [...Array(24).keys()].map((i) => {
+    const d = new Date(); d.setHours(i, 0, 0, 0);
+    return { datetime: d.toISOString(), temperature: temp, precipitation: i === 14 ? rain : 0, uv_index: uv };
+  });
+  document.querySelectorAll('[data-sig]').forEach((b) => b.addEventListener('click', () => {
+    const w = b.dataset.sig;
+    if (w === 'bin-gelb' || w === 'bin-rest') hbSet(SG.waste, 'off', { message: w === 'bin-gelb' ? 'Wertstofftonne' : 'Restmüll', start_time: sgFmt(new Date(Date.now() + 2 * 36e5)) });
+    else if (w === 'bin-none') hbSet(SG.waste, 'off', { message: 'Biotonne', start_time: sgFmt(sgDay(8, 7)) });
+    else if (w.startsWith('ward-') && w !== 'ward-go') {
+      const fc = { cold: sgFc(1, 0, 0), rain: sgFc(12, 3, 1), sun: sgFc(26, 0, 7), none: sgFc(15, 0, 2) }[w.slice(5)];
+      cards.forEach((c) => {
+        c._dbgForecast = fc;
+        // außerhalb von 6 bis 10 Uhr: Stunde für die Vorschau
+        c._sigWearNow = function () { return PIKA.wardrobePick(fc, Date.now()); };
+        c._sigWearSync(true);
+      });
+      log(`Garderobe: ${PIKA.wardrobePick(fc, Date.now()).join(', ') || 'nichts'}`);
+    } else if (w.startsWith('vac-') && w !== 'vac-ride') hbSet(SG.vacuum, w.slice(4), { friendly_name: 'Morten Pufke' });
+    else if (w === 'door') {
+      hbSet(SG.door, 'on', { device_class: 'door' });
+      push();
+      setTimeout(() => (hbSet(SG.door, 'off', { device_class: 'door' }), push()), 4000);
+      cards.forEach((c) => (c._sigDoorAt = 0));
+      return;
+    }
+    const go = { 'bin-go': 'sigBinNudge', 'ward-go': 'sigWear', 'vac-ride': 'sigRide' }[w];
+    if (go) cards.forEach((c) => { c._next = go; c._interrupt(); });
+    push();
+  }));
+  // ==================== Ende Vorschau Haus-Signale ====================
 
   // ==================== Aktivitäten ====================
   document.querySelectorAll('[data-act]').forEach((b) =>

@@ -584,7 +584,8 @@ export class HausBote {
     const deko = Object.entries(this._festPos || {}).filter(([n]) => !/^(egg|stick)/.test(n))
       .map(([, p]) => [p.l - m, p.l + p.w + m]);
     const r = boteRow(w1, {
-      gap, left: 6, right: W - 6, door: [hole.l - m, hole.r + m], deko, store: [hayL - m, hayR + m],
+      // (rechts steht am Vorabend der Abholung die Mülltonne, siehe Haus-Signale)
+      gap, left: 6, right: W - 6 - (this._sigBinW || 0), door: [hole.l - m, hole.r + m], deko, store: [hayL - m, hayR + m],
       meadow: fMin * W + 0.1 * H,
     });
     const out = row.map((a, i) => ({ a, l: r.xs[i], w: w1[i] * r.k }));

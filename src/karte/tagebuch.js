@@ -6,6 +6,8 @@ import { parseStats } from '../logik/zustand.js';
 import { PLAN_MIN, FLGIFT, PET_CAP, pikaDay, planParse } from '../logik/tagesplan.js';
 import { BOTE_RUN, BOTE_DEAD, boteState, boteMap } from '../logik/haus-bote.js';
 import { coffeeBrews } from '../logik/kaffee.js';
+import { vacRuns } from '../logik/signale.js';
+import { SIG_BIN, SIG_VAC } from '../grafik/signale.js';
 import { GIFT, GIFT_TRE, giftLvs } from '../logik/paeckchen.js';
 import { urlaubEnd, urlaubDauer } from '../logik/urlaub.js';
 import {
@@ -136,7 +138,9 @@ export class Tagebuch {
     // Kaffee: jeder Bezug aus dem Verlauf des aktiven Programms (das Tagebuch kennt sonst nur „heute Kaffee“, ein Bit
     // im Tagesplan, also nur den ersten)
     const cof = !only && c.diary_house !== false && typeof c.coffee?.active === 'string' ? c.coffee.active : null;
-    const ids = [...new Set([...(haS ? [c.entity] : []), ...(haP ? [c.plan_entity] : []), ...house.map((a) => a.cfg.state), ...(cof ? [cof] : [])])];
+    // Saugroboter (Haus-Signale): jeder Lauf von „cleaning“ bis „docked“
+    const vac = !only && c.diary_house !== false && typeof c.signals?.vacuum === 'string' ? c.signals.vacuum : null;
+    const ids = [...new Set([...(haS ? [c.entity] : []), ...(haP ? [c.plan_entity] : []), ...house.map((a) => a.cfg.state), ...(cof ? [cof] : []), ...(vac ? [vac] : [])])];
     let res = {};
     let fail = false;
     if (ids.length) {
@@ -188,6 +192,7 @@ export class Tagebuch {
     // Kaffee: kam ein Verlauf, gilt er (auch leer: dann gab es keinen Bezug); sonst bleibt das Bit im Tagesplan
     const cr = cof && !fail ? rows(cof) : [];
     for (const b of coffeeBrews(cr)) if (b.t >= from) bote.push({ t: b.t, k: 'kaffee', label: b.label });
+    if (vac && !fail) for (const v of vacRuns(rows(vac))) if (v.t >= from) bote.push({ t: v.t, k: 'sauger', min: v.min });
     // Helfer da, aber kein einziger Stand im Verlauf: Der Recorder zeichnet ihn nicht auf
     return { S, P, bote, fail, none: !fail && ((haS && !S.length) || (haP && !P.length)), ha: haS && haP, ...(cof ? { cof: cr.length > 0 } : {}) };
   }
@@ -283,6 +288,7 @@ export class Tagebuch {
       } else if (e.k === 'mem') {
         if (['pino', 'bird', 'plane', 'bfly', 'heart'].includes(e.b) || (e.b === 'coffee' && house && !cof)) put(t, e.b, tx(T[e.b], e.b, t));
         else if (e.b === 'gut') put(t, 'gut', tx(T.gut, 'gut', t), { svg: ICON_HEART });
+        else if (e.b === 'tonne' && house) put(t, 'tonne', tx(T.tonne, 'tonne', t), { svg: SIG_BIN('#7d848c') });
       } else if (e.k === 'parcel') {
         one.add('parcel');
         put(t, 'parcel', this._diaryParcel(e, t), { svg: GIFT_ITEMS[e.it]?.svg });
@@ -306,6 +312,7 @@ export class Tagebuch {
       } else if (e.k === 'hungry') {
         if (once('hungry')) put(t, 'hungry', tx(e.eaten ? T.hungry : T.hungryNow, 'hungry', t));
       } else if (e.k === 'bote' && house && T.bote[e.type]) put(t, e.type, tx(T.bote[e.type], 'bote', t), { tm: `${diaryTime(t)} · ${e.name}` });
+      else if (e.k === 'sauger' && house) put(t, 'sauger', tx(T.sauger, 'sauger', t), { svg: SIG_VAC, tm: `${diaryTime(t)} · ${e.min} Min` });
       else if (e.k === 'kaffee' && house && !inU(t)) {
         // jeder Bezug mit Uhrzeit und Getränk; der erste des Tags wie bisher, danach „noch einer“
         const n = ++cnt.coffee;

@@ -69,7 +69,7 @@ import {
   rainbow,
 } from './logik/wetter.js';
 import { flightAloft, flightGhost, planeLag, PLANE_OLD, planeStale, planeClock } from './logik/flugzeuge.js';
-import { HAY_MAX, PLAN_MIN, MEM_GUT, planBlank, pikaDay, planSer, planParse, hayNow, planApply } from './logik/tagesplan.js';
+import { HAY_MAX, PLAN_MIN, MEM_GUT, MEM_TONNE, MEM_TONNE2, planBlank, pikaDay, planSer, planParse, hayNow, planApply } from './logik/tagesplan.js';
 import { festDay, festEaster, festAdvent1, FEST_AHEAD, festMoments, festBirthdate } from './logik/feste.js';
 import { FRIEND_LAST } from './logik/besucher.js';
 import { boteRow, boteEmptyOn, boteMap, boteLabel, boteLabelMode, boteSmell } from './logik/haus-bote.js';
@@ -85,6 +85,7 @@ import {
 } from './logik/beschaeftigungen-klein.js';
 import { GIFT, giftLv, giftTre, giftMile, giftAllGold } from './logik/paeckchen.js';
 import { coffeeBrews, coffeeLabel, coffeeQueue, COFFEE_NEXT_GAP } from './logik/kaffee.js';
+import { SIG, sigTime, binKind, binPlan, binDone, wardrobePick, vacMode, vacRuns } from './logik/signale.js';
 import { URLAUB, urlaubAt, urlaubCut } from './logik/urlaub.js';
 import { FIND_GROUPS, FINDS, findsParse, findsSer, diaryDerive } from './logik/tagebuch.js';
 import {
@@ -112,6 +113,7 @@ if (typeof globalThis !== 'undefined' && typeof globalThis.__pikaTest === 'funct
     VERSION, PikaPetCard, PLAN_MIN, HAY_MAX, GIFT, ACT_LEN, hasKey, boteRow, clearSpot, sceneUnit,
     planBlank, planSer, planParse, planApply, hayNow, giftLv, pikaDay, MEM_GUT, giftTre, giftMile, giftAllGold,
     URLAUB, urlaubAt, urlaubCut, chronikUrlaub, coffeeBrews, coffeeLabel, coffeeQueue, COFFEE_NEXT_GAP, boteEmptyOn, boteMap, boteLabel, boteLabelMode, boteSmell,
+    SIG, sigTime, binKind, binPlan, binDone, wardrobePick, vacMode, vacRuns, MEM_TONNE, MEM_TONNE2,
     freshStats, serialize, parseStats, mergeStats, seedRnd, weightedR,
     sunTimes, festDay, festEaster, festAdvent1, festBirthdate,
     GAIN, PET_CALM, KRAUL, petGain, kraulGain, worldPick, MIMIK, FINDS, FIND_GROUPS, findsParse, findsSer,

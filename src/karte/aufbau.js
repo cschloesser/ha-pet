@@ -18,6 +18,7 @@ import { STYLE_ACT } from '../stil/beschaeftigungen.js';
 import { STYLE_GIFT } from '../stil/paeckchen.js';
 import { STYLE_DIARY_BTN } from '../stil/tagebuch.js';
 import { STYLE_URLAUB } from '../stil/urlaub.js';
+import { STYLE_SIG } from '../stil/signale.js';
 
 export class Aufbau {
   _build() {
@@ -35,7 +36,7 @@ export class Aufbau {
     ].map(([top, s, d, dl]) => `<div class="cloud" style="top:${top}%;--s:${s};--d:${d}s;--dl:${dl}s"></div>`).join('');
 
     this.shadowRoot.innerHTML = `
-        <style>${STYLE}${STYLE_SKY}${STYLE_FEST}${STYLE_FRIEND}${STYLE_BOTE}${STYLE_COFFEE}${STYLE_ACT}${STYLE_GIFT}${STYLE_DIARY_BTN}${STYLE_URLAUB}</style>
+        <style>${STYLE}${STYLE_SKY}${STYLE_FEST}${STYLE_FRIEND}${STYLE_BOTE}${STYLE_COFFEE}${STYLE_ACT}${STYLE_GIFT}${STYLE_DIARY_BTN}${STYLE_URLAUB}${STYLE_SIG}</style>
         <ha-card>
           <div class="scene day">
             <div class="sky sky-day"></div><div class="sky sky-dusk"></div><div class="sky sky-night"></div>
@@ -350,6 +351,7 @@ export class Aufbau {
     this._layoutFest(first);
     this._layoutFriend(first);
     this._layoutBote(first);
+    this._layoutSig();
     this._layoutGift(first);
     if (!first) {
       this._planeSnap();

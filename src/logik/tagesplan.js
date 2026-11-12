@@ -55,9 +55,15 @@ const GIFT_T = new Set(['k', 'b', 'x']); // Zeiten: im Text in Sekunden
 const PET_CLING = 10;
 const PET_CAP = 99;
 // Erlebnisse für die Träume, je ein Bit
-// (gut: kein Erlebnis, sondern „heute ist ein guter Tag“, siehe ggood; geträumt wird davon nicht)
-const MEM_BITS = ['lz', 'klee', 'coffee', 'heart', 'pino', 'plane', 'bird', 'note', 'bfly', 'gut'];
+// (gut: kein Erlebnis, sondern „heute ist ein guter Tag“, siehe ggood; tonne: „die Tonne steht draußen“, siehe
+// Haus-Signale. Geträumt wird von beiden nicht.)
+const MEM_BITS = ['lz', 'klee', 'coffee', 'heart', 'pino', 'plane', 'bird', 'note', 'bfly', 'gut', 'tonne', 'tonne2'];
 const MEM_GUT = 1 << 9;
+const MEM_TONNE = 1 << 10;
+const MEM_TONNE2 = 1 << 11; // vom Vortag übernommen (wird nicht noch einmal weitergegeben)
+// Beginnt ein neuer Pika-Tag (4 Uhr), fängt das Gedächtnis bei null an. Nur „Tonne steht draußen“ gilt weiter bis zur
+// Abholung am Morgen (der Tag danach): Sonst stünde die Tonne nach dem ersten Streicheln des Morgens wieder da.
+const cuteNew = (c, d) => ({ d, n: 0, m: c && c.d === d - 1 && c.m & MEM_TONNE ? MEM_TONNE2 : 0 });
 // Pika-Tag: wechselt um 4 Uhr nachts, so träumt er nach Mitternacht noch vom Vortag
 const pikaDay = (t) => Math.floor((t - new Date(t).getTimezoneOffset() * 6e4 - 4 * 36e5) / 864e5);
 // u im Text: Album (Bits 0–7) und darüber die Freundschaftstage + 1
@@ -209,7 +215,7 @@ const planApply = (P, op, now) => {
     const c = out.cute;
     const G = out.gift;
     if (!G || G.f == null || (c && (c.d > op.d || (c.d === op.d && c.m & MEM_GUT)))) return out;
-    out.cute = c?.d === op.d ? { ...c, m: c.m | MEM_GUT } : { d: op.d, n: 0, m: MEM_GUT };
+    out.cute = c?.d === op.d ? { ...c, m: c.m | MEM_GUT } : { ...cuteNew(c, op.d), m: cuteNew(c, op.d).m | MEM_GUT };
     G.f++;
     if (G.f % GIFT.goldDays === 0) G.y = Math.min(GIFT.goldMax, G.y + 1);
     return out;
@@ -269,10 +275,11 @@ const planApply = (P, op, now) => {
   } else if (op.t === 'ftake') {
     if (out.fl?.t === op.ft) out.fl = { ...out.fl, k: true };
   } else if (op.t === 'pet' || op.t === 'mem') {
-    // Ein neuer Pika-Tag fängt bei null an. Der höchste Zähler gewinnt, Erlebnisse werden zusammengelegt.
+    // Ein neuer Pika-Tag fängt bei null an (cuteNew). Der höchste Zähler gewinnt, Erlebnisse werden zusammengelegt.
+    // („Tonne steht draußen“ ist ein mem mit b = MEM_TONNE)
     const c = out.cute;
     if (c && c.d > op.d) return out;
-    const b = c?.d === op.d ? c : { d: op.d, n: 0, m: 0 };
+    const b = c?.d === op.d ? c : cuteNew(c, op.d);
     out.cute = op.t === 'pet' ? { ...b, n: Math.max(b.n, Math.min(op.n, PET_CAP)) } : { ...b, m: b.m | op.b };
   }
   return out;
@@ -280,5 +287,5 @@ const planApply = (P, op, now) => {
 
 export {
   HAY_MAX, PLAN_MIN, planBlank, FOOD_KINDS, FLGIFT, PET_CLING, PET_CAP, MEM_BITS, MEM_GUT, pikaDay, planSer, planParse, hayNow,
-  planApply, urOn,
+  planApply, urOn, MEM_TONNE, MEM_TONNE2,
 };

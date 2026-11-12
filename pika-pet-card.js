@@ -60,7 +60,7 @@
  */
 (() => {
   // src/version.js
-  var VERSION = "0.36.0";
+  var VERSION = "0.37.0";
 
   // src/logik/hilfen.js
   var Cancel = class extends Error {
@@ -556,8 +556,11 @@
   var GIFT_T = /* @__PURE__ */ new Set(["k", "b", "x"]);
   var PET_CLING = 10;
   var PET_CAP = 99;
-  var MEM_BITS = ["lz", "klee", "coffee", "heart", "pino", "plane", "bird", "note", "bfly", "gut"];
+  var MEM_BITS = ["lz", "klee", "coffee", "heart", "pino", "plane", "bird", "note", "bfly", "gut", "tonne", "tonne2"];
   var MEM_GUT = 1 << 9;
+  var MEM_TONNE = 1 << 10;
+  var MEM_TONNE2 = 1 << 11;
+  var cuteNew = (c, d) => ({ d, n: 0, m: c && c.d === d - 1 && c.m & MEM_TONNE ? MEM_TONNE2 : 0 });
   var pikaDay = (t) => Math.floor((t - new Date(t).getTimezoneOffset() * 6e4 - 4 * 36e5) / 864e5);
   var giftU = (G) => (G.u & 255) + (G.f != null ? (G.f + 1) * 256 : 0);
   var planSer = (P) => {
@@ -686,7 +689,7 @@
       const c = out.cute;
       const G = out.gift;
       if (!G || G.f == null || c && (c.d > op.d || c.d === op.d && c.m & MEM_GUT)) return out;
-      out.cute = c?.d === op.d ? { ...c, m: c.m | MEM_GUT } : { d: op.d, n: 0, m: MEM_GUT };
+      out.cute = c?.d === op.d ? { ...c, m: c.m | MEM_GUT } : { ...cuteNew(c, op.d), m: cuteNew(c, op.d).m | MEM_GUT };
       G.f++;
       if (G.f % GIFT.goldDays === 0) G.y = Math.min(GIFT.goldMax, G.y + 1);
       return out;
@@ -738,7 +741,7 @@
     } else if (op.t === "pet" || op.t === "mem") {
       const c = out.cute;
       if (c && c.d > op.d) return out;
-      const b = c?.d === op.d ? c : { d: op.d, n: 0, m: 0 };
+      const b = c?.d === op.d ? c : cuteNew(c, op.d);
       out.cute = op.t === "pet" ? { ...b, n: Math.max(b.n, Math.min(op.n, PET_CAP)) } : { ...b, m: b.m | op.b };
     }
     return out;
@@ -1427,6 +1430,104 @@
   };
   var COFFEE_CLS = [.../* @__PURE__ */ new Set([...Object.values(COFFEE_CUP), ...Object.keys(COFFEE_CUP)])].map((k) => `ck-${k}`);
 
+  // src/logik/signale.js
+  var SIG = {
+    bin: 14,
+    binNudge: [8 * 6e4, 12 * 6e4],
+    ward: [6, 10],
+    wardFrom: 7,
+    wardTo: 19,
+    rain: 0.5,
+    umbrella: 2,
+    cold: 3,
+    uv: 5,
+    doorGap: 2 * 6e4,
+    doorFresh: 3e4,
+    rideGap: 5 * 6e4
+  };
+  var sigTime = (v) => {
+    const m = /^(\d{4})-(\d\d)-(\d\d)[ T](\d\d):(\d\d)(?::(\d\d))?$/.exec(String(v ?? "").trim());
+    if (m) return new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]), Number(m[4]), Number(m[5]), Number(m[6] || 0)).getTime();
+    const d = /^(\d{4})-(\d\d)-(\d\d)$/.exec(String(v ?? "").trim());
+    if (d) return new Date(Number(d[1]), Number(d[2]) - 1, Number(d[3])).getTime();
+    const t = Date.parse(v);
+    return Number.isFinite(t) ? t : null;
+  };
+  var BIN_KINDS = [
+    [/wert|gelb|verpack|plastik|leichtverp/i, "gelb", "#f2c230"],
+    [/bio|grün(?!glas)|kompost/i, "bio", "#8a5a34"],
+    [/papier|pappe|blau/i, "papier", "#3f7fc4"],
+    [/glas/i, "glas", "#4f9a5a"],
+    [/rest|grau|schwarz|haus/i, "rest", "#5d6066"]
+  ];
+  var binKind = (name) => {
+    const k = BIN_KINDS.find(([re]) => re.test(String(name || "")));
+    return k ? { kind: k[1], color: k[2] } : { kind: "tonne", color: "#7d848c" };
+  };
+  var binPlan = (st, now) => {
+    if (!st || st.state === "on") return null;
+    const at = sigTime(st.attributes?.start_time);
+    if (at == null || at <= now) return null;
+    const d = new Date(at);
+    const from = new Date(d.getFullYear(), d.getMonth(), d.getDate() - 1, SIG.bin).getTime();
+    const name = String(st.attributes?.message || st.attributes?.description || "Tonne");
+    return { at, from, name, ...binKind(name) };
+  };
+  var binDone = (cute, dFrom, dAt, bit) => !!cute && (cute.m & bit) !== 0 && cute.d >= dFrom && cute.d <= dAt;
+  var wardrobePick = (fc, day) => {
+    const d = new Date(day);
+    const a = new Date(d.getFullYear(), d.getMonth(), d.getDate(), SIG.wardFrom).getTime();
+    const b = new Date(d.getFullYear(), d.getMonth(), d.getDate(), SIG.wardTo).getTime();
+    const hrs = (Array.isArray(fc) ? fc : []).filter((h) => {
+      const t = Date.parse(h?.datetime);
+      return t >= a && t < b;
+    });
+    if (!hrs.length) return [];
+    const num = (v) => Number.isFinite(Number(v)) ? Number(v) : null;
+    const rain = hrs.reduce((s, h) => s + (num(h.precipitation) ?? 0), 0);
+    const temps = hrs.map((h) => num(h.temperature)).filter((v) => v != null);
+    const uv = Math.max(0, ...hrs.map((h) => num(h.uv_index) ?? 0));
+    const out = [];
+    if (rain >= SIG.rain) out.push("boots");
+    if (rain >= SIG.umbrella) out.push("umbrella");
+    if (temps.length && Math.min(...temps) <= SIG.cold) out.push("hat");
+    if (uv >= SIG.uv) out.push("sunhat");
+    return out;
+  };
+  var WARD_SAY = {
+    boots: ["Gummistiefel heute!", "Pfützen-Wetter!"],
+    umbrella: ["Schirm nicht vergessen!", "Regen kommt!"],
+    hat: ["Mütze auf!", "Brr, kalt heute!"],
+    sunhat: ["Sonnenhut!", "Viel Sonne heute!"]
+  };
+  var VAC = {
+    cleaning: "drive",
+    returning: "home",
+    paused: "stop",
+    idle: "stop",
+    error: "stuck"
+  };
+  var vacMode = (state) => VAC[String(state || "").toLowerCase()] ?? null;
+  var vacRuns = (rows) => {
+    const out = [];
+    let run = null;
+    for (const r of rows || []) {
+      const s = String(r.s ?? "").toLowerCase();
+      if (s === "cleaning" && !run) run = { t: r.t };
+      else if (s === "docked" && run) {
+        if (r.t - run.t >= 2 * 6e4) out.push({ t: run.t, end: r.t, min: Math.round((r.t - run.t) / 6e4) });
+        run = null;
+      }
+    }
+    const merged = [];
+    for (const x of out) {
+      const last = merged.at(-1);
+      if (last && x.t - last.end < 10 * 6e4) Object.assign(last, { end: x.end, min: Math.round((x.end - last.t) / 6e4) });
+      else merged.push({ ...x });
+    }
+    return merged;
+  };
+
   // src/logik/urlaub.js
   var URLAUB = { keep: 24 * 36e5, restore: 15 * 6e4, min: 30 * 6e4 };
   var urlaubAt = (ur, t) => !!ur && t >= ur.t && (ur.d == null || t < ur.t + ur.d);
@@ -1543,6 +1644,8 @@
     urlaubTag: ["Ich bin bei {n}.", "Heute bin ich noch bei {n}."],
     heim: ["Wieder zu Hause! {d} war ich bei {n}. Hier ist meine Postkarte.", "Da bin ich wieder! {d} bei {n}, es war schön. Die Postkarte ist für euch."],
     mile: ["Das war mein {z}. Päckchen! Ich hab ein bisschen gefeiert."],
+    tonne: ["Die Tonne steht an der Straße. Danke fürs Rausstellen!", "Morgen kommt die Müllabfuhr. Die Tonne steht schon draußen."],
+    sauger: ["Der Saugroboter war unterwegs. Ich bin hinterhergehoppelt.", "Der Saugroboter hat geputzt. Vielleicht bin ich ein Stück mitgefahren!"],
     allGold: ["Jetzt sind alle meine Schätze golden. Was für ein Fest!"],
     flowerTaken: ["Ich hab dir eine Blume gepflückt und ins Gras gelegt. Du hast sie genommen!", "Für dich: eine Blume mit Schleife. Du hast sie angenommen, da hab ich mich gefreut."],
     flowerWait: ["Ich hab dir eine Blume ins Gras gelegt. Sie wartet auf dich."],
@@ -1945,7 +2048,9 @@
     // Urlaub bei Pino: Schalter im Tagebuch (false = kein Schalter; einen laufenden Urlaub zeigt die Karte trotzdem)
     vacation: true,
     // Haus-Bote: über jedem Gerät all = Fortschritt (Balken, Restzeit) und „fertig“, done = nur „fertig“, none = nichts
-    appliance_labels: "all"
+    appliance_labels: "all",
+    // Haus-Signale (siehe src/karte/signale.js): { waste: calendar.*, wardrobe: true, vacuum: vacuum.*, door: binary_sensor.* }
+    signals: null
   };
   var EDITOR_LABEL = {
     name: "Name",
@@ -1977,7 +2082,11 @@
     diary: "Tagebuch",
     diary_house: "Haushalt im Tagebuch",
     vacation: "Urlaubsschalter",
-    appliance_labels: "Anzeige an den Geräten"
+    appliance_labels: "Anzeige an den Geräten",
+    waste: "Müllabfuhr (Kalender)",
+    wardrobe: "Garderobe aus der Vorhersage",
+    vacuum: "Saugroboter",
+    door: "Haustür (Kontakt)"
   };
   var EDITOR_HELP = {
     entity: "Damit alle Geräte denselben Pika sehen. Leer: nur in diesem Browser.",
@@ -1986,6 +2095,10 @@
     diary: "Antippen der Leiste öffnet sein Tagebuch.",
     diary_house: "Kaffee, Wäsche und Geschirr stehen mit Uhrzeit drin.",
     appliance_labels: "Alles: Fortschrittsbalken, Restzeit („0:42“) und „fertig“. Nur fertig: wenn das Dashboard Fortschritt und Restzeit schon zeigt.",
+    waste: "Am Vortag der Abholung steht eine Tonne am Rand, bis man sie antippt („steht draußen“).",
+    wardrobe: "Von 6 bis 10 Uhr hängt an der Tür, was man heute braucht: Gummistiefel, Schirm, Mütze, Sonnenhut.",
+    vacuum: "Läuft der Sauger, fährt ein kleiner Roboter über die Wiese, und er fährt manchmal mit.",
+    door: "Geht die Haustür auf, spitzt er die Ohren.",
     vacation: "Im Tagebuch: „Ferien bei Pino“. Solange er verreist ist, ruhen Hunger, Glück, Häufchen und Päckchen-Serie.",
     sleep_start: "z. B. sunset, sunset+01:00 oder 21:00",
     sleep_end: "z. B. sunrise, sunrise-30 oder 07:00",
@@ -2257,6 +2370,12 @@
             { name: "screen_entity", selector: ent(["switch", "light", "input_boolean", "binary_sensor"]) },
             { name: "height", selector: num(120, 800, 10, "px") }
           ]),
+          { type: "expandable", name: "signals", title: "Haus-Signale", icon: "mdi:home-alert-outline", schema: [
+            { name: "waste", selector: ent("calendar") },
+            { name: "wardrobe", selector: bool },
+            { name: "vacuum", selector: ent("vacuum") },
+            { name: "door", selector: ent("binary_sensor") }
+          ] },
           group("Geburtstage, Haushaltsgeräte, Kaffee (YAML)", "mdi:code-braces", [
             { name: "birthdays", selector: { object: {} } },
             { name: "appliances", selector: { object: {} } },
@@ -5583,6 +5702,38 @@
   @media (prefers-reduced-motion: reduce) { .ursign, .ursign.in, .urcard.in, .ursign.wig { animation: none; } }
   `;
 
+  // src/stil/signale.js
+  var STYLE_SIG = `
+  /* Tonne und Saugroboter stehen vorn wie die Haushaltsgeräte (vor dem Pika), die Garderobe hängt an der Tür */
+  .sig-bin, .sig-vac { position: absolute; left: 0; top: 0; z-index: var(--z-front); }
+  .sig-bin { pointer-events: auto; cursor: pointer; transition: left .6s ease, opacity .6s; }
+  .sig-bin::after { content: ''; position: absolute; inset: -8px -6px -2px; }
+  .sig-bin.in { animation: sig-in .6s cubic-bezier(.3, 1.5, .5, 1); }
+  .sig-bin.out { opacity: 0; pointer-events: none; }
+  .sig-bin.boop > svg { animation: hb-boop .45s ease-out; }
+  .sig-vac { pointer-events: none; transition: opacity .6s; }
+  .sig-vac.out { opacity: 0; }
+  .sig-vac > i { display: block; transform-origin: 50% 100%; }
+  .sig-vac.flip > i { transform: scaleX(-1); }
+  .sig-vac.drive .sig-brush { animation: sig-brush .25s linear infinite; transform-box: fill-box; transform-origin: 100% 0; }
+  .sig-vac.stuck .sig-led { fill: #e8584e; animation: sig-blink .8s steps(2) infinite; }
+  .sig-vac.stop .sig-led { fill: #f2b632; }
+  .sig-bin svg, .sig-vac svg, .sig-wear svg { display: block; width: 100%; height: auto; overflow: visible; }
+  .sig-wear { position: absolute; left: 0; top: 0; pointer-events: none; transition: opacity .6s; }
+  .sig-wear.in { animation: sig-in .6s cubic-bezier(.3, 1.5, .5, 1); }
+  .sig-wear.out { opacity: 0; }
+  .sig-wear.hang { transform-origin: 50% 0; animation: sig-sway 5s ease-in-out infinite; }
+  .sig-hold { position: absolute; pointer-events: none; z-index: var(--z-front); }
+  .sig-hold svg { display: block; width: 100%; height: auto; }
+  @keyframes sig-in { from { transform: translateY(-25%) scale(.5); opacity: 0; } }
+  @keyframes sig-sway { 50% { transform: rotate(2deg); } }
+  @keyframes sig-brush { to { transform: rotate(360deg); } }
+  @keyframes sig-blink { 50% { opacity: .2; } }
+  .night .sig-bin svg, .night .sig-vac svg, .night .sig-wear svg { filter: brightness(.7) saturate(.8); }
+  .paused .sig-vac, .paused .sig-vac * { animation-play-state: paused !important; }
+  @media (prefers-reduced-motion: reduce) { .sig-wear.hang, .sig-vac.drive .sig-brush, .sig-bin.in, .sig-wear.in { animation: none; } }
+  `;
+
   // src/karte/aufbau.js
   var Aufbau = class {
     _build() {
@@ -5603,7 +5754,7 @@
         [18, 0.95, 120, -95]
       ].map(([top, s, d, dl]) => `<div class="cloud" style="top:${top}%;--s:${s};--d:${d}s;--dl:${dl}s"></div>`).join("");
       this.shadowRoot.innerHTML = `
-        <style>${STYLE}${STYLE_SKY}${STYLE_FEST}${STYLE_FRIEND}${STYLE_BOTE}${STYLE_COFFEE}${STYLE_ACT}${STYLE_GIFT}${STYLE_DIARY_BTN}${STYLE_URLAUB}</style>
+        <style>${STYLE}${STYLE_SKY}${STYLE_FEST}${STYLE_FRIEND}${STYLE_BOTE}${STYLE_COFFEE}${STYLE_ACT}${STYLE_GIFT}${STYLE_DIARY_BTN}${STYLE_URLAUB}${STYLE_SIG}</style>
         <ha-card>
           <div class="scene day">
             <div class="sky sky-day"></div><div class="sky sky-dusk"></div><div class="sky sky-night"></div>
@@ -5939,6 +6090,7 @@
       this._layoutFest(first);
       this._layoutFriend(first);
       this._layoutBote(first);
+      this._layoutSig();
       this._layoutGift(first);
       if (!first) {
         this._planeSnap();
@@ -6494,7 +6646,8 @@
         ...this._friendActs(ctx),
         ...this._boteActs(ctx),
         ...this._coffeeActs(ctx),
-        ...this._giftActs(ctx)
+        ...this._giftActs(ctx),
+        ...this._sigActs(ctx)
       ]);
       return this._run(act);
     }
@@ -6528,6 +6681,7 @@
         this._tickCoffee,
         this._tickGift,
         this._tickUrlaub,
+        this._tickSig,
         this._diaryDot
       ]) {
         this._guard(f.name, () => f.call(this));
@@ -6549,6 +6703,7 @@
       this._hiddenFest(hidden);
       this._hiddenFriend(hidden);
       this._hiddenBote(hidden);
+      this._hiddenSig(hidden);
     }
   };
 
@@ -10805,30 +10960,79 @@
     }
   };
 
-  // src/grafik/urlaub.js
+  // src/grafik/signale.js
   var OUT2 = "#5a4030";
+  var SIG_BIN = (color) => `<svg viewBox="0 0 30 40" aria-hidden="true">
+    <ellipse cx="15" cy="38.6" rx="12" ry="1.4" fill="rgba(0,0,0,.18)"/>
+    <path d="M5.5 9 L7.5 36 H22.5 L24.5 9 Z" fill="${color}" stroke="${OUT2}" stroke-width="1"/>
+    <path d="M5.5 9 L7.5 36 H11 L9.4 9 Z" fill="rgba(255,255,255,.18)"/>
+    <path d="M9 15 V31 M15 15 V31 M21 15 V31" stroke="rgba(0,0,0,.18)" stroke-width="1.1" stroke-linecap="round"/>
+    <rect x="3.6" y="5.6" width="22.8" height="4" rx="1.4" fill="${color}" stroke="${OUT2}" stroke-width="1"/>
+    <rect x="11" y="3.6" width="8" height="2.4" rx="1" fill="${color}" stroke="${OUT2}" stroke-width=".8"/>
+    <rect x="3.6" y="5.6" width="22.8" height="1.5" rx=".7" fill="rgba(255,255,255,.3)"/>
+    <circle cx="9" cy="36.4" r="2.4" fill="#3a3a3a" stroke="${OUT2}" stroke-width=".7"/><circle cx="9" cy="36.4" r=".8" fill="#9a9a9a"/>
+    <circle cx="21" cy="36.4" r="2.4" fill="#3a3a3a" stroke="${OUT2}" stroke-width=".7"/><circle cx="21" cy="36.4" r=".8" fill="#9a9a9a"/>
+  </svg>`;
+  var SIG_VAC = `<svg viewBox="0 0 44 18" aria-hidden="true">
+    <ellipse cx="22" cy="16.8" rx="19" ry="1.2" fill="rgba(0,0,0,.2)"/>
+    <path d="M3 9.5 Q3 6 8 6 H36 Q41 6 41 9.5 V12.5 Q41 15.5 36 15.5 H8 Q3 15.5 3 12.5 Z" fill="#eef1f4" stroke="${OUT2}" stroke-width="1"/>
+    <path d="M3.4 11.6 H40.6" stroke="#9aa6b2" stroke-width="1.2"/>
+    <path d="M15 6 Q15 2.2 22 2.2 Q29 2.2 29 6 Z" fill="#d7dde3" stroke="${OUT2}" stroke-width=".9"/>
+    <rect x="18.5" y="3.4" width="7" height="1.6" rx=".8" fill="#5a6470"/>
+    <circle class="sig-led" cx="34" cy="8.6" r="1.2" fill="#5fd06a"/>
+    <path class="sig-brush" d="M4 15.4 l-2.6 1.6 M5.6 15.6 l-1.2 2 M2.8 14 l-2.4 .4" stroke="#7a6a5a" stroke-width=".7" stroke-linecap="round"/>
+  </svg>`;
+  var SIG_WEAR = {
+    boots: `<svg viewBox="0 0 26 20" aria-hidden="true">
+    <path d="M3 2 H9 V14 Q9 15 10 15 H13 Q14.5 15 14.5 16.6 V18.4 H3 Z" fill="#f2c230" stroke="${OUT2}" stroke-width="1"/>
+    <path d="M13 3 H19 V14 Q19 15 20 15 H23 Q24.5 15 24.5 16.6 V18.4 H13 Z" fill="#f2c230" stroke="${OUT2}" stroke-width="1"/>
+    <path d="M3 4.2 H9 M13 5.2 H19" stroke="rgba(255,255,255,.55)" stroke-width="1.2"/>
+    <path d="M3 17.2 H14.5 M13 17.2 H24.5" stroke="#b8860b" stroke-width="1"/>
+  </svg>`,
+    umbrella: `<svg viewBox="0 0 12 30" aria-hidden="true">
+    <path d="M6 1.5 V4" stroke="${OUT2}" stroke-width="1"/>
+    <path d="M6 3.5 L2.6 22 Q6 24 9.4 22 Z" fill="#e8584e" stroke="${OUT2}" stroke-width="1" stroke-linejoin="round"/>
+    <path d="M6 3.5 L5 22.6 M6 3.5 L7.4 22.6" stroke="rgba(255,255,255,.35)" stroke-width=".7"/>
+    <path d="M6 23 V27 Q6 29 4 29 Q2.4 29 2.4 27.4" stroke="${OUT2}" stroke-width="1.3" fill="none" stroke-linecap="round"/>
+  </svg>`,
+    hat: `<svg viewBox="0 0 24 26" aria-hidden="true">
+    <circle cx="12" cy="3.4" r="2.6" fill="#fff6ea" stroke="${OUT2}" stroke-width=".8"/>
+    <path d="M4.4 13 Q4 5 12 5 Q20 5 19.6 13 Z" fill="#d9503f" stroke="${OUT2}" stroke-width="1"/>
+    <rect x="3.6" y="11.6" width="16.8" height="3.6" rx="1.4" fill="#f0eadc" stroke="${OUT2}" stroke-width=".9"/>
+    <path d="M7 15 V24 Q7 25 8 25 H11 Q12 25 12 24 V15" fill="#3f7fc4" stroke="${OUT2}" stroke-width=".9"/>
+    <path d="M7 19 H12 M7 22 H12" stroke="#f0eadc" stroke-width="1"/>
+  </svg>`,
+    sunhat: `<svg viewBox="0 0 28 16" aria-hidden="true">
+    <ellipse cx="14" cy="11.4" rx="12.6" ry="3.6" fill="#e9cf8e" stroke="${OUT2}" stroke-width="1"/>
+    <path d="M7.6 11 Q7.6 3 14 3 Q20.4 3 20.4 11 Z" fill="#e9cf8e" stroke="${OUT2}" stroke-width="1"/>
+    <path d="M7.8 9.2 Q14 11 20.2 9.2" stroke="#e8584e" stroke-width="1.8" fill="none"/>
+  </svg>`
+  };
+
+  // src/grafik/urlaub.js
+  var OUT3 = "#5a4030";
   var URLAUB_SIGN = (name) => `<svg viewBox="0 0 60 34" aria-hidden="true">
-    <path d="M14 13 L30 1.5 L46 13" stroke="${OUT2}" stroke-width="1" fill="none"/>
-    <circle cx="30" cy="1.8" r="1.4" fill="${OUT2}"/>
-    <rect x="3" y="12" width="54" height="20" rx="3" fill="#d9a873" stroke="${OUT2}" stroke-width="1.1"/>
+    <path d="M14 13 L30 1.5 L46 13" stroke="${OUT3}" stroke-width="1" fill="none"/>
+    <circle cx="30" cy="1.8" r="1.4" fill="${OUT3}"/>
+    <rect x="3" y="12" width="54" height="20" rx="3" fill="#d9a873" stroke="${OUT3}" stroke-width="1.1"/>
     <path d="M6 18 h48 M6 25 h48" stroke="#c08a55" stroke-width=".7" opacity=".7"/>
-    <circle cx="7" cy="16" r=".9" fill="${OUT2}"/><circle cx="53" cy="16" r=".9" fill="${OUT2}"/>
+    <circle cx="7" cy="16" r=".9" fill="${OUT3}"/><circle cx="53" cy="16" r=".9" fill="${OUT3}"/>
     <text x="30" y="25.6" text-anchor="middle" font-family="Comic Sans MS, Chalkboard SE, system-ui, sans-serif" font-size="9"
       font-weight="700" fill="#4a2e1c"${String(name).length > 4 ? ' textLength="48" lengthAdjust="spacingAndGlyphs"' : ""}>Bin bei ${esc(name)}</text>
   </svg>`;
   var URLAUB_CARD = (sea = false) => `<svg viewBox="0 0 60 40" aria-hidden="true">
-    <rect x=".6" y=".6" width="58.8" height="38.8" rx="2" fill="#fffaf0" stroke="${OUT2}" stroke-width=".9"/>
+    <rect x=".6" y=".6" width="58.8" height="38.8" rx="2" fill="#fffaf0" stroke="${OUT3}" stroke-width=".9"/>
     <clipPath id="urp"><rect x="3" y="3" width="28" height="34" rx="1"/></clipPath>
     <g clip-path="url(#urp)">
       <rect x="3" y="3" width="28" height="34" fill="#9fd4f2"/>
       <circle cx="24" cy="10" r="3.4" fill="#ffd75a"/>
       ${sea ? '<rect x="3" y="24" width="28" height="13" fill="#4aa3d8"/><path d="M3 27 q3.5 -2 7 0 t7 0 t7 0 t7 0" stroke="#fff" stroke-width=".8" fill="none" opacity=".8"/><rect x="3" y="33" width="28" height="4" fill="#f2d8a0"/>' : '<path d="M3 30 L12 15 L18 24 L23 17 L31 30 Z" fill="#8aa0b8"/><path d="M12 15 l-2.6 4.4 h5.2 Z M23 17 l-2 3.3 h4 Z" fill="#fff"/><rect x="3" y="29" width="28" height="8" fill="#7cbf5e"/>'}
-      <circle cx="11" cy="31.5" r="2.6" fill="#c49a74" stroke="${OUT2}" stroke-width=".5"/><circle cx="17" cy="31.5" r="2.6" fill="#f2b36e" stroke="${OUT2}" stroke-width=".5"/>
+      <circle cx="11" cy="31.5" r="2.6" fill="#c49a74" stroke="${OUT3}" stroke-width=".5"/><circle cx="17" cy="31.5" r="2.6" fill="#f2b36e" stroke="${OUT3}" stroke-width=".5"/>
     </g>
-    <path d="M33.5 6 v28" stroke="${OUT2}" stroke-width=".5" opacity=".4"/>
-    <rect x="47" y="4" width="9.5" height="11" fill="#f28fb1" stroke="${OUT2}" stroke-width=".6" stroke-dasharray="1 .8"/>
+    <path d="M33.5 6 v28" stroke="${OUT3}" stroke-width=".5" opacity=".4"/>
+    <rect x="47" y="4" width="9.5" height="11" fill="#f28fb1" stroke="${OUT3}" stroke-width=".6" stroke-dasharray="1 .8"/>
     <path d="M49 12 q2.7 -5 5.5 0" stroke="#fff" stroke-width=".9" fill="none"/>
-    <path d="M37 20 h19 M37 25 h19 M37 30 h14" stroke="${OUT2}" stroke-width=".6" opacity=".55"/>
+    <path d="M37 20 h19 M37 25 h19 M37 30 h14" stroke="${OUT3}" stroke-width=".6" opacity=".55"/>
     <path d="M37 13 q2 -2.5 4 0 t4 0" stroke="#4a6fb0" stroke-width=".7" fill="none"/>
   </svg>`;
 
@@ -10943,7 +11147,8 @@
       const { haS, haP } = this._diaryHa();
       const house = !only && c.diary_house !== false ? this._boteSync().list : [];
       const cof = !only && c.diary_house !== false && typeof c.coffee?.active === "string" ? c.coffee.active : null;
-      const ids = [.../* @__PURE__ */ new Set([...haS ? [c.entity] : [], ...haP ? [c.plan_entity] : [], ...house.map((a) => a.cfg.state), ...cof ? [cof] : []])];
+      const vac = !only && c.diary_house !== false && typeof c.signals?.vacuum === "string" ? c.signals.vacuum : null;
+      const ids = [.../* @__PURE__ */ new Set([...haS ? [c.entity] : [], ...haP ? [c.plan_entity] : [], ...house.map((a) => a.cfg.state), ...cof ? [cof] : [], ...vac ? [vac] : []])];
       let res = {};
       let fail = false;
       if (ids.length) {
@@ -10990,6 +11195,9 @@
       }
       const cr = cof && !fail ? rows(cof) : [];
       for (const b of coffeeBrews(cr)) if (b.t >= from) bote.push({ t: b.t, k: "kaffee", label: b.label });
+      if (vac && !fail) {
+        for (const v of vacRuns(rows(vac))) if (v.t >= from) bote.push({ t: v.t, k: "sauger", min: v.min });
+      }
       return { S, P, bote, fail, none: !fail && (haS && !S.length || haP && !P.length), ha: haS && haP, ...cof ? { cof: cr.length > 0 } : {} };
     }
     // Beide Seiten (heute, gestern) aus dem Verlauf. Vorschau: _dbgDiary liefert fertige Roh-Ereignisse.
@@ -11076,6 +11284,7 @@
         } else if (e.k === "mem") {
           if (["pino", "bird", "plane", "bfly", "heart"].includes(e.b) || e.b === "coffee" && house && !cof) put(t, e.b, tx(T[e.b], e.b, t));
           else if (e.b === "gut") put(t, "gut", tx(T.gut, "gut", t), { svg: ICON_HEART });
+          else if (e.b === "tonne" && house) put(t, "tonne", tx(T.tonne, "tonne", t), { svg: SIG_BIN("#7d848c") });
         } else if (e.k === "parcel") {
           one.add("parcel");
           put(t, "parcel", this._diaryParcel(e, t), { svg: GIFT_ITEMS[e.it]?.svg });
@@ -11102,6 +11311,7 @@
         } else if (e.k === "hungry") {
           if (once("hungry")) put(t, "hungry", tx(e.eaten ? T.hungry : T.hungryNow, "hungry", t));
         } else if (e.k === "bote" && house && T.bote[e.type]) put(t, e.type, tx(T.bote[e.type], "bote", t), { tm: `${diaryTime(t)} · ${e.name}` });
+        else if (e.k === "sauger" && house) put(t, "sauger", tx(T.sauger, "sauger", t), { svg: SIG_VAC, tm: `${diaryTime(t)} · ${e.min} Min` });
         else if (e.k === "kaffee" && house && !inU(t)) {
           const n = ++cnt.coffee;
           put(t, "coffee", n === 1 ? tx(T.coffee, "coffee", t) : tx(T.coffeeMore, "coffee", t).replace("{z}", n), { tm: `${diaryTime(t)} · ${e.label}` });
@@ -15425,9 +15635,10 @@
       const w1 = row.map((a) => a.spec.vb[2] * BOTE_K * H * BOTE_FRONT * (a.spec.back ? BOTE_TALL : 1));
       const deko = Object.entries(this._festPos || {}).filter(([n]) => !/^(egg|stick)/.test(n)).map(([, p]) => [p.l - m, p.l + p.w + m]);
       const r = boteRow(w1, {
+        // (rechts steht am Vorabend der Abholung die Mülltonne, siehe Haus-Signale)
         gap,
         left: 6,
-        right: W - 6,
+        right: W - 6 - (this._sigBinW || 0),
         door: [hole.l - m, hole.r + m],
         deko,
         store: [hayL - m, hayR + m],
@@ -17573,6 +17784,7 @@
       this._foodFromPlan();
       this._friendFromPlan();
       this._urlaubFromPlan();
+      this._sigBinSync();
       this._giftCredit();
       if (incoming && (this._planOps.length || lost) && planSer(P) !== planSer(this._planBase)) this._planSave();
       return changed;
@@ -18852,6 +19064,456 @@
     }
   };
 
+  // src/karte/signale.js
+  var Signale = class {
+    // Konfiguration `signals`: { waste: calendar.*, wardrobe: true, vacuum: vacuum.*, door: binary_sensor.* }. Alles ist
+    // aus, solange nichts eingetragen ist. Was alle Geräte gleich zeigen sollen, folgt aus den Zuständen in HA; nur
+    // „Tonne steht draußen“ steht im Tagesplan (Bit MEM_TONNE, siehe logik/signale.js).
+    _sigCfg() {
+      const s = this._cfg?.signals;
+      return s && typeof s === "object" && !Array.isArray(s) ? s : {};
+    }
+    // Bei jedem hass: nur, was sich geändert hat
+    _hassSig(hass) {
+      const c = this._sigCfg();
+      const S = hass.states;
+      const w = c.waste ? S[c.waste] : void 0;
+      if (w !== this._sigW) {
+        this._sigW = w;
+        this._sigBinSync();
+      }
+      if (c.wardrobe) this._sigFcSub(hass);
+      else if (this._sigFcId) this._sigFcStop();
+      const v = c.vacuum ? S[c.vacuum] : void 0;
+      if (v !== this._sigV) {
+        this._sigV = v;
+        this._sigVacSync();
+      }
+      const d = c.door ? S[c.door] : void 0;
+      if (d !== this._sigD) {
+        const prev = this._sigD;
+        this._sigD = d;
+        if (prev && d?.state === "on" && prev.state !== "on") this._sigDoorOpen(d);
+      }
+    }
+    _attachSig() {
+      this._sigBinSync();
+      this._sigWearSync();
+      this._sigVacSync();
+    }
+    _detachSig() {
+      this._sigFcStop();
+      clearTimeout(this._sigVacT);
+    }
+    _hiddenSig(hidden) {
+      if (hidden) clearTimeout(this._sigVacT);
+      else this._sigVacSync(true);
+    }
+    _layoutSig() {
+      this._sigBinSync(true);
+      this._sigWearSync(true);
+      this._sigVacSync(true);
+    }
+    _tickSig() {
+      this._sigBinSync();
+      this._sigWearSync();
+    }
+    // Wach, zu sehen und nicht verreist: Dann erinnert er
+    _sigAwake() {
+      return !!this._g && !this._asleep && !this._fort && !this._urlaubOn() && !this._away();
+    }
+    // Zusatz-Aktionen für die Auswahl in _step
+    _sigActs() {
+      if (!this._sigAwake()) return [];
+      const now = this._haNow();
+      const acts = [];
+      if (this._el.sigbin && now >= (this._sigBinAt || 0)) acts.push([6, "sigBinNudge"]);
+      if (this._sigWearEls?.size && now >= (this._sigWearAt || 0)) acts.push([3, "sigWear"]);
+      const V = this._sigVac;
+      if (V?.mode === "drive" && !V.hold && now - (this._sigRideAt || 0) > SIG.rideGap) acts.push([4, "sigRide"]);
+      if (V?.mode === "stuck" && now - (this._sigPushAt || 0) > SIG.rideGap) acts.push([5, "sigPush"]);
+      return acts;
+    }
+    // Bodenlinie vorn (wie die Haushaltsgeräte)
+    _sigGround() {
+      return this._g.gy + BOTE_FRONT_DY * this._H;
+    }
+    // ---------- Mülltonne ----------
+    // Steht die Tonne heute da? → Abholung (binPlan) oder null
+    _sigBin() {
+      const st = this._sigW;
+      if (!st || this._urlaubOn()) return null;
+      const now = this._haNow();
+      const P = binPlan(st, now);
+      if (!P || now < P.from) return null;
+      return binDone(this._plan?.cute, pikaDay(P.from), pikaDay(P.at), MEM_TONNE | MEM_TONNE2) ? null : P;
+    }
+    _sigBinSync(relayout = false) {
+      if (!this._el || !this._g) return;
+      const P = this._sigBin();
+      let el = this._el.sigbin;
+      const H = this._H;
+      if (P && !el) {
+        el = document.createElement("div");
+        el.className = "sig-bin in";
+        el.setAttribute("role", "button");
+        el.addEventListener("click", (e) => {
+          e.stopPropagation();
+          this._sigBinOut();
+        });
+        this._keyTap(el);
+        this._el.props.appendChild(el);
+        this._el.sigbin = el;
+        setTimeout(() => el.classList.remove("in"), 700);
+        this._sigBinAt = this._haNow() + rnd(5e3, 15e3);
+        relayout = true;
+      } else if (!P && el) {
+        this._el.sigbin = null;
+        el.classList.add("out");
+        setTimeout(() => el.remove(), 700);
+        this._sigBinW = 0;
+        this._boteLayout?.();
+        return;
+      }
+      if (!el) return;
+      if (el.dataset.k !== P.kind) {
+        el.dataset.k = P.kind;
+        el.innerHTML = SIG_BIN(P.color);
+      }
+      el.setAttribute("aria-label", `${P.name}: Tonne rausstellen (antippen, wenn sie draußen steht)`);
+      el.title = `${P.name} · antippen, wenn sie draußen steht`;
+      if (!relayout && el.style.width) return;
+      const h = H * 0.2;
+      const w = h * 0.75;
+      const x = this._W - w - 0.02 * H;
+      Object.assign(el.style, { width: `${w.toFixed(1)}px`, left: `${x.toFixed(1)}px`, top: `${(this._sigGround() - h * 0.97).toFixed(1)}px` });
+      el._x = x + w / 2;
+      this._sigBinW = w + 0.03 * H;
+      this._boteLayout?.();
+    }
+    // Angetippt: steht draußen. Gilt auf allen Geräten (Tagesplan), bis zur Abholung.
+    _sigBinOut() {
+      const el = this._el?.sigbin;
+      if (!el) return;
+      this._planOp({ t: "mem", d: pikaDay(this._haNow()), b: MEM_TONNE });
+      this._sigBinSync();
+      if (this._sigAwake() && this._running) this._say(pick(["danke!", "steht draußen!", "super!"]), 1300);
+    }
+    // Erinnern: hinhoppeln, die Tonne anstupsen, zum Betrachter schauen
+    async _sigBinNudge() {
+      const el = this._el.sigbin;
+      const P = this._sigBin();
+      this._sigBinAt = this._haNow() + rnd(...SIG.binNudge);
+      if (!el || !P) return;
+      const p = this._el.pika;
+      await this._walkTo(el._x - this._g.pW * 0.75, 1.3);
+      this._face(1);
+      await this._wait(300);
+      for (let i = 0; i < 2; i++) {
+        el.classList.remove("boop");
+        void el.offsetWidth;
+        el.classList.add("boop");
+        this._cls("hb-pat", 450, true);
+        await this._wait(520);
+      }
+      this._face(-1);
+      p.classList.add("calling");
+      this._say(pick(["Tonne raus!", "Müllabfuhr!", `${P.name}!`]), 1700);
+      this._jump("hop1");
+      try {
+        await this._wait(1700);
+      } finally {
+        p.classList.remove("calling");
+      }
+    }
+    // ---------- Garderobe ----------
+    // Stündliche Vorhersage abonnieren (wie die Wetter-Karte von HA). Ohne Verbindung (Vorschau) bleibt _sigFc leer.
+    _sigFcSub(hass) {
+      const id = this._cfg.weather_entity;
+      if (this._sigFcId === id) return;
+      this._sigFcStop();
+      this._sigFcId = id;
+      const conn = hass.connection;
+      if (!id || typeof conn?.subscribeMessage !== "function") return;
+      try {
+        const p = conn.subscribeMessage((m) => {
+          this._sigFc = Array.isArray(m?.forecast) ? m.forecast : [];
+          this._sigWearSync();
+        }, { type: "weather/subscribe_forecast", forecast_type: "hourly", entity_id: id });
+        this._sigFcUn = p;
+        Promise.resolve(p).catch((e) => console.debug("pika-pet-card: Vorhersage nicht abonnierbar", e));
+      } catch (e) {
+        console.debug("pika-pet-card: Vorhersage nicht abonnierbar", e);
+      }
+    }
+    _sigFcStop() {
+      const p = this._sigFcUn;
+      this._sigFcUn = null;
+      this._sigFcId = null;
+      if (p) Promise.resolve(p).then((u) => typeof u === "function" && u()).catch(() => {
+      });
+    }
+    // Was heute an der Tür hängt (SIG.ward von bis), oder nichts
+    _sigWearNow() {
+      if (!this._sigCfg().wardrobe || this._urlaubOn()) return [];
+      const now = this._haNow();
+      const h = new Date(now).getHours();
+      if (h < SIG.ward[0] || h >= SIG.ward[1]) return [];
+      return wardrobePick(this._dbgForecast || this._sigFc, now);
+    }
+    _sigWearSync(relayout = false) {
+      if (!this._el || !this._g) return;
+      const want = this._sigWearNow();
+      const E = this._sigWearEls ??= /* @__PURE__ */ new Map();
+      for (const [k, el] of E) {
+        if (want.includes(k)) continue;
+        E.delete(k);
+        el.classList.add("out");
+        setTimeout(() => el.remove(), 700);
+      }
+      let fresh = false;
+      for (const k of want) {
+        if (E.has(k)) continue;
+        const el = document.createElement("div");
+        el.className = `sig-wear sig-${k} in${k === "boots" ? "" : " hang"}`;
+        el.innerHTML = SIG_WEAR[k];
+        this._el.gifts.appendChild(el);
+        E.set(k, el);
+        setTimeout(() => el.classList.remove("in"), 700);
+        fresh = true;
+      }
+      if (fresh) this._sigWearAt = Math.min(this._sigWearAt || Infinity, this._haNow() + rnd(1e4, 3e4));
+      if (!fresh && !relayout) return;
+      const { hole } = this._g;
+      const H = this._H;
+      const size = { boots: 0.1, umbrella: 0.05, hat: 0.075, sunhat: 0.1 };
+      const ratio = { boots: 20 / 26, umbrella: 30 / 12, hat: 26 / 24, sunhat: 16 / 28 };
+      let hx = hole.l - 0.01 * H;
+      for (const k of ["boots", "umbrella", "hat", "sunhat"]) {
+        const el = E.get(k);
+        if (!el) continue;
+        const w = H * size[k];
+        const h = w * ratio[k];
+        let left;
+        let top;
+        if (k === "boots") {
+          left = hole.l - w * 0.95;
+          top = hole.lip - h * 0.92;
+        } else {
+          hx -= w;
+          left = hx;
+          top = hole.top + (hole.lip - hole.top) * 0.08;
+          hx -= 0.01 * H;
+        }
+        Object.assign(el.style, { width: `${w.toFixed(1)}px`, left: `${left.toFixed(1)}px`, top: `${top.toFixed(1)}px` });
+      }
+    }
+    // Probiert, was an der Tür hängt: hinhoppeln, eins hochhalten, sagen, was man heute braucht
+    async _sigWear() {
+      const E = this._sigWearEls;
+      this._sigWearAt = this._haNow() + rnd(20, 40) * 6e4;
+      if (!E?.size) return;
+      const [k, el] = [...E][Math.floor(Math.random() * E.size)];
+      const { hole, pW, pH, gy } = this._g;
+      await this._walkTo(hole.l - pW * 0.2, 1.2);
+      this._face(-1);
+      await this._wait(400);
+      const hold = document.createElement("div");
+      hold.className = "sig-hold";
+      hold.innerHTML = SIG_WEAR[k];
+      const w = this._H * 0.09;
+      Object.assign(hold.style, { width: `${w.toFixed(1)}px`, left: `${(this._x - w / 2).toFixed(1)}px`, top: `${(gy - pH * 1.15 - w).toFixed(1)}px` });
+      el.style.opacity = "0";
+      this._el.fx.appendChild(hold);
+      try {
+        this._face(1);
+        this._mimik("proud", 1600);
+        this._say(pick(WARD_SAY[k]), 1800);
+        this._jump("hop1");
+        await this._wait(2200);
+      } finally {
+        hold.remove();
+        el.style.opacity = "";
+      }
+    }
+    // ---------- Saugroboter ----------
+    // Zustand des Saugers → Roboter vorn auf der Wiese: fährt hin und her, fährt heim (aus dem Bild), steht, steckt fest
+    _sigVacSync(relayout = false) {
+      if (!this._el || !this._g) return;
+      const st = this._sigV;
+      const dead = !st || ["unavailable", "unknown"].includes(st.state);
+      const mode = dead ? this._sigVac?.mode ?? null : vacMode(st.state);
+      let V = this._sigVac;
+      if (!mode) {
+        if (V) {
+          this._sigVac = null;
+          clearTimeout(this._sigVacT);
+          V.el.classList.add("out");
+          setTimeout(() => V.el.remove(), 700);
+          if (this._action === "sigRide" || this._action === "sigPush") this._interrupt();
+        }
+        return;
+      }
+      const H = this._H;
+      const w = H * 0.17;
+      const h = w * (18 / 44);
+      if (!V) {
+        const el = document.createElement("div");
+        el.className = "sig-vac";
+        el.innerHTML = `<i>${SIG_VAC}</i>`;
+        this._el.props.appendChild(el);
+        V = this._sigVac = { el, mode: null, x: -w, dir: 1, w, hold: false };
+        this._sigVacPos(V, -w, 0);
+        relayout = true;
+      }
+      V.w = w;
+      V.top = this._sigGround() - h * 0.95;
+      V.el.style.width = `${w.toFixed(1)}px`;
+      V.el.style.top = `${V.top.toFixed(1)}px`;
+      const changed = V.mode !== mode;
+      V.mode = mode;
+      for (const m of ["drive", "home", "stop", "stuck"]) V.el.classList.toggle(m, m === mode);
+      if ((changed || relayout) && !V.hold) this._sigVacMove();
+    }
+    // Wo der Roboter gerade ist (mitten in einer Fahrt aus der Zeit gerechnet)
+    _sigVacNow(V) {
+      if (!V.to) return V.x;
+      const k = Math.min(1, (Date.now() - V.at) / Math.max(1, V.ms));
+      return V.from + (V.to - V.from) * k;
+    }
+    _sigVacPos(V, x, ms) {
+      V.from = ms ? this._sigVacNow(V) : x;
+      V.to = x;
+      V.at = Date.now();
+      V.ms = ms;
+      V.x = x;
+      V.el.style.transition = ms ? `left ${(ms / 1e3).toFixed(2)}s linear` : "none";
+      V.el.style.left = `${x.toFixed(1)}px`;
+      V.el.classList.toggle("flip", V.dir < 0);
+    }
+    // Nächste Fahrt: hin und her zwischen Bau und Stein (gemächlich, ein Fünftel der Kartenhöhe je Sekunde), heim nach
+    // links aus dem Bild, sonst stehen bleiben, wo er gerade ist
+    _sigVacMove() {
+      const V = this._sigVac;
+      clearTimeout(this._sigVacT);
+      if (!V || !this._g) return;
+      const cur = this._sigVacNow(V);
+      const speed = this._H * 0.2 / 1e3;
+      if (V.mode === "drive" && !this._away()) {
+        const a = this._g.fMin * this._W * 0.5;
+        const b = this._W - V.w - (this._sigBinW || 0) - 0.03 * this._H;
+        let to = V.dir > 0 ? b : a;
+        if (Math.abs(to - cur) < 4) {
+          V.dir = -V.dir;
+          to = V.dir > 0 ? b : a;
+        }
+        V.dir = to > cur ? 1 : -1;
+        const ms = Math.abs(to - cur) / speed;
+        this._sigVacPos(V, to, ms);
+        this._sigVacT = setTimeout(() => {
+          V.dir = -V.dir;
+          this._sigVacMove();
+        }, ms + rnd(800, 2500));
+      } else if (V.mode === "home") {
+        V.dir = -1;
+        const to = -V.w - 4;
+        this._sigVacPos(V, to, Math.abs(to - cur) / speed);
+      } else this._sigVacPos(V, cur, 0);
+    }
+    // Mitfahren: Der Roboter hält an, er hoppelt hin, springt auf, beide fahren ein Stück, er springt ab
+    async _sigRide() {
+      const V = this._sigVac;
+      this._sigRideAt = this._haNow();
+      if (!V || V.mode !== "drive") return;
+      const p = this._el.pika;
+      const { pW, gy } = this._g;
+      V.hold = true;
+      clearTimeout(this._sigVacT);
+      this._sigVacPos(V, this._sigVacNow(V), 0);
+      let on = false;
+      try {
+        const vx = V.x + V.w / 2;
+        const side = this._x < vx ? -1 : 1;
+        await this._walkTo(vx + side * pW * 0.7, 1.4);
+        this._face(-side);
+        this._say(pick(["hopp!", "mitfahren!", "oh!"]), 1e3);
+        await this._wait(500);
+        await this._hopTo(vx, Math.max(0, gy - V.top) + this._H * 0.02);
+        on = true;
+        this._say(pick(["juhu!", "wiii!", "brumm brumm!"]), 1600);
+        const to = vx < this._W / 2 ? this._W * 0.7 : this._W * 0.3;
+        const ms = Math.abs(to - vx) / (this._H * 0.2 / 1e3);
+        V.dir = to > vx ? 1 : -1;
+        this._face(V.dir);
+        this._sigVacPos(V, to - V.w / 2, ms);
+        p.style.transition = `transform ${(ms / 1e3).toFixed(2)}s linear`;
+        this._setX(to);
+        p.classList.add("happy");
+        await this._wait(ms);
+        p.classList.remove("happy");
+        await this._hopTo(to + V.dir * pW * 0.8, 0);
+        on = false;
+        this._say(pick(["nochmal!", "lustig!", "hihi"]), 1200);
+        await this._wait(900);
+      } finally {
+        if (on) {
+          this._lift = 0;
+          this._setX(this._x, true);
+        }
+        p.classList.remove("happy");
+        V.hold = false;
+        if (this._sigVac === V) this._sigVacMove();
+      }
+    }
+    // Steckt fest: hinhoppeln und anschieben
+    async _sigPush() {
+      const V = this._sigVac;
+      this._sigPushAt = this._haNow();
+      if (!V || V.mode !== "stuck") return;
+      const vx = V.x + V.w / 2;
+      const side = this._x < vx ? -1 : 1;
+      await this._walkTo(vx + side * this._g.pW * 0.6, 1.3);
+      this._face(-side);
+      for (let i = 0; i < 3; i++) {
+        this._cls("hb-pat", 450, true);
+        await this._wait(550);
+      }
+      this._say(pick(["hau ruck!", "steckt fest!", "na komm!"]), 1500);
+      await this._wait(1500);
+    }
+    // ---------- Haustür ----------
+    // Die Haustür ging auf: Ohren spitzen, zum Bildrand schauen. Schläft er, zuckt nur ein Ohr. Höchstens alle
+    // SIG.doorGap, nur bei einem frischen Öffnen, nicht im Urlaub.
+    _sigDoorOpen(d) {
+      const now = this._haNow();
+      const t = Date.parse(d.last_changed) || now;
+      if (this._urlaubOn() || this._fort || !this._g || now - t > SIG.doorFresh || now - (this._sigDoorAt || 0) < SIG.doorGap) return;
+      this._sigDoorAt = now;
+      if (this._away()) return;
+      if (this._asleep) return void this._cls("stw", 550, true);
+      if (this._running && !this._next && ["idle", "look", "wander", "groom", "squeak", "curious", "nibble", "lookout"].includes(this._action)) {
+        this._next = "sigDoor";
+        this._interrupt();
+      }
+    }
+    async _sigDoor() {
+      const p = this._el.pika;
+      this._face(-1);
+      this._cls("stw", 550, true);
+      p.classList.add("look-f");
+      this._say(pick(["Hallo?", "!", "wer kommt da?"]), 1500);
+      try {
+        await this._wait(1600);
+        if (Math.random() < 0.5) {
+          await this._walkTo(this._x - this._g.pW * 0.6, 1.2);
+          await this._wait(700);
+        }
+      } finally {
+        p.classList.remove("look-f");
+      }
+    }
+  };
+
   // src/karte.js
   var PikaPetCard = class extends HTMLElement {
     constructor() {
@@ -19038,7 +19700,7 @@
         this._lastFlights = fl;
         this._guard("Flugzeuge", () => this._readFlights(fl));
       }
-      for (const f of [this._hassSky, this._hassFest, this._hassFriend, this._hassBote, this._hassCoffee, this._hassPlan, this._hassAct]) {
+      for (const f of [this._hassSky, this._hassFest, this._hassFriend, this._hassBote, this._hassCoffee, this._hassPlan, this._hassSig, this._hassAct]) {
         this._guard(f.name, () => f.call(this, hass));
       }
       this._guard("Himmel", () => this._updateSky());
@@ -19103,6 +19765,7 @@
       this._attachFriend();
       this._attachBote();
       this._attachGift();
+      this._attachSig();
     }
     _detach() {
       if (!this._attached) return;
@@ -19127,6 +19790,7 @@
       this._detachFriend();
       this._detachBote();
       this._detachGift();
+      this._detachSig();
       this._chronikStop();
       this._diaryClose();
     }
@@ -19182,7 +19846,8 @@
     Tagesplan,
     BeschaeftigungenKlein,
     Chronik,
-    Urlaub
+    Urlaub,
+    Signale
   ];
   for (const Teil of TEILE) {
     for (const k of Reflect.ownKeys(Teil.prototype)) {
@@ -19242,6 +19907,16 @@
       boteLabel,
       boteLabelMode,
       boteSmell,
+      SIG,
+      sigTime,
+      binKind,
+      binPlan,
+      binDone,
+      wardrobePick,
+      vacMode,
+      vacRuns,
+      MEM_TONNE,
+      MEM_TONNE2,
       freshStats,
       serialize,
       parseStats,

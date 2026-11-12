@@ -32,6 +32,7 @@ import { Tagesplan } from './karte/tagesplan.js';
 import { BeschaeftigungenKlein } from './karte/beschaeftigungen-klein.js';
 import { Chronik } from './karte/chronik.js';
 import { Urlaub } from './karte/urlaub.js';
+import { Signale } from './karte/signale.js';
 
 class PikaPetCard extends HTMLElement {
   constructor() {
@@ -248,7 +249,7 @@ class PikaPetCard extends HTMLElement {
       this._guard('Flugzeuge', () => this._readFlights(fl));
     }
     // Ein Fehler in einer Erweiterung (unerwartete Daten) soll die anderen nicht mitreißen
-    for (const f of [this._hassSky, this._hassFest, this._hassFriend, this._hassBote, this._hassCoffee, this._hassPlan, this._hassAct]) {
+    for (const f of [this._hassSky, this._hassFest, this._hassFriend, this._hassBote, this._hassCoffee, this._hassPlan, this._hassSig, this._hassAct]) {
       this._guard(f.name, () => f.call(this, hass));
     }
     this._guard('Himmel', () => this._updateSky());
@@ -333,6 +334,7 @@ class PikaPetCard extends HTMLElement {
     this._attachFriend();
     this._attachBote();
     this._attachGift();
+    this._attachSig();
   }
 
   _detach() {
@@ -358,6 +360,7 @@ class PikaPetCard extends HTMLElement {
     this._detachFriend();
     this._detachBote();
     this._detachGift();
+    this._detachSig();
     this._chronikStop();
     this._diaryClose();
   }
@@ -395,7 +398,7 @@ class PikaPetCard extends HTMLElement {
 const TEILE = [
   Editor, Aufbau, Schlaf, Lebensschleife, Alltag, Wiese, Haeufchen, Besucher, Flugzeuge, Beschaeftigungen,
   BeschaeftigungenGross, Bausteine, Interaktion, Tagebuch, Momente, Feste, Zustand, Pino, Himmel, Wetter, HausBote,
-  Kaffee, Paeckchen, Schaetze, Tagesplan, BeschaeftigungenKlein, Chronik, Urlaub,
+  Kaffee, Paeckchen, Schaetze, Tagesplan, BeschaeftigungenKlein, Chronik, Urlaub, Signale,
 ];
 for (const Teil of TEILE) {
   for (const k of Reflect.ownKeys(Teil.prototype)) {

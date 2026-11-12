@@ -3813,6 +3813,7 @@ try {
 const fullPlan35 = (rec) => {
   const P = fullPlan(rec);
   P.gift = { ...P.gift, f: 1500, r: 35 };
+  P.cute = { ...P.cute, m: 4095 }; // alle Erlebnis-Bits bis tonne2 (seit 0.37)
   P.ur = { t: sek(NOW - 9 * 864e5), d: 30 * 864e5 };
   return P;
 };
@@ -4176,4 +4177,58 @@ test('Haus-Bote: appliance_labels: alles, nur „fertig“ oder nichts (auch tru
   assert.deepEqual([undefined, true, 'all', 2, '2'].map(M), ['all', 'all', 'all', 'all', 'all']);
   assert.deepEqual(['done', 1, 'fertig', ' Done '].map(M), ['done', 'done', 'done', 'done']);
   assert.deepEqual([false, 'none', 0, 'off'].map(M), ['none', 'none', 'none', 'none']);
+});
+
+test('Haus-Signale: Mülltonne ab 14 Uhr am Vortag bis zur Abholung, Farbe aus dem Namen, rausgestellt gilt bis zur Abholung', () => {
+  // so stand es am 12. 11. 2026 in calendar.abfall
+  const cal = { state: 'off', attributes: { message: 'Wertstofftonne', start_time: '2026-11-18 07:00:00', end_time: '2026-11-18 07:30:00' } };
+  const at = new Date(2026, 10, 18, 7).getTime();
+  const P = T.binPlan(cal, new Date(2026, 10, 12, 12).getTime());
+  assert.equal(P.at, at);
+  assert.equal(P.from, new Date(2026, 10, 17, 14).getTime());
+  assert.deepEqual([P.kind, P.color], ['gelb', '#f2c230']);
+  assert.equal(T.binPlan({ ...cal, state: 'on' }, at - 6e4), null); // Abholung läuft
+  assert.equal(T.binPlan(cal, at + 1), null); // vorbei
+  assert.deepEqual(['Restmüll', 'Biotonne', 'Papiertonne', 'Altglas', 'Sperrmüll'].map((n) => T.binKind(n).kind), ['rest', 'bio', 'papier', 'glas', 'tonne']);
+  // Rausgestellt am Abend (Pika-Tag des Vortags): gilt auch am Morgen der Abholung, auch wenn um 6 Uhr jemand streichelt
+  const dFrom = T.pikaDay(P.from);
+  const dAt = T.pikaDay(at);
+  let Q = T.planApply(T.planBlank(P.from), { t: 'mem', d: dFrom, b: T.MEM_TONNE }, P.from);
+  assert.equal(T.binDone(Q.cute, dFrom, dAt, T.MEM_TONNE), true);
+  Q = T.planApply(Q, { t: 'pet', d: dAt, n: 1 }, at - 36e5);
+  assert.equal(Q.cute.d, dAt);
+  assert.equal(T.binDone(Q.cute, dFrom, dAt, T.MEM_TONNE | T.MEM_TONNE2), true);
+  // am Tag danach gilt es nicht mehr weiter (und nicht für die nächste Abholung)
+  Q = T.planApply(Q, { t: 'pet', d: dAt + 1, n: 1 }, at + 864e5);
+  assert.equal(Q.cute.m & (T.MEM_TONNE | T.MEM_TONNE2), 0);
+  assert.equal(T.binDone({ d: dFrom - 7, n: 0, m: T.MEM_TONNE }, dFrom, dAt, T.MEM_TONNE), false);
+  assert.equal(T.sigTime('2026-11-18'), new Date(2026, 10, 18).getTime());
+});
+
+test('Haus-Signale: Garderobe aus der stündlichen Vorhersage (met.no vom 12. 11. 2026: morgen früh 2,3 °C → Mütze)', () => {
+  const h = (d, hh) => new Date(2026, 10, d, hh).toISOString();
+  // morgen 7–11 Uhr wie gemessen (sonnig, 2,3 bis 7,7 °C, trocken, UV bis 1,1), danach etwas wärmer
+  const temps = [2.3, 3.5, 5.1, 6.6, 7.7, 8, 8, 7.5, 7, 6, 5, 4];
+  const fc = temps.map((t, i) => ({ datetime: h(13, 7 + i), temperature: t, precipitation: 0, uv_index: i < 5 ? i * 0.3 : 0.8 }));
+  assert.deepEqual(plain(T.wardrobePick(fc, new Date(2026, 10, 13, 6).getTime())), ['hat']);
+  // Regen am Nachmittag: Stiefel, ab 2 mm auch Schirm; Sommer: Sonnenhut ab UV 5
+  const wet = fc.map((x, i) => ({ ...x, temperature: 12, precipitation: i === 8 ? 0.6 : i === 9 ? 1.6 : 0 }));
+  assert.deepEqual(plain(T.wardrobePick(wet, new Date(2026, 10, 13, 6).getTime())), ['boots', 'umbrella']);
+  const sun = fc.map((x) => ({ ...x, temperature: 25, uv_index: 6.2 }));
+  assert.deepEqual(plain(T.wardrobePick(sun, new Date(2026, 10, 13, 6).getTime())), ['sunhat']);
+  // Stunden vor 7 und ab 19 Uhr zählen nicht, und ein anderer Tag auch nicht
+  assert.deepEqual(plain(T.wardrobePick([{ datetime: h(13, 5), temperature: -5, precipitation: 9 }], new Date(2026, 10, 13, 6).getTime())), []);
+  assert.deepEqual(plain(T.wardrobePick(fc, new Date(2026, 10, 14, 6).getTime())), []);
+});
+
+test('Haus-Signale: Läufe des Saugroboters aus dem Verlauf (12. 11. 2026: 11:27 bis 11:51)', () => {
+  const t = (d, hh, mm) => new Date(2026, 10, d, hh, mm).getTime();
+  // Mi 11. 11. abends: dreimal kurz hintereinander gestartet (ein Lauf), Do 12. 11. ein Lauf
+  const rows = [
+    [11, 18, 40, 'docked'], [11, 19, 2, 'cleaning'], [11, 19, 9, 'returning'], [11, 19, 10, 'docked'], [11, 19, 10, 'cleaning'],
+    [11, 19, 11, 'returning'], [11, 19, 11, 'docked'], [11, 19, 12, 'cleaning'], [11, 19, 15, 'docked'],
+    [12, 11, 27, 'cleaning'], [12, 11, 50, 'returning'], [12, 11, 51, 'docked'],
+  ].map(([d, hh, mm, s]) => ({ t: t(d, hh, mm), s }));
+  assert.deepEqual(plain(T.vacRuns(rows)), [{ t: t(11, 19, 2), end: t(11, 19, 15), min: 13 }, { t: t(12, 11, 27), end: t(12, 11, 51), min: 24 }]);
+  assert.deepEqual(['cleaning', 'returning', 'paused', 'idle', 'error', 'docked', 'unavailable'].map(T.vacMode), ['drive', 'home', 'stop', 'stop', 'stuck', null, null]);
 });

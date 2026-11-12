@@ -60,6 +60,12 @@ export class Editor {
           { name: 'screen_entity', selector: ent(['switch', 'light', 'input_boolean', 'binary_sensor']) },
           { name: 'height', selector: num(120, 800, 10, 'px') },
         ]),
+        { type: 'expandable', name: 'signals', title: 'Haus-Signale', icon: 'mdi:home-alert-outline', schema: [
+          { name: 'waste', selector: ent('calendar') },
+          { name: 'wardrobe', selector: bool },
+          { name: 'vacuum', selector: ent('vacuum') },
+          { name: 'door', selector: ent('binary_sensor') },
+        ] },
         group('Geburtstage, Haushaltsgeräte, Kaffee (YAML)', 'mdi:code-braces', [
           { name: 'birthdays', selector: { object: {} } },
           { name: 'appliances', selector: { object: {} } },
