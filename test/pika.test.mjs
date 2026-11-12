@@ -4453,3 +4453,56 @@ test('Tiefe: Maus, Frosch und Schnecke stehen in der Tiefe statt in zwei Schicht
   // Die zweite Schicht gibt es nicht mehr
   assert.doesNotMatch(quell, /miceF|class="mice-f"|\.mice-f\s*[>{,]/);
 });
+
+// ---- Bühne im echten Stil (0.39.1) ----
+// Regeln des Stylesheets der Karte (T.STYLES, wie _build es einsetzt): [Selektor, Deklarationen], ohne Kommentare.
+// Regeln in @media stehen mit ihrem eigenen Selektor darin, Keyframes als „from“, „40%“ … (stören nicht).
+const cssRegeln = () => [...T.STYLES.replace(/\/\*[\s\S]*?\*\//g, '').matchAll(/([^{}]+)\{([^{}]*)\}/g)]
+  .flatMap(([, sel, decl]) => sel.split(',').map((s) => [s.trim(), decl]));
+// letzter Teil eines Selektors (das Element, auf das die Regel wirkt) und seine Klassen
+const letzter = (s) => s.split(/\s*[\s>~+]\s*/).filter(Boolean).pop() || '';
+const klassen = (teil) => new Set((teil.match(/\.[\w-]+/g) || []).map((k) => k.slice(1)));
+const spezifitaet = (s) => (s.match(/\.[\w-]+|:(?!:)[\w-]+/g) || []).length;
+
+test('Bühne im Stil: die Schichten sind kein eigener Stapel (kein z-index, kein Filter, keine Deckkraft)', () => {
+  const SCHICHTEN = ['land', 'flowers', 'foods', 'birds', 'mice', 'gifts', 'props', 'friends', 'acts', 'actsf', 'fore', 'poops', 'held', 'kites', 'hb-bars', 'hb-f'];
+  const STAPEL = /(^|;)\s*(z-index|filter|opacity|transform|will-change|isolation|contain|mix-blend-mode)\s*:/;
+  const R = cssRegeln();
+  assert.ok(R.length > 500, `nur ${R.length} Regeln gelesen`);
+  for (const [sel, decl] of R) {
+    const k = klassen(letzter(sel));
+    for (const s of SCHICHTEN) {
+      if (k.has(s)) assert.doesNotMatch(decl, STAPEL, `${sel}: macht die Schicht .${s} zu einem eigenen Stapel`);
+    }
+  }
+  // Blumen und Futter fangen keine Tipps (wer dahinter steht, bekommt sie)
+  for (const k of ['flower', 'food']) {
+    assert.ok(R.some(([sel, d]) => letzter(sel) === `.${k}` && /pointer-events:\s*none/.test(d)), `.${k} fängt Tipps`);
+  }
+});
+
+test('Bühne im Stil: jede Figur am Boden trägt das Licht der Dämmerung, und keine eigene Regel nimmt es ihr', () => {
+  const R = cssRegeln();
+  const licht = (d) => /filter:[^;]*var\(--lbp?,/.test(d);
+  // Figuren mit dem Licht und die Kinder der Schichten, deren Kinder es bekommen
+  const LB = ['burrow', 'lookout', 'food', 'hay', 'bw', 'mw', 'cw', 'kite'];
+  for (const k of LB) {
+    assert.ok(R.some(([sel, d]) => sel.includes('.shade') && klassen(letzter(sel)).has(k) && /var\(--lb,/.test(d)), `.${k} ohne Licht`);
+  }
+  assert.ok(R.some(([sel, d]) => sel.includes('.shade') && klassen(letzter(sel)).has('poo') && /var\(--lbp,/.test(d)), '.poo ohne Licht');
+  for (const s of ['gifts', 'acts', 'actsf']) {
+    assert.ok(R.some(([sel, d]) => sel.replace(/\s+/g, ' ').includes(`.shade .${s} > *`) && /var\(--lbp,/.test(d)), `Kinder von .${s} ohne Licht`);
+  }
+  // Wer selbst einen Filter setzt (Schatten, Gold, Nacht), braucht eine stärkere Regel mit seinem Filter und dem Licht
+  const BETROFFEN = new Set([...LB, 'poo', 'gt', 'gpar', 'gbal', 'ursign', 'urcard', 'sig-wear', 'aprop', 'easel']);
+  const ohne = [];
+  for (const [sel, d] of R) {
+    if (!/(^|;)\s*filter\s*:/.test(d) || licht(d)) continue;
+    const k = klassen(letzter(sel));
+    if (![...k].some((x) => BETROFFEN.has(x))) continue;
+    const gedeckt = R.some(([s2, d2]) => licht(d2) && /\.(shade|night)\b/.test(s2) && [...k].every((x) => klassen(letzter(s2)).has(x))
+      && spezifitaet(s2) > spezifitaet(sel));
+    if (!gedeckt) ohne.push(sel);
+  }
+  assert.deepEqual(ohne, [], 'diese Regeln nehmen einer Figur das Licht');
+});

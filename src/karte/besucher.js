@@ -221,7 +221,10 @@ export class Besucher {
   // Frosch, Schnecke und Maus sitzen knapp hinter dem Pika, die Bodendeko der Festtage vorn (Kürbis, Stiefel, Kranz,
   // Kuchen, Geschenk) steht eine Ebene davor. Wo sie anhalten, rücken sie darum neben die Deko statt dahinter.
   // Ostereier und Raketenstäbe sind klein und liegen überall, der Baum steht hinter ihnen: die zählen nicht.
-  _festClear(x, w, a, b) {
+  // Auf der hinteren Spur (lane, seit 0.39.1) setzen sie sich ruhig dahinter: Die Deko steht dann wirklich vor ihnen,
+  // höher und kleiner schauen sie darüber, und genau das zeigt die Tiefe.
+  _festClear(x, w, a, b, lane = 0) {
+    if (lane) return x;
     const pos = this._festPos || {};
     const pad = this._H * 0.01;
     const blocks = ['pumpkin', 'boot', 'wreath', 'cake', 'gift'].filter((n) => pos[n])
@@ -294,6 +297,12 @@ export class Besucher {
   // Stein auf die Spur, und dieselbe transition trägt Weg und Größe. Ohne Spur (auch oben auf dem Stein) immer 1.
   _critS(c, y) {
     return c.lane ? 1 - (1 - LANE_S) * clamp((c.yG - y) / (this._H * LANE_DY), 0, 1) : 1;
+  }
+
+  // Tempo auf dem Weg nach y: Hinten ist alles kleiner, also auch Schritt, Satz und Kriechen (Mittel der Größe am
+  // Anfang und am Ende des Wegs). Ohne hintere Spur genau 1: dieselben Zeiten wie bis 0.39.0.
+  _critPace(c, y) {
+    return c.lane ? (this._critS(c, c.y) + this._critS(c, y)) / 2 : 1;
   }
 
   // transform eines Besuchers, Füße bei (x, y). scale wirkt um den Ursprung der 0 × 0 großen Hülle, die Füße.
@@ -491,7 +500,7 @@ export class Besucher {
     // Laufen nach (x, y); schräg (Spurwechsel) zählt die ganze Strecke
     const run = async (x, speed = 1, y = yG) => {
       face(x >= m.x ? 1 : -1);
-      const ms = (Math.hypot(x - m.x, y - m.y) / (this._H * 1.1 * speed)) * 1000;
+      const ms = (Math.hypot(x - m.x, y - m.y) / (this._H * 1.1 * speed * this._critPace(m, y))) * 1000;
       pose('run', true);
       move(x, y, ms, 'linear');
       await step(ms);
@@ -553,7 +562,7 @@ export class Besucher {
             await run(door, 1, yW);
             this._critZ(m, true);
             m.out = true;
-            await run(this._festClear(rnd(minX, Math.max(minX, door - mw * 0.7)), mw, minX, door), 1, yW);
+            await run(this._festClear(rnd(minX, Math.max(minX, door - mw * 0.7)), mw, minX, door, m.lane), 1, yW);
             this._noticeCritter(m.x, false);
             await lookAround(2);
             if (Math.random() < 0.8) {
@@ -565,7 +574,7 @@ export class Besucher {
             await lookAround(2 + Math.floor(rnd(0, 3)));
             // ein, zwei Stückchen weiter über die Wiese, schnuppern
             for (let n = Math.random() < 0.5 ? 2 : 1; n > 0; n--) {
-              await run(this._festClear(clamp(m.x + rnd(-1, 1) * mw * 2.5, minX, door), mw, minX, door), 0.8, yW);
+              await run(this._festClear(clamp(m.x + rnd(-1, 1) * mw * 2.5, minX, door), mw, minX, door, m.lane), 0.8, yW);
               await lookAround(1 + Math.floor(rnd(0, 3)));
             }
             await run(door, 1, yW);
@@ -595,7 +604,7 @@ export class Besucher {
           face(1);
           pose('run', true);
           const dash = async (tx, ty = yG) => {
-            const ms = (Math.hypot(tx - m.x, ty - m.y) / (this._H * 2)) * 1000;
+            const ms = (Math.hypot(tx - m.x, ty - m.y) / (this._H * 2 * this._critPace(m, ty))) * 1000;
             move(tx, ty, ms, 'linear');
             await this._cw(id, ms);
           };
@@ -661,7 +670,7 @@ export class Besucher {
     // In Sätzen bis (x, y). fast: große, schnelle Sätze auf der Flucht (dann erschrickt er nicht noch einmal).
     // Ändert sich y (Weg zwischen Stein und hinterer Spur), steigt jeder Satz anteilig mit.
     const hop = async (x, fast = false, y = f.y) => {
-      const L = this._H * (fast ? 0.34 : 0.22);
+      const L = this._H * (fast ? 0.34 : 0.22) * this._critS(f, f.y); // hinten kürzere Sätze
       while (Math.abs(x - f.x) > 1) {
         const d = clamp(x - f.x, -L, L);
         const k = Math.abs(d) / L;
@@ -693,7 +702,7 @@ export class Besucher {
         this._critZ(f, true);
         f.out = true;
         // neue Ziele: neben der Festdeko statt dahinter
-        const spot = (x) => free(this._festClear(x, fw, minX, maxX));
+        const spot = (x) => free(this._festClear(x, fw, minX, maxX, f.lane));
         await hop(spot(maxX - pk.x * Math.min(maxX - minX, this._H * 0.7)));
         this._noticeCritter(f.x, false);
         const until = Date.now() + Math.max(3000, pk.stay - late);
@@ -849,7 +858,7 @@ export class Besucher {
     const crawl = async (x, y = s.y) => {
       while (Math.abs(x - s.x) > 1 || Math.abs(y - s.y) > 0.5) {
         if (Math.abs(x - s.x) > 1) face(x > s.x ? 1 : -1);
-        const ms = (Math.hypot(x - s.x, y - s.y) / v) * 1000;
+        const ms = (Math.hypot(x - s.x, y - s.y) / (v * this._critPace(s, y))) * 1000;
         el.classList.add('crawl');
         put(x, ms, y);
         const hit = await wait(ms);
@@ -874,7 +883,7 @@ export class Besucher {
       this._critZ(s, true);
       s.out = true;
       this._noticeCritter(s.x, false);
-      await crawl(this._festClear(door - (0.3 + 0.6 * pk.far) * Math.min(door - minX, this._H * 0.7), sw, minX, door));
+      await crawl(this._festClear(door - (0.3 + 0.6 * pk.far) * Math.min(door - minX, this._H * 0.7), sw, minX, door, s.lane));
       // Fühler recken und umschauen (später eingestiegen: kürzer)
       await rest(Math.max(1500, rnd(5000, 9000) - late));
       await crawl(door);

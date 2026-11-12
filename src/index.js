@@ -88,6 +88,20 @@ import { coffeeBrews, coffeeLabel, coffeeQueue, COFFEE_NEXT_GAP } from './logik/
 import { SIG, sigTime, binKind, binPlan, binDone, wardrobePick, vacMode, vacRuns } from './logik/signale.js';
 import { URLAUB, urlaubAt, urlaubCut } from './logik/urlaub.js';
 import { REIHE, RANG, RANG_N, buehneZ, BUEHNE_MAX, BUEHNE, BZ } from './logik/buehne.js';
+import { STYLE } from './stil/szene.js';
+import { STYLE_SKY } from './stil/himmel.js';
+import { STYLE_FEST } from './stil/feste.js';
+import { STYLE_FRIEND } from './stil/pino.js';
+import { STYLE_BOTE } from './stil/haus-bote.js';
+import { STYLE_COFFEE } from './stil/kaffee.js';
+import { STYLE_ACT } from './stil/beschaeftigungen.js';
+import { STYLE_GIFT } from './stil/paeckchen.js';
+import { STYLE_DIARY_BTN } from './stil/tagebuch.js';
+import { STYLE_URLAUB } from './stil/urlaub.js';
+import { STYLE_SIG } from './stil/signale.js';
+
+// Das Stylesheet der Karte in der Reihenfolge von _build (src/karte/aufbau.js), für die Tests der Bühne
+const STYLES = [STYLE, STYLE_SKY, STYLE_FEST, STYLE_FRIEND, STYLE_BOTE, STYLE_COFFEE, STYLE_ACT, STYLE_GIFT, STYLE_DIARY_BTN, STYLE_URLAUB, STYLE_SIG].join('');
 import { FIND_GROUPS, FINDS, findsParse, findsSer, diaryDerive } from './logik/tagebuch.js';
 import {
   CHRONIK, chronikDatum, chronikTag, chronikStart, chronikVersatz, chronikZoneOk, chronikKod, chronikLies, chronikMisch, chronikBilanz,
@@ -111,7 +125,7 @@ if (!customElements.get('pika-pet-card')) {
 // __pikaTest, dort passiert nichts.
 if (typeof globalThis !== 'undefined' && typeof globalThis.__pikaTest === 'function') {
   globalThis.__pikaTest({
-    VERSION, PikaPetCard, REIHE, RANG, RANG_N, buehneZ, BUEHNE_MAX, BUEHNE, BZ, PLAN_MIN, HAY_MAX, GIFT, ACT_LEN, hasKey, boteRow, clearSpot, sceneUnit,
+    VERSION, PikaPetCard, STYLES, REIHE, RANG, RANG_N, buehneZ, BUEHNE_MAX, BUEHNE, BZ, PLAN_MIN, HAY_MAX, GIFT, ACT_LEN, hasKey, boteRow, clearSpot, sceneUnit,
     planBlank, planSer, planParse, planApply, hayNow, giftLv, pikaDay, MEM_GUT, giftTre, giftMile, giftAllGold,
     URLAUB, urlaubAt, urlaubCut, chronikUrlaub, coffeeBrews, coffeeLabel, coffeeQueue, COFFEE_NEXT_GAP, boteEmptyOn, boteMap, boteLabel, boteLabelMode, boteSmell,
     SIG, sigTime, binKind, binPlan, binDone, wardrobePick, vacMode, vacRuns, MEM_TONNE, MEM_TONNE2,

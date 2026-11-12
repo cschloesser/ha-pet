@@ -999,6 +999,10 @@ const STYLE = `
   }
   .mf, .mb { transform-origin: 50% 100%; }
   .mouse.left .mf { transform: scaleX(-1); }
+  /* Hintere Spur (depth): ein Hauch Dunst wie bei Pika und Pino (heller, weniger satt), auf der inneren Hülle, das
+     Licht der Dämmerung liegt außen auf .mw bzw. .cw */
+  .mf, .cf { transition: filter 1s; }
+  .day:not(.overcast) .lane1 .mf, .day:not(.overcast) .lane1 .cf { filter: saturate(.85) brightness(1.05); }
   .mouse svg { display: block; width: 100%; height: auto; overflow: visible; }
   .mouse.run .mb { animation: scurry .12s linear infinite alternate; }
   @keyframes scurry { from { transform: translateY(0) rotate(-2deg); } to { transform: translateY(-9%) rotate(2deg); } }

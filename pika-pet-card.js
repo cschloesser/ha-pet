@@ -60,7 +60,7 @@
  */
 (() => {
   // src/version.js
-  var VERSION = "0.39.0";
+  var VERSION = "0.39.1";
 
   // src/logik/hilfen.js
   var Cancel = class extends Error {
@@ -1748,745 +1748,6 @@
   var LICHT = "brightness(var(--lb, 1)) saturate(var(--ls, 1))";
   var LICHT_P = "brightness(var(--lbp, 1)) saturate(var(--ls, 1))";
 
-  // src/logik/tagebuch.js
-  var DIARY = { keep: 3 * 864e5, max: 400, close: 6e4, gap: 100 * 6e4, acts: 2 };
-  var FIND_GROUPS = ["Streicheln", "Kümmern", "Meine Welt"];
-  var FINDS = [
-    { k: "head", g: 0, t: "Kopf", h: "Tipp mir auf den Kopf. Ich lehne mich in deine Hand." },
-    { k: "nose", g: 0, t: "Nase", h: "Tipp mir auf die Nase. Boop!" },
-    { k: "ear", g: 0, t: "Ohr", h: "Tipp ein Ohr an. Es flappt nach." },
-    { k: "belly", g: 0, t: "Bauch", h: "Tipp mir auf den Bauch. Das kitzelt!" },
-    { k: "back", g: 0, t: "Rücken", h: "Tipp mir auf den Rücken oder den Po. Ich mache einen Freudensprung." },
-    { k: "kraul", g: 0, t: "Kraulen", h: "Leg den Finger auf mich und lass ihn liegen. Das mag ich lieber als schnelles Tippen." },
-    { k: "stroke", g: 0, t: "Übers Fell streichen", h: "Wisch waagerecht über mich. Mein Fell plustert sich auf." },
-    { k: "combo", g: 0, t: "Fünfmal hintereinander", h: "Tipp mich fünfmal schnell an. Dann gibt es einen Luftsprung." },
-    { k: "melt", g: 0, t: "Achtmal hintereinander", h: "Noch öfter, und ich schmelze dahin." },
-    { k: "pout", g: 0, t: "Elfmal hintereinander", h: "Irgendwann reicht es mir. Hmpf! Lange böse bin ich aber nie." },
-    { k: "sleep", g: 0, t: "Im Schlaf", h: "Streichle mich, wenn ich schlafe. Ich wache nicht auf, aber ich merke es." },
-    { k: "meadow", g: 0, t: "Auf die Wiese tippen", h: "Ich schaue hin. Hast du mich heute schon oft gestreichelt, komme ich angehoppelt." },
-    { k: "feed", g: 1, t: "Füttern", h: "Der Löwenzahn-Knopf oben rechts lässt Futter fallen." },
-    { k: "clean", g: 1, t: "Saubermachen", h: "Tipp ein Häufchen an, dann kommt die Schaufel." },
-    { k: "bloom", g: 1, t: "Mein Geschenk annehmen", h: "Manchmal lege ich dir eine Blume mit Schleife ins Gras. Tipp sie an." },
-    { k: "parcel", g: 1, t: "Päckchen schenken", h: "Der Päckchen-Knopf oben rechts schickt mir eins am Ballon.", need: "gift" },
-    { k: "album", g: 1, t: "Schätze aufschlagen", h: "Drück lange auf den Päckchen-Knopf.", need: "gift" },
-    { k: "flower", g: 2, t: "Blume", h: "Tipp eine Blume an. Sie staubt, und stehe ich daneben, muss ich niesen." },
-    { k: "cloud", g: 2, t: "Wolke", h: "Tipp eine Wolke an. Sie tröpfelt." },
-    { k: "star", g: 2, t: "Stern", h: "Tipp abends oder nachts einen Stern an. Er fällt vom Himmel." },
-    { k: "door", g: 2, t: "Tür", h: "Klopf an meine Tür. Bin ich im Bau, linse ich heraus." },
-    { k: "wheel", g: 2, t: "Windrad", h: "Stups mein Windrad an. Es dreht sich ganz schnell.", need: "wheel" },
-    { k: "yarn", g: 2, t: "Wollknäuel", h: "Stups mein Wollknäuel an. Es kullert davon.", need: "yarn" },
-    { k: "visitor", g: 2, t: "Besuch", h: "Tipp Vögelchen, Maus, Frosch oder Schnecke an." },
-    { k: "pino", g: 2, t: "{n}", h: "Ist {n} zu Besuch: auch antippen. Das gibt Herzchen.", need: "friend" },
-    { k: "bubble", g: 2, t: "Seifenblase", h: "Puste ich Seifenblasen, kannst du sie platzen lassen. Plopp!" },
-    { k: "plane", g: 2, t: "Flugzeug", h: "Tipp ein Flugzeug an. Ein Fähnchen zeigt, wohin es fliegt.", need: "flight" },
-    { k: "device", g: 2, t: "Haushaltsgerät", h: "Tipp ein Gerät am Bau an. Ein Fähnchen zeigt, wie weit es ist.", need: "bote" }
-  ];
-  var FIND_IDS = new Set(FINDS.map((f) => f.k));
-  var findsParse = (s) => new Set(String(s || "").split(",").filter((k) => FIND_IDS.has(k)));
-  var findsSer = (set) => FINDS.filter((f) => set.has(f.k)).map((f) => f.k).join(",");
-  var DIARY_TXT = {
-    wake: ["Aufgewacht! Erst mal strecken und gähnen.", "Guten Morgen! Die Nase zuerst aus dem Bau gesteckt.", "Zipfelmütze ab, der Tag kann losgehen."],
-    sleep: ["Zipfelmütze auf und ab in den Bau. Gute Nacht!", "Müde. Ich hab mich im Bau eingekuschelt.", "Augen zu. Schlaf gut, liebes Tagebuch."],
-    act: {
-      read: [
-        "Ein Buch gelesen. An der lustigen Stelle musste ich kichern.",
-        "Gelesen, bis mir fast die Augen zugefallen sind.",
-        "Mein Buch war so spannend, dass ich das Umblättern vergessen hab."
-      ],
-      game: ["Gameboy gespielt. Eine Runde gewonnen, juhu!", "Am Gameboy war der Wurm drin. Mööp.", "Gameboy gespielt, bis die Daumen müde waren."],
-      tablet: ["Auf dem Bauch gelegen und am Tablet gewischt.", "Am Tablet geschaut, wohin die Flugzeuge fliegen."],
-      kite: ["Drachen steigen lassen! Der Wind hat ganz schön gezerrt.", "Mein Drache stand hoch am Himmel. Ich hab die Schnur gut festgehalten."],
-      tv: ["Im Bau ferngesehen. Draußen war es mir zu ungemütlich.", "Fernsehen im Bau. Gemütlich!"],
-      music: [
-        "Ukulele gespielt und mitgesungen. La-la-la!",
-        "Musik gemacht. Ein Ton ging daneben, plonk. Egal.",
-        "Ein kleines Konzert gegeben. Zum Schluss hab ich mich verbeugt."
-      ],
-      paint: [
-        "Ich hab {m} gemalt. Ich finde, es ist richtig gut geworden.",
-        "An der Staffelei gestanden und {m} gemalt.",
-        "Ich hab {m} gemalt. Dabei hatte ich einen Farbklecks auf der Nase."
-      ],
-      bubbles: ["Seifenblasen gepustet und hinterhergesprungen. Plopp!", "Seifenblasen! Eine ist direkt vor meiner Nase geplatzt."],
-      sport: ["Frühsport! Hampelmann, Kniebeugen, Strecken. Danach war ich platt.", "Stirnband auf und los: Frühsport. Ich hab sogar mitgezählt."]
-    },
-    // dasselbe kurz, für die Zeile „Außerdem: …“, und als Hauptwort für die Tagesform
-    actShort: {
-      read: "gelesen",
-      game: "Gameboy gespielt",
-      tablet: "am Tablet gewischt",
-      kite: "Drachen steigen lassen",
-      tv: "ferngesehen",
-      music: "Musik gemacht",
-      paint: "gemalt",
-      bubbles: "Seifenblasen gepustet",
-      sport: "geturnt"
-    },
-    actNoun: { read: "Lesen", game: "Gameboy", tablet: "Tablet", music: "Musik", paint: "Malen", bubbles: "Seifenblasen" },
-    motif: { blume: "eine Blume", pika: "mich selbst", pino: "{n}", bau: "meinen Bau", flieger: "ein Flugzeug", regenbogen: "einen Regenbogen" },
-    pino: [
-      "{n} war zu Besuch! Wir haben uns mit den Nasen angestupst.",
-      "{n} kam vorbei. Zusammen ist alles schöner.",
-      "Mit {n} gespielt. Beim Abschied hingen meine Ohren kurz."
-    ],
-    coffee: ["Es roch nach Kaffee. Ich hab mir auch einen geholt.", "Kaffeeduft! Ich hab mitgetrunken, Schluck für Schluck."],
-    coffeeMore: [
-      "Noch ein Kaffee! Ich hab wieder mitgetrunken.",
-      "Schon wieder Kaffeeduft. Da konnte ich nicht nein sagen.",
-      "Kaffee Nummer {z}. Jetzt bin ich hellwach!"
-    ],
-    bird: ["Ein Vögelchen saß da. Ich hab gepiepst, es hat zurückgezwitschert.", "Besuch von einem Vögelchen. Wir haben uns nett unterhalten."],
-    plane: ["Ein Flugzeug! Ich hab ihm lange nachgeschaut. Brumm.", "Hoch oben flog ein Flugzeug. Wo es wohl hinwollte?"],
-    bfly: ["Ein Schmetterling ist auf meiner Nase gelandet. Ich hab ganz still gehalten.", "Schmetterling auf der Nase! Ich musste schielen."],
-    heart: ["So viel gestreichelt worden. Mein Fell steht noch ganz flauschig ab.", "Ganz viele Streicheleinheiten bekommen. Ich bin fast geschmolzen."],
-    parcel: ["Ein Päckchen am Ballon! Ich hab es mit der Zwille heruntergeholt.", "Ein Päckchen! Schleife auf, Deckel ab."],
-    earn: ["Du kümmerst dich so gut um mich, dass ein Päckchen für mich bereitliegt.", "Ein neues Päckchen wartet auf mich. Danke fürs Kümmern!"],
-    earnGold: ["Sieben gute Tage zusammen! Dafür gibt es ein goldenes Päckchen.", "Wieder sieben gute Tage. Ein goldenes Päckchen liegt für mich bereit!"],
-    gut: ["Heute war ein guter Tag: gefüttert, gestreichelt und rundum zufrieden.", "Gefüttert, gestreichelt, alles bestens. Das war ein guter Tag."],
-    urlaub: ["Ich bin zu {n} gefahren. Mein Bau wartet so lange auf mich.", "Rucksack auf und los: Ich besuche {n}!"],
-    urlaubTag: ["Ich bin bei {n}.", "Heute bin ich noch bei {n}."],
-    heim: ["Wieder zu Hause! {d} war ich bei {n}. Hier ist meine Postkarte.", "Da bin ich wieder! {d} bei {n}, es war schön. Die Postkarte ist für euch."],
-    mile: ["Das war mein {z}. Päckchen! Ich hab ein bisschen gefeiert."],
-    tonne: ["Die Tonne steht an der Straße. Danke fürs Rausstellen!", "Morgen kommt die Müllabfuhr. Die Tonne steht schon draußen."],
-    sauger: ["Der Saugroboter war unterwegs. Ich bin hinterhergehoppelt.", "Der Saugroboter hat geputzt. Vielleicht bin ich ein Stück mitgefahren!"],
-    allGold: ["Jetzt sind alle meine Schätze golden. Was für ein Fest!"],
-    flowerTaken: ["Ich hab dir eine Blume gepflückt und ins Gras gelegt. Du hast sie genommen!", "Für dich: eine Blume mit Schleife. Du hast sie angenommen, da hab ich mich gefreut."],
-    flowerWait: ["Ich hab dir eine Blume ins Gras gelegt. Sie wartet auf dich."],
-    flowerWilt: ["Ich hab dir eine Blume hingelegt. Sie ist leider verwelkt. Ich pflück dir bald eine neue."],
-    gather1: ["Eine Blüte für meinen Vorrat gesammelt."],
-    gatherN: ["{c} Blüten für meinen Vorrat gesammelt. Der Winter kann kommen.", "{c} Blüten gepflückt und in den Vorrat gelegt."],
-    hungry: ["Mein Bauch hat geknurrt. Zum Glück gab es bald etwas zu knabbern."],
-    hungryNow: ["Mein Bauch hat geknurrt. Ich hab ganz fest an Löwenzahn gedacht."],
-    clean: ["Alles blitzblank! Danke fürs Saubermachen, da hab ich einen Freudensprung gemacht.", "Meine Wiese ist wieder sauber. Sie funkelt richtig!"],
-    streak: ["Meine Päckchen-Serie fängt neu an. Das macht nichts, meine guten Tage behalte ich."],
-    secret: [
-      "Da steht nichts in meinem Tagebuch. Was ich gemacht habe, bleibt mein Geheimnis.",
-      "Da steht nichts. Vielleicht hab ich Purzelbäume geübt. Vielleicht auch nicht."
-    ],
-    bote: {
-      washer: ["Die Wäsche war fertig. Ich hab ganz laut Bescheid gesagt!"],
-      dryer: ["Der Trockner war fertig. Die Handtücher waren schön flauschig."],
-      dishwasher: ["Das Geschirr war fertig und hat geglänzt."]
-    },
-    fest: {
-      witch: "Halloween! Ich hab einen Hexenhut auf.",
-      martin: "St. Martin! Laterne, Laterne …",
-      boot: "Nikolaus! Mein Stiefel ist voll.",
-      xmas: "Weihnachten! Bei mir steht ein Tannenbaum.",
-      sticks: "Frohes Neues! Ich hab das Feuerwerk gesehen.",
-      karneval: "Helau! Es regnet Konfetti.",
-      ostern: "Ostern! Im Gras liegen bunte Eier.",
-      maibaum: "Hinter meinem Bau steht ein Maibaum.",
-      sommer: "Sommerfest! Die Wimpel flattern."
-    },
-    treasure: [
-      "Stups ich an und flitze hinterher.",
-      "Dreht sich im echten Wind.",
-      "Mit dem kuschle ich nachts.",
-      "Für sonnige Tage ab 24 Grad.",
-      "Damit schau ich Flugzeugen nach.",
-      "Für mein Nickerchen.",
-      "Damit gieße ich die Blumen.",
-      "Bimmelt, wenn ich rauskomme."
-    ],
-    wx: {
-      sunny: "sonnig",
-      clear: "klar",
-      "clear-night": "klar",
-      partlycloudy: "heiter",
-      cloudy: "bewölkt",
-      rainy: "Regen",
-      pouring: "Starkregen",
-      snowy: "Schnee",
-      "snowy-rainy": "Schneeregen",
-      fog: "Nebel",
-      lightning: "Gewitter",
-      "lightning-rainy": "Gewitter",
-      hail: "Hagel",
-      windy: "windig",
-      "windy-variant": "windig"
-    }
-  };
-  var diaryPick = (list, ...key) => list[Math.floor(seedRnd("tb", ...key) * list.length)];
-  var diaryTime = (t) => {
-    const d = new Date(t);
-    return `${d.getHours()}:${String(d.getMinutes()).padStart(2, "0")}`;
-  };
-  var bitCount = (n) => {
-    let c = 0;
-    for (let v = n >>> 0; v; v &= v - 1) c++;
-    return c;
-  };
-  var diaryDerive = (S, P, from, { decayAt, until }) => {
-    const ev = [];
-    const stamps = [];
-    const pets = {};
-    const add = (t, k, x) => t >= from && ev.push({ t, k, ...x });
-    const acts = /* @__PURE__ */ new Map();
-    const fed = new Set((P[0]?.v.fd || []).map((f) => f.t));
-    let pend = null;
-    const petMax = (c) => c && (pets[c.d] = Math.max(pets[c.d] || 0, c.n));
-    petMax(P[0]?.v.cute);
-    const p0 = P[0]?.v;
-    const mem = {};
-    if (p0?.cute) mem[p0.cute.d] = p0.cute.m;
-    const hays = new Set(p0 ? [`${p0.hay.m}.${p0.hay.c}`] : []);
-    let hayM = p0 ? p0.hay.m : -Infinity;
-    const fls = new Set(p0?.fl ? [p0.fl.t] : []);
-    const g00 = p0?.gift;
-    let maxO = g00 ? g00.o : -Infinity;
-    let maxZ = g00 ? g00.z : -Infinity;
-    let maxK = g00 ? g00.k : -Infinity;
-    let maxF = g00?.f ?? null;
-    const maxA = g00 ? { [g00.k]: g00.a } : {};
-    const urs = /* @__PURE__ */ new Map();
-    const urSee = (ur) => ur && (!urs.has(ur.t) || urs.get(ur.t) == null) && urs.set(ur.t, ur.d);
-    urSee(p0?.ur);
-    for (let i = 1; i < P.length; i++) {
-      const a = P[i - 1].v;
-      const b = P[i].v;
-      const t = P[i].t;
-      stamps.push(t);
-      for (const [k, name, v] of b.rec) {
-        if (acts.has(k)) {
-          if (v) acts.get(k).v = v;
-        } else if (!a.rec.some((e) => e[0] === k) && k * ACT_WIN.big > t - 3 * 36e5) {
-          const e = { t, k: "act", a: name, v: v || "" };
-          acts.set(k, e);
-          if (t >= from) ev.push(e);
-        }
-      }
-      const hk = `${b.hay.m}.${b.hay.c}`;
-      if (!hays.has(hk) && (b.hay.m > hayM || b.hay.c !== a.hay.c)) add(t, "gather");
-      hays.add(hk);
-      hayM = Math.max(hayM, b.hay.m);
-      if (b.fl && !fls.has(b.fl.t)) {
-        fls.add(b.fl.t);
-        add(b.fl.t, "flower", { id: b.fl.t, taken: !!b.fl.k });
-      } else if (b.fl?.k && !a.fl?.k) {
-        const e = ev.find((x) => x.k === "flower" && x.id === b.fl.t);
-        if (e) e.taken = true;
-        else add(t, "flower", { id: b.fl.t, taken: true });
-      }
-      for (const f of b.fd) {
-        if (fed.has(f.t)) continue;
-        fed.add(f.t);
-        add(f.t, "feed");
-      }
-      const c = b.cute;
-      if (c) {
-        petMax(c);
-        const neu = c.m & ~(mem[c.d] || 0);
-        mem[c.d] = (mem[c.d] || 0) | c.m;
-        MEM_BITS.forEach((name, bit) => neu & 1 << bit && add(t, "mem", { b: name }));
-      }
-      urSee(b.ur);
-      const g0 = a.gift;
-      const g1 = b.gift;
-      if (g0 && g1) {
-        if (g1.k === g0.k && g1.a > (maxA[g1.k] ?? g0.a) && g0.n < GIFT.max) add(t, "earn");
-        if (g1.k === g0.k) maxA[g1.k] = Math.max(maxA[g1.k] ?? g1.a, g1.a);
-        if (g1.f != null) {
-          if (maxF != null && Math.floor(g1.f / GIFT.goldDays) > Math.floor(maxF / GIFT.goldDays)) add(t, "earnGold");
-          maxF = Math.max(maxF ?? g1.f, g1.f);
-        }
-        if (g1.k !== g0.k && g1.k > maxK && g0.b != null && g1.a === 0) add(t, "streak");
-        maxK = Math.max(maxK, g1.k);
-        if (g1.z > maxZ) {
-          maxZ = g1.z;
-          const it = g1.i & 15;
-          const bit = 1 << it;
-          const v0 = g0.v || 0;
-          const v1 = g1.v || 0;
-          pend = { z: g1.z, it, gold: !!(g1.i & 16), what: it >= GIFT_TRE ? "treat" : !(g0.u & bit) ? "new" : v1 & bit << 8 && !(v0 & bit << 8) ? "gilt" : v1 & bit && !(v0 & bit) ? "trick" : "new" };
-        }
-        if (g1.o > maxO) {
-          maxO = g1.o;
-          const it = g1.i & 15;
-          const e = pend && pend.z <= g1.o ? pend : { it, gold: !!(g1.i & 16), what: it >= GIFT_TRE ? "treat" : "new" };
-          add(t, "parcel", { ...e, o: g1.o, mile: giftMile(g1.o), all: e.what === "gilt" && giftAllGold(g1) });
-          pend = null;
-        }
-      }
-    }
-    const urlaub = [];
-    for (const [t0, d] of urs) {
-      urlaub.push([t0, d == null ? Infinity : t0 + d]);
-      if (d != null && d < URLAUB.min) continue;
-      add(t0, "urlaub", { id: t0, d });
-      if (d != null) add(t0 + d, "heim", { id: t0, d });
-    }
-    const rebase = (v) => v.st === v.c && v.gt === v.c && urlaub.some(([, e]) => v.c >= e - 6e4 && v.c - e < URLAUB.keep);
-    let food = S[0]?.v;
-    let maxC = S[0]?.v.c ?? -Infinity;
-    const masks = new Map(S[0] ? [[S[0].v.c, S[0].v.m]] : []);
-    const growl = (v, end, eaten) => {
-      if (!v || !(v.s > 30)) return;
-      const x = decayAt(v.st, (v.s - 30) / RATE.s);
-      if (x < end) add(x, "hungry", { eaten });
-    };
-    for (let i = 1; i < S.length; i++) {
-      const a = S[i - 1].v;
-      const b = S[i].v;
-      const t = S[i].t;
-      stamps.push(t);
-      const seen = masks.get(b.c) || 0;
-      if (b.c > maxC && !rebase(b)) add(t, "clean", { n: 1, all: true });
-      else if (b.c === a.c && b.m & ~seen) add(t, "clean", { n: bitCount(b.m & ~seen) });
-      masks.set(b.c, seen | b.m);
-      maxC = Math.max(maxC, b.c);
-      if (b.st !== food.st) {
-        growl(food, b.st, true);
-        food = b;
-      }
-    }
-    growl(food, until, false);
-    const inU = (x) => urlaub.some(([a, b]) => x.t > a && x.t < b);
-    return { ev: ev.filter((x) => x.k === "urlaub" || x.k === "heim" || !inU(x)), stamps: stamps.sort((x, y) => x - y), pets, urlaub };
-  };
-
-  // src/logik/chronik.js
-  var CHRONIK = {
-    kopf: "Pika-Tag ",
-    back: 7,
-    wait: 10 * 6e4,
-    jitter: 10 * 6e4,
-    check: 3e4,
-    checkJit: 3e4,
-    retry: 36e5,
-    retryMax: 24 * 36e5,
-    rounds: 3,
-    hang: 10 * 6e4,
-    frisch: 1e4
-  };
-  var CHRONIK_NUM = ["futter", "streicheln", "putzen", "paeckchen"];
-  var CHRONIK_GAST = ["pino", "vogel", "falter"];
-  var CHRONIK_MEM = { pino: "pino", bird: "vogel", bfly: "falter" };
-  var chronikDatum = (tag) => Number.isInteger(tag) && tag > -7e5 && tag < 29e5 ? new Date(tag * 864e5).toISOString().slice(0, 10) : null;
-  var chronikTag = (datum) => {
-    const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(datum ?? ""));
-    if (!m) return null;
-    const tag = Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3])) / 864e5;
-    return chronikDatum(tag) === m[0] ? tag : null;
-  };
-  var chronikStart = (tag) => {
-    const d = new Date(tag * 864e5);
-    return new Date(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), 4).getTime();
-  };
-  var chronikVersatz = (zone, t) => {
-    if (typeof zone !== "string" || !zone) return null;
-    try {
-      const p = {};
-      const fmt = new Intl.DateTimeFormat("en-US", { timeZone: zone, hourCycle: "h23", year: "numeric", month: "numeric", day: "numeric", hour: "numeric", minute: "numeric", second: "numeric" });
-      for (const x of fmt.formatToParts(new Date(t))) p[x.type] = Number(x.value);
-      const v = (Date.UTC(p.year, p.month - 1, p.day, p.hour % 24, p.minute, p.second) - Math.floor(t / 1e3) * 1e3) / 6e4;
-      return Number.isFinite(v) ? v : null;
-    } catch (e) {
-      return null;
-    }
-  };
-  var chronikZoneOk = (zone, zeiten, lokal = (t) => -new Date(t).getTimezoneOffset()) => {
-    for (const t of zeiten) {
-      const v = chronikVersatz(zone, t);
-      if (v == null) return true;
-      if (v !== lokal(t)) return false;
-    }
-    return true;
-  };
-  var gastSort = (list) => [...new Set(list)].sort((a, b) => {
-    const i = CHRONIK_GAST.indexOf(a);
-    const j = CHRONIK_GAST.indexOf(b);
-    return i >= 0 && j >= 0 ? i - j : i >= 0 ? -1 : j >= 0 ? 1 : a < b ? -1 : a > b ? 1 : 0;
-  });
-  var chronikKod = (e) => {
-    const f = [];
-    for (const k of CHRONIK_NUM) if (e[k] != null) f.push(`${k}=${e[k]}`);
-    if (e.besuch) f.push(`besuch=${gastSort(e.besuch).join(",") || "-"}`);
-    for (const k of Object.keys(e.x || {}).sort()) f.push(`${k}=${e.x[k]}`);
-    return `${CHRONIK.kopf}${e.d}${f.length ? ` · ${f.join(" ")}` : ""}`;
-  };
-  var chronikLies = (titel) => {
-    if (typeof titel !== "string" || !titel.startsWith(CHRONIK.kopf)) return null;
-    const m = /^(\d{4}-\d{2}-\d{2})(?!\d)([\s\S]*)$/.exec(titel.slice(CHRONIK.kopf.length));
-    if (!m || chronikTag(m[1]) == null) return null;
-    const d = m[1];
-    const fremd = { d, fremd: true };
-    const e = { d, futter: null, streicheln: null, putzen: null, paeckchen: null, besuch: null, x: {} };
-    if (!m[2].trim()) return e;
-    const r = /^(?:\s*·\s*|\s+)([\s\S]*)$/.exec(m[2]);
-    if (!r) return fremd;
-    const seen = /* @__PURE__ */ new Set();
-    for (const tok of r[1].split(/\s+/).filter(Boolean)) {
-      const q = /^([a-z][a-z0-9_]*)=(\S+)$/.exec(tok);
-      if (!q || seen.has(q[1])) return fremd;
-      const [, k, v] = q;
-      seen.add(k);
-      if (CHRONIK_NUM.includes(k)) {
-        if (!/^\d{1,9}$/.test(v)) return fremd;
-        e[k] = Number(v);
-      } else if (k === "besuch") {
-        if (v !== "-" && !/^[a-z][a-z0-9_]*(,[a-z][a-z0-9_]*)*$/.test(v)) return fremd;
-        e.besuch = v === "-" ? [] : gastSort(v.split(","));
-      } else e.x[k] = v;
-    }
-    return e;
-  };
-  var chronikMisch = (a, b) => {
-    const e = { d: (a || b).d, futter: null, streicheln: null, putzen: null, paeckchen: null, besuch: null, x: {} };
-    for (const o of [a, b]) {
-      if (!o) continue;
-      for (const k of CHRONIK_NUM) if (o[k] != null) e[k] = e[k] == null ? o[k] : Math.max(e[k], o[k]);
-      if (o.besuch) e.besuch = [...e.besuch || [], ...o.besuch];
-      for (const k of Object.keys(o.x || {})) if (!hasKey(e.x, k) || o.x[k] > e.x[k]) e.x[k] = o.x[k];
-    }
-    if (e.besuch) e.besuch = gastSort(e.besuch);
-    e.x = Object.fromEntries(Object.keys(e.x).sort().map((k) => [k, e.x[k]]));
-    return e;
-  };
-  var chronikBilanz = (ev, pets, start, end, tag, urlaub = []) => {
-    const e = { d: chronikDatum(tag), futter: 0, streicheln: Math.min(Math.max(0, Math.floor(Number(pets?.[tag]) || 0)), PET_CAP), putzen: 0, paeckchen: 0, besuch: [], x: {} };
-    for (const v of ev) {
-      if (!(v.t >= start && v.t < end)) continue;
-      if (v.k === "feed") e.futter++;
-      else if (v.k === "clean") e.putzen += v.n || 0;
-      else if (v.k === "parcel") e.paeckchen++;
-      else if (v.k === "mem" && hasKey(CHRONIK_MEM, v.b)) e.besuch.push(CHRONIK_MEM[v.b]);
-      else if (v.k === "mem" && v.b === "gut") e.x.gut = "1";
-    }
-    if (chronikUrlaub(urlaub, start, end)) e.x.urlaub = "1";
-    e.besuch = gastSort(e.besuch);
-    return e;
-  };
-  var chronikUrlaub = (urlaub, start, end) => (urlaub || []).some(([a, b]) => a < end && b > start);
-  var chronikGruppen = (items) => {
-    const G = /* @__PURE__ */ new Map();
-    for (const it of Array.isArray(items) ? items : []) {
-      const e = chronikLies(it?.summary);
-      if (!e) continue;
-      if (!G.has(e.d)) G.set(e.d, { les: [], fremd: false });
-      if (e.fremd) G.get(e.d).fremd = true;
-      else G.get(e.d).les.push({ uid: it.uid, e });
-    }
-    return G;
-  };
-  var chronikTage = (items) => {
-    const T = /* @__PURE__ */ new Map();
-    for (const [d, g] of chronikGruppen(items)) if (g.les.length) T.set(d, g.les.reduce((m, x) => chronikMisch(m, x.e), null));
-    return T;
-  };
-  var chronikFehlt = (items, heute, back) => {
-    const G = chronikGruppen(items);
-    const out = [];
-    for (let tag = heute - back; tag < heute; tag++) if (!G.has(chronikDatum(tag))) out.push(tag);
-    return out;
-  };
-  var chronikPlan = (items, soll) => {
-    const G = chronikGruppen(items);
-    const S = new Map(!soll ? [] : typeof soll[Symbol.iterator] === "function" ? [...soll] : Object.entries(soll));
-    const out = [];
-    for (const d of [.../* @__PURE__ */ new Set([...G.keys(), ...S.keys()])].sort()) {
-      const g = G.get(d);
-      const neu = S.get(d);
-      if (!g) {
-        if (neu && chronikTag(d) != null) out.push({ op: "add", d, summary: chronikKod({ ...neu, d }) });
-        continue;
-      }
-      if (!g.les.length || g.les.some((x) => typeof x.uid !== "string" || !x.uid)) continue;
-      const les = [...g.les].sort((a, b) => a.uid < b.uid ? -1 : a.uid > b.uid ? 1 : 0);
-      const alle = les.reduce((m, x) => chronikMisch(m, x.e), neu ? { ...neu, d } : null);
-      const summary = chronikKod(alle);
-      if (summary !== chronikKod(les[0].e)) out.push({ op: "update", d, uid: les[0].uid, summary });
-      for (const x of les.slice(1)) out.push({ op: "remove", d, uid: x.uid });
-    }
-    return out;
-  };
-
-  // src/grafik/areale.js
-  var HOLE_GRAD = `<radialGradient id="holeg" cx=".5" cy=".9" r=".85">
-      <stop offset="0" stop-color="#0d0907"/><stop offset="1" stop-color="#3b302a"/></radialGradient>`;
-  var GLOW_GRAD = (id, c) => `<radialGradient id="${id}"><stop offset="0" stop-color="${c}" stop-opacity=".75"/>
-      <stop offset="1" stop-color="${c}" stop-opacity="0"/></radialGradient>`;
-  var AREALE = {
-    fels: {
-      name: "Felsbau",
-      w: 0.72,
-      left: -0.1,
-      vh: 66,
-      sink: 5,
-      hay: 0.86,
-      perches: [[46, 10.2], [17, 26.2], [83, 30.2]],
-      hole: { x1: 39.5, x2: 60.5, top: 34, lip: 57.5 },
-      svg: `
-        <defs>${HOLE_GRAD}</defs>
-        <g stroke="#5c6166" stroke-width="1.5">
-          <ellipse cx="50" cy="27" rx="27" ry="17" fill="#a7adb3"/>
-          <ellipse cx="19" cy="45" rx="24" ry="19" fill="#979da4"/>
-          <ellipse cx="81" cy="47" rx="22" ry="17" fill="#8e949b"/>
-        </g>
-        <ellipse cx="42" cy="16" rx="8" ry="3" fill="#fff" opacity=".25"/>
-        <ellipse cx="11" cy="34" rx="8" ry="3.4" fill="#fff" opacity=".2"/>
-        <ellipse cx="78" cy="37" rx="7" ry="3" fill="#fff" opacity=".2"/>
-        <path d="M36 64 V45 A14 14 0 0 1 64 45 V64Z" fill="url(#holeg)" stroke="#5c6166" stroke-width="1.4"/>
-        <g stroke="#5c6166" stroke-width="1.2" fill="#b4b9be">
-          <ellipse cx="35.5" cy="46" rx="4" ry="5.5"/><ellipse cx="38.5" cy="35.5" rx="4.6" ry="4"/>
-          <ellipse cx="50" cy="30.5" rx="6" ry="3.6"/><ellipse cx="61.5" cy="35.5" rx="4.6" ry="4"/>
-          <ellipse cx="64.5" cy="46" rx="4" ry="5.5"/>
-        </g>
-        <g stroke="#5c6166" stroke-width="1.3">
-          <ellipse cx="41" cy="61" rx="9" ry="3.8" fill="#a3a9ae"/><ellipse cx="58" cy="61.5" rx="9" ry="3.6" fill="#9aa0a6"/>
-          <ellipse cx="8" cy="60" rx="12" ry="7" fill="#a3a9ae"/><ellipse cx="92" cy="61" rx="11" ry="6" fill="#9aa0a6"/>
-        </g>
-        <g fill="#79b25d">
-          <ellipse cx="63" cy="13" rx="5" ry="2.4"/><ellipse cx="25" cy="28" rx="4" ry="2"/><ellipse cx="90" cy="33" rx="4" ry="1.8"/>
-        </g>`
-    },
-    huegel: {
-      name: "Erdhügel",
-      w: 0.82,
-      left: -0.06,
-      vh: 60,
-      sink: 4,
-      stash: { x1: 92.5, x2: 112.5, top: 39 },
-      // Laternendach, Schornstein, Schild, Blumenkasten, Hügelkuppe, Nischenbogen
-      perches: [[13, 27.6], [65, 0.4], [47, 13.4], [84, 39.6], [36, 11.6], [102.5, 37.4]],
-      hole: { x1: 37.5, x2: 62.5, top: 25.5, lip: 52.6 },
-      svg: `
-        <defs>${HOLE_GRAD}</defs>
-        <g stroke="#6b625a" stroke-width="1.1">
-          <rect x="61.5" y="2" width="7" height="14" fill="#a39488"/>
-          <rect x="60.5" y=".4" width="9" height="3" rx=".6" fill="#8c7d72"/>
-          <path d="M61.5 7 H68.5 M64 7 V11.5 M66.5 11.5 V16 M61.5 11.5 H68.5" stroke-width=".6" opacity=".6"/>
-        </g>
-        <path class="mound" d="M-4 60 C-3 30 22 10 50 10 C80 10 104 20 114 32 C121 41 125 50 126 60Z" stroke-width="1.5"/>
-        <path d="M14 30 Q28 15 46 13" stroke="#fff" stroke-opacity=".35" stroke-width="3" fill="none" stroke-linecap="round"/>
-        <g class="mound-t" stroke-width="1.2" fill="none" stroke-linecap="round">
-          <path d="M28 16.5 l-2 -4 M31 15 l.5 -4.5 M68 15 l1.5 -4 M72 17 l3 -3.5 M47 10 l-1 -4 M51 10 l1.5 -4.2"/>
-        </g>
-        <g fill="#fff"><circle cx="6" cy="48" r="1.6"/><circle cx="9" cy="42" r="1.3"/><circle cx="90" cy="30" r="1.5"/><circle cx="119.5" cy="50" r="1.2"/></g>
-        <g fill="#f4c53d"><circle cx="6" cy="48" r=".6"/><circle cx="9" cy="42" r=".5"/><circle cx="90" cy="30" r=".6"/><circle cx="119.5" cy="50" r=".5"/></g>
-        <g transform="translate(6 1)">
-          <circle cx="74" cy="32" r="6.6" fill="#5e3d26"/>
-          <circle cx="74" cy="32" r="5.6" fill="#9a6a45"/>
-          <circle class="pane" cx="74" cy="32" r="4.3"/>
-          <path d="M70.3 29.4 Q72.6 30 73.4 34.6 L70.4 34.6Z M77.7 29.4 Q75.4 30 74.6 34.6 L77.6 34.6Z" fill="#e58a7a" opacity=".85"/>
-          <path d="M74 27.7 V36.3 M69.7 32 H78.3" stroke="#9a6a45" stroke-width="1"/>
-          <rect x="67" y="38.6" width="14" height="3.4" rx=".8" fill="#9a6a45" stroke="#5e3d26" stroke-width=".8"/>
-          <path d="M69 38.6 q.4 -2.6 1.6 -3.2 M72.5 38.6 q0 -2.6 -.8 -3.4 M76 38.6 q.3 -2.8 1.4 -3.2 M79 38.6 q-.2 -2.4 -1 -3" stroke="#4f8a3a" stroke-width=".7" fill="none"/>
-          <g fill="#f07a95"><circle cx="70.6" cy="35.4" r="1.1"/><circle cx="77.4" cy="35.4" r="1.1"/></g>
-          <g fill="#f6c945"><circle cx="71.7" cy="35.2" r="1"/><circle cx="78" cy="35.8" r=".9"/></g>
-        </g>
-        <defs><linearGradient id="stashg" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0" stop-color="#140d09"/><stop offset="1" stop-color="#3a2a1e"/></linearGradient></defs>
-        <path d="M92.5 57 V43.2 C92.5 37.8 112.5 37.8 112.5 43.2 V57Z" fill="url(#stashg)"/>
-        <path d="M95.3 52.8 V46 C95.3 43.4 109.7 43.4 109.7 46 V52.8Z" fill="#4b3628" opacity=".7"/>
-        <path d="M92.5 57 L95.3 52.8 H109.7 L112.5 57Z" fill="#6e4f37"/>
-        <path d="M92.5 44.2 L95.3 46 M112.5 44.2 L109.7 46" stroke="#000" stroke-opacity=".35" stroke-width=".5"/>
-        <g class="stashb"></g>
-        <path d="M93.3 43.8 C93.5 39.4 111.5 39.4 111.7 43.8" stroke="#000" stroke-opacity=".45" stroke-width="1.4" fill="none"/>
-        <path d="M92.5 57 V43.2 C92.5 37.8 112.5 37.8 112.5 43.2 V57" fill="none" stroke="#5e3d26" stroke-width="3.6"/>
-        <path d="M92.5 57 V43.2 C92.5 37.8 112.5 37.8 112.5 43.2 V57" fill="none" stroke="#9a6a45" stroke-width="2.4"/>
-        <path d="M92.5 57 V43.2 C92.5 37.8 112.5 37.8 112.5 43.2 V57" fill="none" stroke="#5e3d26" stroke-width=".4"
-          stroke-dasharray="2.5 4" opacity=".6"/>
-        <path d="M36 55 V38 A14 14 0 0 1 64 38 V55Z" fill="url(#holeg)"/>
-        <path d="M35 57 V38 A15 15 0 0 1 65 38 V57" fill="none" stroke="#5e3d26" stroke-width="5.6"/>
-        <path d="M35 57 V38 A15 15 0 0 1 65 38 V57" fill="none" stroke="#9a6a45" stroke-width="3.8"/>
-        <path d="M35 57 V38 A15 15 0 0 1 65 38 V57" fill="none" stroke="#5e3d26" stroke-width=".5" stroke-dasharray="3 5" opacity=".6"/>
-        <g>
-          <ellipse cx="27" cy="41.5" rx="5" ry="13.5" fill="#6a9c78" stroke="#3d6a4b" stroke-width="1.3"/>
-          <path d="M25 30.5 V52.5 M28.5 29 V54" stroke="#3d6a4b" stroke-width=".6" opacity=".6"/>
-          <circle cx="29.3" cy="42.5" r="1.1" fill="#e2c15a"/>
-        </g>
-        <g transform="rotate(-3 50 17)">
-          <rect x="41" y="13.2" width="18" height="7" rx="1.4" fill="#d2a46c" stroke="#8a5a3b" stroke-width="1.1"/>
-          <text x="50" y="18.6" text-anchor="middle" font-size="5" font-weight="800" fill="#5a4030" letter-spacing=".5">PIKA</text>
-        </g>
-        <path d="M30 53.4 Q50 51.6 70 53.4 L72.5 55 V57.6 H27.5 V55Z" fill="#b8a48a" stroke="#7d6a52" stroke-width="1.2" stroke-linejoin="round"/>
-        <path d="M28.1 55.2 H71.9 V57 H28.1Z" fill="#8f7c62"/>
-        <path d="M33 53.6 Q50 52.2 67 53.6" stroke="#fff" stroke-opacity=".3" stroke-width=".9" fill="none" stroke-linecap="round"/>
-        <path d="M18 57.5 V27 Q18 24 15 24 H13 V27" stroke="#4a4a4a" stroke-width="1.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
-        <path d="M14.6 57 Q15 54.4 18 54.2 Q21 54.4 21.4 57Z" fill="#9aa0a6" stroke="#5c6166" stroke-width=".8"/>
-        <path d="M10 27.6 H16 L15 29 H11Z" fill="#3c3c3c"/>
-        <rect x="11" y="29" width="4" height="6" fill="#ffe7a3" fill-opacity=".45" stroke="#3c3c3c" stroke-width="1"/>
-        <rect x="10.4" y="35" width="5.2" height="1.4" rx=".5" fill="#3c3c3c"/>`,
-      lights: `
-        <defs>${GLOW_GRAD("lg", "#ffd66b")}${GLOW_GRAD("ig", "#ffb347")}</defs>
-        <g class="smoke"><circle cx="65" cy="-1" r="2.2"/><circle cx="65" cy="-1" r="2.2"/><circle cx="65" cy="-1" r="2.2"/></g>
-        <path class="lt" d="M37.5 53 V38 A12.5 12.5 0 0 1 62.5 38 V53Z" fill="url(#ig)" fill-opacity=".7"/>
-        <g transform="translate(6 1)">
-          <circle class="lt" cx="74" cy="32" r="12" fill="url(#ig)" fill-opacity=".6"/>
-          <circle class="lt" cx="74" cy="32" r="4.3" fill="#ffcf70"/>
-          <path class="lt" d="M70.3 29.4 Q72.6 30 73.4 34.6 L70.4 34.6Z M77.7 29.4 Q75.4 30 74.6 34.6 L77.6 34.6Z" fill="#d9705f"/>
-          <path class="lt" d="M74 27.7 V36.3 M69.7 32 H78.3" stroke="#7a5236" stroke-width="1"/>
-          <circle class="tvw" cx="74" cy="32" r="4.3"/>
-          <path class="tvw-x" d="M74 27.7 V36.3 M69.7 32 H78.3" stroke="#7a5236" stroke-width="1"/>
-        </g>
-        <circle class="lt flk" cx="13" cy="32" r="10" fill="url(#lg)"/>
-        <rect class="lt" x="11.6" y="29.6" width="2.8" height="4.8" fill="#ffd66b"/>`
-    },
-    stumpf: {
-      name: "Baumstumpf",
-      w: 0.64,
-      left: -0.06,
-      vh: 84,
-      sink: 5,
-      hay: 0.9,
-      perches: [[40, 23.5], [61, 23]],
-      hole: { x1: 38.5, x2: 61.5, top: 42.5, lip: 76.6 },
-      svg: `
-        <defs>${HOLE_GRAD}</defs>
-        <g fill="#7f5434" stroke="#5e3d26" stroke-width="1.4" stroke-linejoin="round">
-          <path d="M1 81 Q12 77 20 62 L27 70 Q17 78 15 81Z"/>
-          <path d="M99 81 Q88 77 80 62 L73 70 Q83 78 85 81Z"/>
-        </g>
-        <path d="M10 81 Q19 74 20 58 L21 24 H79 L80 58 Q81 74 90 81Z" fill="#93633f" stroke="#5e3d26" stroke-width="1.6" stroke-linejoin="round"/>
-        <g stroke="#6f4a2f" stroke-width="1.2" fill="none" stroke-linecap="round" opacity=".8">
-          <path d="M28 30 Q26 40 29 52 M72 31 Q75 42 71 56 M35 29 V37 M65 29 Q63 34 65 39 M25 60 Q24 68 19 75 M76 60 Q78 68 83 75"/>
-        </g>
-        <ellipse class="stump-top" cx="50" cy="24" rx="29" ry="7.5" stroke="#5e3d26" stroke-width="1.6"/>
-        <g fill="none" stroke="#b98c58" stroke-width="1">
-          <ellipse cx="50" cy="24" rx="21" ry="5.2"/><ellipse cx="50" cy="24" rx="13" ry="3.2"/><ellipse cx="50" cy="24" rx="5" ry="1.2"/>
-        </g>
-        <path d="M21 26 Q23 19 33 21.5 Q31 27 25 29 Q22 29 21 26Z" fill="#7fb35c"/>
-        <path d="M20 40 Q23 36 24 44 Q21 47 20 44Z" fill="#7fb35c" opacity=".85"/>
-        <path d="M70 21 Q72 14 76 11" stroke="#4f8a3a" stroke-width="1.4" fill="none" stroke-linecap="round"/>
-        <ellipse cx="78" cy="10.5" rx="3.6" ry="1.8" fill="#6bab4c" transform="rotate(-25 78 10.5)"/>
-        <ellipse cx="72" cy="15" rx="3" ry="1.5" fill="#6bab4c" transform="rotate(30 72 15)"/>
-        <path d="M37 82 V54 A13 13 0 0 1 63 54 V82Z" fill="url(#holeg)" stroke="#5e3d26" stroke-width="1.6"/>
-        <path d="M39 80 V54.5 A11 11 0 0 1 61 54.5 V80" fill="none" stroke="#c99a68" stroke-width="1" opacity=".5"/>
-        <path d="M27 82 Q33 76.4 50 76.4 Q67 76.4 73 82Z" fill="#87593a" stroke="#5e3d26" stroke-width="1.4" stroke-linejoin="round"/>
-        <g stroke="#7a2d22" stroke-width=".8">
-          <rect x="84" y="71" width="3" height="7" rx="1.2" fill="#f3e6d2"/>
-          <path d="M80.5 72.5 Q85.5 63.5 90.5 72.5Z" fill="#d9483b"/>
-          <rect x="90.6" y="75.5" width="2" height="4.5" rx=".9" fill="#f3e6d2"/>
-          <path d="M88.6 76.4 Q91.6 71 94.6 76.4Z" fill="#d9483b"/>
-        </g>
-        <g fill="#fff"><circle cx="83.5" cy="69.5" r=".9"/><circle cx="87" cy="68" r=".8"/><circle cx="85.6" cy="71" r=".6"/><circle cx="91.5" cy="74.4" r=".6"/></g>
-        <g stroke="#6e5130" stroke-width=".7">
-          <rect x="11" y="74" width="1.8" height="5" rx=".8" fill="#efe1c8"/><path d="M8.6 75 Q11.9 70.5 15.2 75Z" fill="#b08a5a"/>
-          <rect x="15.8" y="76" width="1.5" height="4" rx=".7" fill="#efe1c8"/><path d="M14 76.8 Q16.6 73.4 19.2 76.8Z" fill="#b08a5a"/>
-        </g>`,
-      lights: `
-        <defs>${GLOW_GRAD("mg", "#b8ffd9")}</defs>
-        <circle class="lt flk" cx="85.5" cy="70" r="8" fill="url(#mg)"/>
-        <circle class="lt flk" cx="91.6" cy="75" r="5" fill="url(#mg)"/>
-        <circle class="lt flk" cx="12" cy="75" r="5.5" fill="url(#mg)"/>`
-    },
-    alpin: {
-      name: "Geröllhalde",
-      w: 0.78,
-      left: -0.1,
-      vh: 64,
-      sink: 4,
-      hay: 0.84,
-      mountains: true,
-      perches: [[55, 11.5], [21, 30], [81, 30.2]],
-      flowers: ["#ffffff", "#3d6fd6", "#ffffff", "#f6c945", "#b99cf0"],
-      hole: { x1: 39, x2: 61, top: 34, lip: 55.3 },
-      svg: `
-        <defs>${HOLE_GRAD}</defs>
-        <g stroke="#565b61" stroke-width="1.4" stroke-linejoin="round">
-          <path d="M28 42 L37 17 L56 11 L73 21 L72 42Z" fill="#adb3b9"/>
-          <path d="M0 62 L3 42 L14 29 L31 31 L39 46 L37 62Z" fill="#9aa1a8"/>
-          <path d="M63 62 L61 44 L72 29 L89 31 L99 46 L98 62Z" fill="#8e959c"/>
-        </g>
-        <g fill="#fff" opacity=".22"><path d="M37 17 L56 11 L49 24Z"/><path d="M14 29 L31 31 L21 37Z"/><path d="M72 29 L89 31 L80 36Z"/></g>
-        <g fill="#000" opacity=".12"><path d="M56 11 L73 21 L72 42 L62 30Z"/><path d="M31 31 L39 46 L37 62 L30 50Z"/><path d="M89 31 L99 46 L98 62 L90 48Z"/></g>
-        <g fill="#c9c86a" opacity=".8"><ellipse cx="45" cy="20" rx="2.4" ry="1.2"/><ellipse cx="10" cy="40" rx="2" ry="1"/><ellipse cx="84" cy="36" rx="2.2" ry="1"/></g>
-        <path d="M38 64 V45 A12 12 0 0 1 62 45 V64Z" fill="url(#holeg)" stroke="#565b61" stroke-width="1.4"/>
-        <path d="M30 56 L51 54.9 L70 56.3 L72 63 L28 63Z" fill="#a3a9ae" stroke="#565b61" stroke-width="1.3" stroke-linejoin="round"/>
-        <g fill="#9aa1a8" stroke="#565b61" stroke-width="1">
-          <path d="M18 63 L21 58.5 L26 59 L27 63Z"/><path d="M74 63 L76 59.5 L80 59.2 L82 63Z"/><path d="M2 63 L4 60 L8 60.4 L9 63Z"/>
-        </g>`
-    }
-  };
-
-  // src/karte/editor.js
-  var Editor = class {
-    // Karten-Editor (HA-Formular): die häufigen Optionen mit Auswahlfeldern, Geräte, Kaffee und Geburtstage als YAML-Felder.
-    // Ältere HA-Versionen ohne getConfigForm zeigen einfach weiter den YAML-Editor.
-    static getConfigForm() {
-      const ent = (domain) => ({ entity: { filter: { domain } } });
-      const num = (min, max, step = 1, unit) => ({ number: { min, max, step, mode: "box", ...unit ? { unit_of_measurement: unit } : {} } });
-      const bool = { boolean: {} };
-      const text = { text: {} };
-      const group = (title, icon, schema) => ({ type: "expandable", name: "", flatten: true, title, icon, schema });
-      return {
-        schema: [
-          { type: "grid", name: "", schema: [
-            { name: "name", selector: text },
-            { name: "areal", default: "huegel", selector: { select: { mode: "dropdown", options: [
-              { value: "huegel", label: "Erdhügel" },
-              { value: "fels", label: "Felsen" },
-              { value: "stumpf", label: "Baumstumpf" },
-              { value: "alpin", label: "Alpin" }
-            ] } } }
-          ] },
-          { name: "entity", selector: ent("input_text") },
-          { name: "plan_entity", selector: ent("input_text") },
-          { name: "chronicle_entity", selector: ent("todo") },
-          { type: "grid", name: "", schema: [
-            { name: "show_stats", selector: bool, default: true },
-            { name: "gifts", selector: bool, default: true },
-            { name: "friend", selector: bool, default: true },
-            { name: "festive", selector: bool, default: true },
-            { name: "diary", selector: bool, default: true },
-            { name: "diary_house", selector: bool, default: true },
-            { name: "vacation", selector: bool, default: true }
-          ] },
-          group("Schlaf, Wetter und Himmel", "mdi:weather-night", [
-            { type: "grid", name: "", schema: [
-              { name: "sleep_start", selector: text },
-              { name: "sleep_end", selector: text }
-            ] },
-            { name: "sun_entity", selector: ent("sun") },
-            { name: "weather_entity", selector: ent("weather") },
-            { type: "grid", name: "", schema: [
-              { name: "precip_entity", selector: ent("sensor") },
-              { name: "rain_min", selector: num(0, 5, 0.1, "mm/h") }
-            ] },
-            { type: "grid", name: "", schema: [
-              { name: "shooting_stars", selector: bool, default: true },
-              { name: "fireflies", selector: bool, default: true }
-            ] }
-          ]),
-          group("Flugzeuge", "mdi:airplane", [
-            { name: "flight_entity", selector: ent("sensor") },
-            { type: "grid", name: "", schema: [
-              { name: "flight_radius", selector: num(1, 200, 1, "km") },
-              { name: "max_flights", selector: num(0, 6) }
-            ] }
-          ]),
-          group("Pino, Tablet und Größe", "mdi:tablet", [
-            { name: "friend_name", selector: text },
-            { name: "screen_entity", selector: ent(["switch", "light", "input_boolean", "binary_sensor"]) },
-            { name: "height", selector: num(120, 800, 10, "px") }
-          ]),
-          { type: "expandable", name: "signals", title: "Haus-Signale", icon: "mdi:home-alert-outline", schema: [
-            { name: "waste", selector: ent("calendar") },
-            { name: "wardrobe", selector: bool },
-            { name: "vacuum", selector: ent("vacuum") },
-            { name: "door", selector: ent("binary_sensor") }
-          ] },
-          group("Geburtstage, Haushaltsgeräte, Kaffee (YAML)", "mdi:code-braces", [
-            { name: "birthdays", selector: { object: {} } },
-            { name: "appliances", selector: { object: {} } },
-            { name: "appliance_labels", default: "all", selector: { select: { mode: "dropdown", options: [
-              { value: "all", label: "Alles: Fortschritt, Restzeit und „fertig“" },
-              { value: "done", label: "Nur „fertig“" },
-              { value: "none", label: "Nichts" }
-            ] } } },
-            { name: "coffee", selector: { object: {} } }
-          ])
-        ],
-        computeLabel: (s) => EDITOR_LABEL[s.name],
-        computeHelper: (s) => EDITOR_HELP[s.name]
-      };
-    }
-    static getStubConfig() {
-      return { name: "Pika" };
-    }
-  };
-
   // src/grafik/pika.js
   var OUT = "#5a4030";
   var PK_FILL = {
@@ -2914,493 +2175,6 @@
       <path class="rim" d="${BACK}" fill="none" stroke="var(--tvc, #9fd0ff)" stroke-width="2.2"/>
     </g>
   </svg>`;
-
-  // src/grafik/szene.js
-  var STASH_MAX = 12;
-  var HAY_SVG = `
-  <svg viewBox="0 0 60 40" aria-hidden="true">
-    <path d="M2 40 Q3 15 30 10 Q57 15 58 40Z" fill="#dcbc6a" stroke="#a9853a" stroke-width="1.4"/>
-    <g stroke="#b38c3c" stroke-width="1.1" stroke-linecap="round" fill="none">
-      <path d="M12 34 Q18 24 26 20"/><path d="M22 37 Q30 27 40 22"/><path d="M38 36 Q44 30 50 28"/>
-      <path d="M28 10 Q26 4 21 2"/><path d="M33 11 Q37 5 43 4"/><path d="M8 26 Q14 20 18 18"/>
-    </g>
-    <g class="hayb"></g>
-  </svg>`;
-  var TUFTS_SVG = () => {
-    let d = "";
-    for (let x = 0; x < 400; x += rnd(1.6, 3.2)) {
-      const tall = Math.sin(x * 0.11) + Math.sin(x * 0.037) > 0.6;
-      const h = tall ? rnd(5, 9) : rnd(2, 5);
-      const tip = x + 1.1 + rnd(-1.4, 1.4);
-      d += `M${x.toFixed(1)} 10.5 Q${(x + 0.5).toFixed(1)} ${(10.5 - h / 2).toFixed(1)} ${tip.toFixed(1)} ${(10.5 - h).toFixed(1)} Q${(x + 1.5).toFixed(1)} ${(10.5 - h / 2).toFixed(1)} ${(x + 2.3).toFixed(1)} 10.5Z`;
-    }
-    return `<svg viewBox="0 0 400 12" preserveAspectRatio="none" aria-hidden="true"><rect class="soil" y="9" width="400" height="3"/><path class="blades" d="${d}"/></svg>`;
-  };
-  var LOOKOUT_SVG = `
-  <svg viewBox="0 0 100 50" aria-hidden="true">
-    <g stroke="#5c6166" stroke-width="1.2" transform="translate(0 -1.6)">
-      <path d="M-14 47.5 L-12 40 L-4 37.5 L3 40 L4 47.5Z" fill="#8e949b" stroke-linejoin="round"/>
-      <ellipse cx="-22" cy="47.6" rx="2.4" ry="1.5" fill="#9aa0a6"/><ellipse cx="-17.5" cy="46.8" rx="3.6" ry="2.2" fill="#b0b5ba"/>
-      <ellipse cx="104" cy="46.2" rx="5" ry="3" fill="#a3a9ae"/><ellipse cx="111" cy="47.4" rx="3.2" ry="1.9" fill="#979da4"/>
-      <ellipse cx="116.5" cy="47.9" rx="2" ry="1.3" fill="#b0b5ba"/>
-    </g>
-    <path d="M6 47 L10 27 Q13 16 28 13.5 L72 12.5 Q87 13.5 91 25 L95 47Z" fill="#a3a9ae" stroke="#5c6166" stroke-width="1.5" stroke-linejoin="round"/>
-    <path d="M91 25 L95 47 L70 47 Q80 36 91 25Z" fill="#000" opacity=".1"/>
-    <path d="M28 15.5 Q48 13.6 70 14.4" stroke="#fff" stroke-opacity=".35" stroke-width="2.4" fill="none" stroke-linecap="round"/>
-    <path class="rock-snow" d="M26 14 L74 13 Q86 14 89 21 Q80 17.5 70 18 Q50 16.5 30 18 Q20 18 13 22 Q16 15 26 14Z" fill="#f2f6f9"/>
-    <path d="M42 24 l4 6 l-2 6 M70 30 l-3 5" stroke="#5c6166" stroke-width="1" fill="none" stroke-linecap="round" opacity=".7"/>
-    <g fill="#c9c86a" opacity=".8"><ellipse cx="22" cy="30" rx="2.6" ry="1.3"/><ellipse cx="80" cy="22" rx="2" ry="1"/></g>
-    <g stroke="#5c6166" stroke-width="1.2" transform="translate(0 -1.6)">
-      <ellipse cx="4" cy="45" rx="6" ry="3.6" fill="#979da4"/><ellipse cx="13" cy="47" rx="4.5" ry="2.6" fill="#b0b5ba"/>
-      <ellipse cx="-6" cy="47.2" rx="4" ry="2.4" fill="#a3a9ae"/><ellipse cx="20" cy="48.2" rx="2.4" ry="1.4" fill="#9aa0a6"/>
-      <ellipse cx="96" cy="45.5" rx="6.5" ry="3.8" fill="#8e949b"/><ellipse cx="86" cy="47.2" rx="4" ry="2.4" fill="#a3a9ae"/>
-      <ellipse cx="79" cy="48.2" rx="2.4" ry="1.4" fill="#b0b5ba"/>
-      <ellipse cx="34" cy="47.6" rx="3.2" ry="1.8" fill="#9aa0a6"/><ellipse cx="64" cy="47.8" rx="3.6" ry="1.9" fill="#b0b5ba"/>
-      <ellipse cx="50" cy="48" rx="2.2" ry="1.4" fill="#979da4"/><ellipse cx="27" cy="48.4" rx="1.8" ry="1.1" fill="#b0b5ba"/>
-      <ellipse cx="71" cy="48.5" rx="1.8" ry="1.1" fill="#979da4"/>
-    </g>
-    <path class="rtuft" d="M18 49 Q19 44 20 42 Q21 45 22 49Z M24 49 Q25 45 27 43.5 Q26.5 46 27 49Z M74 49 Q75 44.5 76.5 42.5 Q77 46 78 49Z M79 49 Q80.5 45.5 82 44.5 Q81.5 47 82 49Z M40 49 Q41 46 42.5 45 Q42 47 43 49Z"/>
-  </svg>`;
-  var FLOWER_SVG = (c) => `
-  <svg viewBox="0 0 20 30" aria-hidden="true">
-    <path d="M10 30 Q9 20 10 11" stroke="var(--fst, #4f8a3a)" stroke-width="1.6" fill="none"/>
-    <ellipse cx="6.5" cy="22" rx="3.6" ry="1.5" fill="var(--flf, #6bab4c)" transform="rotate(-30 6.5 22)"/>
-    <g fill="var(--fc, ${c})" stroke="rgba(0,0,0,.12)" stroke-width=".5">
-      ${[0, 72, 144, 216, 288].map((a) => {
-    const r = a * Math.PI / 180;
-    return `<circle cx="${(10 + Math.sin(r) * 3.7).toFixed(2)}" cy="${(9 - Math.cos(r) * 3.7).toFixed(2)}" r="3.3"/>`;
-  }).join("")}
-    </g>
-    <circle cx="10" cy="9" r="2.3" fill="var(--fm, ${flowerMid(c)})"/>
-  </svg>`;
-  var HAY_BITE = `<svg viewBox="0 0 24 24" aria-hidden="true"><g fill="none" stroke-linecap="round">
-    <path d="M2 13.5 L21 9 M3 17 L22 13.5 M4.5 10 L20 17.5" stroke="#b8963f" stroke-width="2.6"/>
-    <path d="M2 13.5 L21 9 M3 17 L22 13.5 M4.5 10 L20 17.5 M6 19.5 L18.5 7" stroke="#dcbc6a" stroke-width="1.6"/>
-    <path d="M5 15 L19 11.6" stroke="#f0d98e" stroke-width="1"/></g></svg>`;
-  var FOOD = {
-    lz: {
-      color: "#f7cf2e",
-      svg: `<svg viewBox="0 0 30 40" aria-hidden="true">
-        <path d="M15 40 Q14 28 15 16" stroke="#4f8a3a" stroke-width="2" fill="none"/>
-        <path d="M14 39 Q4 36 3 26 Q8 30 10 28 Q7 33 14 37Z" fill="#5fa548"/>
-        <path d="M16 39 Q27 36 27 27 Q22 31 20 29 Q23 34 16 37Z" fill="#6bb152"/>
-        <circle cx="15" cy="12" r="9" fill="none" stroke="#f7cf2e" stroke-width="3.2" stroke-dasharray="1.7 1.1"/>
-        <circle cx="15" cy="12" r="7.2" fill="#f7cf2e"/>
-        <circle cx="15" cy="12" r="3.2" fill="#eeac1c"/>
-      </svg>`
-    },
-    klee: {
-      color: "#e57fb0",
-      svg: `<svg viewBox="0 0 30 40" aria-hidden="true">
-        <path d="M15 40 Q15 30 15 18" stroke="#4f8a3a" stroke-width="2" fill="none"/>
-        <g fill="#5fae4a" stroke="#3f7f31" stroke-width=".8">
-          <ellipse cx="9" cy="31" rx="4" ry="3"/><ellipse cx="21" cy="31" rx="4" ry="3"/><ellipse cx="15" cy="27" rx="3" ry="4"/>
-        </g>
-        <ellipse cx="15" cy="12" rx="7.5" ry="8.5" fill="#e57fb0" stroke="#c45c90" stroke-width="1"/>
-        <g stroke="#c45c90" stroke-width=".9" fill="none" stroke-linecap="round">
-          <path d="M11 8 l1.5 2.5 M15 6 v3 M19 8 l-1.5 2.5 M10.5 13 l2 1.5 M19.5 13 l-2 1.5 M15 12 v3"/>
-        </g>
-      </svg>`
-    }
-  };
-  var ICON_LEAF = `<svg viewBox="0 0 24 24"><path fill="#6bb152" d="M17 8C8 10 5.9 16.2 3.8 21.3l1.9.7 1-2.3c.5.2 1 .3 1.3.3C19 20 22 3 22 3c-1 2-8 2.3-13 3.3S2 11.5 2 13.5s1.8 3.8 1.8 3.8C7 8 17 8 17 8z"/></svg>`;
-  var ICON_HEART = `<svg viewBox="0 0 24 24"><path fill="#f07a95" d="M12 21.4l-1.5-1.3C5.4 15.4 2 12.3 2 8.5 2 5.4 4.4 3 7.5 3c1.7 0 3.4.8 4.5 2.1C13.1 3.8 14.8 3 16.5 3 19.6 3 22 5.4 22 8.5c0 3.8-3.4 6.9-8.5 11.5z"/></svg>`;
-  var STAR = "M12 1 Q13.4 10.6 23 12 Q13.4 13.4 12 23 Q10.6 13.4 1 12 Q10.6 10.6 12 1Z";
-  var ICON_SPARK = `<svg viewBox="0 0 24 24"><path fill="#5fb9de" d="${STAR}"/><path fill="#5fb9de" transform="translate(15 0) scale(.38)" d="${STAR}"/></svg>`;
-  var POO_LAYOUTS = [
-    [[8.5, 10.6], [15.5, 10.8], [12, 5.6]],
-    [[5.5, 10.8], [12, 11], [18.5, 10.6], [9, 5.8], [15.4, 6]],
-    [[6, 10.8], [12.4, 11], [18.6, 10.8], [12, 5.6]],
-    [[8, 10.8], [14.6, 10.6], [11.4, 5.6], [20.6, 11.6]]
-  ];
-  var POO_SVG = (r) => {
-    const pts = POO_LAYOUTS[Math.floor(r * POO_LAYOUTS.length)];
-    return `<svg viewBox="0 0 24 14" aria-hidden="true">${pts.map(([x, y], i) => {
-      const rx = 3.3 - i % 2 * 0.25;
-      return `<ellipse cx="${x}" cy="${y}" rx="${rx}" ry="${rx * 0.9}" fill="#6e4b30" stroke="#3f2a1b" stroke-width=".7"/><ellipse cx="${x - 1}" cy="${y - 1.1}" rx="1.1" ry=".75" fill="#a47a52" opacity=".75"/>`;
-    }).join("")}</svg>`;
-  };
-  var SCOOP_SVG = `
-  <svg viewBox="0 0 44 24" aria-hidden="true">
-    <path d="M23 12 L42 2" stroke="#a87c4f" stroke-width="3" stroke-linecap="round"/>
-    <path d="M23 12 L42 2" stroke="#6b4a2f" stroke-width="3.6" stroke-linecap="round" opacity=".25"/>
-    <path d="M1 22 L22 22 L25 9 L21.5 9 L19.6 18.6 L1.6 19.4Z" fill="#8fb4c9" stroke="#4d6878" stroke-width="1.1" stroke-linejoin="round"/>
-  </svg>`;
-
-  // src/grafik/paeckchen.js
-  var GIFT_LOW = { s: ["füttern", ICON_LEAF], g: ["streicheln", ICON_HEART], c: ["putzen", ICON_SPARK] };
-  var GIFT_ITEMS = [
-    { key: "yarn", name: "Wollknäuel", say: "ein Wollknäuel!", svg: `<svg viewBox="0 0 24 24" aria-hidden="true">
-      <path d="M18.4 17.6 q3.6 1.6 1.6 4 q-2 1.6 -4.4 .2" stroke="#f28fb1" stroke-width="1.2" fill="none" stroke-linecap="round"/>
-      <circle cx="12" cy="13" r="8" fill="#f28fb1" stroke="${OUT}" stroke-width="1"/>
-      <path d="M5.4 10 q6.6 2.4 12.6 -1.6 M4.8 13.8 q7.4 3 14.4 -1.4 M6.6 17.8 q6 1.6 11 -2.2 M10 5.4 q-3.4 7 .6 15.4 M14.6 5.6 q2.6 6 -.6 15"
-            stroke="#d96a92" stroke-width=".9" fill="none" stroke-linecap="round"/>
-      <path d="M7.6 8.6 q1.6 -1.8 3.6 -2.4" stroke="#fff" stroke-width="1" fill="none" opacity=".6" stroke-linecap="round"/></svg>` },
-    { key: "wheel", name: "Windrad", say: "ein Windrad!", svg: `<svg viewBox="0 0 24 24" aria-hidden="true">
-      <path d="M12 12 V23" stroke="#b5793e" stroke-width="1.8" stroke-linecap="round"/>
-      <g class="gwhl">${["#e8584e", "#5fb9de", "#f6c945", "#7cc35a"].map((c, i) => `<path transform="rotate(${i * 90} 12 12)"
-        d="M12 12 L12 2.6 Q18 4.4 12 12Z" fill="${c}" stroke="${OUT}" stroke-width=".7" stroke-linejoin="round"/>`).join("")}
-        <circle cx="12" cy="12" r="1.4" fill="#fff" stroke="${OUT}" stroke-width=".7"/></g></svg>` },
-    { key: "plush", name: "Plüsch-Pino", say: "ein Plüsch-Pino!", svg: `<svg viewBox="0 0 24 24" aria-hidden="true">
-      <circle cx="6.8" cy="7.4" r="3.4" fill="#d98a4e" stroke="${OUT}" stroke-width=".9"/><circle cx="6.8" cy="7.6" r="1.6" fill="#efc7a0"/>
-      <circle cx="17.2" cy="7.4" r="3.4" fill="#d98a4e" stroke="${OUT}" stroke-width=".9"/><circle cx="17.2" cy="7.6" r="1.6" fill="#efc7a0"/>
-      <ellipse cx="12" cy="14.2" rx="8.2" ry="7.6" fill="#e09a5c" stroke="${OUT}" stroke-width="1"/>
-      <ellipse cx="12" cy="10.2" rx="1.6" ry="1.1" fill="#f6e3c8"/>
-      <circle cx="9" cy="13.4" r="1.1" fill="#2a1a12"/><circle cx="15" cy="13.4" r="1.1" fill="#2a1a12"/>
-      <path d="M11 15.4 q1 .9 2 0" fill="#7a4438"/><path d="M12 16 v.8 M12 16.8 q-1 1 -1.8 .2 M12 16.8 q1 1 1.8 .2" stroke="${OUT}" stroke-width=".6" fill="none"/>
-      <path d="M5.2 18.8 q6.8 3.2 13.6 0" stroke="#3cb6b0" stroke-width="2.4" fill="none" stroke-linecap="round"/></svg>` },
-    { key: "shades", name: "Sonnenbrille", say: "eine Sonnenbrille!", svg: `<svg viewBox="0 0 24 24" aria-hidden="true">
-      <path d="M1.6 10.4 H22.4 M1.8 10.4 l-.6 3 M22.2 10.4 l.6 3" stroke="${OUT}" stroke-width="1.2" stroke-linecap="round"/>
-      <path d="M2.8 10 h8 q0 6 -4 6 q-4 0 -4 -6z M13.2 10 h8 q0 6 -4 6 q-4 0 -4 -6z" fill="#2c2f3a" stroke="#15171d" stroke-width=".8"/>
-      <path d="M4.4 11.4 l2.2 2.4 M14.8 11.4 l2.2 2.4" stroke="#fff" stroke-width=".9" opacity=".6" stroke-linecap="round"/></svg>` },
-    { key: "scope", name: "Fernrohr", say: "ein Fernrohr!", svg: `<svg viewBox="0 0 24 24" aria-hidden="true"><g transform="rotate(-30 12 12)">
-      <rect x="1.6" y="9.6" width="9" height="4.8" rx="1" fill="#b8862e" stroke="${OUT}" stroke-width=".8"/>
-      <rect x="10.2" y="8.6" width="8" height="6.8" rx="1.2" fill="#d9a441" stroke="${OUT}" stroke-width=".8"/>
-      <rect x="17.8" y="7.8" width="4" height="8.4" rx="1" fill="#8a5a32" stroke="${OUT}" stroke-width=".8"/>
-      <path d="M12.8 8.6 v6.8 M15.4 8.6 v6.8" stroke="#f3cf7a" stroke-width=".8"/></g></svg>` },
-    { key: "hammock", name: "Hängematte", say: "eine Hängematte!", svg: `<svg viewBox="0 0 24 24" aria-hidden="true">
-      <path d="M2.6 22 L5 5 L7.4 22 M16.6 22 L19 5 L21.4 22" stroke="#9a6a3c" stroke-width="1.5" fill="none" stroke-linejoin="round"/>
-      <path d="M5 7 Q12 21 19 7" stroke="${OUT}" stroke-width="4.2" fill="none" stroke-linecap="round"/>
-      <path d="M5 7 Q12 21 19 7" stroke="#f6efe0" stroke-width="3" fill="none" stroke-linecap="round"/>
-      <path d="M5 7 Q12 21 19 7" stroke="#e8584e" stroke-width="3" fill="none" stroke-dasharray="1.8 2.2"/></svg>` },
-    { key: "can", name: "Gießkanne", say: "eine Gießkanne!", svg: `<svg viewBox="0 0 24 24" aria-hidden="true">
-      <path d="M4.4 9.6 h10.4 v9.6 q0 2 -2 2 h-6.4 q-2 0 -2 -2z" fill="#5fae4a" stroke="${OUT}" stroke-width="1"/>
-      <path d="M14.8 13 L21 7.6 l1.4 1.6 -6.2 6.6" fill="#5fae4a" stroke="${OUT}" stroke-width=".9" stroke-linejoin="round"/>
-      <path d="M6.4 9.6 q3.2 -5.4 6.4 0" stroke="${OUT}" stroke-width="1.3" fill="none"/>
-      <path d="M6 13 h7" stroke="#8fd16f" stroke-width="1.2" stroke-linecap="round"/>
-      <path d="M22.6 6.4 l1 -1 M23 9 l1.2 .2" stroke="#7cc4ee" stroke-width="1" stroke-linecap="round"/></svg>` },
-    { key: "bell", name: "Glöckchen", say: "ein Glöckchen!", svg: `<svg viewBox="0 0 24 24" aria-hidden="true">
-      <path d="M9 4.2 q3 -2.4 6 0 l-3 1.4z" fill="#e8584e" stroke="${OUT}" stroke-width=".6"/>
-      <path d="M12 5 v1.4" stroke="${OUT}" stroke-width="1"/>
-      <path d="M5.8 18 q0 -11.6 6.2 -11.6 q6.2 0 6.2 11.6 l1.6 1.6 h-15.6z" fill="#f2c230" stroke="${OUT}" stroke-width=".9" stroke-linejoin="round"/>
-      <path d="M8.6 10 q1 -2 3 -2.4" stroke="#fff3b0" stroke-width="1" fill="none" stroke-linecap="round"/>
-      <circle cx="12" cy="20.6" r="1.7" fill="#d9a441" stroke="${OUT}" stroke-width=".7"/></svg>` },
-    // Leckerli: mo = Monate (0 = Januar, Südhalbkugel um ein halbes Jahr versetzt), ohne = immer
-    { key: "straw", name: "Erdbeere", color: "#e8473f", mo: [4, 5, 6], svg: `<svg viewBox="0 0 24 24" aria-hidden="true">
-      <path d="M12 21.6 C4.6 17.6 4.2 10 7.4 8 Q12 6.4 16.6 8 C19.8 10 19.4 17.6 12 21.6Z" fill="#e8473f" stroke="${OUT}" stroke-width=".9"/>
-      <g fill="#ffe08a">${[[9, 11], [12, 10.4], [15, 11], [8.6, 14.4], [11.6, 13.6], [14.8, 14.4], [10.4, 17], [13.6, 17]].map(([x, y]) => `<ellipse cx="${x}" cy="${y}" rx=".5" ry=".8"/>`).join("")}</g>
-      <path d="M6.8 8 l2.6 -2.6 l2.6 2 l2 -3 l1.8 3 l2.8 -.8 l-1.8 2.4z" fill="#5fae4a" stroke="${OUT}" stroke-width=".7" stroke-linejoin="round"/></svg>` },
-    { key: "rasp", name: "Himbeeren", color: "#d9406a", mo: [6, 7, 8], svg: `<svg viewBox="0 0 24 24" aria-hidden="true">
-      ${[[9, 12], [12.6, 11], [15.6, 13.4], [8.4, 16], [12, 15], [15.2, 17.4], [11, 19.2]].map(([x, y]) => `<circle cx="${x}" cy="${y}" r="2.7" fill="#d9406a" stroke="${OUT}" stroke-width=".7"/>
-      <circle cx="${x - 0.8}" cy="${y - 0.9}" r=".6" fill="#fff" opacity=".5"/>`).join("")}
-      <path d="M11 9 q-3 -4 -6 -3 q2 3 6 3z M12 9 q3 -5 7 -4 q-2 4 -7 4z" fill="#5fae4a" stroke="${OUT}" stroke-width=".7"/></svg>` },
-    { key: "apple", name: "Apfelschnitz", color: "#f3e6c4", mo: [8, 9, 10], svg: `<svg viewBox="0 0 24 24" aria-hidden="true">
-      <path d="M2.6 11 a9.4 9.4 0 0 0 18.8 0z" fill="#f6ecd0" stroke="#d9483b" stroke-width="1.8"/>
-      <path d="M2.6 11 a9.4 9.4 0 0 0 18.8 0z" fill="none" stroke="${OUT}" stroke-width=".6"/>
-      <ellipse cx="10" cy="14" rx=".8" ry="1.3" fill="#5a3a22"/><ellipse cx="14" cy="14" rx=".8" ry="1.3" fill="#5a3a22"/>
-      <path d="M12 11 V7.4 q2.4 -2.4 4.6 -1.6 q-1.2 2.8 -4.6 1.6" fill="#5fae4a" stroke="${OUT}" stroke-width=".7"/></svg>` },
-    { key: "posy", name: "Blumensträußchen", color: "#f28fb1", svg: `<svg viewBox="0 0 24 24" aria-hidden="true">
-      <path d="M12 22 L7 9 M12 22 L12 7 M12 22 L17 9" stroke="#4f8a3a" stroke-width="1.2"/>
-      ${[[7, 8, "#f28fb1"], [12, 6, "#f6c945"], [17, 8, "#b99cf0"]].map(([x, y, c]) => `<g transform="translate(${x} ${y})">
-        ${[0, 72, 144, 216, 288].map((a) => `<ellipse rx="1.6" ry="2.4" transform="rotate(${a}) translate(0 -2)" fill="${c}" stroke="${OUT}" stroke-width=".5"/>`).join("")}
-        <circle r="1.3" fill="#e0a032"/></g>`).join("")}
-      <path d="M9.4 16.4 l2.6 1.4 2.6 -1.4 -.6 3 -2 -.8 -2 .8z" fill="#5fb9de" stroke="${OUT}" stroke-width=".6"/></svg>` }
-  ];
-  var GIFT_PAPER = [["#5fb9de", "#f6c945"], ["#f28fb1", "#ffffff"], ["#7cc35a", "#e8584e"], ["#b99cf0", "#f6c945"], ["#ff9f5a", "#5fb9de"]];
-  var GIFT_BALLOONS = ["#e8584e", "#5fb9de", "#f6c945", "#b99cf0", "#7cc35a", "#f28fb1"];
-  var GIFT_GOLD = ["#f2c230", "#fff7d6"];
-  var GIFT_TRICK = ["Kopfball", "Anpusten", "Kuscheln", "Brille lupfen", "Sterngucken", "Schaukeln", "Regenbogen", "Glockenspiel"];
-  var GIFT_GILT = [
-    "ein goldenes %",
-    "ein goldenes %",
-    "ein goldener %",
-    "eine goldene %",
-    "ein goldenes %",
-    "eine goldene %",
-    "eine goldene %",
-    "ein goldenes %"
-  ];
-  var GIFT_PARCEL = `<svg viewBox="0 0 24 24" aria-hidden="true">
-      <g class="gp-box">
-        <rect x="3.6" y="11" width="16.8" height="11" rx="1.2" fill="var(--gpp, #5fb9de)" stroke="${OUT}" stroke-width="1"/>
-        <rect x="10.6" y="11" width="2.8" height="11" fill="var(--gpr, #f6c945)"/>
-        <path d="M5.4 13 v6.6" stroke="#fff" stroke-width="1" opacity=".45" stroke-linecap="round"/>
-      </g>
-      <g class="gp-lid">
-        <rect x="2.6" y="8" width="18.8" height="4" rx="1" fill="var(--gpp, #5fb9de)" stroke="${OUT}" stroke-width="1"/>
-        <rect x="10.6" y="8" width="2.8" height="4" fill="var(--gpr, #f6c945)"/>
-      </g>
-      <g class="gp-bow">
-        <path d="M12 8 C8 2.6 4.2 5.2 7 8Z M12 8 C16 2.6 19.8 5.2 17 8Z" fill="var(--gpr, #f6c945)" stroke="${OUT}" stroke-width=".8" stroke-linejoin="round"/>
-        <circle cx="12" cy="8" r="1.5" fill="var(--gpr, #f6c945)" stroke="${OUT}" stroke-width=".7"/>
-      </g></svg>`;
-  var GIFT_BALLOON = `<svg viewBox="0 0 40 80" aria-hidden="true">
-      <g class="gb-b">
-        <path d="M20 36 C17 42 23 47 20 52 C18 55 20 58 20 61.6" stroke="#7d6a5a" stroke-width=".8" fill="none"/>
-        <ellipse class="gb-ball" cx="20" cy="19" rx="13.4" ry="15.6" fill="var(--gbc, #e8584e)" stroke="${OUT}" stroke-width="1"/>
-        <path d="M17.6 34.4 L20 37.2 L22.4 34.4Z" fill="var(--gbc, #e8584e)" stroke="${OUT}" stroke-width=".8" stroke-linejoin="round"/>
-        <ellipse cx="14.4" cy="12" rx="3.2" ry="5.4" transform="rotate(24 14.4 12)" fill="#fff" opacity=".45"/>
-        <ellipse cx="13" cy="20.6" rx="1" ry="1.6" fill="#fff" opacity=".35"/>
-      </g>
-      <svg class="gb-p" x="8" y="54" width="24" height="24" viewBox="0 0 24 24" overflow="visible">${GIFT_PARCEL.replace(/^<svg[^>]*>|<\/svg>$/g, "")}</svg>
-    </svg>`;
-  var GIFT_HAMMOCK = `<svg viewBox="0 0 60 20" aria-hidden="true">
-      <path d="M1.8 20 L5 2 L8.2 20 M51.8 20 L55 2 L58.2 20" stroke="#9a6a3c" stroke-width="1.5" fill="none" stroke-linejoin="round"/>
-      <path d="M3 13 H7 M53 13 H57" stroke="#9a6a3c" stroke-width="1.1"/>
-      <g class="gnet">
-        <path d="M5 3.4 L10 5 M55 3.4 L50 5" stroke="#cdbb93" stroke-width=".9"/>
-        <path d="M10 5 Q30 23 50 5" stroke="${OUT}" stroke-width="4.4" fill="none" stroke-linecap="round"/>
-        <path d="M10 5 Q30 23 50 5" stroke="#f6efe0" stroke-width="3.2" fill="none" stroke-linecap="round"/>
-        <path d="M10 5 Q30 23 50 5" stroke="#e8584e" stroke-width="3.2" fill="none" stroke-dasharray="2.4 3"/>
-      </g></svg>`;
-  var GIFT_HAM_W = 1.25;
-  var GIFT_HAM_LIFT = 0.1;
-  var GIFT_WHEEL = `<svg viewBox="0 0 24 44" aria-hidden="true">
-      <path d="M12 12 V44" stroke="#b5793e" stroke-width="1.6" stroke-linecap="round"/>
-      ${GIFT_ITEMS[1].svg.replace(/^<svg[^>]*>|<\/svg>$/g, "").replace(/<path d="M12 12 V23"[^>]*\/>/, "")}</svg>`;
-  var GILT_F = "sepia(1) saturate(2.6) hue-rotate(8deg) brightness(1.12)";
-
-  // src/grafik/momente.js
-  var COFFEE_THINK = `<svg viewBox="0 0 24 24" aria-hidden="true">
-    <path d="M8 8 q-1.4 -2 0 -4 q1.4 -2 0 -4 M12.5 8 q-1.4 -2 0 -4 q1.4 -2 0 -4" fill="none" stroke="#b9a48c" stroke-width="1.3" stroke-linecap="round" transform="translate(0 2)"/>
-    <path d="M17.4 12.4 q4.2 0 4.2 3.4 q0 3.4 -4.4 3.2" fill="none" stroke="#6b4428" stroke-width="1.8"/>
-    <path d="M3 11 H18 Q18 21.5 10.5 21.5 Q3 21.5 3 11Z" fill="#f6f1ea" stroke="#6b4428" stroke-width="1.2"/>
-    <ellipse cx="10.5" cy="11" rx="7.5" ry="1.6" fill="#b07a4c"/></svg>`;
-  var EMOTE = {
-    q: "?",
-    ex: "!",
-    drop: `<svg viewBox="0 0 10 14"><path d="M5 .5 C7 4.2 9.5 6.8 9.5 9.4 A4.5 4.5 0 0 1 .5 9.4 C.5 6.8 3 4.2 5 .5Z" fill="#a8dcff" stroke="#4f86b8" stroke-width="1"/>
-      <path d="M3.2 9 q0 1.8 1.6 2.4" stroke="#fff" stroke-width="1" fill="none" stroke-linecap="round"/></svg>`,
-    spark: `<svg viewBox="0 0 24 24" fill="#fff6b0" stroke="#e0a032" stroke-width=".8" stroke-linejoin="round">
-      <path d="M8 2 Q9 7 14 8 Q9 9 8 14 Q7 9 2 8 Q7 7 8 2Z"/><path d="M18 10 Q18.6 13.4 22 14 Q18.6 14.6 18 18 Q17.4 14.6 14 14 Q17.4 13.4 18 10Z"/>
-      <path d="M7 16 Q7.4 18.6 10 19 Q7.4 19.4 7 22 Q6.6 19.4 4 19 Q6.6 18.6 7 16Z"/></svg>`,
-    grump: `<svg viewBox="0 0 28 18"><path d="M7 16 Q1 16 1.5 11 Q2 7 6.5 7.5 Q7.5 2 13 2.5 Q18.5 2 20 6.5 Q26.5 6 26.5 11.5 Q26.5 16 21 16Z"
-      fill="#c9ced8" stroke="#6f7686" stroke-width="1.2"/><path d="M9.5 10.5 l2.4 1.4 M18.5 10.5 l-2.4 1.4 M11.5 13.6 q2.5 -1.4 5 0" stroke="#5c6272" stroke-width="1.2" fill="none" stroke-linecap="round"/></svg>`
-  };
-  var BFLY_COLORS = [["#ffb347", "#e07b1a"], ["#8fc4ff", "#4f86c6"], ["#f6a5c8", "#d4669a"], ["#fff2a0", "#d9b640"], ["#c7b2ff", "#8a6fd9"]];
-  var BFLY_SVG = ([c, d]) => `<svg viewBox="0 0 20 16" aria-hidden="true">
-    <g class="bwl"><path d="M10 7.5 C6.5 .5 .8 .6 1 5 C1.2 7.6 4.4 8.6 7 8.4 C3.2 9.6 2.6 14.6 6.4 14.4 C8.6 14.2 9.8 11.4 10 9Z" fill="${c}" stroke="${d}" stroke-width=".8"/>
-      <circle cx="4.6" cy="4.8" r="1.3" fill="${d}" opacity=".6"/></g>
-    <g class="bwr"><path d="M10 7.5 C13.5 .5 19.2 .6 19 5 C18.8 7.6 15.6 8.6 13 8.4 C16.8 9.6 17.4 14.6 13.6 14.4 C11.4 14.2 10.2 11.4 10 9Z" fill="${c}" stroke="${d}" stroke-width=".8"/>
-      <circle cx="15.4" cy="4.8" r="1.3" fill="${d}" opacity=".6"/></g>
-    <ellipse cx="10" cy="8.6" rx="1" ry="4" fill="#4a3628"/>
-    <path d="M9.6 4.8 Q8.6 2.4 7.4 1.8 M10.4 4.8 Q11.4 2.4 12.6 1.8" stroke="#4a3628" stroke-width=".55" fill="none" stroke-linecap="round"/></svg>`;
-  var GIFT_SVG = (c) => `<svg viewBox="0 0 34 16" aria-hidden="true">
-    <path d="M2 13 Q13 11.6 24 8.6" stroke="#4f8a3a" stroke-width="1.6" fill="none" stroke-linecap="round"/>
-    <ellipse cx="9" cy="10.4" rx="3.6" ry="1.5" fill="#6bab4c" transform="rotate(-24 9 10.4)"/>
-    <g fill="${c}" stroke="rgba(0,0,0,.15)" stroke-width=".5">
-      ${[0, 72, 144, 216, 288].map((a) => {
-    const r = a * Math.PI / 180;
-    return `<circle cx="${(27 + Math.sin(r) * 3.6).toFixed(2)}" cy="${(7.6 - Math.cos(r) * 3.6).toFixed(2)}" r="3.2"/>`;
-  }).join("")}
-    </g>
-    <circle cx="27" cy="7.6" r="1.7" fill="#e0a032"/>
-    <g fill="#f2789f" stroke="#b8406a" stroke-width=".5" stroke-linejoin="round" transform="translate(15 11) scale(1.45) translate(-15 -11)">
-      <path d="M15 11 L10.8 7.6 L11.4 12.6Z"/><path d="M15 11 L19.4 8.4 L18.6 13.2Z"/>
-      <path d="M15 11 L13.2 15.4 M15 11 L16.6 15.2" fill="none" stroke-linecap="round"/>
-      <circle cx="15" cy="11" r="1.2"/></g></svg>`;
-  var DREAM = {
-    lz: FOOD.lz.svg,
-    klee: FOOD.klee.svg,
-    coffee: COFFEE_THINK,
-    heart: ICON_HEART,
-    pino: `<svg viewBox="0 0 24 24" stroke="#5a4030" stroke-width="1">
-      <circle cx="6.6" cy="6.4" r="4" fill="#f2b36e"/><circle cx="17.4" cy="6.4" r="4" fill="#f2b36e"/>
-      <circle cx="6.6" cy="6.8" r="2.1" fill="#f0a184" stroke="none"/><circle cx="17.4" cy="6.8" r="2.1" fill="#f0a184" stroke="none"/>
-      <ellipse cx="12" cy="13.2" rx="9" ry="7.4" fill="#f2b36e"/>
-      <ellipse cx="12" cy="8.8" rx="2.2" ry="1.4" fill="#fbf0e2" stroke="none"/>
-      <circle cx="8.4" cy="12.4" r="1.3" fill="#2a1a12" stroke="none"/><circle cx="15.6" cy="12.4" r="1.3" fill="#2a1a12" stroke="none"/>
-      <ellipse cx="12" cy="15.8" rx="3" ry="2.2" fill="#fbe7cb" stroke="none"/>
-      <path d="M11 14.6 h2 l-1 1z" fill="#7a4438" stroke="none"/>
-      <path d="M5.2 19 Q12 23.4 18.8 19 L12 23.6Z" fill="#3fb6a8"/></svg>`,
-    plane: `<svg viewBox="0 0 24 24" stroke="#5a6a7a" stroke-width=".8" stroke-linejoin="round">
-      <path d="M2.6 13.6 L20.4 10.6 Q23 10.4 22 12.4 L5 15.6Z" fill="#eef3f8"/>
-      <path d="M10.4 12.4 L13.4 5.8 H15.4 L14.4 11.8Z" fill="#dfe7ef"/><path d="M11 14.6 L14.6 19.4 H16.6 L14.8 14Z" fill="#dfe7ef"/>
-      <path d="M3.2 13.4 L1.8 8.6 H3.6 L6.4 13Z" fill="#d9473b"/></svg>`,
-    bird: `<svg viewBox="0 0 24 24" stroke="#5a4030" stroke-width=".9">
-      <circle cx="11.5" cy="13" r="7.6" fill="#8a6a50"/><circle cx="13.4" cy="15" r="4.8" fill="#e8743b" stroke="none"/>
-      <path d="M6 14.6 Q8.6 12 11.4 15.4" fill="#6f523d"/><circle cx="14.6" cy="10.4" r="1.1" fill="#2a1a12" stroke="none"/>
-      <path d="M18.6 10.4 L22 11.6 L18.8 12.8Z" fill="#f2b53c"/></svg>`,
-    note: `<svg viewBox="0 0 24 24"><path d="M9 18 V6.2 L19 4 V15.6" stroke="#5a4030" stroke-width="1.7" fill="none" stroke-linejoin="round"/>
-      <ellipse cx="6.8" cy="18" rx="2.8" ry="2.1" fill="#5a4030"/><ellipse cx="16.8" cy="15.8" rx="2.8" ry="2.1" fill="#5a4030"/></svg>`,
-    bfly: BFLY_SVG(BFLY_COLORS[0])
-  };
-
-  // src/grafik/beschaeftigungen.js
-  var TV_COLORS = ["#9fd0ff", "#e8f4ff", "#a8f0c6", "#ffd59e", "#c8b6ff", "#ff9fb2", "#9fe7ff"];
-  var KITE_SVG = (kx, ky, K) => {
-    const f = (n) => n.toFixed(1);
-    const bows = [1.25, 1.85, 2.45].map((t, i) => {
-      const a = f(-K * 0.12), b = f(K * 0.12), y1 = f(K * (t - 0.06)), y2 = f(K * (t + 0.06));
-      return `<path d="M${a} ${y1} L${b} ${y2} L${b} ${y1} L${a} ${y2}Z" fill="${["#e8584e", "#5fb9de", "#f6c945"][i]}"/>`;
-    }).join("");
-    return `<svg width="1" height="1" aria-hidden="true"><g class="kl"><g class="kr">
-      <path d="M0 0 Q${f(kx * 0.6)} ${f(ky * 0.3)} ${f(kx)} ${f(ky)}" stroke="rgba(255, 255, 255, .85)" stroke-width="1" fill="none"/>
-      <g transform="translate(${f(kx)} ${f(ky)})"><g class="kb">
-        <g class="kt">
-          <path d="M0 ${f(K * 0.8)} q${f(K * 0.18)} ${f(K * 0.3)} 0 ${f(K * 0.6)} t0 ${f(K * 0.6)} t0 ${f(K * 0.6)}" stroke="#5a4030" stroke-width="1" fill="none"/>
-          ${bows}
-        </g>
-        <path d="M0 ${f(-K * 0.6)} L${f(K * 0.42)} 0 L0 ${f(K * 0.8)} L${f(-K * 0.42)} 0Z" fill="#f6c945" stroke="#5a4030" stroke-width="1.2" stroke-linejoin="round"/>
-        <path d="M0 ${f(-K * 0.6)} L${f(K * 0.42)} 0 L0 0Z M0 0 L${f(-K * 0.42)} 0 L0 ${f(K * 0.8)}Z" fill="#e8584e"/>
-        <path d="M0 ${f(-K * 0.6)} V${f(K * 0.8)} M${f(-K * 0.42)} 0 H${f(K * 0.42)}" stroke="#7a5236" stroke-width=".8" opacity=".7"/>
-        <circle cx="${f(-K * 0.13)}" cy="${f(-K * 0.14)}" r="${f(K * 0.035)}" fill="#2a1a12"/>
-        <circle cx="${f(K * 0.13)}" cy="${f(-K * 0.14)}" r="${f(K * 0.035)}" fill="#2a1a12"/>
-        <path d="M${f(-K * 0.1)} ${f(K * 0.03)} q${f(K * 0.1)} ${f(K * 0.09)} ${f(K * 0.2)} 0" stroke="#2a1a12" stroke-width="1" fill="none" stroke-linecap="round"/>
-      </g></g>
-    </g></g></svg>`;
-  };
-  var EASEL_MOTIF = {
-    blume: ["#f28fb1", `<path d="M24 47 V37" stroke="#4f8a3a" stroke-width="1.2"/>
-      <ellipse cx="26.6" cy="42.2" rx="2.6" ry="1" fill="#5fae4a" transform="rotate(-30 26.6 42.2)"/>
-      <g fill="#f28fb1"><circle cx="24" cy="32.8" r="2.1"/><circle cx="26.7" cy="34.9" r="2.1"/><circle cx="21.3" cy="34.9" r="2.1"/>
-      <circle cx="25.7" cy="37.7" r="2.1"/><circle cx="22.3" cy="37.7" r="2.1"/></g><circle cx="24" cy="35.6" r="1.6" fill="#f6c945"/>`],
-    pika: ["#c49a74", `<circle cx="23.4" cy="38.4" r="2.4" fill="#b08a68" stroke="#5a4030" stroke-width=".5"/>
-      <circle cx="29.2" cy="38.2" r="2.4" fill="#b08a68" stroke="#5a4030" stroke-width=".5"/>
-      <ellipse cx="26.4" cy="43.6" rx="6.8" ry="4.9" fill="#c49a74" stroke="#5a4030" stroke-width=".6"/>
-      <circle cx="24.4" cy="42.4" r=".75" fill="#2a1a12"/><circle cx="28.6" cy="42.4" r=".75" fill="#2a1a12"/>
-      <ellipse cx="26.5" cy="44.2" rx="1.1" ry=".65" fill="#7a4438"/>`],
-    pino: ["#f2b36e", `<circle cx="23.4" cy="38.4" r="2.4" fill="#dc8640" stroke="#5a4030" stroke-width=".5"/>
-      <circle cx="29.2" cy="38.2" r="2.4" fill="#dc8640" stroke="#5a4030" stroke-width=".5"/>
-      <ellipse cx="26.4" cy="43.6" rx="6.8" ry="4.9" fill="#f2b36e" stroke="#5a4030" stroke-width=".6"/>
-      <path d="M21 46.4 Q26.4 48.6 31.8 46.4" stroke="#3fb8b0" stroke-width="1.6" fill="none" stroke-linecap="round"/>
-      <circle cx="24.4" cy="42.4" r=".75" fill="#2a1a12"/><circle cx="28.6" cy="42.4" r=".75" fill="#2a1a12"/>`],
-    bau: ["#8a6a4a", `<path d="M12 48 Q25 26 40 48Z" fill="#8a6a4a" stroke="#5a4030" stroke-width=".6"/>
-      <path d="M22.6 48 V43 a3.2 3.2 0 0 1 6.4 0 V48Z" fill="#5fae4a" stroke="#3f7f31" stroke-width=".5"/>
-      <circle cx="33" cy="40.6" r="1.7" fill="#ffe08a" stroke="#5a4030" stroke-width=".5"/>`],
-    flieger: ["#f4f6f8", `<path d="M12 23 L27 16.4" stroke="#fff" stroke-width="1" opacity=".85" stroke-dasharray="2 1.4"/>
-      <path d="M27 16.6 l6 -1.4 l-2 -2.4 h1.4 l3.6 2 l3 -.6 q1.4 .4 .2 1 l-3 .7 l-3 2.6 h-1.4 l1.6 -2.6 l-5.6 1.2z"
-            fill="#f4f6f8" stroke="#5a6470" stroke-width=".4"/>`],
-    regenbogen: ["#e8584e", ["#e8584e", "#f28c28", "#f6c945", "#5fae4a", "#4f86c6"].map((c, i) => {
-      const r = 17 - i * 1.6;
-      return `<path d="M${30 - r} 41 A${r} ${r} 0 0 1 ${30 + r} 41" stroke="${c}" stroke-width="1.7" fill="none"/>`;
-    }).join("")]
-  };
-  var EASEL_SVG = (motif) => `
-    <svg viewBox="0 0 60 80" aria-hidden="true">
-      <defs><clipPath id="cvclip"><rect x="9" y="7" width="42" height="44"/></clipPath></defs>
-      <path d="M30 6 L31 77" stroke="#7a5230" stroke-width="2.4" stroke-linecap="round"/>
-      <path d="M26 3 L9 79 M34 3 L51 79" stroke="#a0703f" stroke-width="3" stroke-linecap="round"/>
-      <rect x="9" y="7" width="42" height="44" rx="1" fill="#fbf8f0"/>
-      <g clip-path="url(#cvclip)">
-        <g class="cvl"><rect class="cv-sky" x="9" y="7" width="42" height="44"/></g>
-        <g class="cvl"><circle class="cv-sun" cx="42" cy="16" r="4.6"/></g>
-        <g class="cvl"><path d="M9 38 Q21 30 33 36 T51 33 V51 H9Z" fill="#86c46b"/><path d="M9 45 Q26 40 51 45 V51 H9Z" fill="#5fae4a"/></g>
-        <g class="cvl">${EASEL_MOTIF[motif][1]}</g>
-        <g class="cvl">
-          <path d="M15 22 q1.2 -1.2 2.4 0 q1.2 -1.2 2.4 0 M36 26 q1 -1 2 0 q1 -1 2 0" stroke="#4a3a2c" stroke-width=".6" fill="none"/>
-          <g fill="#fff"><circle cx="40" cy="47" r=".9"/><circle cx="45" cy="45.6" r=".9"/><circle cx="13.6" cy="48" r=".9"/></g>
-          <g fill="#f6c945"><circle cx="40" cy="47" r=".35"/><circle cx="45" cy="45.6" r=".35"/><circle cx="13.6" cy="48" r=".35"/></g>
-        </g>
-      </g>
-      <rect x="9" y="7" width="42" height="44" rx="1" fill="none" stroke="${OUT}" stroke-width="1.2"/>
-      <rect x="6" y="51" width="48" height="3.4" rx="1" fill="#a0703f" stroke="${OUT}" stroke-width=".8"/>
-      <rect x="26" y="2" width="8" height="5" rx="1" fill="#a0703f" stroke="${OUT}" stroke-width=".8"/>
-    </svg>`;
-  var SEED_SVG = `<svg viewBox="0 0 12 16" aria-hidden="true"><path d="M6 6 V15" stroke="#b9ad8e" stroke-width=".8"/>
-    <path d="M6 6 L1 2 M6 6 L3 .8 M6 6 L6 0 M6 6 L9 .8 M6 6 L11 2" stroke="#fff" stroke-width=".7" stroke-linecap="round"/>
-    <ellipse cx="6" cy="15" rx=".9" ry="1.3" fill="#8a6a4a"/></svg>`;
-  var DROP_SVG = '<svg viewBox="0 0 10 14" aria-hidden="true"><path d="M5 0 Q10 8 5 13.4 Q0 8 5 0Z" fill="#9fdcff" stroke="#5a9cc8" stroke-width=".7"/></svg>';
-  var PUDDLE_SVG = `<svg viewBox="0 0 100 16" aria-hidden="true">
-      <path d="M5 8.6 C3 4 18 1.6 36 2.2 C50 .4 76 .8 89 4 C98 6.2 97 12 86 13.6 C68 16 30 16 15 14 C8 13 5.6 11 5 8.6Z"
-            fill="#8fb4c9" stroke="#4f86b8" stroke-width="1"/>
-      <path d="M16 6.4 Q32 3.6 50 4.2" stroke="#dff1ff" stroke-width="1.1" fill="none" stroke-linecap="round" opacity=".85"/>
-      <path d="M60 11.8 Q72 12.8 81 10.6" stroke="#dff1ff" stroke-width=".9" fill="none" stroke-linecap="round" opacity=".6"/>
-      <ellipse class="pd-rip" cx="50" cy="8" rx="30" ry="5" fill="none" stroke="#fff" stroke-width="1"/>
-      <ellipse class="pd-dot" cx="24" cy="9.8" rx="5" ry="1.5" fill="none" stroke="#dff1ff" stroke-width=".7"/>
-      <ellipse class="pd-dot pd-d2" cx="74" cy="6.4" rx="5" ry="1.5" fill="none" stroke="#dff1ff" stroke-width=".7"/>
-    </svg>`;
-  var BOAT_SVG = `<svg viewBox="0 0 30 24" aria-hidden="true">${BOAT_ART}</svg>`;
-  var SNOWPIKA_SVG = `<svg viewBox="0 0 60 72" aria-hidden="true">
-      <g class="spl sp1">
-        <ellipse cx="30" cy="51" rx="21" ry="19" fill="#f4f6f8" stroke="#9aa3ad" stroke-width="1.2"/>
-        <path d="M13.5 56 Q20 67 35 67.4" stroke="#bccbd8" stroke-width="2.6" fill="none" stroke-linecap="round"/>
-      </g>
-      <g class="spl sp3">
-        <circle cx="20.5" cy="12" r="6.4" fill="#f4f6f8" stroke="#9aa3ad" stroke-width="1.1"/><circle cx="20.5" cy="12.6" r="3.2" fill="#bccbd8"/>
-        <circle cx="43" cy="11" r="6.4" fill="#f4f6f8" stroke="#9aa3ad" stroke-width="1.1"/><circle cx="43" cy="11.6" r="3.2" fill="#bccbd8"/>
-      </g>
-      <g class="spl sp2">
-        <circle cx="32" cy="24.5" r="14.5" fill="#f4f6f8" stroke="#9aa3ad" stroke-width="1.2"/>
-        <path d="M21 29 Q24.5 36.4 33.5 37" stroke="#bccbd8" stroke-width="2.2" fill="none" stroke-linecap="round"/>
-      </g>
-      <g class="spl sp4">
-        <circle cx="27" cy="22.6" r="1.9" fill="#2a1a12"/><circle cx="38.4" cy="22.6" r="1.9" fill="#2a1a12"/>
-        <path d="M30.8 27 q2 -1 4 0 q-.6 1.7 -2 2.2 q-1.4 -.5 -2 -2.2z" fill="#7a4438"/>
-        <path d="M25.4 29.4 L17.4 27.6 M25.4 31 L17.6 32.8 M40.2 29.4 L48.2 27.6 M40.2 31 L48 32.8" stroke="#8a5a32" stroke-width=".8" stroke-linecap="round"/>
-        <circle cx="30" cy="45" r="1.5" fill="#8e9196"/><circle cx="30.4" cy="53" r="1.5" fill="#8e9196"/>
-      </g>
-    </svg>`;
-  var STONES_SVG = `<svg viewBox="0 0 40 56" aria-hidden="true">
-      <g class="stn st1"><ellipse cx="20" cy="47.6" rx="15" ry="7.4" fill="#9aa3ad" stroke="#5a6470" stroke-width="1.1"/>
-        <path d="M9.4 45.4 q7 -4 16 -3" stroke="#cfccc4" stroke-width="1.2" fill="none" stroke-linecap="round"/></g>
-      <g class="stn st2"><ellipse cx="21.4" cy="35.4" rx="11.6" ry="5.8" fill="#c9b27a" stroke="#7a5230" stroke-width="1.1"/>
-        <path d="M13.4 33.6 q5 -2.8 12 -2.2" stroke="#ead2a2" stroke-width="1.1" fill="none" stroke-linecap="round"/></g>
-      <g class="stn st3"><ellipse cx="18.8" cy="26" rx="8.6" ry="4.6" fill="#8fb4c9" stroke="#4d6878" stroke-width="1.1"/>
-        <path d="M13 24.6 q4 -2 8.6 -1.6" stroke="#dff1ff" stroke-width="1" fill="none" stroke-linecap="round"/></g>
-      <g class="stn st4"><ellipse cx="20.6" cy="18.2" rx="6.2" ry="4" fill="#f4f6f8" stroke="#5a6470" stroke-width="1"/></g>
-    </svg>`;
-  var GLIDER_SVG = `<svg viewBox="0 0 26 14" aria-hidden="true">
-      <path d="M1 3 L25 6 L9 9Z" fill="#fffaf0" stroke="${OUT}" stroke-width=".9" stroke-linejoin="round"/>
-      <path d="M25 6 L9 9 L11 13 L13.6 8.4" fill="#ead2a2" stroke="${OUT}" stroke-width=".9" stroke-linejoin="round"/>
-    </svg>`;
-
-  // src/grafik/tagebuch.js
-  var DI = (body) => `<svg viewBox="0 0 24 24" aria-hidden="true">${body}</svg>`;
-  var DIARY_BOOK = DI(`<rect x="4.6" y="2.6" width="15" height="18.8" rx="2.2" fill="#e9a23b" stroke="${OUT}" stroke-width="1.1"/>
-    <path d="M8.2 2.8 V21.2" stroke="${OUT}" stroke-width="1"/><rect x="10.4" y="6.4" width="6.6" height="4.4" rx=".8" fill="#fff3d6" stroke="${OUT}" stroke-width=".7"/>
-    <path d="M14.6 21.2 v2 l1.3 -1 l1.3 1 v-2" fill="#e8584e" stroke="${OUT}" stroke-width=".6" stroke-linejoin="round"/>`);
-  var DIARY_PAW = DI(`<g fill="currentColor"><ellipse cx="12" cy="15.6" rx="5" ry="4.2"/><ellipse cx="5.6" cy="10.4" rx="2" ry="2.6"/>
-    <ellipse cx="9.6" cy="6.8" rx="2" ry="2.7"/><ellipse cx="14.4" cy="6.8" rx="2" ry="2.7"/><ellipse cx="18.4" cy="10.4" rx="2" ry="2.6"/></g>`);
-  var DIARY_ICON = {
-    wake: DI(`<path d="M12 3 v3 M4.6 7.6 l2 2 M19.4 7.6 l-2 2 M2.4 15.6 h2.6 M19 15.6 h2.6" stroke="#f0a02c" stroke-width="1.6" stroke-linecap="round"/>
-      <path d="M6 17 a6 6 0 0 1 12 0Z" fill="#f6c945" stroke="${OUT}" stroke-width="1"/><path d="M2 20 h20" stroke="#7cc35a" stroke-width="2.2" stroke-linecap="round"/>`),
-    sleep: DI(`<path d="M15.5 3.5 a8.6 8.6 0 1 0 5 12.4 A7.2 7.2 0 0 1 15.5 3.5Z" fill="#f6e7a8" stroke="${OUT}" stroke-width="1" stroke-linejoin="round"/>
-      <path d="M16.6 5.4 h3.6 l-3.6 3.8 h3.6" fill="none" stroke="#7c9be0" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/>`),
-    read: DI(`<path d="M3 5.4 q4.5 -2.2 9 0 v14 q-4.5 -2.2 -9 0Z" fill="#7cc4ee" stroke="${OUT}" stroke-width="1" stroke-linejoin="round"/>
-      <path d="M21 5.4 q-4.5 -2.2 -9 0 v14 q4.5 -2.2 9 0Z" fill="#a8dcf5" stroke="${OUT}" stroke-width="1" stroke-linejoin="round"/>
-      <path d="M5.4 8.6 q2 -.8 4.2 0 M5.4 11.6 q2 -.8 4.2 0 M14.4 8.6 q2.2 -.8 4.2 0 M14.4 11.6 q2.2 -.8 4.2 0" stroke="#fff" stroke-width=".9" fill="none" stroke-linecap="round"/>`),
-    game: DI(`<rect x="6" y="2.4" width="12" height="19.2" rx="2.2" fill="#c9cfd8" stroke="${OUT}" stroke-width="1"/>
-      <rect x="8" y="4.8" width="8" height="6.4" rx=".9" fill="#9ccf6a" stroke="${OUT}" stroke-width=".7"/>
-      <path d="M8.6 15.4 h3.2 M10.2 13.8 v3.2" stroke="${OUT}" stroke-width="1.3" stroke-linecap="round"/><circle cx="15" cy="15.4" r="1.2" fill="#e8584e"/>`),
-    tablet: DI(`<rect x="2.4" y="5" width="19.2" height="14" rx="2.2" fill="#4a4f5c" stroke="${OUT}" stroke-width="1"/>
-      <rect x="4.4" y="7" width="15.2" height="10" rx=".7" fill="#8fd0f2"/><path d="M6.6 14.6 l3 -3.2 l2.6 2.2 l2.2 -2.8 l3 3.8" stroke="#fff" stroke-width="1.1" fill="none" stroke-linejoin="round"/>`),
-    kite: DI(`<path d="M12 1.8 L18.2 9 L12 17.4 L5.8 9Z" fill="#e8584e" stroke="${OUT}" stroke-width="1" stroke-linejoin="round"/>
-      <path d="M12 1.8 V17.4 M5.8 9 H18.2" stroke="${OUT}" stroke-width=".7"/><path d="M12 17.4 q-2.4 1.8 0 3.2 q2 1.2 .4 2.6" stroke="#5fb9de" stroke-width="1.2" fill="none" stroke-linecap="round"/>`),
-    tv: DI(`<path d="M8 2.6 l4 3.4 l4 -3.4" stroke="${OUT}" stroke-width="1" fill="none" stroke-linecap="round"/>
-      <rect x="2.8" y="6" width="18.4" height="12.6" rx="2.2" fill="#a0703f" stroke="${OUT}" stroke-width="1"/>
-      <rect x="4.8" y="8" width="11.4" height="8.6" rx="1.2" fill="#9fdcff" stroke="${OUT}" stroke-width=".6"/>
-      <circle cx="18.6" cy="10.2" r=".9" fill="#f6c945"/><circle cx="18.6" cy="13.4" r=".9" fill="#f6c945"/><path d="M7 21 h10" stroke="${OUT}" stroke-width="1.2" stroke-linecap="round"/>`),
-    music: DI(`<path d="M9.2 17.4 V5 L19.4 3 v12.4" fill="none" stroke="${OUT}" stroke-width="1.6" stroke-linejoin="round"/>
-      <ellipse cx="6.6" cy="17.6" rx="3" ry="2.3" fill="#b99cf0" stroke="${OUT}" stroke-width="1"/><ellipse cx="16.8" cy="15.6" rx="3" ry="2.3" fill="#b99cf0" stroke="${OUT}" stroke-width="1"/>`),
-    paint: DI(`<path d="M12 3 a9 9 0 1 0 0 18 c1.7 0 2.1 -1.2 1.4 -2.3 c-.8 -1.3 0 -2.7 1.6 -2.7 H17 a4 4 0 0 0 4 -4 c0 -5 -4 -9 -9 -9Z" fill="#f0e2cf" stroke="${OUT}" stroke-width="1"/>
-      <circle cx="7.4" cy="11" r="1.5" fill="#e8584e"/><circle cx="10.6" cy="7" r="1.5" fill="#f6c945"/><circle cx="15.4" cy="7.6" r="1.5" fill="#5fb9de"/><circle cx="8.6" cy="15.4" r="1.5" fill="#7cc35a"/>`),
-    bubbles: DI(`<circle cx="8.4" cy="14.4" r="5.6" fill="#d9f1fb" stroke="#5a9cc8" stroke-width="1"/><circle cx="16.8" cy="7.2" r="3.6" fill="#e6f6fd" stroke="#5a9cc8" stroke-width=".9"/>
-      <circle cx="18.4" cy="17.4" r="2.2" fill="#e6f6fd" stroke="#5a9cc8" stroke-width=".8"/><path d="M5.4 12.6 q.8 -2 2.6 -2.4 M15 6.2 q.6 -1 1.6 -1.2" stroke="#fff" stroke-width="1" fill="none" stroke-linecap="round"/>`),
-    sport: DI(`<path d="M7 12 h10" stroke="${OUT}" stroke-width="2.2"/><rect x="3" y="7.4" width="4.2" height="9.2" rx="1.3" fill="#e8584e" stroke="${OUT}" stroke-width="1"/>
-      <rect x="16.8" y="7.4" width="4.2" height="9.2" rx="1.3" fill="#e8584e" stroke="${OUT}" stroke-width="1"/>`),
-    bird: DI(`<path d="M9 18.6 v2.8 M13 18.6 v2.8" stroke="${OUT}" stroke-width="1" stroke-linecap="round"/><circle cx="11" cy="12" r="7.2" fill="#b5895f" stroke="${OUT}" stroke-width="1"/>
-      <path d="M6.8 13.4 q4.2 3.8 8.4 0 q-.6 4.4 -4.2 4.8 q-3.6 -.4 -4.2 -4.8Z" fill="#f08a4b"/><path d="M17.8 10.4 l3.4 1.3 l-3.3 1.4Z" fill="#f6c945" stroke="${OUT}" stroke-width=".7" stroke-linejoin="round"/>
-      <circle cx="14" cy="9.6" r="1" fill="#2a1a12"/>`),
-    plane: DI(`<path d="M12.2 9.8 L8.6 4.4 h2.2 l5.4 4.2" fill="#f4f6f8" stroke="#5a6470" stroke-width=".9" stroke-linejoin="round"/>
-      <path d="M2.4 13.6 L19.4 9 q2.6 -.4 2.2 1.2 q-.4 1.2 -2.2 1.7 l-5 1.5 l-4 5.2 h-2 l2 -4.4 l-4 1.2 l-1.6 1.8 H3.4 l1 -3.2Z" fill="#f4f6f8" stroke="#5a6470" stroke-width=".9" stroke-linejoin="round"/>`),
-    bfly: DI(`<path d="M12 12 C9 3.6 1.8 5 3.8 11 c1 3 5.2 3 8.2 1Z M12 12 c3 -8.4 10.2 -7 8.2 -1 c-1 3 -5.2 3 -8.2 1Z" fill="#f28fb1" stroke="${OUT}" stroke-width=".8" stroke-linejoin="round"/>
-      <path d="M12 12 c-3 1 -6 4.2 -3.2 7 c2 1 3.2 -3 3.2 -7Z M12 12 c3 1 6 4.2 3.2 7 c-2 1 -3.2 -3 -3.2 -7Z" fill="#b99cf0" stroke="${OUT}" stroke-width=".8" stroke-linejoin="round"/>
-      <path d="M12 8 v10" stroke="${OUT}" stroke-width="1.5" stroke-linecap="round"/>`),
-    secret: DI(`<path d="M3 10.6 q9 8 18 0" fill="none" stroke="${OUT}" stroke-width="1.7" stroke-linecap="round"/>
-      <path d="M5.6 14.4 l-1.5 2 M9.6 16.2 l-.7 2.4 M14.4 16.2 l.7 2.4 M18.4 14.4 l1.5 2" stroke="${OUT}" stroke-width="1.4" stroke-linecap="round"/>`),
-    gather: DI(`<path d="M12 13 v9" stroke="#4f8a3a" stroke-width="1.6" stroke-linecap="round"/><ellipse cx="15" cy="17.6" rx="2.6" ry="1.1" fill="#5fae4a" transform="rotate(-30 15 17.6)"/>
-      <g transform="translate(12 9)">${[0, 72, 144, 216, 288].map((a) => `<ellipse rx="2.5" ry="3.7" transform="rotate(${a}) translate(0 -3.3)" fill="#f6c945" stroke="${OUT}" stroke-width=".7"/>`).join("")}
-      <circle r="2.2" fill="#e0a032"/></g>`),
-    washer: DI(`<rect x="4" y="2.8" width="16" height="18.4" rx="2.2" fill="#e9eef2" stroke="${OUT}" stroke-width="1"/><circle cx="12" cy="13.6" r="4.7" fill="#8fd0f2" stroke="${OUT}" stroke-width="1"/>
-      <circle cx="7" cy="5.8" r=".9" fill="#5fb9de"/><path d="M9.4 14.2 q2.6 -2 5.2 0" stroke="#fff" stroke-width="1" fill="none" stroke-linecap="round"/>`),
-    dryer: DI(`<rect x="4" y="2.8" width="16" height="18.4" rx="2.2" fill="#f3e6d2" stroke="${OUT}" stroke-width="1"/><circle cx="12" cy="13.6" r="4.7" fill="#f6c08a" stroke="${OUT}" stroke-width="1"/>
-      <circle cx="7" cy="5.8" r=".9" fill="#f0a04b"/><path d="M10 12.4 q1.2 1.2 0 2.6 M13.4 12.4 q1.2 1.2 0 2.6" stroke="#fff" stroke-width="1" fill="none" stroke-linecap="round"/>`),
-    dishwasher: DI(`<circle cx="11" cy="13" r="8.4" fill="#fff" stroke="${OUT}" stroke-width="1"/><circle cx="11" cy="13" r="5" fill="none" stroke="#c9d3da" stroke-width="1"/>
-      <path fill="#5fb9de" transform="translate(13.4 -.6) scale(.42)" d="${STAR}"/>`),
-    fest: DI(`<path d="${STAR}" fill="#f6c945" stroke="${OUT}" stroke-width=".8" stroke-linejoin="round"/>`),
-    more: DI('<circle cx="5" cy="12" r="1.9" fill="currentColor"/><circle cx="12" cy="12" r="1.9" fill="currentColor"/><circle cx="19" cy="12" r="1.9" fill="currentColor"/>'),
-    coffee: COFFEE_THINK,
-    heart: ICON_HEART,
-    clean: ICON_SPARK,
-    hungry: FOOD.lz.svg,
-    parcel: GIFT_PARCEL,
-    pino: GIFT_ITEMS[2].svg,
-    flower: GIFT_ITEMS[11].svg
-  };
-  var diaryPainting = (motif) => !hasKey(EASEL_MOTIF, motif) ? "" : `<svg class="pic" viewBox="9 7 42 44" aria-hidden="true">
-    <rect x="9" y="7" width="42" height="44" fill="#bfe3f7"/><circle cx="42" cy="16" r="4.6" fill="#f6c945"/>
-    <path d="M9 38 Q21 30 33 36 T51 33 V51 H9Z" fill="#86c46b"/><path d="M9 45 Q26 40 51 45 V51 H9Z" fill="#5fae4a"/>${EASEL_MOTIF[motif][1]}</svg>`;
 
   // src/stil/szene.js
   var STYLE = `
@@ -4397,6 +3171,10 @@
   }
   .mf, .mb { transform-origin: 50% 100%; }
   .mouse.left .mf { transform: scaleX(-1); }
+  /* Hintere Spur (depth): ein Hauch Dunst wie bei Pika und Pino (heller, weniger satt), auf der inneren Hülle, das
+     Licht der Dämmerung liegt außen auf .mw bzw. .cw */
+  .mf, .cf { transition: filter 1s; }
+  .day:not(.overcast) .lane1 .mf, .day:not(.overcast) .lane1 .cf { filter: saturate(.85) brightness(1.05); }
   .mouse svg { display: block; width: 100%; height: auto; overflow: visible; }
   .mouse.run .mb { animation: scurry .12s linear infinite alternate; }
   @keyframes scurry { from { transform: translateY(0) rotate(-2deg); } to { transform: translateY(-9%) rotate(2deg); } }
@@ -5480,6 +4258,241 @@
   }
   `;
 
+  // src/grafik/szene.js
+  var STASH_MAX = 12;
+  var HAY_SVG = `
+  <svg viewBox="0 0 60 40" aria-hidden="true">
+    <path d="M2 40 Q3 15 30 10 Q57 15 58 40Z" fill="#dcbc6a" stroke="#a9853a" stroke-width="1.4"/>
+    <g stroke="#b38c3c" stroke-width="1.1" stroke-linecap="round" fill="none">
+      <path d="M12 34 Q18 24 26 20"/><path d="M22 37 Q30 27 40 22"/><path d="M38 36 Q44 30 50 28"/>
+      <path d="M28 10 Q26 4 21 2"/><path d="M33 11 Q37 5 43 4"/><path d="M8 26 Q14 20 18 18"/>
+    </g>
+    <g class="hayb"></g>
+  </svg>`;
+  var TUFTS_SVG = () => {
+    let d = "";
+    for (let x = 0; x < 400; x += rnd(1.6, 3.2)) {
+      const tall = Math.sin(x * 0.11) + Math.sin(x * 0.037) > 0.6;
+      const h = tall ? rnd(5, 9) : rnd(2, 5);
+      const tip = x + 1.1 + rnd(-1.4, 1.4);
+      d += `M${x.toFixed(1)} 10.5 Q${(x + 0.5).toFixed(1)} ${(10.5 - h / 2).toFixed(1)} ${tip.toFixed(1)} ${(10.5 - h).toFixed(1)} Q${(x + 1.5).toFixed(1)} ${(10.5 - h / 2).toFixed(1)} ${(x + 2.3).toFixed(1)} 10.5Z`;
+    }
+    return `<svg viewBox="0 0 400 12" preserveAspectRatio="none" aria-hidden="true"><rect class="soil" y="9" width="400" height="3"/><path class="blades" d="${d}"/></svg>`;
+  };
+  var LOOKOUT_SVG = `
+  <svg viewBox="0 0 100 50" aria-hidden="true">
+    <g stroke="#5c6166" stroke-width="1.2" transform="translate(0 -1.6)">
+      <path d="M-14 47.5 L-12 40 L-4 37.5 L3 40 L4 47.5Z" fill="#8e949b" stroke-linejoin="round"/>
+      <ellipse cx="-22" cy="47.6" rx="2.4" ry="1.5" fill="#9aa0a6"/><ellipse cx="-17.5" cy="46.8" rx="3.6" ry="2.2" fill="#b0b5ba"/>
+      <ellipse cx="104" cy="46.2" rx="5" ry="3" fill="#a3a9ae"/><ellipse cx="111" cy="47.4" rx="3.2" ry="1.9" fill="#979da4"/>
+      <ellipse cx="116.5" cy="47.9" rx="2" ry="1.3" fill="#b0b5ba"/>
+    </g>
+    <path d="M6 47 L10 27 Q13 16 28 13.5 L72 12.5 Q87 13.5 91 25 L95 47Z" fill="#a3a9ae" stroke="#5c6166" stroke-width="1.5" stroke-linejoin="round"/>
+    <path d="M91 25 L95 47 L70 47 Q80 36 91 25Z" fill="#000" opacity=".1"/>
+    <path d="M28 15.5 Q48 13.6 70 14.4" stroke="#fff" stroke-opacity=".35" stroke-width="2.4" fill="none" stroke-linecap="round"/>
+    <path class="rock-snow" d="M26 14 L74 13 Q86 14 89 21 Q80 17.5 70 18 Q50 16.5 30 18 Q20 18 13 22 Q16 15 26 14Z" fill="#f2f6f9"/>
+    <path d="M42 24 l4 6 l-2 6 M70 30 l-3 5" stroke="#5c6166" stroke-width="1" fill="none" stroke-linecap="round" opacity=".7"/>
+    <g fill="#c9c86a" opacity=".8"><ellipse cx="22" cy="30" rx="2.6" ry="1.3"/><ellipse cx="80" cy="22" rx="2" ry="1"/></g>
+    <g stroke="#5c6166" stroke-width="1.2" transform="translate(0 -1.6)">
+      <ellipse cx="4" cy="45" rx="6" ry="3.6" fill="#979da4"/><ellipse cx="13" cy="47" rx="4.5" ry="2.6" fill="#b0b5ba"/>
+      <ellipse cx="-6" cy="47.2" rx="4" ry="2.4" fill="#a3a9ae"/><ellipse cx="20" cy="48.2" rx="2.4" ry="1.4" fill="#9aa0a6"/>
+      <ellipse cx="96" cy="45.5" rx="6.5" ry="3.8" fill="#8e949b"/><ellipse cx="86" cy="47.2" rx="4" ry="2.4" fill="#a3a9ae"/>
+      <ellipse cx="79" cy="48.2" rx="2.4" ry="1.4" fill="#b0b5ba"/>
+      <ellipse cx="34" cy="47.6" rx="3.2" ry="1.8" fill="#9aa0a6"/><ellipse cx="64" cy="47.8" rx="3.6" ry="1.9" fill="#b0b5ba"/>
+      <ellipse cx="50" cy="48" rx="2.2" ry="1.4" fill="#979da4"/><ellipse cx="27" cy="48.4" rx="1.8" ry="1.1" fill="#b0b5ba"/>
+      <ellipse cx="71" cy="48.5" rx="1.8" ry="1.1" fill="#979da4"/>
+    </g>
+    <path class="rtuft" d="M18 49 Q19 44 20 42 Q21 45 22 49Z M24 49 Q25 45 27 43.5 Q26.5 46 27 49Z M74 49 Q75 44.5 76.5 42.5 Q77 46 78 49Z M79 49 Q80.5 45.5 82 44.5 Q81.5 47 82 49Z M40 49 Q41 46 42.5 45 Q42 47 43 49Z"/>
+  </svg>`;
+  var FLOWER_SVG = (c) => `
+  <svg viewBox="0 0 20 30" aria-hidden="true">
+    <path d="M10 30 Q9 20 10 11" stroke="var(--fst, #4f8a3a)" stroke-width="1.6" fill="none"/>
+    <ellipse cx="6.5" cy="22" rx="3.6" ry="1.5" fill="var(--flf, #6bab4c)" transform="rotate(-30 6.5 22)"/>
+    <g fill="var(--fc, ${c})" stroke="rgba(0,0,0,.12)" stroke-width=".5">
+      ${[0, 72, 144, 216, 288].map((a) => {
+    const r = a * Math.PI / 180;
+    return `<circle cx="${(10 + Math.sin(r) * 3.7).toFixed(2)}" cy="${(9 - Math.cos(r) * 3.7).toFixed(2)}" r="3.3"/>`;
+  }).join("")}
+    </g>
+    <circle cx="10" cy="9" r="2.3" fill="var(--fm, ${flowerMid(c)})"/>
+  </svg>`;
+  var HAY_BITE = `<svg viewBox="0 0 24 24" aria-hidden="true"><g fill="none" stroke-linecap="round">
+    <path d="M2 13.5 L21 9 M3 17 L22 13.5 M4.5 10 L20 17.5" stroke="#b8963f" stroke-width="2.6"/>
+    <path d="M2 13.5 L21 9 M3 17 L22 13.5 M4.5 10 L20 17.5 M6 19.5 L18.5 7" stroke="#dcbc6a" stroke-width="1.6"/>
+    <path d="M5 15 L19 11.6" stroke="#f0d98e" stroke-width="1"/></g></svg>`;
+  var FOOD = {
+    lz: {
+      color: "#f7cf2e",
+      svg: `<svg viewBox="0 0 30 40" aria-hidden="true">
+        <path d="M15 40 Q14 28 15 16" stroke="#4f8a3a" stroke-width="2" fill="none"/>
+        <path d="M14 39 Q4 36 3 26 Q8 30 10 28 Q7 33 14 37Z" fill="#5fa548"/>
+        <path d="M16 39 Q27 36 27 27 Q22 31 20 29 Q23 34 16 37Z" fill="#6bb152"/>
+        <circle cx="15" cy="12" r="9" fill="none" stroke="#f7cf2e" stroke-width="3.2" stroke-dasharray="1.7 1.1"/>
+        <circle cx="15" cy="12" r="7.2" fill="#f7cf2e"/>
+        <circle cx="15" cy="12" r="3.2" fill="#eeac1c"/>
+      </svg>`
+    },
+    klee: {
+      color: "#e57fb0",
+      svg: `<svg viewBox="0 0 30 40" aria-hidden="true">
+        <path d="M15 40 Q15 30 15 18" stroke="#4f8a3a" stroke-width="2" fill="none"/>
+        <g fill="#5fae4a" stroke="#3f7f31" stroke-width=".8">
+          <ellipse cx="9" cy="31" rx="4" ry="3"/><ellipse cx="21" cy="31" rx="4" ry="3"/><ellipse cx="15" cy="27" rx="3" ry="4"/>
+        </g>
+        <ellipse cx="15" cy="12" rx="7.5" ry="8.5" fill="#e57fb0" stroke="#c45c90" stroke-width="1"/>
+        <g stroke="#c45c90" stroke-width=".9" fill="none" stroke-linecap="round">
+          <path d="M11 8 l1.5 2.5 M15 6 v3 M19 8 l-1.5 2.5 M10.5 13 l2 1.5 M19.5 13 l-2 1.5 M15 12 v3"/>
+        </g>
+      </svg>`
+    }
+  };
+  var ICON_LEAF = `<svg viewBox="0 0 24 24"><path fill="#6bb152" d="M17 8C8 10 5.9 16.2 3.8 21.3l1.9.7 1-2.3c.5.2 1 .3 1.3.3C19 20 22 3 22 3c-1 2-8 2.3-13 3.3S2 11.5 2 13.5s1.8 3.8 1.8 3.8C7 8 17 8 17 8z"/></svg>`;
+  var ICON_HEART = `<svg viewBox="0 0 24 24"><path fill="#f07a95" d="M12 21.4l-1.5-1.3C5.4 15.4 2 12.3 2 8.5 2 5.4 4.4 3 7.5 3c1.7 0 3.4.8 4.5 2.1C13.1 3.8 14.8 3 16.5 3 19.6 3 22 5.4 22 8.5c0 3.8-3.4 6.9-8.5 11.5z"/></svg>`;
+  var STAR = "M12 1 Q13.4 10.6 23 12 Q13.4 13.4 12 23 Q10.6 13.4 1 12 Q10.6 10.6 12 1Z";
+  var ICON_SPARK = `<svg viewBox="0 0 24 24"><path fill="#5fb9de" d="${STAR}"/><path fill="#5fb9de" transform="translate(15 0) scale(.38)" d="${STAR}"/></svg>`;
+  var POO_LAYOUTS = [
+    [[8.5, 10.6], [15.5, 10.8], [12, 5.6]],
+    [[5.5, 10.8], [12, 11], [18.5, 10.6], [9, 5.8], [15.4, 6]],
+    [[6, 10.8], [12.4, 11], [18.6, 10.8], [12, 5.6]],
+    [[8, 10.8], [14.6, 10.6], [11.4, 5.6], [20.6, 11.6]]
+  ];
+  var POO_SVG = (r) => {
+    const pts = POO_LAYOUTS[Math.floor(r * POO_LAYOUTS.length)];
+    return `<svg viewBox="0 0 24 14" aria-hidden="true">${pts.map(([x, y], i) => {
+      const rx = 3.3 - i % 2 * 0.25;
+      return `<ellipse cx="${x}" cy="${y}" rx="${rx}" ry="${rx * 0.9}" fill="#6e4b30" stroke="#3f2a1b" stroke-width=".7"/><ellipse cx="${x - 1}" cy="${y - 1.1}" rx="1.1" ry=".75" fill="#a47a52" opacity=".75"/>`;
+    }).join("")}</svg>`;
+  };
+  var SCOOP_SVG = `
+  <svg viewBox="0 0 44 24" aria-hidden="true">
+    <path d="M23 12 L42 2" stroke="#a87c4f" stroke-width="3" stroke-linecap="round"/>
+    <path d="M23 12 L42 2" stroke="#6b4a2f" stroke-width="3.6" stroke-linecap="round" opacity=".25"/>
+    <path d="M1 22 L22 22 L25 9 L21.5 9 L19.6 18.6 L1.6 19.4Z" fill="#8fb4c9" stroke="#4d6878" stroke-width="1.1" stroke-linejoin="round"/>
+  </svg>`;
+
+  // src/grafik/paeckchen.js
+  var GIFT_LOW = { s: ["füttern", ICON_LEAF], g: ["streicheln", ICON_HEART], c: ["putzen", ICON_SPARK] };
+  var GIFT_ITEMS = [
+    { key: "yarn", name: "Wollknäuel", say: "ein Wollknäuel!", svg: `<svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M18.4 17.6 q3.6 1.6 1.6 4 q-2 1.6 -4.4 .2" stroke="#f28fb1" stroke-width="1.2" fill="none" stroke-linecap="round"/>
+      <circle cx="12" cy="13" r="8" fill="#f28fb1" stroke="${OUT}" stroke-width="1"/>
+      <path d="M5.4 10 q6.6 2.4 12.6 -1.6 M4.8 13.8 q7.4 3 14.4 -1.4 M6.6 17.8 q6 1.6 11 -2.2 M10 5.4 q-3.4 7 .6 15.4 M14.6 5.6 q2.6 6 -.6 15"
+            stroke="#d96a92" stroke-width=".9" fill="none" stroke-linecap="round"/>
+      <path d="M7.6 8.6 q1.6 -1.8 3.6 -2.4" stroke="#fff" stroke-width="1" fill="none" opacity=".6" stroke-linecap="round"/></svg>` },
+    { key: "wheel", name: "Windrad", say: "ein Windrad!", svg: `<svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M12 12 V23" stroke="#b5793e" stroke-width="1.8" stroke-linecap="round"/>
+      <g class="gwhl">${["#e8584e", "#5fb9de", "#f6c945", "#7cc35a"].map((c, i) => `<path transform="rotate(${i * 90} 12 12)"
+        d="M12 12 L12 2.6 Q18 4.4 12 12Z" fill="${c}" stroke="${OUT}" stroke-width=".7" stroke-linejoin="round"/>`).join("")}
+        <circle cx="12" cy="12" r="1.4" fill="#fff" stroke="${OUT}" stroke-width=".7"/></g></svg>` },
+    { key: "plush", name: "Plüsch-Pino", say: "ein Plüsch-Pino!", svg: `<svg viewBox="0 0 24 24" aria-hidden="true">
+      <circle cx="6.8" cy="7.4" r="3.4" fill="#d98a4e" stroke="${OUT}" stroke-width=".9"/><circle cx="6.8" cy="7.6" r="1.6" fill="#efc7a0"/>
+      <circle cx="17.2" cy="7.4" r="3.4" fill="#d98a4e" stroke="${OUT}" stroke-width=".9"/><circle cx="17.2" cy="7.6" r="1.6" fill="#efc7a0"/>
+      <ellipse cx="12" cy="14.2" rx="8.2" ry="7.6" fill="#e09a5c" stroke="${OUT}" stroke-width="1"/>
+      <ellipse cx="12" cy="10.2" rx="1.6" ry="1.1" fill="#f6e3c8"/>
+      <circle cx="9" cy="13.4" r="1.1" fill="#2a1a12"/><circle cx="15" cy="13.4" r="1.1" fill="#2a1a12"/>
+      <path d="M11 15.4 q1 .9 2 0" fill="#7a4438"/><path d="M12 16 v.8 M12 16.8 q-1 1 -1.8 .2 M12 16.8 q1 1 1.8 .2" stroke="${OUT}" stroke-width=".6" fill="none"/>
+      <path d="M5.2 18.8 q6.8 3.2 13.6 0" stroke="#3cb6b0" stroke-width="2.4" fill="none" stroke-linecap="round"/></svg>` },
+    { key: "shades", name: "Sonnenbrille", say: "eine Sonnenbrille!", svg: `<svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M1.6 10.4 H22.4 M1.8 10.4 l-.6 3 M22.2 10.4 l.6 3" stroke="${OUT}" stroke-width="1.2" stroke-linecap="round"/>
+      <path d="M2.8 10 h8 q0 6 -4 6 q-4 0 -4 -6z M13.2 10 h8 q0 6 -4 6 q-4 0 -4 -6z" fill="#2c2f3a" stroke="#15171d" stroke-width=".8"/>
+      <path d="M4.4 11.4 l2.2 2.4 M14.8 11.4 l2.2 2.4" stroke="#fff" stroke-width=".9" opacity=".6" stroke-linecap="round"/></svg>` },
+    { key: "scope", name: "Fernrohr", say: "ein Fernrohr!", svg: `<svg viewBox="0 0 24 24" aria-hidden="true"><g transform="rotate(-30 12 12)">
+      <rect x="1.6" y="9.6" width="9" height="4.8" rx="1" fill="#b8862e" stroke="${OUT}" stroke-width=".8"/>
+      <rect x="10.2" y="8.6" width="8" height="6.8" rx="1.2" fill="#d9a441" stroke="${OUT}" stroke-width=".8"/>
+      <rect x="17.8" y="7.8" width="4" height="8.4" rx="1" fill="#8a5a32" stroke="${OUT}" stroke-width=".8"/>
+      <path d="M12.8 8.6 v6.8 M15.4 8.6 v6.8" stroke="#f3cf7a" stroke-width=".8"/></g></svg>` },
+    { key: "hammock", name: "Hängematte", say: "eine Hängematte!", svg: `<svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M2.6 22 L5 5 L7.4 22 M16.6 22 L19 5 L21.4 22" stroke="#9a6a3c" stroke-width="1.5" fill="none" stroke-linejoin="round"/>
+      <path d="M5 7 Q12 21 19 7" stroke="${OUT}" stroke-width="4.2" fill="none" stroke-linecap="round"/>
+      <path d="M5 7 Q12 21 19 7" stroke="#f6efe0" stroke-width="3" fill="none" stroke-linecap="round"/>
+      <path d="M5 7 Q12 21 19 7" stroke="#e8584e" stroke-width="3" fill="none" stroke-dasharray="1.8 2.2"/></svg>` },
+    { key: "can", name: "Gießkanne", say: "eine Gießkanne!", svg: `<svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M4.4 9.6 h10.4 v9.6 q0 2 -2 2 h-6.4 q-2 0 -2 -2z" fill="#5fae4a" stroke="${OUT}" stroke-width="1"/>
+      <path d="M14.8 13 L21 7.6 l1.4 1.6 -6.2 6.6" fill="#5fae4a" stroke="${OUT}" stroke-width=".9" stroke-linejoin="round"/>
+      <path d="M6.4 9.6 q3.2 -5.4 6.4 0" stroke="${OUT}" stroke-width="1.3" fill="none"/>
+      <path d="M6 13 h7" stroke="#8fd16f" stroke-width="1.2" stroke-linecap="round"/>
+      <path d="M22.6 6.4 l1 -1 M23 9 l1.2 .2" stroke="#7cc4ee" stroke-width="1" stroke-linecap="round"/></svg>` },
+    { key: "bell", name: "Glöckchen", say: "ein Glöckchen!", svg: `<svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M9 4.2 q3 -2.4 6 0 l-3 1.4z" fill="#e8584e" stroke="${OUT}" stroke-width=".6"/>
+      <path d="M12 5 v1.4" stroke="${OUT}" stroke-width="1"/>
+      <path d="M5.8 18 q0 -11.6 6.2 -11.6 q6.2 0 6.2 11.6 l1.6 1.6 h-15.6z" fill="#f2c230" stroke="${OUT}" stroke-width=".9" stroke-linejoin="round"/>
+      <path d="M8.6 10 q1 -2 3 -2.4" stroke="#fff3b0" stroke-width="1" fill="none" stroke-linecap="round"/>
+      <circle cx="12" cy="20.6" r="1.7" fill="#d9a441" stroke="${OUT}" stroke-width=".7"/></svg>` },
+    // Leckerli: mo = Monate (0 = Januar, Südhalbkugel um ein halbes Jahr versetzt), ohne = immer
+    { key: "straw", name: "Erdbeere", color: "#e8473f", mo: [4, 5, 6], svg: `<svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M12 21.6 C4.6 17.6 4.2 10 7.4 8 Q12 6.4 16.6 8 C19.8 10 19.4 17.6 12 21.6Z" fill="#e8473f" stroke="${OUT}" stroke-width=".9"/>
+      <g fill="#ffe08a">${[[9, 11], [12, 10.4], [15, 11], [8.6, 14.4], [11.6, 13.6], [14.8, 14.4], [10.4, 17], [13.6, 17]].map(([x, y]) => `<ellipse cx="${x}" cy="${y}" rx=".5" ry=".8"/>`).join("")}</g>
+      <path d="M6.8 8 l2.6 -2.6 l2.6 2 l2 -3 l1.8 3 l2.8 -.8 l-1.8 2.4z" fill="#5fae4a" stroke="${OUT}" stroke-width=".7" stroke-linejoin="round"/></svg>` },
+    { key: "rasp", name: "Himbeeren", color: "#d9406a", mo: [6, 7, 8], svg: `<svg viewBox="0 0 24 24" aria-hidden="true">
+      ${[[9, 12], [12.6, 11], [15.6, 13.4], [8.4, 16], [12, 15], [15.2, 17.4], [11, 19.2]].map(([x, y]) => `<circle cx="${x}" cy="${y}" r="2.7" fill="#d9406a" stroke="${OUT}" stroke-width=".7"/>
+      <circle cx="${x - 0.8}" cy="${y - 0.9}" r=".6" fill="#fff" opacity=".5"/>`).join("")}
+      <path d="M11 9 q-3 -4 -6 -3 q2 3 6 3z M12 9 q3 -5 7 -4 q-2 4 -7 4z" fill="#5fae4a" stroke="${OUT}" stroke-width=".7"/></svg>` },
+    { key: "apple", name: "Apfelschnitz", color: "#f3e6c4", mo: [8, 9, 10], svg: `<svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M2.6 11 a9.4 9.4 0 0 0 18.8 0z" fill="#f6ecd0" stroke="#d9483b" stroke-width="1.8"/>
+      <path d="M2.6 11 a9.4 9.4 0 0 0 18.8 0z" fill="none" stroke="${OUT}" stroke-width=".6"/>
+      <ellipse cx="10" cy="14" rx=".8" ry="1.3" fill="#5a3a22"/><ellipse cx="14" cy="14" rx=".8" ry="1.3" fill="#5a3a22"/>
+      <path d="M12 11 V7.4 q2.4 -2.4 4.6 -1.6 q-1.2 2.8 -4.6 1.6" fill="#5fae4a" stroke="${OUT}" stroke-width=".7"/></svg>` },
+    { key: "posy", name: "Blumensträußchen", color: "#f28fb1", svg: `<svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M12 22 L7 9 M12 22 L12 7 M12 22 L17 9" stroke="#4f8a3a" stroke-width="1.2"/>
+      ${[[7, 8, "#f28fb1"], [12, 6, "#f6c945"], [17, 8, "#b99cf0"]].map(([x, y, c]) => `<g transform="translate(${x} ${y})">
+        ${[0, 72, 144, 216, 288].map((a) => `<ellipse rx="1.6" ry="2.4" transform="rotate(${a}) translate(0 -2)" fill="${c}" stroke="${OUT}" stroke-width=".5"/>`).join("")}
+        <circle r="1.3" fill="#e0a032"/></g>`).join("")}
+      <path d="M9.4 16.4 l2.6 1.4 2.6 -1.4 -.6 3 -2 -.8 -2 .8z" fill="#5fb9de" stroke="${OUT}" stroke-width=".6"/></svg>` }
+  ];
+  var GIFT_PAPER = [["#5fb9de", "#f6c945"], ["#f28fb1", "#ffffff"], ["#7cc35a", "#e8584e"], ["#b99cf0", "#f6c945"], ["#ff9f5a", "#5fb9de"]];
+  var GIFT_BALLOONS = ["#e8584e", "#5fb9de", "#f6c945", "#b99cf0", "#7cc35a", "#f28fb1"];
+  var GIFT_GOLD = ["#f2c230", "#fff7d6"];
+  var GIFT_TRICK = ["Kopfball", "Anpusten", "Kuscheln", "Brille lupfen", "Sterngucken", "Schaukeln", "Regenbogen", "Glockenspiel"];
+  var GIFT_GILT = [
+    "ein goldenes %",
+    "ein goldenes %",
+    "ein goldener %",
+    "eine goldene %",
+    "ein goldenes %",
+    "eine goldene %",
+    "eine goldene %",
+    "ein goldenes %"
+  ];
+  var GIFT_PARCEL = `<svg viewBox="0 0 24 24" aria-hidden="true">
+      <g class="gp-box">
+        <rect x="3.6" y="11" width="16.8" height="11" rx="1.2" fill="var(--gpp, #5fb9de)" stroke="${OUT}" stroke-width="1"/>
+        <rect x="10.6" y="11" width="2.8" height="11" fill="var(--gpr, #f6c945)"/>
+        <path d="M5.4 13 v6.6" stroke="#fff" stroke-width="1" opacity=".45" stroke-linecap="round"/>
+      </g>
+      <g class="gp-lid">
+        <rect x="2.6" y="8" width="18.8" height="4" rx="1" fill="var(--gpp, #5fb9de)" stroke="${OUT}" stroke-width="1"/>
+        <rect x="10.6" y="8" width="2.8" height="4" fill="var(--gpr, #f6c945)"/>
+      </g>
+      <g class="gp-bow">
+        <path d="M12 8 C8 2.6 4.2 5.2 7 8Z M12 8 C16 2.6 19.8 5.2 17 8Z" fill="var(--gpr, #f6c945)" stroke="${OUT}" stroke-width=".8" stroke-linejoin="round"/>
+        <circle cx="12" cy="8" r="1.5" fill="var(--gpr, #f6c945)" stroke="${OUT}" stroke-width=".7"/>
+      </g></svg>`;
+  var GIFT_BALLOON = `<svg viewBox="0 0 40 80" aria-hidden="true">
+      <g class="gb-b">
+        <path d="M20 36 C17 42 23 47 20 52 C18 55 20 58 20 61.6" stroke="#7d6a5a" stroke-width=".8" fill="none"/>
+        <ellipse class="gb-ball" cx="20" cy="19" rx="13.4" ry="15.6" fill="var(--gbc, #e8584e)" stroke="${OUT}" stroke-width="1"/>
+        <path d="M17.6 34.4 L20 37.2 L22.4 34.4Z" fill="var(--gbc, #e8584e)" stroke="${OUT}" stroke-width=".8" stroke-linejoin="round"/>
+        <ellipse cx="14.4" cy="12" rx="3.2" ry="5.4" transform="rotate(24 14.4 12)" fill="#fff" opacity=".45"/>
+        <ellipse cx="13" cy="20.6" rx="1" ry="1.6" fill="#fff" opacity=".35"/>
+      </g>
+      <svg class="gb-p" x="8" y="54" width="24" height="24" viewBox="0 0 24 24" overflow="visible">${GIFT_PARCEL.replace(/^<svg[^>]*>|<\/svg>$/g, "")}</svg>
+    </svg>`;
+  var GIFT_HAMMOCK = `<svg viewBox="0 0 60 20" aria-hidden="true">
+      <path d="M1.8 20 L5 2 L8.2 20 M51.8 20 L55 2 L58.2 20" stroke="#9a6a3c" stroke-width="1.5" fill="none" stroke-linejoin="round"/>
+      <path d="M3 13 H7 M53 13 H57" stroke="#9a6a3c" stroke-width="1.1"/>
+      <g class="gnet">
+        <path d="M5 3.4 L10 5 M55 3.4 L50 5" stroke="#cdbb93" stroke-width=".9"/>
+        <path d="M10 5 Q30 23 50 5" stroke="${OUT}" stroke-width="4.4" fill="none" stroke-linecap="round"/>
+        <path d="M10 5 Q30 23 50 5" stroke="#f6efe0" stroke-width="3.2" fill="none" stroke-linecap="round"/>
+        <path d="M10 5 Q30 23 50 5" stroke="#e8584e" stroke-width="3.2" fill="none" stroke-dasharray="2.4 3"/>
+      </g></svg>`;
+  var GIFT_HAM_W = 1.25;
+  var GIFT_HAM_LIFT = 0.1;
+  var GIFT_WHEEL = `<svg viewBox="0 0 24 44" aria-hidden="true">
+      <path d="M12 12 V44" stroke="#b5793e" stroke-width="1.6" stroke-linecap="round"/>
+      ${GIFT_ITEMS[1].svg.replace(/^<svg[^>]*>|<\/svg>$/g, "").replace(/<path d="M12 12 V23"[^>]*\/>/, "")}</svg>`;
+  var GILT_F = "sepia(1) saturate(2.6) hue-rotate(8deg) brightness(1.12)";
+
   // src/stil/paeckchen.js
   var STYLE_GIFT = `
   /* Schätze, Päckchen, Ballon, Schild und Postkarte des Urlaubs, Garderobe: Ebene und Licht je Stück (Bühne). Wer
@@ -5853,6 +4866,997 @@
   @media (prefers-reduced-motion: reduce) { .sig-wear.hang, .sig-vac.drive .sig-brush, .sig-bin.in, .sig-wear.in { animation: none; } }
   `;
 
+  // src/logik/tagebuch.js
+  var DIARY = { keep: 3 * 864e5, max: 400, close: 6e4, gap: 100 * 6e4, acts: 2 };
+  var FIND_GROUPS = ["Streicheln", "Kümmern", "Meine Welt"];
+  var FINDS = [
+    { k: "head", g: 0, t: "Kopf", h: "Tipp mir auf den Kopf. Ich lehne mich in deine Hand." },
+    { k: "nose", g: 0, t: "Nase", h: "Tipp mir auf die Nase. Boop!" },
+    { k: "ear", g: 0, t: "Ohr", h: "Tipp ein Ohr an. Es flappt nach." },
+    { k: "belly", g: 0, t: "Bauch", h: "Tipp mir auf den Bauch. Das kitzelt!" },
+    { k: "back", g: 0, t: "Rücken", h: "Tipp mir auf den Rücken oder den Po. Ich mache einen Freudensprung." },
+    { k: "kraul", g: 0, t: "Kraulen", h: "Leg den Finger auf mich und lass ihn liegen. Das mag ich lieber als schnelles Tippen." },
+    { k: "stroke", g: 0, t: "Übers Fell streichen", h: "Wisch waagerecht über mich. Mein Fell plustert sich auf." },
+    { k: "combo", g: 0, t: "Fünfmal hintereinander", h: "Tipp mich fünfmal schnell an. Dann gibt es einen Luftsprung." },
+    { k: "melt", g: 0, t: "Achtmal hintereinander", h: "Noch öfter, und ich schmelze dahin." },
+    { k: "pout", g: 0, t: "Elfmal hintereinander", h: "Irgendwann reicht es mir. Hmpf! Lange böse bin ich aber nie." },
+    { k: "sleep", g: 0, t: "Im Schlaf", h: "Streichle mich, wenn ich schlafe. Ich wache nicht auf, aber ich merke es." },
+    { k: "meadow", g: 0, t: "Auf die Wiese tippen", h: "Ich schaue hin. Hast du mich heute schon oft gestreichelt, komme ich angehoppelt." },
+    { k: "feed", g: 1, t: "Füttern", h: "Der Löwenzahn-Knopf oben rechts lässt Futter fallen." },
+    { k: "clean", g: 1, t: "Saubermachen", h: "Tipp ein Häufchen an, dann kommt die Schaufel." },
+    { k: "bloom", g: 1, t: "Mein Geschenk annehmen", h: "Manchmal lege ich dir eine Blume mit Schleife ins Gras. Tipp sie an." },
+    { k: "parcel", g: 1, t: "Päckchen schenken", h: "Der Päckchen-Knopf oben rechts schickt mir eins am Ballon.", need: "gift" },
+    { k: "album", g: 1, t: "Schätze aufschlagen", h: "Drück lange auf den Päckchen-Knopf.", need: "gift" },
+    { k: "flower", g: 2, t: "Blume", h: "Tipp eine Blume an. Sie staubt, und stehe ich daneben, muss ich niesen." },
+    { k: "cloud", g: 2, t: "Wolke", h: "Tipp eine Wolke an. Sie tröpfelt." },
+    { k: "star", g: 2, t: "Stern", h: "Tipp abends oder nachts einen Stern an. Er fällt vom Himmel." },
+    { k: "door", g: 2, t: "Tür", h: "Klopf an meine Tür. Bin ich im Bau, linse ich heraus." },
+    { k: "wheel", g: 2, t: "Windrad", h: "Stups mein Windrad an. Es dreht sich ganz schnell.", need: "wheel" },
+    { k: "yarn", g: 2, t: "Wollknäuel", h: "Stups mein Wollknäuel an. Es kullert davon.", need: "yarn" },
+    { k: "visitor", g: 2, t: "Besuch", h: "Tipp Vögelchen, Maus, Frosch oder Schnecke an." },
+    { k: "pino", g: 2, t: "{n}", h: "Ist {n} zu Besuch: auch antippen. Das gibt Herzchen.", need: "friend" },
+    { k: "bubble", g: 2, t: "Seifenblase", h: "Puste ich Seifenblasen, kannst du sie platzen lassen. Plopp!" },
+    { k: "plane", g: 2, t: "Flugzeug", h: "Tipp ein Flugzeug an. Ein Fähnchen zeigt, wohin es fliegt.", need: "flight" },
+    { k: "device", g: 2, t: "Haushaltsgerät", h: "Tipp ein Gerät am Bau an. Ein Fähnchen zeigt, wie weit es ist.", need: "bote" }
+  ];
+  var FIND_IDS = new Set(FINDS.map((f) => f.k));
+  var findsParse = (s) => new Set(String(s || "").split(",").filter((k) => FIND_IDS.has(k)));
+  var findsSer = (set) => FINDS.filter((f) => set.has(f.k)).map((f) => f.k).join(",");
+  var DIARY_TXT = {
+    wake: ["Aufgewacht! Erst mal strecken und gähnen.", "Guten Morgen! Die Nase zuerst aus dem Bau gesteckt.", "Zipfelmütze ab, der Tag kann losgehen."],
+    sleep: ["Zipfelmütze auf und ab in den Bau. Gute Nacht!", "Müde. Ich hab mich im Bau eingekuschelt.", "Augen zu. Schlaf gut, liebes Tagebuch."],
+    act: {
+      read: [
+        "Ein Buch gelesen. An der lustigen Stelle musste ich kichern.",
+        "Gelesen, bis mir fast die Augen zugefallen sind.",
+        "Mein Buch war so spannend, dass ich das Umblättern vergessen hab."
+      ],
+      game: ["Gameboy gespielt. Eine Runde gewonnen, juhu!", "Am Gameboy war der Wurm drin. Mööp.", "Gameboy gespielt, bis die Daumen müde waren."],
+      tablet: ["Auf dem Bauch gelegen und am Tablet gewischt.", "Am Tablet geschaut, wohin die Flugzeuge fliegen."],
+      kite: ["Drachen steigen lassen! Der Wind hat ganz schön gezerrt.", "Mein Drache stand hoch am Himmel. Ich hab die Schnur gut festgehalten."],
+      tv: ["Im Bau ferngesehen. Draußen war es mir zu ungemütlich.", "Fernsehen im Bau. Gemütlich!"],
+      music: [
+        "Ukulele gespielt und mitgesungen. La-la-la!",
+        "Musik gemacht. Ein Ton ging daneben, plonk. Egal.",
+        "Ein kleines Konzert gegeben. Zum Schluss hab ich mich verbeugt."
+      ],
+      paint: [
+        "Ich hab {m} gemalt. Ich finde, es ist richtig gut geworden.",
+        "An der Staffelei gestanden und {m} gemalt.",
+        "Ich hab {m} gemalt. Dabei hatte ich einen Farbklecks auf der Nase."
+      ],
+      bubbles: ["Seifenblasen gepustet und hinterhergesprungen. Plopp!", "Seifenblasen! Eine ist direkt vor meiner Nase geplatzt."],
+      sport: ["Frühsport! Hampelmann, Kniebeugen, Strecken. Danach war ich platt.", "Stirnband auf und los: Frühsport. Ich hab sogar mitgezählt."]
+    },
+    // dasselbe kurz, für die Zeile „Außerdem: …“, und als Hauptwort für die Tagesform
+    actShort: {
+      read: "gelesen",
+      game: "Gameboy gespielt",
+      tablet: "am Tablet gewischt",
+      kite: "Drachen steigen lassen",
+      tv: "ferngesehen",
+      music: "Musik gemacht",
+      paint: "gemalt",
+      bubbles: "Seifenblasen gepustet",
+      sport: "geturnt"
+    },
+    actNoun: { read: "Lesen", game: "Gameboy", tablet: "Tablet", music: "Musik", paint: "Malen", bubbles: "Seifenblasen" },
+    motif: { blume: "eine Blume", pika: "mich selbst", pino: "{n}", bau: "meinen Bau", flieger: "ein Flugzeug", regenbogen: "einen Regenbogen" },
+    pino: [
+      "{n} war zu Besuch! Wir haben uns mit den Nasen angestupst.",
+      "{n} kam vorbei. Zusammen ist alles schöner.",
+      "Mit {n} gespielt. Beim Abschied hingen meine Ohren kurz."
+    ],
+    coffee: ["Es roch nach Kaffee. Ich hab mir auch einen geholt.", "Kaffeeduft! Ich hab mitgetrunken, Schluck für Schluck."],
+    coffeeMore: [
+      "Noch ein Kaffee! Ich hab wieder mitgetrunken.",
+      "Schon wieder Kaffeeduft. Da konnte ich nicht nein sagen.",
+      "Kaffee Nummer {z}. Jetzt bin ich hellwach!"
+    ],
+    bird: ["Ein Vögelchen saß da. Ich hab gepiepst, es hat zurückgezwitschert.", "Besuch von einem Vögelchen. Wir haben uns nett unterhalten."],
+    plane: ["Ein Flugzeug! Ich hab ihm lange nachgeschaut. Brumm.", "Hoch oben flog ein Flugzeug. Wo es wohl hinwollte?"],
+    bfly: ["Ein Schmetterling ist auf meiner Nase gelandet. Ich hab ganz still gehalten.", "Schmetterling auf der Nase! Ich musste schielen."],
+    heart: ["So viel gestreichelt worden. Mein Fell steht noch ganz flauschig ab.", "Ganz viele Streicheleinheiten bekommen. Ich bin fast geschmolzen."],
+    parcel: ["Ein Päckchen am Ballon! Ich hab es mit der Zwille heruntergeholt.", "Ein Päckchen! Schleife auf, Deckel ab."],
+    earn: ["Du kümmerst dich so gut um mich, dass ein Päckchen für mich bereitliegt.", "Ein neues Päckchen wartet auf mich. Danke fürs Kümmern!"],
+    earnGold: ["Sieben gute Tage zusammen! Dafür gibt es ein goldenes Päckchen.", "Wieder sieben gute Tage. Ein goldenes Päckchen liegt für mich bereit!"],
+    gut: ["Heute war ein guter Tag: gefüttert, gestreichelt und rundum zufrieden.", "Gefüttert, gestreichelt, alles bestens. Das war ein guter Tag."],
+    urlaub: ["Ich bin zu {n} gefahren. Mein Bau wartet so lange auf mich.", "Rucksack auf und los: Ich besuche {n}!"],
+    urlaubTag: ["Ich bin bei {n}.", "Heute bin ich noch bei {n}."],
+    heim: ["Wieder zu Hause! {d} war ich bei {n}. Hier ist meine Postkarte.", "Da bin ich wieder! {d} bei {n}, es war schön. Die Postkarte ist für euch."],
+    mile: ["Das war mein {z}. Päckchen! Ich hab ein bisschen gefeiert."],
+    tonne: ["Die Tonne steht an der Straße. Danke fürs Rausstellen!", "Morgen kommt die Müllabfuhr. Die Tonne steht schon draußen."],
+    sauger: ["Der Saugroboter war unterwegs. Ich bin hinterhergehoppelt.", "Der Saugroboter hat geputzt. Vielleicht bin ich ein Stück mitgefahren!"],
+    allGold: ["Jetzt sind alle meine Schätze golden. Was für ein Fest!"],
+    flowerTaken: ["Ich hab dir eine Blume gepflückt und ins Gras gelegt. Du hast sie genommen!", "Für dich: eine Blume mit Schleife. Du hast sie angenommen, da hab ich mich gefreut."],
+    flowerWait: ["Ich hab dir eine Blume ins Gras gelegt. Sie wartet auf dich."],
+    flowerWilt: ["Ich hab dir eine Blume hingelegt. Sie ist leider verwelkt. Ich pflück dir bald eine neue."],
+    gather1: ["Eine Blüte für meinen Vorrat gesammelt."],
+    gatherN: ["{c} Blüten für meinen Vorrat gesammelt. Der Winter kann kommen.", "{c} Blüten gepflückt und in den Vorrat gelegt."],
+    hungry: ["Mein Bauch hat geknurrt. Zum Glück gab es bald etwas zu knabbern."],
+    hungryNow: ["Mein Bauch hat geknurrt. Ich hab ganz fest an Löwenzahn gedacht."],
+    clean: ["Alles blitzblank! Danke fürs Saubermachen, da hab ich einen Freudensprung gemacht.", "Meine Wiese ist wieder sauber. Sie funkelt richtig!"],
+    streak: ["Meine Päckchen-Serie fängt neu an. Das macht nichts, meine guten Tage behalte ich."],
+    secret: [
+      "Da steht nichts in meinem Tagebuch. Was ich gemacht habe, bleibt mein Geheimnis.",
+      "Da steht nichts. Vielleicht hab ich Purzelbäume geübt. Vielleicht auch nicht."
+    ],
+    bote: {
+      washer: ["Die Wäsche war fertig. Ich hab ganz laut Bescheid gesagt!"],
+      dryer: ["Der Trockner war fertig. Die Handtücher waren schön flauschig."],
+      dishwasher: ["Das Geschirr war fertig und hat geglänzt."]
+    },
+    fest: {
+      witch: "Halloween! Ich hab einen Hexenhut auf.",
+      martin: "St. Martin! Laterne, Laterne …",
+      boot: "Nikolaus! Mein Stiefel ist voll.",
+      xmas: "Weihnachten! Bei mir steht ein Tannenbaum.",
+      sticks: "Frohes Neues! Ich hab das Feuerwerk gesehen.",
+      karneval: "Helau! Es regnet Konfetti.",
+      ostern: "Ostern! Im Gras liegen bunte Eier.",
+      maibaum: "Hinter meinem Bau steht ein Maibaum.",
+      sommer: "Sommerfest! Die Wimpel flattern."
+    },
+    treasure: [
+      "Stups ich an und flitze hinterher.",
+      "Dreht sich im echten Wind.",
+      "Mit dem kuschle ich nachts.",
+      "Für sonnige Tage ab 24 Grad.",
+      "Damit schau ich Flugzeugen nach.",
+      "Für mein Nickerchen.",
+      "Damit gieße ich die Blumen.",
+      "Bimmelt, wenn ich rauskomme."
+    ],
+    wx: {
+      sunny: "sonnig",
+      clear: "klar",
+      "clear-night": "klar",
+      partlycloudy: "heiter",
+      cloudy: "bewölkt",
+      rainy: "Regen",
+      pouring: "Starkregen",
+      snowy: "Schnee",
+      "snowy-rainy": "Schneeregen",
+      fog: "Nebel",
+      lightning: "Gewitter",
+      "lightning-rainy": "Gewitter",
+      hail: "Hagel",
+      windy: "windig",
+      "windy-variant": "windig"
+    }
+  };
+  var diaryPick = (list, ...key) => list[Math.floor(seedRnd("tb", ...key) * list.length)];
+  var diaryTime = (t) => {
+    const d = new Date(t);
+    return `${d.getHours()}:${String(d.getMinutes()).padStart(2, "0")}`;
+  };
+  var bitCount = (n) => {
+    let c = 0;
+    for (let v = n >>> 0; v; v &= v - 1) c++;
+    return c;
+  };
+  var diaryDerive = (S, P, from, { decayAt, until }) => {
+    const ev = [];
+    const stamps = [];
+    const pets = {};
+    const add = (t, k, x) => t >= from && ev.push({ t, k, ...x });
+    const acts = /* @__PURE__ */ new Map();
+    const fed = new Set((P[0]?.v.fd || []).map((f) => f.t));
+    let pend = null;
+    const petMax = (c) => c && (pets[c.d] = Math.max(pets[c.d] || 0, c.n));
+    petMax(P[0]?.v.cute);
+    const p0 = P[0]?.v;
+    const mem = {};
+    if (p0?.cute) mem[p0.cute.d] = p0.cute.m;
+    const hays = new Set(p0 ? [`${p0.hay.m}.${p0.hay.c}`] : []);
+    let hayM = p0 ? p0.hay.m : -Infinity;
+    const fls = new Set(p0?.fl ? [p0.fl.t] : []);
+    const g00 = p0?.gift;
+    let maxO = g00 ? g00.o : -Infinity;
+    let maxZ = g00 ? g00.z : -Infinity;
+    let maxK = g00 ? g00.k : -Infinity;
+    let maxF = g00?.f ?? null;
+    const maxA = g00 ? { [g00.k]: g00.a } : {};
+    const urs = /* @__PURE__ */ new Map();
+    const urSee = (ur) => ur && (!urs.has(ur.t) || urs.get(ur.t) == null) && urs.set(ur.t, ur.d);
+    urSee(p0?.ur);
+    for (let i = 1; i < P.length; i++) {
+      const a = P[i - 1].v;
+      const b = P[i].v;
+      const t = P[i].t;
+      stamps.push(t);
+      for (const [k, name, v] of b.rec) {
+        if (acts.has(k)) {
+          if (v) acts.get(k).v = v;
+        } else if (!a.rec.some((e) => e[0] === k) && k * ACT_WIN.big > t - 3 * 36e5) {
+          const e = { t, k: "act", a: name, v: v || "" };
+          acts.set(k, e);
+          if (t >= from) ev.push(e);
+        }
+      }
+      const hk = `${b.hay.m}.${b.hay.c}`;
+      if (!hays.has(hk) && (b.hay.m > hayM || b.hay.c !== a.hay.c)) add(t, "gather");
+      hays.add(hk);
+      hayM = Math.max(hayM, b.hay.m);
+      if (b.fl && !fls.has(b.fl.t)) {
+        fls.add(b.fl.t);
+        add(b.fl.t, "flower", { id: b.fl.t, taken: !!b.fl.k });
+      } else if (b.fl?.k && !a.fl?.k) {
+        const e = ev.find((x) => x.k === "flower" && x.id === b.fl.t);
+        if (e) e.taken = true;
+        else add(t, "flower", { id: b.fl.t, taken: true });
+      }
+      for (const f of b.fd) {
+        if (fed.has(f.t)) continue;
+        fed.add(f.t);
+        add(f.t, "feed");
+      }
+      const c = b.cute;
+      if (c) {
+        petMax(c);
+        const neu = c.m & ~(mem[c.d] || 0);
+        mem[c.d] = (mem[c.d] || 0) | c.m;
+        MEM_BITS.forEach((name, bit) => neu & 1 << bit && add(t, "mem", { b: name }));
+      }
+      urSee(b.ur);
+      const g0 = a.gift;
+      const g1 = b.gift;
+      if (g0 && g1) {
+        if (g1.k === g0.k && g1.a > (maxA[g1.k] ?? g0.a) && g0.n < GIFT.max) add(t, "earn");
+        if (g1.k === g0.k) maxA[g1.k] = Math.max(maxA[g1.k] ?? g1.a, g1.a);
+        if (g1.f != null) {
+          if (maxF != null && Math.floor(g1.f / GIFT.goldDays) > Math.floor(maxF / GIFT.goldDays)) add(t, "earnGold");
+          maxF = Math.max(maxF ?? g1.f, g1.f);
+        }
+        if (g1.k !== g0.k && g1.k > maxK && g0.b != null && g1.a === 0) add(t, "streak");
+        maxK = Math.max(maxK, g1.k);
+        if (g1.z > maxZ) {
+          maxZ = g1.z;
+          const it = g1.i & 15;
+          const bit = 1 << it;
+          const v0 = g0.v || 0;
+          const v1 = g1.v || 0;
+          pend = { z: g1.z, it, gold: !!(g1.i & 16), what: it >= GIFT_TRE ? "treat" : !(g0.u & bit) ? "new" : v1 & bit << 8 && !(v0 & bit << 8) ? "gilt" : v1 & bit && !(v0 & bit) ? "trick" : "new" };
+        }
+        if (g1.o > maxO) {
+          maxO = g1.o;
+          const it = g1.i & 15;
+          const e = pend && pend.z <= g1.o ? pend : { it, gold: !!(g1.i & 16), what: it >= GIFT_TRE ? "treat" : "new" };
+          add(t, "parcel", { ...e, o: g1.o, mile: giftMile(g1.o), all: e.what === "gilt" && giftAllGold(g1) });
+          pend = null;
+        }
+      }
+    }
+    const urlaub = [];
+    for (const [t0, d] of urs) {
+      urlaub.push([t0, d == null ? Infinity : t0 + d]);
+      if (d != null && d < URLAUB.min) continue;
+      add(t0, "urlaub", { id: t0, d });
+      if (d != null) add(t0 + d, "heim", { id: t0, d });
+    }
+    const rebase = (v) => v.st === v.c && v.gt === v.c && urlaub.some(([, e]) => v.c >= e - 6e4 && v.c - e < URLAUB.keep);
+    let food = S[0]?.v;
+    let maxC = S[0]?.v.c ?? -Infinity;
+    const masks = new Map(S[0] ? [[S[0].v.c, S[0].v.m]] : []);
+    const growl = (v, end, eaten) => {
+      if (!v || !(v.s > 30)) return;
+      const x = decayAt(v.st, (v.s - 30) / RATE.s);
+      if (x < end) add(x, "hungry", { eaten });
+    };
+    for (let i = 1; i < S.length; i++) {
+      const a = S[i - 1].v;
+      const b = S[i].v;
+      const t = S[i].t;
+      stamps.push(t);
+      const seen = masks.get(b.c) || 0;
+      if (b.c > maxC && !rebase(b)) add(t, "clean", { n: 1, all: true });
+      else if (b.c === a.c && b.m & ~seen) add(t, "clean", { n: bitCount(b.m & ~seen) });
+      masks.set(b.c, seen | b.m);
+      maxC = Math.max(maxC, b.c);
+      if (b.st !== food.st) {
+        growl(food, b.st, true);
+        food = b;
+      }
+    }
+    growl(food, until, false);
+    const inU = (x) => urlaub.some(([a, b]) => x.t > a && x.t < b);
+    return { ev: ev.filter((x) => x.k === "urlaub" || x.k === "heim" || !inU(x)), stamps: stamps.sort((x, y) => x - y), pets, urlaub };
+  };
+
+  // src/logik/chronik.js
+  var CHRONIK = {
+    kopf: "Pika-Tag ",
+    back: 7,
+    wait: 10 * 6e4,
+    jitter: 10 * 6e4,
+    check: 3e4,
+    checkJit: 3e4,
+    retry: 36e5,
+    retryMax: 24 * 36e5,
+    rounds: 3,
+    hang: 10 * 6e4,
+    frisch: 1e4
+  };
+  var CHRONIK_NUM = ["futter", "streicheln", "putzen", "paeckchen"];
+  var CHRONIK_GAST = ["pino", "vogel", "falter"];
+  var CHRONIK_MEM = { pino: "pino", bird: "vogel", bfly: "falter" };
+  var chronikDatum = (tag) => Number.isInteger(tag) && tag > -7e5 && tag < 29e5 ? new Date(tag * 864e5).toISOString().slice(0, 10) : null;
+  var chronikTag = (datum) => {
+    const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(datum ?? ""));
+    if (!m) return null;
+    const tag = Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3])) / 864e5;
+    return chronikDatum(tag) === m[0] ? tag : null;
+  };
+  var chronikStart = (tag) => {
+    const d = new Date(tag * 864e5);
+    return new Date(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), 4).getTime();
+  };
+  var chronikVersatz = (zone, t) => {
+    if (typeof zone !== "string" || !zone) return null;
+    try {
+      const p = {};
+      const fmt = new Intl.DateTimeFormat("en-US", { timeZone: zone, hourCycle: "h23", year: "numeric", month: "numeric", day: "numeric", hour: "numeric", minute: "numeric", second: "numeric" });
+      for (const x of fmt.formatToParts(new Date(t))) p[x.type] = Number(x.value);
+      const v = (Date.UTC(p.year, p.month - 1, p.day, p.hour % 24, p.minute, p.second) - Math.floor(t / 1e3) * 1e3) / 6e4;
+      return Number.isFinite(v) ? v : null;
+    } catch (e) {
+      return null;
+    }
+  };
+  var chronikZoneOk = (zone, zeiten, lokal = (t) => -new Date(t).getTimezoneOffset()) => {
+    for (const t of zeiten) {
+      const v = chronikVersatz(zone, t);
+      if (v == null) return true;
+      if (v !== lokal(t)) return false;
+    }
+    return true;
+  };
+  var gastSort = (list) => [...new Set(list)].sort((a, b) => {
+    const i = CHRONIK_GAST.indexOf(a);
+    const j = CHRONIK_GAST.indexOf(b);
+    return i >= 0 && j >= 0 ? i - j : i >= 0 ? -1 : j >= 0 ? 1 : a < b ? -1 : a > b ? 1 : 0;
+  });
+  var chronikKod = (e) => {
+    const f = [];
+    for (const k of CHRONIK_NUM) if (e[k] != null) f.push(`${k}=${e[k]}`);
+    if (e.besuch) f.push(`besuch=${gastSort(e.besuch).join(",") || "-"}`);
+    for (const k of Object.keys(e.x || {}).sort()) f.push(`${k}=${e.x[k]}`);
+    return `${CHRONIK.kopf}${e.d}${f.length ? ` · ${f.join(" ")}` : ""}`;
+  };
+  var chronikLies = (titel) => {
+    if (typeof titel !== "string" || !titel.startsWith(CHRONIK.kopf)) return null;
+    const m = /^(\d{4}-\d{2}-\d{2})(?!\d)([\s\S]*)$/.exec(titel.slice(CHRONIK.kopf.length));
+    if (!m || chronikTag(m[1]) == null) return null;
+    const d = m[1];
+    const fremd = { d, fremd: true };
+    const e = { d, futter: null, streicheln: null, putzen: null, paeckchen: null, besuch: null, x: {} };
+    if (!m[2].trim()) return e;
+    const r = /^(?:\s*·\s*|\s+)([\s\S]*)$/.exec(m[2]);
+    if (!r) return fremd;
+    const seen = /* @__PURE__ */ new Set();
+    for (const tok of r[1].split(/\s+/).filter(Boolean)) {
+      const q = /^([a-z][a-z0-9_]*)=(\S+)$/.exec(tok);
+      if (!q || seen.has(q[1])) return fremd;
+      const [, k, v] = q;
+      seen.add(k);
+      if (CHRONIK_NUM.includes(k)) {
+        if (!/^\d{1,9}$/.test(v)) return fremd;
+        e[k] = Number(v);
+      } else if (k === "besuch") {
+        if (v !== "-" && !/^[a-z][a-z0-9_]*(,[a-z][a-z0-9_]*)*$/.test(v)) return fremd;
+        e.besuch = v === "-" ? [] : gastSort(v.split(","));
+      } else e.x[k] = v;
+    }
+    return e;
+  };
+  var chronikMisch = (a, b) => {
+    const e = { d: (a || b).d, futter: null, streicheln: null, putzen: null, paeckchen: null, besuch: null, x: {} };
+    for (const o of [a, b]) {
+      if (!o) continue;
+      for (const k of CHRONIK_NUM) if (o[k] != null) e[k] = e[k] == null ? o[k] : Math.max(e[k], o[k]);
+      if (o.besuch) e.besuch = [...e.besuch || [], ...o.besuch];
+      for (const k of Object.keys(o.x || {})) if (!hasKey(e.x, k) || o.x[k] > e.x[k]) e.x[k] = o.x[k];
+    }
+    if (e.besuch) e.besuch = gastSort(e.besuch);
+    e.x = Object.fromEntries(Object.keys(e.x).sort().map((k) => [k, e.x[k]]));
+    return e;
+  };
+  var chronikBilanz = (ev, pets, start, end, tag, urlaub = []) => {
+    const e = { d: chronikDatum(tag), futter: 0, streicheln: Math.min(Math.max(0, Math.floor(Number(pets?.[tag]) || 0)), PET_CAP), putzen: 0, paeckchen: 0, besuch: [], x: {} };
+    for (const v of ev) {
+      if (!(v.t >= start && v.t < end)) continue;
+      if (v.k === "feed") e.futter++;
+      else if (v.k === "clean") e.putzen += v.n || 0;
+      else if (v.k === "parcel") e.paeckchen++;
+      else if (v.k === "mem" && hasKey(CHRONIK_MEM, v.b)) e.besuch.push(CHRONIK_MEM[v.b]);
+      else if (v.k === "mem" && v.b === "gut") e.x.gut = "1";
+    }
+    if (chronikUrlaub(urlaub, start, end)) e.x.urlaub = "1";
+    e.besuch = gastSort(e.besuch);
+    return e;
+  };
+  var chronikUrlaub = (urlaub, start, end) => (urlaub || []).some(([a, b]) => a < end && b > start);
+  var chronikGruppen = (items) => {
+    const G = /* @__PURE__ */ new Map();
+    for (const it of Array.isArray(items) ? items : []) {
+      const e = chronikLies(it?.summary);
+      if (!e) continue;
+      if (!G.has(e.d)) G.set(e.d, { les: [], fremd: false });
+      if (e.fremd) G.get(e.d).fremd = true;
+      else G.get(e.d).les.push({ uid: it.uid, e });
+    }
+    return G;
+  };
+  var chronikTage = (items) => {
+    const T = /* @__PURE__ */ new Map();
+    for (const [d, g] of chronikGruppen(items)) if (g.les.length) T.set(d, g.les.reduce((m, x) => chronikMisch(m, x.e), null));
+    return T;
+  };
+  var chronikFehlt = (items, heute, back) => {
+    const G = chronikGruppen(items);
+    const out = [];
+    for (let tag = heute - back; tag < heute; tag++) if (!G.has(chronikDatum(tag))) out.push(tag);
+    return out;
+  };
+  var chronikPlan = (items, soll) => {
+    const G = chronikGruppen(items);
+    const S = new Map(!soll ? [] : typeof soll[Symbol.iterator] === "function" ? [...soll] : Object.entries(soll));
+    const out = [];
+    for (const d of [.../* @__PURE__ */ new Set([...G.keys(), ...S.keys()])].sort()) {
+      const g = G.get(d);
+      const neu = S.get(d);
+      if (!g) {
+        if (neu && chronikTag(d) != null) out.push({ op: "add", d, summary: chronikKod({ ...neu, d }) });
+        continue;
+      }
+      if (!g.les.length || g.les.some((x) => typeof x.uid !== "string" || !x.uid)) continue;
+      const les = [...g.les].sort((a, b) => a.uid < b.uid ? -1 : a.uid > b.uid ? 1 : 0);
+      const alle = les.reduce((m, x) => chronikMisch(m, x.e), neu ? { ...neu, d } : null);
+      const summary = chronikKod(alle);
+      if (summary !== chronikKod(les[0].e)) out.push({ op: "update", d, uid: les[0].uid, summary });
+      for (const x of les.slice(1)) out.push({ op: "remove", d, uid: x.uid });
+    }
+    return out;
+  };
+
+  // src/grafik/areale.js
+  var HOLE_GRAD = `<radialGradient id="holeg" cx=".5" cy=".9" r=".85">
+      <stop offset="0" stop-color="#0d0907"/><stop offset="1" stop-color="#3b302a"/></radialGradient>`;
+  var GLOW_GRAD = (id, c) => `<radialGradient id="${id}"><stop offset="0" stop-color="${c}" stop-opacity=".75"/>
+      <stop offset="1" stop-color="${c}" stop-opacity="0"/></radialGradient>`;
+  var AREALE = {
+    fels: {
+      name: "Felsbau",
+      w: 0.72,
+      left: -0.1,
+      vh: 66,
+      sink: 5,
+      hay: 0.86,
+      perches: [[46, 10.2], [17, 26.2], [83, 30.2]],
+      hole: { x1: 39.5, x2: 60.5, top: 34, lip: 57.5 },
+      svg: `
+        <defs>${HOLE_GRAD}</defs>
+        <g stroke="#5c6166" stroke-width="1.5">
+          <ellipse cx="50" cy="27" rx="27" ry="17" fill="#a7adb3"/>
+          <ellipse cx="19" cy="45" rx="24" ry="19" fill="#979da4"/>
+          <ellipse cx="81" cy="47" rx="22" ry="17" fill="#8e949b"/>
+        </g>
+        <ellipse cx="42" cy="16" rx="8" ry="3" fill="#fff" opacity=".25"/>
+        <ellipse cx="11" cy="34" rx="8" ry="3.4" fill="#fff" opacity=".2"/>
+        <ellipse cx="78" cy="37" rx="7" ry="3" fill="#fff" opacity=".2"/>
+        <path d="M36 64 V45 A14 14 0 0 1 64 45 V64Z" fill="url(#holeg)" stroke="#5c6166" stroke-width="1.4"/>
+        <g stroke="#5c6166" stroke-width="1.2" fill="#b4b9be">
+          <ellipse cx="35.5" cy="46" rx="4" ry="5.5"/><ellipse cx="38.5" cy="35.5" rx="4.6" ry="4"/>
+          <ellipse cx="50" cy="30.5" rx="6" ry="3.6"/><ellipse cx="61.5" cy="35.5" rx="4.6" ry="4"/>
+          <ellipse cx="64.5" cy="46" rx="4" ry="5.5"/>
+        </g>
+        <g stroke="#5c6166" stroke-width="1.3">
+          <ellipse cx="41" cy="61" rx="9" ry="3.8" fill="#a3a9ae"/><ellipse cx="58" cy="61.5" rx="9" ry="3.6" fill="#9aa0a6"/>
+          <ellipse cx="8" cy="60" rx="12" ry="7" fill="#a3a9ae"/><ellipse cx="92" cy="61" rx="11" ry="6" fill="#9aa0a6"/>
+        </g>
+        <g fill="#79b25d">
+          <ellipse cx="63" cy="13" rx="5" ry="2.4"/><ellipse cx="25" cy="28" rx="4" ry="2"/><ellipse cx="90" cy="33" rx="4" ry="1.8"/>
+        </g>`
+    },
+    huegel: {
+      name: "Erdhügel",
+      w: 0.82,
+      left: -0.06,
+      vh: 60,
+      sink: 4,
+      stash: { x1: 92.5, x2: 112.5, top: 39 },
+      // Laternendach, Schornstein, Schild, Blumenkasten, Hügelkuppe, Nischenbogen
+      perches: [[13, 27.6], [65, 0.4], [47, 13.4], [84, 39.6], [36, 11.6], [102.5, 37.4]],
+      hole: { x1: 37.5, x2: 62.5, top: 25.5, lip: 52.6 },
+      svg: `
+        <defs>${HOLE_GRAD}</defs>
+        <g stroke="#6b625a" stroke-width="1.1">
+          <rect x="61.5" y="2" width="7" height="14" fill="#a39488"/>
+          <rect x="60.5" y=".4" width="9" height="3" rx=".6" fill="#8c7d72"/>
+          <path d="M61.5 7 H68.5 M64 7 V11.5 M66.5 11.5 V16 M61.5 11.5 H68.5" stroke-width=".6" opacity=".6"/>
+        </g>
+        <path class="mound" d="M-4 60 C-3 30 22 10 50 10 C80 10 104 20 114 32 C121 41 125 50 126 60Z" stroke-width="1.5"/>
+        <path d="M14 30 Q28 15 46 13" stroke="#fff" stroke-opacity=".35" stroke-width="3" fill="none" stroke-linecap="round"/>
+        <g class="mound-t" stroke-width="1.2" fill="none" stroke-linecap="round">
+          <path d="M28 16.5 l-2 -4 M31 15 l.5 -4.5 M68 15 l1.5 -4 M72 17 l3 -3.5 M47 10 l-1 -4 M51 10 l1.5 -4.2"/>
+        </g>
+        <g fill="#fff"><circle cx="6" cy="48" r="1.6"/><circle cx="9" cy="42" r="1.3"/><circle cx="90" cy="30" r="1.5"/><circle cx="119.5" cy="50" r="1.2"/></g>
+        <g fill="#f4c53d"><circle cx="6" cy="48" r=".6"/><circle cx="9" cy="42" r=".5"/><circle cx="90" cy="30" r=".6"/><circle cx="119.5" cy="50" r=".5"/></g>
+        <g transform="translate(6 1)">
+          <circle cx="74" cy="32" r="6.6" fill="#5e3d26"/>
+          <circle cx="74" cy="32" r="5.6" fill="#9a6a45"/>
+          <circle class="pane" cx="74" cy="32" r="4.3"/>
+          <path d="M70.3 29.4 Q72.6 30 73.4 34.6 L70.4 34.6Z M77.7 29.4 Q75.4 30 74.6 34.6 L77.6 34.6Z" fill="#e58a7a" opacity=".85"/>
+          <path d="M74 27.7 V36.3 M69.7 32 H78.3" stroke="#9a6a45" stroke-width="1"/>
+          <rect x="67" y="38.6" width="14" height="3.4" rx=".8" fill="#9a6a45" stroke="#5e3d26" stroke-width=".8"/>
+          <path d="M69 38.6 q.4 -2.6 1.6 -3.2 M72.5 38.6 q0 -2.6 -.8 -3.4 M76 38.6 q.3 -2.8 1.4 -3.2 M79 38.6 q-.2 -2.4 -1 -3" stroke="#4f8a3a" stroke-width=".7" fill="none"/>
+          <g fill="#f07a95"><circle cx="70.6" cy="35.4" r="1.1"/><circle cx="77.4" cy="35.4" r="1.1"/></g>
+          <g fill="#f6c945"><circle cx="71.7" cy="35.2" r="1"/><circle cx="78" cy="35.8" r=".9"/></g>
+        </g>
+        <defs><linearGradient id="stashg" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" stop-color="#140d09"/><stop offset="1" stop-color="#3a2a1e"/></linearGradient></defs>
+        <path d="M92.5 57 V43.2 C92.5 37.8 112.5 37.8 112.5 43.2 V57Z" fill="url(#stashg)"/>
+        <path d="M95.3 52.8 V46 C95.3 43.4 109.7 43.4 109.7 46 V52.8Z" fill="#4b3628" opacity=".7"/>
+        <path d="M92.5 57 L95.3 52.8 H109.7 L112.5 57Z" fill="#6e4f37"/>
+        <path d="M92.5 44.2 L95.3 46 M112.5 44.2 L109.7 46" stroke="#000" stroke-opacity=".35" stroke-width=".5"/>
+        <g class="stashb"></g>
+        <path d="M93.3 43.8 C93.5 39.4 111.5 39.4 111.7 43.8" stroke="#000" stroke-opacity=".45" stroke-width="1.4" fill="none"/>
+        <path d="M92.5 57 V43.2 C92.5 37.8 112.5 37.8 112.5 43.2 V57" fill="none" stroke="#5e3d26" stroke-width="3.6"/>
+        <path d="M92.5 57 V43.2 C92.5 37.8 112.5 37.8 112.5 43.2 V57" fill="none" stroke="#9a6a45" stroke-width="2.4"/>
+        <path d="M92.5 57 V43.2 C92.5 37.8 112.5 37.8 112.5 43.2 V57" fill="none" stroke="#5e3d26" stroke-width=".4"
+          stroke-dasharray="2.5 4" opacity=".6"/>
+        <path d="M36 55 V38 A14 14 0 0 1 64 38 V55Z" fill="url(#holeg)"/>
+        <path d="M35 57 V38 A15 15 0 0 1 65 38 V57" fill="none" stroke="#5e3d26" stroke-width="5.6"/>
+        <path d="M35 57 V38 A15 15 0 0 1 65 38 V57" fill="none" stroke="#9a6a45" stroke-width="3.8"/>
+        <path d="M35 57 V38 A15 15 0 0 1 65 38 V57" fill="none" stroke="#5e3d26" stroke-width=".5" stroke-dasharray="3 5" opacity=".6"/>
+        <g>
+          <ellipse cx="27" cy="41.5" rx="5" ry="13.5" fill="#6a9c78" stroke="#3d6a4b" stroke-width="1.3"/>
+          <path d="M25 30.5 V52.5 M28.5 29 V54" stroke="#3d6a4b" stroke-width=".6" opacity=".6"/>
+          <circle cx="29.3" cy="42.5" r="1.1" fill="#e2c15a"/>
+        </g>
+        <g transform="rotate(-3 50 17)">
+          <rect x="41" y="13.2" width="18" height="7" rx="1.4" fill="#d2a46c" stroke="#8a5a3b" stroke-width="1.1"/>
+          <text x="50" y="18.6" text-anchor="middle" font-size="5" font-weight="800" fill="#5a4030" letter-spacing=".5">PIKA</text>
+        </g>
+        <path d="M30 53.4 Q50 51.6 70 53.4 L72.5 55 V57.6 H27.5 V55Z" fill="#b8a48a" stroke="#7d6a52" stroke-width="1.2" stroke-linejoin="round"/>
+        <path d="M28.1 55.2 H71.9 V57 H28.1Z" fill="#8f7c62"/>
+        <path d="M33 53.6 Q50 52.2 67 53.6" stroke="#fff" stroke-opacity=".3" stroke-width=".9" fill="none" stroke-linecap="round"/>
+        <path d="M18 57.5 V27 Q18 24 15 24 H13 V27" stroke="#4a4a4a" stroke-width="1.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+        <path d="M14.6 57 Q15 54.4 18 54.2 Q21 54.4 21.4 57Z" fill="#9aa0a6" stroke="#5c6166" stroke-width=".8"/>
+        <path d="M10 27.6 H16 L15 29 H11Z" fill="#3c3c3c"/>
+        <rect x="11" y="29" width="4" height="6" fill="#ffe7a3" fill-opacity=".45" stroke="#3c3c3c" stroke-width="1"/>
+        <rect x="10.4" y="35" width="5.2" height="1.4" rx=".5" fill="#3c3c3c"/>`,
+      lights: `
+        <defs>${GLOW_GRAD("lg", "#ffd66b")}${GLOW_GRAD("ig", "#ffb347")}</defs>
+        <g class="smoke"><circle cx="65" cy="-1" r="2.2"/><circle cx="65" cy="-1" r="2.2"/><circle cx="65" cy="-1" r="2.2"/></g>
+        <path class="lt" d="M37.5 53 V38 A12.5 12.5 0 0 1 62.5 38 V53Z" fill="url(#ig)" fill-opacity=".7"/>
+        <g transform="translate(6 1)">
+          <circle class="lt" cx="74" cy="32" r="12" fill="url(#ig)" fill-opacity=".6"/>
+          <circle class="lt" cx="74" cy="32" r="4.3" fill="#ffcf70"/>
+          <path class="lt" d="M70.3 29.4 Q72.6 30 73.4 34.6 L70.4 34.6Z M77.7 29.4 Q75.4 30 74.6 34.6 L77.6 34.6Z" fill="#d9705f"/>
+          <path class="lt" d="M74 27.7 V36.3 M69.7 32 H78.3" stroke="#7a5236" stroke-width="1"/>
+          <circle class="tvw" cx="74" cy="32" r="4.3"/>
+          <path class="tvw-x" d="M74 27.7 V36.3 M69.7 32 H78.3" stroke="#7a5236" stroke-width="1"/>
+        </g>
+        <circle class="lt flk" cx="13" cy="32" r="10" fill="url(#lg)"/>
+        <rect class="lt" x="11.6" y="29.6" width="2.8" height="4.8" fill="#ffd66b"/>`
+    },
+    stumpf: {
+      name: "Baumstumpf",
+      w: 0.64,
+      left: -0.06,
+      vh: 84,
+      sink: 5,
+      hay: 0.9,
+      perches: [[40, 23.5], [61, 23]],
+      hole: { x1: 38.5, x2: 61.5, top: 42.5, lip: 76.6 },
+      svg: `
+        <defs>${HOLE_GRAD}</defs>
+        <g fill="#7f5434" stroke="#5e3d26" stroke-width="1.4" stroke-linejoin="round">
+          <path d="M1 81 Q12 77 20 62 L27 70 Q17 78 15 81Z"/>
+          <path d="M99 81 Q88 77 80 62 L73 70 Q83 78 85 81Z"/>
+        </g>
+        <path d="M10 81 Q19 74 20 58 L21 24 H79 L80 58 Q81 74 90 81Z" fill="#93633f" stroke="#5e3d26" stroke-width="1.6" stroke-linejoin="round"/>
+        <g stroke="#6f4a2f" stroke-width="1.2" fill="none" stroke-linecap="round" opacity=".8">
+          <path d="M28 30 Q26 40 29 52 M72 31 Q75 42 71 56 M35 29 V37 M65 29 Q63 34 65 39 M25 60 Q24 68 19 75 M76 60 Q78 68 83 75"/>
+        </g>
+        <ellipse class="stump-top" cx="50" cy="24" rx="29" ry="7.5" stroke="#5e3d26" stroke-width="1.6"/>
+        <g fill="none" stroke="#b98c58" stroke-width="1">
+          <ellipse cx="50" cy="24" rx="21" ry="5.2"/><ellipse cx="50" cy="24" rx="13" ry="3.2"/><ellipse cx="50" cy="24" rx="5" ry="1.2"/>
+        </g>
+        <path d="M21 26 Q23 19 33 21.5 Q31 27 25 29 Q22 29 21 26Z" fill="#7fb35c"/>
+        <path d="M20 40 Q23 36 24 44 Q21 47 20 44Z" fill="#7fb35c" opacity=".85"/>
+        <path d="M70 21 Q72 14 76 11" stroke="#4f8a3a" stroke-width="1.4" fill="none" stroke-linecap="round"/>
+        <ellipse cx="78" cy="10.5" rx="3.6" ry="1.8" fill="#6bab4c" transform="rotate(-25 78 10.5)"/>
+        <ellipse cx="72" cy="15" rx="3" ry="1.5" fill="#6bab4c" transform="rotate(30 72 15)"/>
+        <path d="M37 82 V54 A13 13 0 0 1 63 54 V82Z" fill="url(#holeg)" stroke="#5e3d26" stroke-width="1.6"/>
+        <path d="M39 80 V54.5 A11 11 0 0 1 61 54.5 V80" fill="none" stroke="#c99a68" stroke-width="1" opacity=".5"/>
+        <path d="M27 82 Q33 76.4 50 76.4 Q67 76.4 73 82Z" fill="#87593a" stroke="#5e3d26" stroke-width="1.4" stroke-linejoin="round"/>
+        <g stroke="#7a2d22" stroke-width=".8">
+          <rect x="84" y="71" width="3" height="7" rx="1.2" fill="#f3e6d2"/>
+          <path d="M80.5 72.5 Q85.5 63.5 90.5 72.5Z" fill="#d9483b"/>
+          <rect x="90.6" y="75.5" width="2" height="4.5" rx=".9" fill="#f3e6d2"/>
+          <path d="M88.6 76.4 Q91.6 71 94.6 76.4Z" fill="#d9483b"/>
+        </g>
+        <g fill="#fff"><circle cx="83.5" cy="69.5" r=".9"/><circle cx="87" cy="68" r=".8"/><circle cx="85.6" cy="71" r=".6"/><circle cx="91.5" cy="74.4" r=".6"/></g>
+        <g stroke="#6e5130" stroke-width=".7">
+          <rect x="11" y="74" width="1.8" height="5" rx=".8" fill="#efe1c8"/><path d="M8.6 75 Q11.9 70.5 15.2 75Z" fill="#b08a5a"/>
+          <rect x="15.8" y="76" width="1.5" height="4" rx=".7" fill="#efe1c8"/><path d="M14 76.8 Q16.6 73.4 19.2 76.8Z" fill="#b08a5a"/>
+        </g>`,
+      lights: `
+        <defs>${GLOW_GRAD("mg", "#b8ffd9")}</defs>
+        <circle class="lt flk" cx="85.5" cy="70" r="8" fill="url(#mg)"/>
+        <circle class="lt flk" cx="91.6" cy="75" r="5" fill="url(#mg)"/>
+        <circle class="lt flk" cx="12" cy="75" r="5.5" fill="url(#mg)"/>`
+    },
+    alpin: {
+      name: "Geröllhalde",
+      w: 0.78,
+      left: -0.1,
+      vh: 64,
+      sink: 4,
+      hay: 0.84,
+      mountains: true,
+      perches: [[55, 11.5], [21, 30], [81, 30.2]],
+      flowers: ["#ffffff", "#3d6fd6", "#ffffff", "#f6c945", "#b99cf0"],
+      hole: { x1: 39, x2: 61, top: 34, lip: 55.3 },
+      svg: `
+        <defs>${HOLE_GRAD}</defs>
+        <g stroke="#565b61" stroke-width="1.4" stroke-linejoin="round">
+          <path d="M28 42 L37 17 L56 11 L73 21 L72 42Z" fill="#adb3b9"/>
+          <path d="M0 62 L3 42 L14 29 L31 31 L39 46 L37 62Z" fill="#9aa1a8"/>
+          <path d="M63 62 L61 44 L72 29 L89 31 L99 46 L98 62Z" fill="#8e959c"/>
+        </g>
+        <g fill="#fff" opacity=".22"><path d="M37 17 L56 11 L49 24Z"/><path d="M14 29 L31 31 L21 37Z"/><path d="M72 29 L89 31 L80 36Z"/></g>
+        <g fill="#000" opacity=".12"><path d="M56 11 L73 21 L72 42 L62 30Z"/><path d="M31 31 L39 46 L37 62 L30 50Z"/><path d="M89 31 L99 46 L98 62 L90 48Z"/></g>
+        <g fill="#c9c86a" opacity=".8"><ellipse cx="45" cy="20" rx="2.4" ry="1.2"/><ellipse cx="10" cy="40" rx="2" ry="1"/><ellipse cx="84" cy="36" rx="2.2" ry="1"/></g>
+        <path d="M38 64 V45 A12 12 0 0 1 62 45 V64Z" fill="url(#holeg)" stroke="#565b61" stroke-width="1.4"/>
+        <path d="M30 56 L51 54.9 L70 56.3 L72 63 L28 63Z" fill="#a3a9ae" stroke="#565b61" stroke-width="1.3" stroke-linejoin="round"/>
+        <g fill="#9aa1a8" stroke="#565b61" stroke-width="1">
+          <path d="M18 63 L21 58.5 L26 59 L27 63Z"/><path d="M74 63 L76 59.5 L80 59.2 L82 63Z"/><path d="M2 63 L4 60 L8 60.4 L9 63Z"/>
+        </g>`
+    }
+  };
+
+  // src/karte/editor.js
+  var Editor = class {
+    // Karten-Editor (HA-Formular): die häufigen Optionen mit Auswahlfeldern, Geräte, Kaffee und Geburtstage als YAML-Felder.
+    // Ältere HA-Versionen ohne getConfigForm zeigen einfach weiter den YAML-Editor.
+    static getConfigForm() {
+      const ent = (domain) => ({ entity: { filter: { domain } } });
+      const num = (min, max, step = 1, unit) => ({ number: { min, max, step, mode: "box", ...unit ? { unit_of_measurement: unit } : {} } });
+      const bool = { boolean: {} };
+      const text = { text: {} };
+      const group = (title, icon, schema) => ({ type: "expandable", name: "", flatten: true, title, icon, schema });
+      return {
+        schema: [
+          { type: "grid", name: "", schema: [
+            { name: "name", selector: text },
+            { name: "areal", default: "huegel", selector: { select: { mode: "dropdown", options: [
+              { value: "huegel", label: "Erdhügel" },
+              { value: "fels", label: "Felsen" },
+              { value: "stumpf", label: "Baumstumpf" },
+              { value: "alpin", label: "Alpin" }
+            ] } } }
+          ] },
+          { name: "entity", selector: ent("input_text") },
+          { name: "plan_entity", selector: ent("input_text") },
+          { name: "chronicle_entity", selector: ent("todo") },
+          { type: "grid", name: "", schema: [
+            { name: "show_stats", selector: bool, default: true },
+            { name: "gifts", selector: bool, default: true },
+            { name: "friend", selector: bool, default: true },
+            { name: "festive", selector: bool, default: true },
+            { name: "diary", selector: bool, default: true },
+            { name: "diary_house", selector: bool, default: true },
+            { name: "vacation", selector: bool, default: true }
+          ] },
+          group("Schlaf, Wetter und Himmel", "mdi:weather-night", [
+            { type: "grid", name: "", schema: [
+              { name: "sleep_start", selector: text },
+              { name: "sleep_end", selector: text }
+            ] },
+            { name: "sun_entity", selector: ent("sun") },
+            { name: "weather_entity", selector: ent("weather") },
+            { type: "grid", name: "", schema: [
+              { name: "precip_entity", selector: ent("sensor") },
+              { name: "rain_min", selector: num(0, 5, 0.1, "mm/h") }
+            ] },
+            { type: "grid", name: "", schema: [
+              { name: "shooting_stars", selector: bool, default: true },
+              { name: "fireflies", selector: bool, default: true }
+            ] }
+          ]),
+          group("Flugzeuge", "mdi:airplane", [
+            { name: "flight_entity", selector: ent("sensor") },
+            { type: "grid", name: "", schema: [
+              { name: "flight_radius", selector: num(1, 200, 1, "km") },
+              { name: "max_flights", selector: num(0, 6) }
+            ] }
+          ]),
+          group("Pino, Tablet und Größe", "mdi:tablet", [
+            { name: "friend_name", selector: text },
+            { name: "screen_entity", selector: ent(["switch", "light", "input_boolean", "binary_sensor"]) },
+            { name: "height", selector: num(120, 800, 10, "px") }
+          ]),
+          { type: "expandable", name: "signals", title: "Haus-Signale", icon: "mdi:home-alert-outline", schema: [
+            { name: "waste", selector: ent("calendar") },
+            { name: "wardrobe", selector: bool },
+            { name: "vacuum", selector: ent("vacuum") },
+            { name: "door", selector: ent("binary_sensor") }
+          ] },
+          group("Geburtstage, Haushaltsgeräte, Kaffee (YAML)", "mdi:code-braces", [
+            { name: "birthdays", selector: { object: {} } },
+            { name: "appliances", selector: { object: {} } },
+            { name: "appliance_labels", default: "all", selector: { select: { mode: "dropdown", options: [
+              { value: "all", label: "Alles: Fortschritt, Restzeit und „fertig“" },
+              { value: "done", label: "Nur „fertig“" },
+              { value: "none", label: "Nichts" }
+            ] } } },
+            { name: "coffee", selector: { object: {} } }
+          ])
+        ],
+        computeLabel: (s) => EDITOR_LABEL[s.name],
+        computeHelper: (s) => EDITOR_HELP[s.name]
+      };
+    }
+    static getStubConfig() {
+      return { name: "Pika" };
+    }
+  };
+
+  // src/grafik/momente.js
+  var COFFEE_THINK = `<svg viewBox="0 0 24 24" aria-hidden="true">
+    <path d="M8 8 q-1.4 -2 0 -4 q1.4 -2 0 -4 M12.5 8 q-1.4 -2 0 -4 q1.4 -2 0 -4" fill="none" stroke="#b9a48c" stroke-width="1.3" stroke-linecap="round" transform="translate(0 2)"/>
+    <path d="M17.4 12.4 q4.2 0 4.2 3.4 q0 3.4 -4.4 3.2" fill="none" stroke="#6b4428" stroke-width="1.8"/>
+    <path d="M3 11 H18 Q18 21.5 10.5 21.5 Q3 21.5 3 11Z" fill="#f6f1ea" stroke="#6b4428" stroke-width="1.2"/>
+    <ellipse cx="10.5" cy="11" rx="7.5" ry="1.6" fill="#b07a4c"/></svg>`;
+  var EMOTE = {
+    q: "?",
+    ex: "!",
+    drop: `<svg viewBox="0 0 10 14"><path d="M5 .5 C7 4.2 9.5 6.8 9.5 9.4 A4.5 4.5 0 0 1 .5 9.4 C.5 6.8 3 4.2 5 .5Z" fill="#a8dcff" stroke="#4f86b8" stroke-width="1"/>
+      <path d="M3.2 9 q0 1.8 1.6 2.4" stroke="#fff" stroke-width="1" fill="none" stroke-linecap="round"/></svg>`,
+    spark: `<svg viewBox="0 0 24 24" fill="#fff6b0" stroke="#e0a032" stroke-width=".8" stroke-linejoin="round">
+      <path d="M8 2 Q9 7 14 8 Q9 9 8 14 Q7 9 2 8 Q7 7 8 2Z"/><path d="M18 10 Q18.6 13.4 22 14 Q18.6 14.6 18 18 Q17.4 14.6 14 14 Q17.4 13.4 18 10Z"/>
+      <path d="M7 16 Q7.4 18.6 10 19 Q7.4 19.4 7 22 Q6.6 19.4 4 19 Q6.6 18.6 7 16Z"/></svg>`,
+    grump: `<svg viewBox="0 0 28 18"><path d="M7 16 Q1 16 1.5 11 Q2 7 6.5 7.5 Q7.5 2 13 2.5 Q18.5 2 20 6.5 Q26.5 6 26.5 11.5 Q26.5 16 21 16Z"
+      fill="#c9ced8" stroke="#6f7686" stroke-width="1.2"/><path d="M9.5 10.5 l2.4 1.4 M18.5 10.5 l-2.4 1.4 M11.5 13.6 q2.5 -1.4 5 0" stroke="#5c6272" stroke-width="1.2" fill="none" stroke-linecap="round"/></svg>`
+  };
+  var BFLY_COLORS = [["#ffb347", "#e07b1a"], ["#8fc4ff", "#4f86c6"], ["#f6a5c8", "#d4669a"], ["#fff2a0", "#d9b640"], ["#c7b2ff", "#8a6fd9"]];
+  var BFLY_SVG = ([c, d]) => `<svg viewBox="0 0 20 16" aria-hidden="true">
+    <g class="bwl"><path d="M10 7.5 C6.5 .5 .8 .6 1 5 C1.2 7.6 4.4 8.6 7 8.4 C3.2 9.6 2.6 14.6 6.4 14.4 C8.6 14.2 9.8 11.4 10 9Z" fill="${c}" stroke="${d}" stroke-width=".8"/>
+      <circle cx="4.6" cy="4.8" r="1.3" fill="${d}" opacity=".6"/></g>
+    <g class="bwr"><path d="M10 7.5 C13.5 .5 19.2 .6 19 5 C18.8 7.6 15.6 8.6 13 8.4 C16.8 9.6 17.4 14.6 13.6 14.4 C11.4 14.2 10.2 11.4 10 9Z" fill="${c}" stroke="${d}" stroke-width=".8"/>
+      <circle cx="15.4" cy="4.8" r="1.3" fill="${d}" opacity=".6"/></g>
+    <ellipse cx="10" cy="8.6" rx="1" ry="4" fill="#4a3628"/>
+    <path d="M9.6 4.8 Q8.6 2.4 7.4 1.8 M10.4 4.8 Q11.4 2.4 12.6 1.8" stroke="#4a3628" stroke-width=".55" fill="none" stroke-linecap="round"/></svg>`;
+  var GIFT_SVG = (c) => `<svg viewBox="0 0 34 16" aria-hidden="true">
+    <path d="M2 13 Q13 11.6 24 8.6" stroke="#4f8a3a" stroke-width="1.6" fill="none" stroke-linecap="round"/>
+    <ellipse cx="9" cy="10.4" rx="3.6" ry="1.5" fill="#6bab4c" transform="rotate(-24 9 10.4)"/>
+    <g fill="${c}" stroke="rgba(0,0,0,.15)" stroke-width=".5">
+      ${[0, 72, 144, 216, 288].map((a) => {
+    const r = a * Math.PI / 180;
+    return `<circle cx="${(27 + Math.sin(r) * 3.6).toFixed(2)}" cy="${(7.6 - Math.cos(r) * 3.6).toFixed(2)}" r="3.2"/>`;
+  }).join("")}
+    </g>
+    <circle cx="27" cy="7.6" r="1.7" fill="#e0a032"/>
+    <g fill="#f2789f" stroke="#b8406a" stroke-width=".5" stroke-linejoin="round" transform="translate(15 11) scale(1.45) translate(-15 -11)">
+      <path d="M15 11 L10.8 7.6 L11.4 12.6Z"/><path d="M15 11 L19.4 8.4 L18.6 13.2Z"/>
+      <path d="M15 11 L13.2 15.4 M15 11 L16.6 15.2" fill="none" stroke-linecap="round"/>
+      <circle cx="15" cy="11" r="1.2"/></g></svg>`;
+  var DREAM = {
+    lz: FOOD.lz.svg,
+    klee: FOOD.klee.svg,
+    coffee: COFFEE_THINK,
+    heart: ICON_HEART,
+    pino: `<svg viewBox="0 0 24 24" stroke="#5a4030" stroke-width="1">
+      <circle cx="6.6" cy="6.4" r="4" fill="#f2b36e"/><circle cx="17.4" cy="6.4" r="4" fill="#f2b36e"/>
+      <circle cx="6.6" cy="6.8" r="2.1" fill="#f0a184" stroke="none"/><circle cx="17.4" cy="6.8" r="2.1" fill="#f0a184" stroke="none"/>
+      <ellipse cx="12" cy="13.2" rx="9" ry="7.4" fill="#f2b36e"/>
+      <ellipse cx="12" cy="8.8" rx="2.2" ry="1.4" fill="#fbf0e2" stroke="none"/>
+      <circle cx="8.4" cy="12.4" r="1.3" fill="#2a1a12" stroke="none"/><circle cx="15.6" cy="12.4" r="1.3" fill="#2a1a12" stroke="none"/>
+      <ellipse cx="12" cy="15.8" rx="3" ry="2.2" fill="#fbe7cb" stroke="none"/>
+      <path d="M11 14.6 h2 l-1 1z" fill="#7a4438" stroke="none"/>
+      <path d="M5.2 19 Q12 23.4 18.8 19 L12 23.6Z" fill="#3fb6a8"/></svg>`,
+    plane: `<svg viewBox="0 0 24 24" stroke="#5a6a7a" stroke-width=".8" stroke-linejoin="round">
+      <path d="M2.6 13.6 L20.4 10.6 Q23 10.4 22 12.4 L5 15.6Z" fill="#eef3f8"/>
+      <path d="M10.4 12.4 L13.4 5.8 H15.4 L14.4 11.8Z" fill="#dfe7ef"/><path d="M11 14.6 L14.6 19.4 H16.6 L14.8 14Z" fill="#dfe7ef"/>
+      <path d="M3.2 13.4 L1.8 8.6 H3.6 L6.4 13Z" fill="#d9473b"/></svg>`,
+    bird: `<svg viewBox="0 0 24 24" stroke="#5a4030" stroke-width=".9">
+      <circle cx="11.5" cy="13" r="7.6" fill="#8a6a50"/><circle cx="13.4" cy="15" r="4.8" fill="#e8743b" stroke="none"/>
+      <path d="M6 14.6 Q8.6 12 11.4 15.4" fill="#6f523d"/><circle cx="14.6" cy="10.4" r="1.1" fill="#2a1a12" stroke="none"/>
+      <path d="M18.6 10.4 L22 11.6 L18.8 12.8Z" fill="#f2b53c"/></svg>`,
+    note: `<svg viewBox="0 0 24 24"><path d="M9 18 V6.2 L19 4 V15.6" stroke="#5a4030" stroke-width="1.7" fill="none" stroke-linejoin="round"/>
+      <ellipse cx="6.8" cy="18" rx="2.8" ry="2.1" fill="#5a4030"/><ellipse cx="16.8" cy="15.8" rx="2.8" ry="2.1" fill="#5a4030"/></svg>`,
+    bfly: BFLY_SVG(BFLY_COLORS[0])
+  };
+
+  // src/grafik/beschaeftigungen.js
+  var TV_COLORS = ["#9fd0ff", "#e8f4ff", "#a8f0c6", "#ffd59e", "#c8b6ff", "#ff9fb2", "#9fe7ff"];
+  var KITE_SVG = (kx, ky, K) => {
+    const f = (n) => n.toFixed(1);
+    const bows = [1.25, 1.85, 2.45].map((t, i) => {
+      const a = f(-K * 0.12), b = f(K * 0.12), y1 = f(K * (t - 0.06)), y2 = f(K * (t + 0.06));
+      return `<path d="M${a} ${y1} L${b} ${y2} L${b} ${y1} L${a} ${y2}Z" fill="${["#e8584e", "#5fb9de", "#f6c945"][i]}"/>`;
+    }).join("");
+    return `<svg width="1" height="1" aria-hidden="true"><g class="kl"><g class="kr">
+      <path d="M0 0 Q${f(kx * 0.6)} ${f(ky * 0.3)} ${f(kx)} ${f(ky)}" stroke="rgba(255, 255, 255, .85)" stroke-width="1" fill="none"/>
+      <g transform="translate(${f(kx)} ${f(ky)})"><g class="kb">
+        <g class="kt">
+          <path d="M0 ${f(K * 0.8)} q${f(K * 0.18)} ${f(K * 0.3)} 0 ${f(K * 0.6)} t0 ${f(K * 0.6)} t0 ${f(K * 0.6)}" stroke="#5a4030" stroke-width="1" fill="none"/>
+          ${bows}
+        </g>
+        <path d="M0 ${f(-K * 0.6)} L${f(K * 0.42)} 0 L0 ${f(K * 0.8)} L${f(-K * 0.42)} 0Z" fill="#f6c945" stroke="#5a4030" stroke-width="1.2" stroke-linejoin="round"/>
+        <path d="M0 ${f(-K * 0.6)} L${f(K * 0.42)} 0 L0 0Z M0 0 L${f(-K * 0.42)} 0 L0 ${f(K * 0.8)}Z" fill="#e8584e"/>
+        <path d="M0 ${f(-K * 0.6)} V${f(K * 0.8)} M${f(-K * 0.42)} 0 H${f(K * 0.42)}" stroke="#7a5236" stroke-width=".8" opacity=".7"/>
+        <circle cx="${f(-K * 0.13)}" cy="${f(-K * 0.14)}" r="${f(K * 0.035)}" fill="#2a1a12"/>
+        <circle cx="${f(K * 0.13)}" cy="${f(-K * 0.14)}" r="${f(K * 0.035)}" fill="#2a1a12"/>
+        <path d="M${f(-K * 0.1)} ${f(K * 0.03)} q${f(K * 0.1)} ${f(K * 0.09)} ${f(K * 0.2)} 0" stroke="#2a1a12" stroke-width="1" fill="none" stroke-linecap="round"/>
+      </g></g>
+    </g></g></svg>`;
+  };
+  var EASEL_MOTIF = {
+    blume: ["#f28fb1", `<path d="M24 47 V37" stroke="#4f8a3a" stroke-width="1.2"/>
+      <ellipse cx="26.6" cy="42.2" rx="2.6" ry="1" fill="#5fae4a" transform="rotate(-30 26.6 42.2)"/>
+      <g fill="#f28fb1"><circle cx="24" cy="32.8" r="2.1"/><circle cx="26.7" cy="34.9" r="2.1"/><circle cx="21.3" cy="34.9" r="2.1"/>
+      <circle cx="25.7" cy="37.7" r="2.1"/><circle cx="22.3" cy="37.7" r="2.1"/></g><circle cx="24" cy="35.6" r="1.6" fill="#f6c945"/>`],
+    pika: ["#c49a74", `<circle cx="23.4" cy="38.4" r="2.4" fill="#b08a68" stroke="#5a4030" stroke-width=".5"/>
+      <circle cx="29.2" cy="38.2" r="2.4" fill="#b08a68" stroke="#5a4030" stroke-width=".5"/>
+      <ellipse cx="26.4" cy="43.6" rx="6.8" ry="4.9" fill="#c49a74" stroke="#5a4030" stroke-width=".6"/>
+      <circle cx="24.4" cy="42.4" r=".75" fill="#2a1a12"/><circle cx="28.6" cy="42.4" r=".75" fill="#2a1a12"/>
+      <ellipse cx="26.5" cy="44.2" rx="1.1" ry=".65" fill="#7a4438"/>`],
+    pino: ["#f2b36e", `<circle cx="23.4" cy="38.4" r="2.4" fill="#dc8640" stroke="#5a4030" stroke-width=".5"/>
+      <circle cx="29.2" cy="38.2" r="2.4" fill="#dc8640" stroke="#5a4030" stroke-width=".5"/>
+      <ellipse cx="26.4" cy="43.6" rx="6.8" ry="4.9" fill="#f2b36e" stroke="#5a4030" stroke-width=".6"/>
+      <path d="M21 46.4 Q26.4 48.6 31.8 46.4" stroke="#3fb8b0" stroke-width="1.6" fill="none" stroke-linecap="round"/>
+      <circle cx="24.4" cy="42.4" r=".75" fill="#2a1a12"/><circle cx="28.6" cy="42.4" r=".75" fill="#2a1a12"/>`],
+    bau: ["#8a6a4a", `<path d="M12 48 Q25 26 40 48Z" fill="#8a6a4a" stroke="#5a4030" stroke-width=".6"/>
+      <path d="M22.6 48 V43 a3.2 3.2 0 0 1 6.4 0 V48Z" fill="#5fae4a" stroke="#3f7f31" stroke-width=".5"/>
+      <circle cx="33" cy="40.6" r="1.7" fill="#ffe08a" stroke="#5a4030" stroke-width=".5"/>`],
+    flieger: ["#f4f6f8", `<path d="M12 23 L27 16.4" stroke="#fff" stroke-width="1" opacity=".85" stroke-dasharray="2 1.4"/>
+      <path d="M27 16.6 l6 -1.4 l-2 -2.4 h1.4 l3.6 2 l3 -.6 q1.4 .4 .2 1 l-3 .7 l-3 2.6 h-1.4 l1.6 -2.6 l-5.6 1.2z"
+            fill="#f4f6f8" stroke="#5a6470" stroke-width=".4"/>`],
+    regenbogen: ["#e8584e", ["#e8584e", "#f28c28", "#f6c945", "#5fae4a", "#4f86c6"].map((c, i) => {
+      const r = 17 - i * 1.6;
+      return `<path d="M${30 - r} 41 A${r} ${r} 0 0 1 ${30 + r} 41" stroke="${c}" stroke-width="1.7" fill="none"/>`;
+    }).join("")]
+  };
+  var EASEL_SVG = (motif) => `
+    <svg viewBox="0 0 60 80" aria-hidden="true">
+      <defs><clipPath id="cvclip"><rect x="9" y="7" width="42" height="44"/></clipPath></defs>
+      <path d="M30 6 L31 77" stroke="#7a5230" stroke-width="2.4" stroke-linecap="round"/>
+      <path d="M26 3 L9 79 M34 3 L51 79" stroke="#a0703f" stroke-width="3" stroke-linecap="round"/>
+      <rect x="9" y="7" width="42" height="44" rx="1" fill="#fbf8f0"/>
+      <g clip-path="url(#cvclip)">
+        <g class="cvl"><rect class="cv-sky" x="9" y="7" width="42" height="44"/></g>
+        <g class="cvl"><circle class="cv-sun" cx="42" cy="16" r="4.6"/></g>
+        <g class="cvl"><path d="M9 38 Q21 30 33 36 T51 33 V51 H9Z" fill="#86c46b"/><path d="M9 45 Q26 40 51 45 V51 H9Z" fill="#5fae4a"/></g>
+        <g class="cvl">${EASEL_MOTIF[motif][1]}</g>
+        <g class="cvl">
+          <path d="M15 22 q1.2 -1.2 2.4 0 q1.2 -1.2 2.4 0 M36 26 q1 -1 2 0 q1 -1 2 0" stroke="#4a3a2c" stroke-width=".6" fill="none"/>
+          <g fill="#fff"><circle cx="40" cy="47" r=".9"/><circle cx="45" cy="45.6" r=".9"/><circle cx="13.6" cy="48" r=".9"/></g>
+          <g fill="#f6c945"><circle cx="40" cy="47" r=".35"/><circle cx="45" cy="45.6" r=".35"/><circle cx="13.6" cy="48" r=".35"/></g>
+        </g>
+      </g>
+      <rect x="9" y="7" width="42" height="44" rx="1" fill="none" stroke="${OUT}" stroke-width="1.2"/>
+      <rect x="6" y="51" width="48" height="3.4" rx="1" fill="#a0703f" stroke="${OUT}" stroke-width=".8"/>
+      <rect x="26" y="2" width="8" height="5" rx="1" fill="#a0703f" stroke="${OUT}" stroke-width=".8"/>
+    </svg>`;
+  var SEED_SVG = `<svg viewBox="0 0 12 16" aria-hidden="true"><path d="M6 6 V15" stroke="#b9ad8e" stroke-width=".8"/>
+    <path d="M6 6 L1 2 M6 6 L3 .8 M6 6 L6 0 M6 6 L9 .8 M6 6 L11 2" stroke="#fff" stroke-width=".7" stroke-linecap="round"/>
+    <ellipse cx="6" cy="15" rx=".9" ry="1.3" fill="#8a6a4a"/></svg>`;
+  var DROP_SVG = '<svg viewBox="0 0 10 14" aria-hidden="true"><path d="M5 0 Q10 8 5 13.4 Q0 8 5 0Z" fill="#9fdcff" stroke="#5a9cc8" stroke-width=".7"/></svg>';
+  var PUDDLE_SVG = `<svg viewBox="0 0 100 16" aria-hidden="true">
+      <path d="M5 8.6 C3 4 18 1.6 36 2.2 C50 .4 76 .8 89 4 C98 6.2 97 12 86 13.6 C68 16 30 16 15 14 C8 13 5.6 11 5 8.6Z"
+            fill="#8fb4c9" stroke="#4f86b8" stroke-width="1"/>
+      <path d="M16 6.4 Q32 3.6 50 4.2" stroke="#dff1ff" stroke-width="1.1" fill="none" stroke-linecap="round" opacity=".85"/>
+      <path d="M60 11.8 Q72 12.8 81 10.6" stroke="#dff1ff" stroke-width=".9" fill="none" stroke-linecap="round" opacity=".6"/>
+      <ellipse class="pd-rip" cx="50" cy="8" rx="30" ry="5" fill="none" stroke="#fff" stroke-width="1"/>
+      <ellipse class="pd-dot" cx="24" cy="9.8" rx="5" ry="1.5" fill="none" stroke="#dff1ff" stroke-width=".7"/>
+      <ellipse class="pd-dot pd-d2" cx="74" cy="6.4" rx="5" ry="1.5" fill="none" stroke="#dff1ff" stroke-width=".7"/>
+    </svg>`;
+  var BOAT_SVG = `<svg viewBox="0 0 30 24" aria-hidden="true">${BOAT_ART}</svg>`;
+  var SNOWPIKA_SVG = `<svg viewBox="0 0 60 72" aria-hidden="true">
+      <g class="spl sp1">
+        <ellipse cx="30" cy="51" rx="21" ry="19" fill="#f4f6f8" stroke="#9aa3ad" stroke-width="1.2"/>
+        <path d="M13.5 56 Q20 67 35 67.4" stroke="#bccbd8" stroke-width="2.6" fill="none" stroke-linecap="round"/>
+      </g>
+      <g class="spl sp3">
+        <circle cx="20.5" cy="12" r="6.4" fill="#f4f6f8" stroke="#9aa3ad" stroke-width="1.1"/><circle cx="20.5" cy="12.6" r="3.2" fill="#bccbd8"/>
+        <circle cx="43" cy="11" r="6.4" fill="#f4f6f8" stroke="#9aa3ad" stroke-width="1.1"/><circle cx="43" cy="11.6" r="3.2" fill="#bccbd8"/>
+      </g>
+      <g class="spl sp2">
+        <circle cx="32" cy="24.5" r="14.5" fill="#f4f6f8" stroke="#9aa3ad" stroke-width="1.2"/>
+        <path d="M21 29 Q24.5 36.4 33.5 37" stroke="#bccbd8" stroke-width="2.2" fill="none" stroke-linecap="round"/>
+      </g>
+      <g class="spl sp4">
+        <circle cx="27" cy="22.6" r="1.9" fill="#2a1a12"/><circle cx="38.4" cy="22.6" r="1.9" fill="#2a1a12"/>
+        <path d="M30.8 27 q2 -1 4 0 q-.6 1.7 -2 2.2 q-1.4 -.5 -2 -2.2z" fill="#7a4438"/>
+        <path d="M25.4 29.4 L17.4 27.6 M25.4 31 L17.6 32.8 M40.2 29.4 L48.2 27.6 M40.2 31 L48 32.8" stroke="#8a5a32" stroke-width=".8" stroke-linecap="round"/>
+        <circle cx="30" cy="45" r="1.5" fill="#8e9196"/><circle cx="30.4" cy="53" r="1.5" fill="#8e9196"/>
+      </g>
+    </svg>`;
+  var STONES_SVG = `<svg viewBox="0 0 40 56" aria-hidden="true">
+      <g class="stn st1"><ellipse cx="20" cy="47.6" rx="15" ry="7.4" fill="#9aa3ad" stroke="#5a6470" stroke-width="1.1"/>
+        <path d="M9.4 45.4 q7 -4 16 -3" stroke="#cfccc4" stroke-width="1.2" fill="none" stroke-linecap="round"/></g>
+      <g class="stn st2"><ellipse cx="21.4" cy="35.4" rx="11.6" ry="5.8" fill="#c9b27a" stroke="#7a5230" stroke-width="1.1"/>
+        <path d="M13.4 33.6 q5 -2.8 12 -2.2" stroke="#ead2a2" stroke-width="1.1" fill="none" stroke-linecap="round"/></g>
+      <g class="stn st3"><ellipse cx="18.8" cy="26" rx="8.6" ry="4.6" fill="#8fb4c9" stroke="#4d6878" stroke-width="1.1"/>
+        <path d="M13 24.6 q4 -2 8.6 -1.6" stroke="#dff1ff" stroke-width="1" fill="none" stroke-linecap="round"/></g>
+      <g class="stn st4"><ellipse cx="20.6" cy="18.2" rx="6.2" ry="4" fill="#f4f6f8" stroke="#5a6470" stroke-width="1"/></g>
+    </svg>`;
+  var GLIDER_SVG = `<svg viewBox="0 0 26 14" aria-hidden="true">
+      <path d="M1 3 L25 6 L9 9Z" fill="#fffaf0" stroke="${OUT}" stroke-width=".9" stroke-linejoin="round"/>
+      <path d="M25 6 L9 9 L11 13 L13.6 8.4" fill="#ead2a2" stroke="${OUT}" stroke-width=".9" stroke-linejoin="round"/>
+    </svg>`;
+
+  // src/grafik/tagebuch.js
+  var DI = (body) => `<svg viewBox="0 0 24 24" aria-hidden="true">${body}</svg>`;
+  var DIARY_BOOK = DI(`<rect x="4.6" y="2.6" width="15" height="18.8" rx="2.2" fill="#e9a23b" stroke="${OUT}" stroke-width="1.1"/>
+    <path d="M8.2 2.8 V21.2" stroke="${OUT}" stroke-width="1"/><rect x="10.4" y="6.4" width="6.6" height="4.4" rx=".8" fill="#fff3d6" stroke="${OUT}" stroke-width=".7"/>
+    <path d="M14.6 21.2 v2 l1.3 -1 l1.3 1 v-2" fill="#e8584e" stroke="${OUT}" stroke-width=".6" stroke-linejoin="round"/>`);
+  var DIARY_PAW = DI(`<g fill="currentColor"><ellipse cx="12" cy="15.6" rx="5" ry="4.2"/><ellipse cx="5.6" cy="10.4" rx="2" ry="2.6"/>
+    <ellipse cx="9.6" cy="6.8" rx="2" ry="2.7"/><ellipse cx="14.4" cy="6.8" rx="2" ry="2.7"/><ellipse cx="18.4" cy="10.4" rx="2" ry="2.6"/></g>`);
+  var DIARY_ICON = {
+    wake: DI(`<path d="M12 3 v3 M4.6 7.6 l2 2 M19.4 7.6 l-2 2 M2.4 15.6 h2.6 M19 15.6 h2.6" stroke="#f0a02c" stroke-width="1.6" stroke-linecap="round"/>
+      <path d="M6 17 a6 6 0 0 1 12 0Z" fill="#f6c945" stroke="${OUT}" stroke-width="1"/><path d="M2 20 h20" stroke="#7cc35a" stroke-width="2.2" stroke-linecap="round"/>`),
+    sleep: DI(`<path d="M15.5 3.5 a8.6 8.6 0 1 0 5 12.4 A7.2 7.2 0 0 1 15.5 3.5Z" fill="#f6e7a8" stroke="${OUT}" stroke-width="1" stroke-linejoin="round"/>
+      <path d="M16.6 5.4 h3.6 l-3.6 3.8 h3.6" fill="none" stroke="#7c9be0" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/>`),
+    read: DI(`<path d="M3 5.4 q4.5 -2.2 9 0 v14 q-4.5 -2.2 -9 0Z" fill="#7cc4ee" stroke="${OUT}" stroke-width="1" stroke-linejoin="round"/>
+      <path d="M21 5.4 q-4.5 -2.2 -9 0 v14 q4.5 -2.2 9 0Z" fill="#a8dcf5" stroke="${OUT}" stroke-width="1" stroke-linejoin="round"/>
+      <path d="M5.4 8.6 q2 -.8 4.2 0 M5.4 11.6 q2 -.8 4.2 0 M14.4 8.6 q2.2 -.8 4.2 0 M14.4 11.6 q2.2 -.8 4.2 0" stroke="#fff" stroke-width=".9" fill="none" stroke-linecap="round"/>`),
+    game: DI(`<rect x="6" y="2.4" width="12" height="19.2" rx="2.2" fill="#c9cfd8" stroke="${OUT}" stroke-width="1"/>
+      <rect x="8" y="4.8" width="8" height="6.4" rx=".9" fill="#9ccf6a" stroke="${OUT}" stroke-width=".7"/>
+      <path d="M8.6 15.4 h3.2 M10.2 13.8 v3.2" stroke="${OUT}" stroke-width="1.3" stroke-linecap="round"/><circle cx="15" cy="15.4" r="1.2" fill="#e8584e"/>`),
+    tablet: DI(`<rect x="2.4" y="5" width="19.2" height="14" rx="2.2" fill="#4a4f5c" stroke="${OUT}" stroke-width="1"/>
+      <rect x="4.4" y="7" width="15.2" height="10" rx=".7" fill="#8fd0f2"/><path d="M6.6 14.6 l3 -3.2 l2.6 2.2 l2.2 -2.8 l3 3.8" stroke="#fff" stroke-width="1.1" fill="none" stroke-linejoin="round"/>`),
+    kite: DI(`<path d="M12 1.8 L18.2 9 L12 17.4 L5.8 9Z" fill="#e8584e" stroke="${OUT}" stroke-width="1" stroke-linejoin="round"/>
+      <path d="M12 1.8 V17.4 M5.8 9 H18.2" stroke="${OUT}" stroke-width=".7"/><path d="M12 17.4 q-2.4 1.8 0 3.2 q2 1.2 .4 2.6" stroke="#5fb9de" stroke-width="1.2" fill="none" stroke-linecap="round"/>`),
+    tv: DI(`<path d="M8 2.6 l4 3.4 l4 -3.4" stroke="${OUT}" stroke-width="1" fill="none" stroke-linecap="round"/>
+      <rect x="2.8" y="6" width="18.4" height="12.6" rx="2.2" fill="#a0703f" stroke="${OUT}" stroke-width="1"/>
+      <rect x="4.8" y="8" width="11.4" height="8.6" rx="1.2" fill="#9fdcff" stroke="${OUT}" stroke-width=".6"/>
+      <circle cx="18.6" cy="10.2" r=".9" fill="#f6c945"/><circle cx="18.6" cy="13.4" r=".9" fill="#f6c945"/><path d="M7 21 h10" stroke="${OUT}" stroke-width="1.2" stroke-linecap="round"/>`),
+    music: DI(`<path d="M9.2 17.4 V5 L19.4 3 v12.4" fill="none" stroke="${OUT}" stroke-width="1.6" stroke-linejoin="round"/>
+      <ellipse cx="6.6" cy="17.6" rx="3" ry="2.3" fill="#b99cf0" stroke="${OUT}" stroke-width="1"/><ellipse cx="16.8" cy="15.6" rx="3" ry="2.3" fill="#b99cf0" stroke="${OUT}" stroke-width="1"/>`),
+    paint: DI(`<path d="M12 3 a9 9 0 1 0 0 18 c1.7 0 2.1 -1.2 1.4 -2.3 c-.8 -1.3 0 -2.7 1.6 -2.7 H17 a4 4 0 0 0 4 -4 c0 -5 -4 -9 -9 -9Z" fill="#f0e2cf" stroke="${OUT}" stroke-width="1"/>
+      <circle cx="7.4" cy="11" r="1.5" fill="#e8584e"/><circle cx="10.6" cy="7" r="1.5" fill="#f6c945"/><circle cx="15.4" cy="7.6" r="1.5" fill="#5fb9de"/><circle cx="8.6" cy="15.4" r="1.5" fill="#7cc35a"/>`),
+    bubbles: DI(`<circle cx="8.4" cy="14.4" r="5.6" fill="#d9f1fb" stroke="#5a9cc8" stroke-width="1"/><circle cx="16.8" cy="7.2" r="3.6" fill="#e6f6fd" stroke="#5a9cc8" stroke-width=".9"/>
+      <circle cx="18.4" cy="17.4" r="2.2" fill="#e6f6fd" stroke="#5a9cc8" stroke-width=".8"/><path d="M5.4 12.6 q.8 -2 2.6 -2.4 M15 6.2 q.6 -1 1.6 -1.2" stroke="#fff" stroke-width="1" fill="none" stroke-linecap="round"/>`),
+    sport: DI(`<path d="M7 12 h10" stroke="${OUT}" stroke-width="2.2"/><rect x="3" y="7.4" width="4.2" height="9.2" rx="1.3" fill="#e8584e" stroke="${OUT}" stroke-width="1"/>
+      <rect x="16.8" y="7.4" width="4.2" height="9.2" rx="1.3" fill="#e8584e" stroke="${OUT}" stroke-width="1"/>`),
+    bird: DI(`<path d="M9 18.6 v2.8 M13 18.6 v2.8" stroke="${OUT}" stroke-width="1" stroke-linecap="round"/><circle cx="11" cy="12" r="7.2" fill="#b5895f" stroke="${OUT}" stroke-width="1"/>
+      <path d="M6.8 13.4 q4.2 3.8 8.4 0 q-.6 4.4 -4.2 4.8 q-3.6 -.4 -4.2 -4.8Z" fill="#f08a4b"/><path d="M17.8 10.4 l3.4 1.3 l-3.3 1.4Z" fill="#f6c945" stroke="${OUT}" stroke-width=".7" stroke-linejoin="round"/>
+      <circle cx="14" cy="9.6" r="1" fill="#2a1a12"/>`),
+    plane: DI(`<path d="M12.2 9.8 L8.6 4.4 h2.2 l5.4 4.2" fill="#f4f6f8" stroke="#5a6470" stroke-width=".9" stroke-linejoin="round"/>
+      <path d="M2.4 13.6 L19.4 9 q2.6 -.4 2.2 1.2 q-.4 1.2 -2.2 1.7 l-5 1.5 l-4 5.2 h-2 l2 -4.4 l-4 1.2 l-1.6 1.8 H3.4 l1 -3.2Z" fill="#f4f6f8" stroke="#5a6470" stroke-width=".9" stroke-linejoin="round"/>`),
+    bfly: DI(`<path d="M12 12 C9 3.6 1.8 5 3.8 11 c1 3 5.2 3 8.2 1Z M12 12 c3 -8.4 10.2 -7 8.2 -1 c-1 3 -5.2 3 -8.2 1Z" fill="#f28fb1" stroke="${OUT}" stroke-width=".8" stroke-linejoin="round"/>
+      <path d="M12 12 c-3 1 -6 4.2 -3.2 7 c2 1 3.2 -3 3.2 -7Z M12 12 c3 1 6 4.2 3.2 7 c-2 1 -3.2 -3 -3.2 -7Z" fill="#b99cf0" stroke="${OUT}" stroke-width=".8" stroke-linejoin="round"/>
+      <path d="M12 8 v10" stroke="${OUT}" stroke-width="1.5" stroke-linecap="round"/>`),
+    secret: DI(`<path d="M3 10.6 q9 8 18 0" fill="none" stroke="${OUT}" stroke-width="1.7" stroke-linecap="round"/>
+      <path d="M5.6 14.4 l-1.5 2 M9.6 16.2 l-.7 2.4 M14.4 16.2 l.7 2.4 M18.4 14.4 l1.5 2" stroke="${OUT}" stroke-width="1.4" stroke-linecap="round"/>`),
+    gather: DI(`<path d="M12 13 v9" stroke="#4f8a3a" stroke-width="1.6" stroke-linecap="round"/><ellipse cx="15" cy="17.6" rx="2.6" ry="1.1" fill="#5fae4a" transform="rotate(-30 15 17.6)"/>
+      <g transform="translate(12 9)">${[0, 72, 144, 216, 288].map((a) => `<ellipse rx="2.5" ry="3.7" transform="rotate(${a}) translate(0 -3.3)" fill="#f6c945" stroke="${OUT}" stroke-width=".7"/>`).join("")}
+      <circle r="2.2" fill="#e0a032"/></g>`),
+    washer: DI(`<rect x="4" y="2.8" width="16" height="18.4" rx="2.2" fill="#e9eef2" stroke="${OUT}" stroke-width="1"/><circle cx="12" cy="13.6" r="4.7" fill="#8fd0f2" stroke="${OUT}" stroke-width="1"/>
+      <circle cx="7" cy="5.8" r=".9" fill="#5fb9de"/><path d="M9.4 14.2 q2.6 -2 5.2 0" stroke="#fff" stroke-width="1" fill="none" stroke-linecap="round"/>`),
+    dryer: DI(`<rect x="4" y="2.8" width="16" height="18.4" rx="2.2" fill="#f3e6d2" stroke="${OUT}" stroke-width="1"/><circle cx="12" cy="13.6" r="4.7" fill="#f6c08a" stroke="${OUT}" stroke-width="1"/>
+      <circle cx="7" cy="5.8" r=".9" fill="#f0a04b"/><path d="M10 12.4 q1.2 1.2 0 2.6 M13.4 12.4 q1.2 1.2 0 2.6" stroke="#fff" stroke-width="1" fill="none" stroke-linecap="round"/>`),
+    dishwasher: DI(`<circle cx="11" cy="13" r="8.4" fill="#fff" stroke="${OUT}" stroke-width="1"/><circle cx="11" cy="13" r="5" fill="none" stroke="#c9d3da" stroke-width="1"/>
+      <path fill="#5fb9de" transform="translate(13.4 -.6) scale(.42)" d="${STAR}"/>`),
+    fest: DI(`<path d="${STAR}" fill="#f6c945" stroke="${OUT}" stroke-width=".8" stroke-linejoin="round"/>`),
+    more: DI('<circle cx="5" cy="12" r="1.9" fill="currentColor"/><circle cx="12" cy="12" r="1.9" fill="currentColor"/><circle cx="19" cy="12" r="1.9" fill="currentColor"/>'),
+    coffee: COFFEE_THINK,
+    heart: ICON_HEART,
+    clean: ICON_SPARK,
+    hungry: FOOD.lz.svg,
+    parcel: GIFT_PARCEL,
+    pino: GIFT_ITEMS[2].svg,
+    flower: GIFT_ITEMS[11].svg
+  };
+  var diaryPainting = (motif) => !hasKey(EASEL_MOTIF, motif) ? "" : `<svg class="pic" viewBox="9 7 42 44" aria-hidden="true">
+    <rect x="9" y="7" width="42" height="44" fill="#bfe3f7"/><circle cx="42" cy="16" r="4.6" fill="#f6c945"/>
+    <path d="M9 38 Q21 30 33 36 T51 33 V51 H9Z" fill="#86c46b"/><path d="M9 45 Q26 40 51 45 V51 H9Z" fill="#5fae4a"/>${EASEL_MOTIF[motif][1]}</svg>`;
+
   // src/karte/aufbau.js
   var Aufbau = class {
     _build() {
@@ -6200,7 +6204,8 @@
         this._lift = rock.lift;
         this._setX(rock.cx, true);
       } else {
-        this._setX(clamp((liveX ?? this._x) * ratio, pW * 0.45, this._g.xR), true);
+        const [lo, hi] = this._cfg.depth && this._lane ? this._laneRange() : [pW * 0.45, this._g.xR];
+        this._setX(clamp((liveX ?? this._x) * ratio, lo, hi), true);
         if (liveX != null) this._interrupt();
       }
       for (const p of this._planes.values()) p.tw = 0;
@@ -8019,7 +8024,10 @@
     // Frosch, Schnecke und Maus sitzen knapp hinter dem Pika, die Bodendeko der Festtage vorn (Kürbis, Stiefel, Kranz,
     // Kuchen, Geschenk) steht eine Ebene davor. Wo sie anhalten, rücken sie darum neben die Deko statt dahinter.
     // Ostereier und Raketenstäbe sind klein und liegen überall, der Baum steht hinter ihnen: die zählen nicht.
-    _festClear(x, w, a, b) {
+    // Auf der hinteren Spur (lane, seit 0.39.1) setzen sie sich ruhig dahinter: Die Deko steht dann wirklich vor ihnen,
+    // höher und kleiner schauen sie darüber, und genau das zeigt die Tiefe.
+    _festClear(x, w, a, b, lane = 0) {
+      if (lane) return x;
       const pos = this._festPos || {};
       const pad = this._H * 0.01;
       const blocks = ["pumpkin", "boot", "wreath", "cake", "gift"].filter((n) => pos[n]).map((n) => [pos[n].l - pad, pos[n].l + pos[n].w + pad]);
@@ -8084,6 +8092,11 @@
     // Stein auf die Spur, und dieselbe transition trägt Weg und Größe. Ohne Spur (auch oben auf dem Stein) immer 1.
     _critS(c, y) {
       return c.lane ? 1 - (1 - LANE_S) * clamp((c.yG - y) / (this._H * LANE_DY), 0, 1) : 1;
+    }
+    // Tempo auf dem Weg nach y: Hinten ist alles kleiner, also auch Schritt, Satz und Kriechen (Mittel der Größe am
+    // Anfang und am Ende des Wegs). Ohne hintere Spur genau 1: dieselben Zeiten wie bis 0.39.0.
+    _critPace(c, y) {
+      return c.lane ? (this._critS(c, c.y) + this._critS(c, y)) / 2 : 1;
     }
     // transform eines Besuchers, Füße bei (x, y). scale wirkt um den Ursprung der 0 × 0 großen Hülle, die Füße.
     // Ohne hintere Spur genau wie bis 0.38 (nur translate).
@@ -8256,7 +8269,7 @@
       };
       const run = async (x, speed = 1, y = yG) => {
         face(x >= m.x ? 1 : -1);
-        const ms = Math.hypot(x - m.x, y - m.y) / (this._H * 1.1 * speed) * 1e3;
+        const ms = Math.hypot(x - m.x, y - m.y) / (this._H * 1.1 * speed * this._critPace(m, y)) * 1e3;
         pose("run", true);
         move(x, y, ms, "linear");
         await step(ms);
@@ -8314,7 +8327,7 @@
               await run(door, 1, yW);
               this._critZ(m, true);
               m.out = true;
-              await run(this._festClear(rnd(minX, Math.max(minX, door - mw * 0.7)), mw, minX, door), 1, yW);
+              await run(this._festClear(rnd(minX, Math.max(minX, door - mw * 0.7)), mw, minX, door, m.lane), 1, yW);
               this._noticeCritter(m.x, false);
               await lookAround(2);
               if (Math.random() < 0.8) {
@@ -8325,7 +8338,7 @@
               }
               await lookAround(2 + Math.floor(rnd(0, 3)));
               for (let n = Math.random() < 0.5 ? 2 : 1; n > 0; n--) {
-                await run(this._festClear(clamp(m.x + rnd(-1, 1) * mw * 2.5, minX, door), mw, minX, door), 0.8, yW);
+                await run(this._festClear(clamp(m.x + rnd(-1, 1) * mw * 2.5, minX, door), mw, minX, door, m.lane), 0.8, yW);
                 await lookAround(1 + Math.floor(rnd(0, 3)));
               }
               await run(door, 1, yW);
@@ -8353,7 +8366,7 @@
             face(1);
             pose("run", true);
             const dash = async (tx, ty = yG) => {
-              const ms = Math.hypot(tx - m.x, ty - m.y) / (this._H * 2) * 1e3;
+              const ms = Math.hypot(tx - m.x, ty - m.y) / (this._H * 2 * this._critPace(m, ty)) * 1e3;
               move(tx, ty, ms, "linear");
               await this._cw(id, ms);
             };
@@ -8412,7 +8425,7 @@
         if (f.scared) throw FLEE;
       };
       const hop = async (x, fast = false, y = f.y) => {
-        const L = this._H * (fast ? 0.34 : 0.22);
+        const L = this._H * (fast ? 0.34 : 0.22) * this._critS(f, f.y);
         while (Math.abs(x - f.x) > 1) {
           const d = clamp(x - f.x, -L, L);
           const k = Math.abs(d) / L;
@@ -8441,7 +8454,7 @@
           await hop(door, false, yW);
           this._critZ(f, true);
           f.out = true;
-          const spot = (x) => free(this._festClear(x, fw, minX, maxX));
+          const spot = (x) => free(this._festClear(x, fw, minX, maxX, f.lane));
           await hop(spot(maxX - pk.x * Math.min(maxX - minX, this._H * 0.7)));
           this._noticeCritter(f.x, false);
           const until = Date.now() + Math.max(3e3, pk.stay - late);
@@ -8582,7 +8595,7 @@
       const crawl = async (x, y = s.y) => {
         while (Math.abs(x - s.x) > 1 || Math.abs(y - s.y) > 0.5) {
           if (Math.abs(x - s.x) > 1) face(x > s.x ? 1 : -1);
-          const ms = Math.hypot(x - s.x, y - s.y) / v * 1e3;
+          const ms = Math.hypot(x - s.x, y - s.y) / (v * this._critPace(s, y)) * 1e3;
           el.classList.add("crawl");
           put(x, ms, y);
           const hit = await wait(ms);
@@ -8607,7 +8620,7 @@
         this._critZ(s, true);
         s.out = true;
         this._noticeCritter(s.x, false);
-        await crawl(this._festClear(door - (0.3 + 0.6 * pk.far) * Math.min(door - minX, this._H * 0.7), sw, minX, door));
+        await crawl(this._festClear(door - (0.3 + 0.6 * pk.far) * Math.min(door - minX, this._H * 0.7), sw, minX, door, s.lane));
         await rest(Math.max(1500, rnd(5e3, 9e3) - late));
         await crawl(door);
         s.out = false;
@@ -20127,6 +20140,7 @@
   }
 
   // src/index.js
+  var STYLES = [STYLE, STYLE_SKY, STYLE_FEST, STYLE_FRIEND, STYLE_BOTE, STYLE_COFFEE, STYLE_ACT, STYLE_GIFT, STYLE_DIARY_BTN, STYLE_URLAUB, STYLE_SIG].join("");
   if (!customElements.get("pika-pet-card")) {
     customElements.define("pika-pet-card", PikaPetCard);
     window.customCards = window.customCards || [];
@@ -20143,6 +20157,7 @@
     globalThis.__pikaTest({
       VERSION,
       PikaPetCard,
+      STYLES,
       REIHE,
       RANG,
       RANG_N,

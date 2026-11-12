@@ -341,7 +341,9 @@ export class Aufbau {
       this._lift = rock.lift;
       this._setX(rock.cx, true);
     } else {
-      this._setX(clamp((liveX ?? this._x) * ratio, pW * 0.45, this._g.xR), true);
+      // Auf der hinteren Spur (depth) in ihrem Bereich bleiben: anteilig gerückt läge er sonst ein paar Pixel davor
+      const [lo, hi] = this._cfg.depth && this._lane ? this._laneRange() : [pW * 0.45, this._g.xR];
+      this._setX(clamp((liveX ?? this._x) * ratio, lo, hi), true);
       // Mitten im Laufen angehalten: Aktion neu wählen, sonst hoppelt er bis zum Ende auf der Stelle
       if (liveX != null) this._interrupt();
     }

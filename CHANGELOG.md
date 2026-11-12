@@ -2,6 +2,17 @@
 
 Jede Version der Pika Pet Card, die neueste zuerst.
 
+## 0.39.1 (2026-11-12)
+
+Feinschliff der Tiefe: Besucher auf der hinteren Spur sehen aus und bewegen sich wie hinten, und ein Test prüft die Bühne jetzt am echten Stil. Ohne `depth` ändert sich nichts.
+
+- Dunst: Maus, Frosch und Schnecke auf der hinteren Spur bekommen denselben Hauch wie Pika und Pino (etwas heller, weniger satt, nur bei Tag und klarem Himmel, Übergang 1 s). Er liegt auf der inneren Hülle (`.mf`, `.cf`), das Licht der Dämmerung bleibt außen. Frosch und Schnecke kommen nur bei Regen, also bei bedecktem Himmel: Bei ihnen bleibt es ohne Dunst.
+- Perspektive: Hinten sind die Sätze des Froschs kürzer (um die Größe dort, 0,8; in der Vorschau 31,8 px statt bis 54,6 px), die Schnecke kriecht und die Maus läuft und flitzt um dieselbe Größe langsamer (Mittel der Größe am Anfang und am Ende des Wegs, `_critPace`). Ohne hintere Spur ist der Faktor genau 1, die Zeiten sind dieselben wie in 0.39.0.
+- Festtage: Auf der hinteren Spur setzen sich Besucher auch hinter Kürbis, Stiefel, Kranz, Kuchen oder Geschenk. Vorn rücken sie weiter daneben (die Deko verdeckte sie sonst ganz), hinten schauen sie höher und kleiner darüber, und genau das zeigt die Tiefe (`_festClear` mit Spur).
+- Größenwechsel: Steht der Pika auf der hinteren Spur, wenn sich die Größe der Karte ändert, rückt er anteilig mit und bleibt dabei im Bereich der Spur. In der Vorschau (380 → 300 px breit) stand er bisher bei x = 103, 31 px links vom Anfang der Spur, jetzt bei 134.
+- Test am echten Stil (Hinweis aus dem Review von 0.38): Der Testexport enthält jetzt das Stylesheet der Karte (`STYLES`, in der Reihenfolge von `_build`). Zwei neue Tests lesen seine Regeln. Der erste prüft, dass keine der 16 Schichten (`.land`, `.flowers` … `.hb-f`) z-index, Filter, Deckkraft, transform oder Ähnliches bekommt, das sie wieder zu einem eigenen Stapel machte, und dass Blumen und Futter keine Tipps fangen. Der zweite prüft, dass jede Figur am Boden das Licht der Dämmerung trägt und keine eigene Filter-Regel (Schatten, Gold, Nacht) es ihr nimmt, ohne dass eine stärkere Regel beides zusammen setzt. Gegenprobe: Ohne die Regel für goldene Schätze und mit einem Filter auf `.kites` sind beide rot.
+- Entwicklung: 140 Tests, grün auch mit `TZ=Asia/Tokyo`, `TZ=UTC` und `TZ=America/Santiago`.
+
 ## 0.39.0 (2026-11-12)
 
 Tiefe: Mit `depth: true` nutzt die Karte jetzt die Bühne aus 0.38. Die hintere Spur führt über die ganze Wiese, Pino und die Besucher stehen in der Tiefe, und beim Mitfahren steht der Pika vorn auf dem Saugroboter. Ohne `depth` ändert sich nichts. `depth` bleibt ein Prototyp (Standard aus, nur im YAML). Zustand und Tagesplan in den Helfern bleiben, wie sie sind.
