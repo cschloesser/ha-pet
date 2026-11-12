@@ -188,7 +188,7 @@
   <button data-hb="dishwasher:offline">offline</button>
   <button data-hb="dishwasher:go">Pika: hingehen</button>
   <i style="flex-basis:100%"></i><b></b>
-  <button id="hb-labels">Schilder an/aus</button>
+  <button id="hb-labels">Schilder: alles → nur fertig → nichts</button>
   <button id="hb-reload">Neuladen (Verlauf nachspielen)</button>
 </div>
 <!-- ==================== Ende Haus-Bote ==================== -->
@@ -948,8 +948,10 @@
     })
   );
   document.getElementById('hb-labels').addEventListener('click', () => cards.forEach((c) => {
-    c.setConfig({ ...c._cfg, appliance_labels: c._cfg.appliance_labels === false });
+    const next = { all: 'done', done: 'none', none: 'all' }[c._cfg.appliance_labels] || 'done';
+    c.setConfig({ ...c._cfg, appliance_labels: next });
     c._bote?.list.forEach((a) => c._boteRender(a));
+    log(`Schilder an den Geräten: ${next}`);
   }));
   // wie frisch geladen: Haus-Bote vergessen, der Verlauf (hier seit dem Laden der Seite) wird nachgespielt
   document.getElementById('hb-reload').addEventListener('click', () => cards.forEach((c) => {

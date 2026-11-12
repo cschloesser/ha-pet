@@ -4170,3 +4170,10 @@ test('Haus-Bote: Schilder zeigen Restzeit, Fortschritt oder seit wann fertig, ku
   const S = (type, m) => T.boteSmell({ type, phase: 'done', finAt: now - m * 6e4 }, now);
   assert.deepEqual([S('washer', 10), S('washer', 31), S('washer', 125), S('dryer', 300), S('dishwasher', 300)], [0, 1, 2, 0, 0]);
 });
+
+test('Haus-Bote: appliance_labels: alles, nur „fertig“ oder nichts (auch true/false und 2/1/0)', () => {
+  const M = T.boteLabelMode;
+  assert.deepEqual([undefined, true, 'all', 2, '2'].map(M), ['all', 'all', 'all', 'all', 'all']);
+  assert.deepEqual(['done', 1, 'fertig', ' Done '].map(M), ['done', 'done', 'done', 'done']);
+  assert.deepEqual([false, 'none', 0, 'off'].map(M), ['none', 'none', 'none', 'none']);
+});

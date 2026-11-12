@@ -4,7 +4,7 @@ import { rnd, pick, clamp, esc } from '../logik/hilfen.js';
 import {
   BOTE_K, BOTE_EMPTY_MS, BOTE_AUTOOPEN_MS, BOTE_FRONT, BOTE_FRONT_DY, BOTE_TALL, boteRow, BOTE_RUN, BOTE_HALT,
   BOTE_IDLE, BOTE_DEAD, BOTE_WARNED, BOTE_TYPE, BOTE_NAME, BOTE_COLOR, BOTE_ACT, BOTE_SAY, BOTE_OPEN, BOTE_LIVE_MS,
-  BOTE_WAIT_MS, BOTE_HIST_MS, boteState, boteMap, boteEmptyOn, boteLabel, boteSmell,
+  BOTE_WAIT_MS, BOTE_HIST_MS, boteState, boteMap, boteEmptyOn, boteLabel, boteLabelMode, boteSmell,
 } from '../logik/haus-bote.js';
 import { BOTE_LINE, BOTE_PLATE_SVG, BOTE_TOWEL_SVG, BOTE_SVG } from '../grafik/haus-bote.js';
 
@@ -536,13 +536,15 @@ export class HausBote {
     const wind = this._wind || 0;
     el.style.setProperty('--hbw', `${(-(this._windDir || -1) * clamp(3 + wind / 3.5, 3, 18)).toFixed(1)}deg`);
     el.style.setProperty('--hbs', `${clamp(2.6 - wind / 25, 0.8, 2.6).toFixed(2)}s`);
+    // Was über dem Gerät steht (appliance_labels): Fortschritt (Balken, Restzeit) nur bei „all“
+    const mode = boteLabelMode(this._cfg.appliance_labels);
     const bar = a.bar;
-    bar.classList.toggle('on', view === 'run');
+    bar.classList.toggle('on', view === 'run' && mode === 'all');
     bar.classList.toggle('ind', a.pct == null);
     bar.classList.toggle('pause', halt);
     bar.classList.toggle('hb-still', still);
     if (a.pct != null) bar.style.setProperty('--p', `${a.pct.toFixed(1)}%`);
-    const lt = this._cfg.appliance_labels === false || a.live ? null : boteLabel(a, now);
+    const lt = mode === 'none' || a.live || (mode === 'done' && view !== 'done') ? null : boteLabel(a, now);
     if (a.lab.textContent !== (lt || '')) {
       a.lab.textContent = lt || '';
       if (a.spec && a.k) this._boteLabPos(a);

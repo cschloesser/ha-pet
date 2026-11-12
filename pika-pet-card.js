@@ -942,6 +942,10 @@
     }
     return null;
   };
+  var boteLabelMode = (v) => {
+    const s = String(v ?? "all").trim().toLowerCase();
+    return ["none", "off", "false", "0", "aus", "keine"].includes(s) ? "none" : ["done", "1", "fertig"].includes(s) ? "done" : "all";
+  };
   var BOTE_SMELL = [30, 120];
   var boteSmell = (a, now) => {
     if (a.type !== "washer" || a.phase !== "done") return 0;
@@ -1940,8 +1944,8 @@
     diary_house: true,
     // Urlaub bei Pino: Schalter im Tagebuch (false = kein Schalter; einen laufenden Urlaub zeigt die Karte trotzdem)
     vacation: true,
-    // Haus-Bote: Schild über jedem Gerät (Restzeit, seit wann fertig)
-    appliance_labels: true
+    // Haus-Bote: über jedem Gerät all = Fortschritt (Balken, Restzeit) und „fertig“, done = nur „fertig“, none = nichts
+    appliance_labels: "all"
   };
   var EDITOR_LABEL = {
     name: "Name",
@@ -1973,7 +1977,7 @@
     diary: "Tagebuch",
     diary_house: "Haushalt im Tagebuch",
     vacation: "Urlaubsschalter",
-    appliance_labels: "Schilder an den Geräten"
+    appliance_labels: "Anzeige an den Geräten"
   };
   var EDITOR_HELP = {
     entity: "Damit alle Geräte denselben Pika sehen. Leer: nur in diesem Browser.",
@@ -1981,7 +1985,7 @@
     chronicle_entity: "Sein Langzeitgedächtnis: je Tag ein Eintrag mit der Tagesbilanz. Am besten eine eigene Liste; braucht beide Helfer. Leer: keine Chronik.",
     diary: "Antippen der Leiste öffnet sein Tagebuch.",
     diary_house: "Kaffee, Wäsche und Geschirr stehen mit Uhrzeit drin.",
-    appliance_labels: "Über jedem Haushaltsgerät klein die Restzeit („0:42“) bzw. seit wann es fertig ist.",
+    appliance_labels: "Alles: Fortschrittsbalken, Restzeit („0:42“) und „fertig“. Nur fertig: wenn das Dashboard Fortschritt und Restzeit schon zeigt.",
     vacation: "Im Tagebuch: „Ferien bei Pino“. Solange er verreist ist, ruhen Hunger, Glück, Häufchen und Päckchen-Serie.",
     sleep_start: "z. B. sunset, sunset+01:00 oder 21:00",
     sleep_end: "z. B. sunrise, sunrise-30 oder 07:00",
@@ -2256,7 +2260,11 @@
           group("Geburtstage, Haushaltsgeräte, Kaffee (YAML)", "mdi:code-braces", [
             { name: "birthdays", selector: { object: {} } },
             { name: "appliances", selector: { object: {} } },
-            { name: "appliance_labels", selector: bool, default: true },
+            { name: "appliance_labels", default: "all", selector: { select: { mode: "dropdown", options: [
+              { value: "all", label: "Alles: Fortschritt, Restzeit und „fertig“" },
+              { value: "done", label: "Nur „fertig“" },
+              { value: "none", label: "Nichts" }
+            ] } } },
             { name: "coffee", selector: { object: {} } }
           ])
         ],
@@ -15377,13 +15385,14 @@
       const wind = this._wind || 0;
       el.style.setProperty("--hbw", `${(-(this._windDir || -1) * clamp(3 + wind / 3.5, 3, 18)).toFixed(1)}deg`);
       el.style.setProperty("--hbs", `${clamp(2.6 - wind / 25, 0.8, 2.6).toFixed(2)}s`);
+      const mode = boteLabelMode(this._cfg.appliance_labels);
       const bar = a.bar;
-      bar.classList.toggle("on", view === "run");
+      bar.classList.toggle("on", view === "run" && mode === "all");
       bar.classList.toggle("ind", a.pct == null);
       bar.classList.toggle("pause", halt);
       bar.classList.toggle("hb-still", still);
       if (a.pct != null) bar.style.setProperty("--p", `${a.pct.toFixed(1)}%`);
-      const lt = this._cfg.appliance_labels === false || a.live ? null : boteLabel(a, now);
+      const lt = mode === "none" || a.live || mode === "done" && view !== "done" ? null : boteLabel(a, now);
       if (a.lab.textContent !== (lt || "")) {
         a.lab.textContent = lt || "";
         if (a.spec && a.k) this._boteLabPos(a);
@@ -19231,6 +19240,7 @@
       boteEmptyOn,
       boteMap,
       boteLabel,
+      boteLabelMode,
       boteSmell,
       freshStats,
       serialize,

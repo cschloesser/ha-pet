@@ -139,6 +139,13 @@ const boteLabel = (a, now) => {
   }
   return null;
 };
+// Was über den Geräten steht (appliance_labels): all = Restzeit bzw. Fortschritt (Schild und Balken) und „fertig“,
+// done = nur „fertig“ (Fortschritt und Restzeit zeigt vielleicht schon das Dashboard; dass etwas fertig ist, sieht man
+// dem Requisit allein nicht sofort an), none = nichts davon. Auch true/false und 2/1/0.
+const boteLabelMode = (v) => {
+  const s = String(v ?? 'all').trim().toLowerCase();
+  return ['none', 'off', 'false', '0', 'aus', 'keine'].includes(s) ? 'none' : ['done', '1', 'fertig'].includes(s) ? 'done' : 'all';
+};
 // Nasse Wäsche wird lauter statt leiser: ab so vielen Minuten nach Programmende Müffel-Wölkchen (1), ab dem zweiten
 // Wert hält er sich beim Erinnern die Nase zu (2). Trockner und Spülmaschine haben keine Eile.
 const BOTE_SMELL = [30, 120];
@@ -159,7 +166,7 @@ const BOTE_ACT = { washer: 'boteStir', dryer: 'boteWatchDrum', dishwasher: 'bote
 const BOTE_SAY = { washer: ['Wäsche!', 'fertig!', 'Wäsche!'], dryer: ['fertig!', 'Trockner!'], dishwasher: ['Geschirr!', 'fertig!', 'Geschirr!'] };
 
 export {
-  BOTE_LIVE_MS, BOTE_WAIT_MS, BOTE_HIST_MS, BOTE_OPEN, boteState, boteNorm, boteMap, boteEmptyOn, boteLabel, BOTE_SMELL, boteSmell,
+  BOTE_LIVE_MS, BOTE_WAIT_MS, BOTE_HIST_MS, BOTE_OPEN, boteState, boteNorm, boteMap, boteEmptyOn, boteLabel, boteLabelMode, BOTE_SMELL, boteSmell,
   BOTE_K, BOTE_EMPTY_MS, BOTE_AUTOOPEN_MS, BOTE_FRONT, BOTE_FRONT_DY, BOTE_TALL, boteRow, BOTE_RUN, BOTE_HALT,
   BOTE_IDLE, BOTE_DEAD, BOTE_WARNED, BOTE_ALIAS, BOTE_TYPE, BOTE_NAME, BOTE_COLOR, BOTE_ACT, BOTE_SAY,
 };

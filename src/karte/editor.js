@@ -63,7 +63,10 @@ export class Editor {
         group('Geburtstage, Haushaltsgeräte, Kaffee (YAML)', 'mdi:code-braces', [
           { name: 'birthdays', selector: { object: {} } },
           { name: 'appliances', selector: { object: {} } },
-          { name: 'appliance_labels', selector: bool, default: true },
+          { name: 'appliance_labels', default: 'all', selector: { select: { mode: 'dropdown', options: [
+            { value: 'all', label: 'Alles: Fortschritt, Restzeit und „fertig“' }, { value: 'done', label: 'Nur „fertig“' },
+            { value: 'none', label: 'Nichts' },
+          ] } } },
           { name: 'coffee', selector: { object: {} } },
         ]),
       ],

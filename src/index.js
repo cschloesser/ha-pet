@@ -72,7 +72,7 @@ import { flightAloft, flightGhost, planeLag, PLANE_OLD, planeStale, planeClock }
 import { HAY_MAX, PLAN_MIN, MEM_GUT, planBlank, pikaDay, planSer, planParse, hayNow, planApply } from './logik/tagesplan.js';
 import { festDay, festEaster, festAdvent1, FEST_AHEAD, festMoments, festBirthdate } from './logik/feste.js';
 import { FRIEND_LAST } from './logik/besucher.js';
-import { boteRow, boteEmptyOn, boteMap, boteLabel, boteSmell } from './logik/haus-bote.js';
+import { boteRow, boteEmptyOn, boteMap, boteLabel, boteLabelMode, boteSmell } from './logik/haus-bote.js';
 import { PET_CALM, petGain, KRAUL, kraulGain, MIMIK, worldPick } from './logik/interaktion.js';
 import {
   ACT_WIN, ACT_GAP, ACT_WALK, ACT_LEN, ACT_NOJOIN, bigStart, miniStart, miniHas, ACT_SMALL, poopClean, poopWhen,
@@ -111,7 +111,7 @@ if (typeof globalThis !== 'undefined' && typeof globalThis.__pikaTest === 'funct
   globalThis.__pikaTest({
     VERSION, PikaPetCard, PLAN_MIN, HAY_MAX, GIFT, ACT_LEN, hasKey, boteRow, clearSpot, sceneUnit,
     planBlank, planSer, planParse, planApply, hayNow, giftLv, pikaDay, MEM_GUT, giftTre, giftMile, giftAllGold,
-    URLAUB, urlaubAt, urlaubCut, chronikUrlaub, coffeeBrews, coffeeLabel, coffeeQueue, COFFEE_NEXT_GAP, boteEmptyOn, boteMap, boteLabel, boteSmell,
+    URLAUB, urlaubAt, urlaubCut, chronikUrlaub, coffeeBrews, coffeeLabel, coffeeQueue, COFFEE_NEXT_GAP, boteEmptyOn, boteMap, boteLabel, boteLabelMode, boteSmell,
     freshStats, serialize, parseStats, mergeStats, seedRnd, weightedR,
     sunTimes, festDay, festEaster, festAdvent1, festBirthdate,
     GAIN, PET_CALM, KRAUL, petGain, kraulGain, worldPick, MIMIK, FINDS, FIND_GROUPS, findsParse, findsSer,

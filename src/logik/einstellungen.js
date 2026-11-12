@@ -54,8 +54,8 @@ const DEFAULTS = {
   diary_house: true,
   // Urlaub bei Pino: Schalter im Tagebuch (false = kein Schalter; einen laufenden Urlaub zeigt die Karte trotzdem)
   vacation: true,
-  // Haus-Bote: Schild über jedem Gerät (Restzeit, seit wann fertig)
-  appliance_labels: true,
+  // Haus-Bote: über jedem Gerät all = Fortschritt (Balken, Restzeit) und „fertig“, done = nur „fertig“, none = nichts
+  appliance_labels: 'all',
 };
 
 // Karten-Editor (getConfigForm): Beschriftungen und Hilfetexte der Felder
@@ -68,7 +68,7 @@ const EDITOR_LABEL = {
   flight_entity: 'Flüge (Flightradar24)', flight_radius: 'Radius', max_flights: 'Höchstens gleichzeitig',
   friend_name: 'Name des Freunds', screen_entity: 'Bildschirm-Schalter', height: 'Mindesthöhe',
   birthdays: 'Geburtstage', appliances: 'Haushaltsgeräte (Haus-Bote)', coffee: 'Kaffeevollautomat',
-  diary: 'Tagebuch', diary_house: 'Haushalt im Tagebuch', vacation: 'Urlaubsschalter', appliance_labels: 'Schilder an den Geräten',
+  diary: 'Tagebuch', diary_house: 'Haushalt im Tagebuch', vacation: 'Urlaubsschalter', appliance_labels: 'Anzeige an den Geräten',
 };
 const EDITOR_HELP = {
   entity: 'Damit alle Geräte denselben Pika sehen. Leer: nur in diesem Browser.',
@@ -76,7 +76,7 @@ const EDITOR_HELP = {
   chronicle_entity: 'Sein Langzeitgedächtnis: je Tag ein Eintrag mit der Tagesbilanz. Am besten eine eigene Liste; braucht beide Helfer. Leer: keine Chronik.',
   diary: 'Antippen der Leiste öffnet sein Tagebuch.',
   diary_house: 'Kaffee, Wäsche und Geschirr stehen mit Uhrzeit drin.',
-  appliance_labels: 'Über jedem Haushaltsgerät klein die Restzeit („0:42“) bzw. seit wann es fertig ist.',
+  appliance_labels: 'Alles: Fortschrittsbalken, Restzeit („0:42“) und „fertig“. Nur fertig: wenn das Dashboard Fortschritt und Restzeit schon zeigt.',
   vacation: 'Im Tagebuch: „Ferien bei Pino“. Solange er verreist ist, ruhen Hunger, Glück, Häufchen und Päckchen-Serie.',
   sleep_start: 'z. B. sunset, sunset+01:00 oder 21:00',
   sleep_end: 'z. B. sunrise, sunrise-30 oder 07:00',
