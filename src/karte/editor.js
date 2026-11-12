@@ -65,6 +65,7 @@ export class Editor {
           { name: 'wardrobe', selector: bool },
           { name: 'vacuum', selector: ent('vacuum') },
           { name: 'door', selector: ent('binary_sensor') },
+          { name: 'window', selector: { entity: { multiple: true, filter: { domain: 'binary_sensor' } } } },
         ] },
         group('Geburtstage, Haushaltsgeräte, Kaffee (YAML)', 'mdi:code-braces', [
           { name: 'birthdays', selector: { object: {} } },

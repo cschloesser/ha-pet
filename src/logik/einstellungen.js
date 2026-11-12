@@ -56,7 +56,8 @@ const DEFAULTS = {
   vacation: true,
   // Haus-Bote: über jedem Gerät all = Fortschritt (Balken, Restzeit) und „fertig“, done = nur „fertig“, none = nichts
   appliance_labels: 'all',
-  // Haus-Signale (siehe src/karte/signale.js): { waste: calendar.*, wardrobe: true, vacuum: vacuum.*, door: binary_sensor.* }
+  // Haus-Signale (siehe src/karte/signale.js): { waste: calendar.*, wardrobe: true, vacuum: vacuum.*, door: binary_sensor.*,
+  // window: binary_sensor.* oder Liste, seit 0.40, src/karte/fenster.js }
   signals: null,
 };
 
@@ -72,6 +73,7 @@ const EDITOR_LABEL = {
   birthdays: 'Geburtstage', appliances: 'Haushaltsgeräte (Haus-Bote)', coffee: 'Kaffeevollautomat',
   diary: 'Tagebuch', diary_house: 'Haushalt im Tagebuch', vacation: 'Urlaubsschalter', appliance_labels: 'Anzeige an den Geräten',
   waste: 'Müllabfuhr (Kalender)', wardrobe: 'Garderobe aus der Vorhersage', vacuum: 'Saugroboter', door: 'Haustür (Kontakt)',
+  window: 'Fenster und Türen (Kontakte)',
 };
 const EDITOR_HELP = {
   entity: 'Damit alle Geräte denselben Pika sehen. Leer: nur in diesem Browser.',
@@ -84,6 +86,7 @@ const EDITOR_HELP = {
   wardrobe: 'Von 6 bis 10 Uhr hängt an der Tür, was man heute braucht: Gummistiefel, Schirm, Mütze, Sonnenhut.',
   vacuum: 'Läuft der Sauger, fährt ein kleiner Roboter über die Wiese, und er fährt manchmal mit.',
   door: 'Geht die Haustür auf, spitzt er die Ohren.',
+  window: 'Ist eins mindestens 30 s offen, öffnet er das runde Fenster am Erdhügel (nur Bau „Erdhügel“). Antippen zeigt, welche offen sind.',
   vacation: 'Im Tagebuch: „Ferien bei Pino“. Solange er verreist ist, ruhen Hunger, Glück, Häufchen und Päckchen-Serie.',
   sleep_start: 'z. B. sunset, sunset+01:00 oder 21:00',
   sleep_end: 'z. B. sunrise, sunrise-30 oder 07:00',

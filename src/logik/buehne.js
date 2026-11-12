@@ -24,6 +24,7 @@ const RANG = [
   'maus', // Maus, Frosch, Schnecke hinter dem Stein
   'festHinten', // Festdeko hinter dem Bau (Baum, Maibaum, Wimpel)
   'bau', 'stein', 'licht', 'tv', // Bau, Stein, Fensterlicht, Fernsehlicht im Eingang
+  'fenster', // das offene Fenster am Erdhügel mit Kopf und Vorhängen (seit 0.40), über dem Fensterlicht
   'festBau', // Lichter, Girlanden, Laterne am Bau (bis 0.37 über Blumen, Schätzen, Schildern: siehe CHANGELOG 0.38)
   'drachen', 'blume', 'futter', 'schatz', // Schätze, Päckchen, Schild und Postkarte des Urlaubs, Garderobe
   'mausVorn', // Besucher draußen auf der Wiese (bis 0.38 eigene Schicht .mice-f); hinten: Reihe der hinteren Spur
@@ -50,7 +51,7 @@ const BUEHNE_MAX = buehneZ(SPANNE / 1000, RANG_N - 1);
 // Figuren, deren Platz fest ist: Reihe je Art. Wer sich bewegt (Pika; ab 0.39 Pino und Besucher), rechnet seine
 // Ebene selbst mit buehneZ. Die Namen sind die Arten der Aufnahme (dev/buehne-aufnahme.js).
 const BUEHNE = {
-  maus: 'bau', festHinten: 'bau', bau: 'bau', stein: 'stein', licht: 'bau', tv: 'bau', festBau: 'bau',
+  maus: 'bau', festHinten: 'bau', bau: 'bau', stein: 'stein', licht: 'bau', tv: 'bau', fenster: 'bau', festBau: 'bau',
   drachen: 'vorn', blume: 'vorn', futter: 'vorn', schatz: 'vorn', mausVorn: 'vorn', schild: 'vorn', gluehwurm: 'vorn',
   requisit: 'vorn', vogel: 'vorn', pikaBau: 'vorn', pino: 'vorn', pika: 'vorn', arm: 'vorn',
   heu: 'vorn', festVorn: 'vorn', gras: 'vorn', requisitVorn: 'vorn', haeufchen: 'vorn',

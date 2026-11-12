@@ -4302,9 +4302,12 @@ test('Bühne: die Karte malt in der Reihenfolge der Bühne (Aufnahme nach dem Um
       if (a[0] !== b[0]) assert.ok(T.BZ[a[0]] < T.BZ[b[0]], `${S.tag}: ${a[0]} vor ${b[0]} gemalt`);
     }));
   }
-  // Wo Besucher, Futter und Pino stehen, ist Zufall; zusammen kommen vorher und nachher dieselben Arten vor
+  // Wo Besucher, Futter und Pino stehen, ist Zufall; zusammen kommen vorher und nachher dieselben Arten vor, dazu
+  // was es in 0.37 noch nicht gab (das offene Fenster, seit 0.40)
+  const NEU = ['fenster'];
   const arten = (L) => [...new Set(L.flatMap((S) => S.f.map((f) => f[0])))].sort();
-  assert.deepEqual(arten(BUEHNE_SZENE.nachher), arten(BUEHNE_SZENE.vorher));
+  assert.deepEqual(arten(BUEHNE_SZENE.nachher).filter((a) => !NEU.includes(a)), arten(BUEHNE_SZENE.vorher));
+  for (const a of NEU) assert.ok(arten(BUEHNE_SZENE.nachher).includes(a), `${a} fehlt in der Aufnahme`);
 });
 
 test('Bühne: Ebene des Pikas aus Spur, Bau und Sprung', () => {
@@ -4505,4 +4508,237 @@ test('Bühne im Stil: jede Figur am Boden trägt das Licht der Dämmerung, und k
     if (!gedeckt) ohne.push(sel);
   }
   assert.deepEqual(ohne, [], 'diese Regeln nehmen einer Figur das Licht');
+});
+
+// ---------- Offenes Fenster (0.40) ----------
+
+// Echter Verlauf der neun Fenster- und Türkontakte (HA, 7 Tage bis 2026-11-12) durch die Regel spielen: an jedem
+// Wechsel und an jeder Frist (due) neu bestimmen, wie die Karte es tut. laden: ab da (ein Gerät, das dann lädt).
+// → Lüft-Episoden { from, to, since, names }
+const FENSTER = JSON.parse(fs.readFileSync(new URL('./fenster-verlauf.json', import.meta.url), 'utf8'));
+const fensterSpiel = (laden = null) => {
+  const verlauf = FENSTER.verlauf;
+  const ende = FENSTER.ende * 1000;
+  const ids = Object.keys(verlauf);
+  const ev = ids.flatMap((id) => verlauf[id].map((r) => ({ id, s: r.s, t: Math.round(r.lu * 1000) }))).sort((a, b) => a.t - b.t);
+  const cur = Object.fromEntries(ids.map((id) => [id, { state: undefined, t: 0 }]));
+  const eps = [];
+  let L = null;
+  let ep = null;
+  let i = 0;
+  let now = laden ?? ev[0].t;
+  for (;;) {
+    while (i < ev.length && ev[i].t <= now) {
+      cur[ev[i].id] = { state: ev[i].s, t: ev[i].t };
+      i++;
+    }
+    const rows = ids.map((id) => ({ id, name: T.winName({ attributes: { friendly_name: FENSTER.namen[id] } }, id), ...cur[id] }));
+    const was = L;
+    L = T.winLage(rows, now, L);
+    if (L.open && !was?.open) ep = { from: now, since: L.since, names: new Set() };
+    if (L.open) L.names.forEach((n) => ep.names.add(n));
+    if (!L.open && was?.open) eps.push({ ...ep, to: now });
+    const next = Math.min(i < ev.length ? ev[i].t : Infinity, L.due ?? Infinity);
+    if (!Number.isFinite(next) || next > ende) break;
+    now = Math.max(next, now + 1);
+  }
+  if (L.open) eps.push({ ...ep, to: null });
+  return eps.map((e) => ({ ...e, names: [...e.names] }));
+};
+const um = (s) => Date.parse(`2026-${s}Z`);
+
+test('Fenster: Option als Kontakt oder Liste, Namen ohne „Fenster“ und „Fensterkontakt“', () => {
+  assert.deepEqual(plain(T.winIds('binary_sensor.a')), [{ id: 'binary_sensor.a', name: null }]);
+  assert.deepEqual(plain(T.winIds(['binary_sensor.a', ' binary_sensor.b ', 'binary_sensor.a', '', null, { entity: 'binary_sensor.c', name: 'Kammer' }])),
+    [{ id: 'binary_sensor.a', name: null }, { id: 'binary_sensor.b', name: null }, { id: 'binary_sensor.c', name: 'Kammer' }]);
+  assert.deepEqual(plain(T.winIds(undefined)), []);
+  const n = (fn) => T.winName({ attributes: { friendly_name: fn } }, 'binary_sensor.x_y');
+  assert.equal(n('Fenster Bad oben'), 'Bad oben');
+  assert.equal(n('Fensterkontakt Hauswirtschaftsraum'), 'Hauswirtschaftsraum');
+  assert.equal(n('Balkontür'), 'Balkontür');
+  assert.equal(n('Küche Kontakt'), 'Küche');
+  assert.equal(n('Fenster'), 'Fenster');
+  assert.equal(T.winName(undefined, 'binary_sensor.x_y'), 'x_y');
+  assert.equal(T.winName({ attributes: { friendly_name: 'Fenster Bad oben' } }, 'x', 'Bad'), 'Bad');
+  assert.equal(T.winSeit(20000), 'seit eben');
+  assert.equal(T.winSeit(12 * 6e4 + 5000), 'seit 12 Min');
+  assert.equal(T.winSeit(80 * 6e4), 'seit 1 Std 20 Min');
+  assert.equal(T.winSeit(120 * 6e4), 'seit 2 Std');
+  const L = { open: true, since: NOW - 12 * 6e4, names: ['Küche', 'Bad unten'] };
+  assert.equal(T.winText(L, NOW), 'offen: Küche, Bad unten · seit 12 Min');
+  assert.equal(T.winText({ ...L, names: ['A', 'B', 'C', 'D', 'E'] }, NOW), 'offen: A, B, C +2 · seit 12 Min');
+});
+
+test('Fenster: offen erst nach 30 s, zu erst 20 s nach dem letzten Schließen; unavailable zählt als zu', () => {
+  const t0 = NOW;
+  const r = (state, t, name = 'Küche') => ({ id: name, name, state, t });
+  // frisch auf: noch zu, Frist bei 30 s
+  let L = T.winLage([r('on', t0)], t0 + 10000, { open: false });
+  assert.deepEqual(plain(L), { open: false, since: null, names: [], due: t0 + 30000 });
+  L = T.winLage([r('on', t0)], t0 + 30000, L);
+  assert.deepEqual(plain(L), { open: true, since: t0, names: ['Küche'], due: null });
+  // zu: noch 20 s offen (ohne Namen, das Fähnchen sagt „alle zu“), dann zu
+  L = T.winLage([r('off', t0 + 60000)], t0 + 65000, L);
+  assert.deepEqual(plain(L), { open: true, since: t0, names: [], due: t0 + 80000 });
+  assert.equal(T.winText(L, t0 + 65000), 'alle zu · gerade eben');
+  // in der Nachfrist wieder auf (Flattern): bleibt dasselbe Lüften, sofort offen
+  const L2 = T.winLage([r('on', t0 + 70000)], t0 + 70000, L);
+  assert.deepEqual(plain(L2), { open: true, since: t0, names: ['Küche'], due: null });
+  L = T.winLage([r('off', t0 + 60000)], t0 + 80000, L);
+  assert.equal(L.open, false);
+  // unavailable, unknown, leer: zu (auch nicht „frisch auf“)
+  for (const s of ['unavailable', 'unknown', '', null, undefined]) {
+    assert.deepEqual(plain(T.winLage([r(s, t0)], t0 + 99999, null)), { open: false, since: null, names: [], due: null }, String(s));
+  }
+  // Laden, während offen: sofort offen, seit last_changed (nicht seit dem Laden)
+  L = T.winLage([r('on', t0 - 5 * 6e4), r('off', t0 - 9e5, 'Bad')], t0, null);
+  assert.deepEqual(plain(L), { open: true, since: t0 - 5 * 6e4, names: ['Küche'], due: null });
+  // Laden 10 s nach dem Öffnen: noch zu, in 20 s auf
+  assert.equal(T.winLage([r('on', t0 - 10000)], t0, null).due, t0 + 20000);
+  // zwei offen: beide Namen in der Reihenfolge der Option, seit dem früheren
+  L = T.winLage([r('on', t0 - 6e4), r('off', t0 - 1e6, 'Kim'), r('on', t0 - 12 * 6e4, 'Bad unten')], t0, null);
+  assert.deepEqual(plain(L), { open: true, since: t0 - 12 * 6e4, names: ['Küche', 'Bad unten'], due: null });
+});
+
+test('Fenster im echten Verlauf: 25-mal gelüftet in 7 Tagen, die flatternde Kammer ist einmal, nicht fünfmal', () => {
+  const eps = fensterSpiel();
+  assert.equal(eps.length, 25);
+  // Kammer am 10.11.: fünf Minuten offen, dann 40 Wechsel in fünf Minuten (Pausen bis 11 s) → ein Lüften
+  const kammer = eps.filter((e) => e.names.includes('Hauswirtschaftsraum'));
+  assert.equal(kammer.length, 1);
+  assert.ok(Math.abs(kammer[0].from - um('11-10T15:56:39.700')) < 1000, new Date(kammer[0].from).toISOString());
+  assert.ok(Math.abs(kammer[0].to - (um('11-10T16:05:48') + 20000)) < 1500, new Date(kammer[0].to).toISOString());
+  // ohne Nachfrist wären es fünf (das Fenster am Bau ginge fünfmal auf und zu)
+  const zu = T.WIN.close;
+  try {
+    T.WIN.close = 1;
+    assert.equal(fensterSpiel().filter((e) => e.names.includes('Hauswirtschaftsraum')).length, 5);
+  } finally {
+    T.WIN.close = zu;
+  }
+  // lange offen: Bad unten am 10.11. fast zweieinhalb Stunden, ein Lüften, „seit“ ab dem Öffnen (30 s vor dem Zeigen)
+  const bad = eps.find((e) => Math.abs(e.from - um('11-10T11:15:36.400')) < 1000);
+  assert.ok(bad && bad.from - bad.since === 30000, JSON.stringify(bad));
+  assert.ok(Math.abs((bad.to - bad.from) / 6e4 - 148.3) < 0.2);
+  // mehrere zugleich: Stoßlüften am Morgen des 11.11. mit fünf Fenstern ist ein Lüften
+  const morgen = eps.find((e) => Math.abs(e.from - um('11-11T07:57:58.700')) < 1000);
+  assert.deepEqual([...morgen.names].sort(), ['Bad oben', 'Balkontür', 'Flur', 'Küche', 'Schlafzimmer']);
+  // kein Lüften unter 30 s: jedes beginnt mindestens 30 s nach seinem since
+  for (const e of eps) assert.ok(e.from - e.since >= 30000, new Date(e.from).toISOString());
+  // am Ende des Verlaufs steht Bad unten offen
+  assert.equal(eps.at(-1).to, null);
+  assert.deepEqual(eps.at(-1).names, ['Bad unten']);
+});
+
+test('Fenster im echten Verlauf: Laden während offen zeigt es sofort offen, wie auf den Geräten, die schon liefen', () => {
+  const alle = fensterSpiel();
+  // Mitten im Lüften von Bad unten (10.11., 12:00) geladen: gleich offen, seit demselben Zeitpunkt, gleiches Ende
+  const t = um('11-10T12:00:00');
+  const neu = fensterSpiel(t);
+  const a = alle.find((e) => e.from <= t && (e.to ?? Infinity) > t);
+  assert.equal(neu[0].from, t);
+  assert.equal(neu[0].since, a.since);
+  assert.equal(neu[0].to, a.to);
+  // danach dieselben Episoden
+  assert.deepEqual(neu.slice(1).map((e) => [e.from, e.to]), alle.slice(alle.indexOf(a) + 1).map((e) => [e.from, e.to]));
+});
+
+// Karte ohne DOM: nur die Entscheidung beim Wechsel (zeigen: _winShow wird mitgeschrieben)
+const fensterKarte = (mehr = {}) => {
+  const c = Object.create(T.PikaPetCard.prototype);
+  const auf = [];
+  Object.assign(c, {
+    _cfg: { signals: { window: ['binary_sensor.kueche', 'binary_sensor.bad'] } }, _arealKey: 'huegel', _g: {}, _running: true,
+    _action: 'idle', _el: { fen: null, scene: { classList: { contains: (k) => k === c._dbgNacht } } }, _wx: {},
+    _sigAwake: () => !c._dbgSchlaf, _interrupt: () => auf.push('interrupt'), _winShow: (o, an) => auf.push(`show ${o} ${an}`),
+    _winTagSync() {}, ...mehr,
+  });
+  const st = (kueche, seit) => ({ states: {
+    'binary_sensor.kueche': { state: kueche, last_changed: new Date(Date.now() - seit).toISOString(), attributes: { friendly_name: 'Küche' } },
+    'binary_sensor.bad': { state: 'off', last_changed: new Date(Date.now() - 36e5).toISOString(), attributes: {} },
+  } });
+  return { c, auf, st };
+};
+
+test('Fenster: wach und frei hoppelt er hin, sonst geht es von selbst auf; ohne Erdhügel nichts', () => {
+  {
+    const { c, auf, st } = fensterKarte();
+    c._winHass(st('off', 36e5));
+    assert.deepEqual(auf, ['show false false']); // erste Lage nach dem Laden: ohne Auftritt
+    c._winFresh -= 60000; // geladen vor einer Minute
+    c._winHass(st('on', 40000));
+    assert.equal(c._next, 'winAuf');
+    assert.deepEqual(auf.slice(1), ['interrupt']);
+    assert.equal(c._winL.since, Date.parse(c._winSt[0].last_changed));
+    c._winDetach();
+  }
+  for (const [was, mehr] of [['schläft', { _dbgSchlaf: true }], ['Nacht', { _dbgNacht: 'night' }], ['beschäftigt', { _action: 'paint' }]]) {
+    const { c, auf, st } = fensterKarte(mehr);
+    c._winHass(st('off', 36e5));
+    c._winFresh -= 60000;
+    c._winHass(st('on', 40000));
+    assert.equal(c._next, undefined, was);
+    assert.deepEqual(auf, ['show false false', 'show true true'], was);
+    c._winDetach();
+  }
+  {
+    // Gleich nach dem Laden kennt das Gerät die Vorgeschichte nicht (Flattern, Nachfrist): zeigen, kein Auftritt
+    const { c, auf, st } = fensterKarte();
+    c._winHass(st('off', 36e5));
+    c._winHass(st('on', 40000));
+    assert.equal(c._next, undefined);
+    assert.deepEqual(auf, ['show false false', 'show true true']);
+    c._winDetach();
+  }
+  {
+    // Laden, während es schon offen ist: offen zeigen, kein Auftritt
+    const { c, auf, st } = fensterKarte();
+    c._winHass(st('on', 5 * 6e4));
+    assert.deepEqual(auf, ['show true false']);
+    c._winDetach();
+  }
+  {
+    // frisch offen (10 s): erst zu, die Karte stellt einen Zeitgeber auf die 30 s
+    const { c, auf, st } = fensterKarte();
+    c._winHass(st('on', 10000));
+    assert.deepEqual(auf, ['show false false']);
+    assert.ok(c._winT);
+    c._winDetach();
+  }
+  {
+    // Felsen, Baumstumpf, Geröllhalde: kein Fenster, die Kontakte werden nicht gelesen
+    const { c, auf, st } = fensterKarte({ _arealKey: 'fels' });
+    c._winHass(st('on', 5 * 6e4));
+    assert.equal(c._winL, null);
+    assert.deepEqual(auf, ['show false false']);
+  }
+});
+
+test('Fenster im Editor und auf der Bühne: Gruppe Haus-Signale, mehrere Kontakte, Reihe bau über dem Fensterlicht', () => {
+  const form = T.PikaPetCard.getConfigForm();
+  const sig = form.schema.find((s) => s.name === 'signals');
+  const f = sig.schema.find((s) => s.name === 'window');
+  assert.deepEqual(plain(f.selector), { entity: { multiple: true, filter: { domain: 'binary_sensor' } } });
+  assert.match(form.computeLabel(f), /Fenster/);
+  assert.ok(form.computeHelper(f).length > 20);
+  assert.ok(T.BZ.licht < T.BZ.fenster && T.BZ.tv < T.BZ.fenster && T.BZ.fenster < T.BZ.festBau);
+  assert.equal(T.BUEHNE.fenster, 'bau');
+});
+
+test('Fenster: gezeigt wie die Lage, auch wenn ein Auftritt nicht drankam (Takt, Wiederanhängen)', () => {
+  const { c, auf } = fensterKarte();
+  c._winL = { open: true, since: Date.now() - 6e5, names: ['Küche'], due: null };
+  c._winShown = false;
+  c._next = 'winAuf';
+  c._winHeal();
+  assert.deepEqual(auf, [], 'ein Auftritt steht an: warten');
+  c._next = null;
+  c._action = 'dream';
+  c._winHeal();
+  assert.deepEqual(auf, ['show true true']);
+  // abgehängt: ein anstehender Auftritt verfällt, beim Anhängen gleicht die Karte an
+  const k = fensterKarte();
+  k.c._next = 'winAuf';
+  k.c._winDetach();
+  assert.equal(k.c._next, null);
 });

@@ -33,6 +33,7 @@ import { BeschaeftigungenKlein } from './karte/beschaeftigungen-klein.js';
 import { Chronik } from './karte/chronik.js';
 import { Urlaub } from './karte/urlaub.js';
 import { Signale } from './karte/signale.js';
+import { Fenster } from './karte/fenster.js';
 import { Messung } from './karte/messung.js';
 
 class PikaPetCard extends HTMLElement {
@@ -399,7 +400,7 @@ class PikaPetCard extends HTMLElement {
 const TEILE = [
   Editor, Aufbau, Schlaf, Lebensschleife, Alltag, Wiese, Haeufchen, Besucher, Flugzeuge, Beschaeftigungen,
   BeschaeftigungenGross, Bausteine, Interaktion, Tagebuch, Momente, Feste, Zustand, Pino, Himmel, Wetter, HausBote,
-  Kaffee, Paeckchen, Schaetze, Tagesplan, BeschaeftigungenKlein, Chronik, Urlaub, Signale, Messung,
+  Kaffee, Paeckchen, Schaetze, Tagesplan, BeschaeftigungenKlein, Chronik, Urlaub, Signale, Fenster, Messung,
 ];
 for (const Teil of TEILE) {
   for (const k of Reflect.ownKeys(Teil.prototype)) {

@@ -13,6 +13,7 @@
     ['stein', '.lookout'],
     ['licht', '.lights'],
     ['tv', '.tvl'],
+    ['fenster', '.fenster.da'], // offenes Fenster am Erdhügel (seit 0.40)
     ['vogel', '.birds > *'],
     ['drachen', '.kites > *'],
     ['blume', '.flowers > *'],
@@ -109,7 +110,7 @@
       figuren: figuren.map(({ art, name, r, el }) => ({ art, name, r, z: getComputedStyle(el).zIndex })),
     };
   };
-  // Volle Szene in preview.html: Album voll (Schätze auf der Wiese), Advent, Haus-Bote, Tonne, Garderobe, Sauger,
+  // Volle Szene in preview.html: Album voll (Schätze auf der Wiese), Advent, Haus-Bote, Tonne, Garderobe, Sauger, offenes Fenster (0.40),
   // Häufchen, Pino, Futter und alle Besucher; Nikolaus (6. 12., Tag: Festdeko vorn und am Bau).
   // Tageszeit danach mit buehneLicht(karten, Sonnenhöhe).
   window.buehneSzene = async (karten, areal = 'fels') => {
@@ -119,7 +120,7 @@
     await warte(500);
     for (const s of ['[data-wx="sunny"]', '#gift-full', '[data-fest="nikolaus"]', '[data-hb="washer:done"]',
       '[data-hb="dryer:run30"]', '[data-hb="dishwasher:done"]', '[data-sig="bin-gelb"]', '[data-sig="ward-cold"]',
-      '[data-sig="vac-cleaning"]', '#poo1', '#poo1']) {
+      '[data-sig="vac-cleaning"]', '[data-win="zwei"]', '#poo1', '#poo1']) {
       klick(s);
       await warte(150);
     }

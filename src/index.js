@@ -86,6 +86,7 @@ import {
 import { GIFT, giftLv, giftTre, giftMile, giftAllGold } from './logik/paeckchen.js';
 import { coffeeBrews, coffeeLabel, coffeeQueue, COFFEE_NEXT_GAP } from './logik/kaffee.js';
 import { SIG, sigTime, binKind, binPlan, binDone, wardrobePick, vacMode, vacRuns } from './logik/signale.js';
+import { WIN, winIds, winName, winLage, winSeit, winText } from './logik/fenster.js';
 import { URLAUB, urlaubAt, urlaubCut } from './logik/urlaub.js';
 import { REIHE, RANG, RANG_N, buehneZ, BUEHNE_MAX, BUEHNE, BZ } from './logik/buehne.js';
 import { STYLE } from './stil/szene.js';
@@ -99,9 +100,10 @@ import { STYLE_GIFT } from './stil/paeckchen.js';
 import { STYLE_DIARY_BTN } from './stil/tagebuch.js';
 import { STYLE_URLAUB } from './stil/urlaub.js';
 import { STYLE_SIG } from './stil/signale.js';
+import { STYLE_FEN } from './stil/fenster.js';
 
 // Das Stylesheet der Karte in der Reihenfolge von _build (src/karte/aufbau.js), für die Tests der Bühne
-const STYLES = [STYLE, STYLE_SKY, STYLE_FEST, STYLE_FRIEND, STYLE_BOTE, STYLE_COFFEE, STYLE_ACT, STYLE_GIFT, STYLE_DIARY_BTN, STYLE_URLAUB, STYLE_SIG].join('');
+const STYLES = [STYLE, STYLE_SKY, STYLE_FEST, STYLE_FRIEND, STYLE_BOTE, STYLE_COFFEE, STYLE_ACT, STYLE_GIFT, STYLE_DIARY_BTN, STYLE_URLAUB, STYLE_SIG, STYLE_FEN].join('');
 import { FIND_GROUPS, FINDS, findsParse, findsSer, diaryDerive } from './logik/tagebuch.js';
 import {
   CHRONIK, chronikDatum, chronikTag, chronikStart, chronikVersatz, chronikZoneOk, chronikKod, chronikLies, chronikMisch, chronikBilanz,
@@ -129,6 +131,7 @@ if (typeof globalThis !== 'undefined' && typeof globalThis.__pikaTest === 'funct
     planBlank, planSer, planParse, planApply, hayNow, giftLv, pikaDay, MEM_GUT, giftTre, giftMile, giftAllGold,
     URLAUB, urlaubAt, urlaubCut, chronikUrlaub, coffeeBrews, coffeeLabel, coffeeQueue, COFFEE_NEXT_GAP, boteEmptyOn, boteMap, boteLabel, boteLabelMode, boteSmell,
     SIG, sigTime, binKind, binPlan, binDone, wardrobePick, vacMode, vacRuns, MEM_TONNE, MEM_TONNE2,
+    WIN, winIds, winName, winLage, winSeit, winText,
     freshStats, serialize, parseStats, mergeStats, seedRnd, weightedR,
     sunTimes, festDay, festEaster, festAdvent1, festBirthdate,
     GAIN, PET_CALM, KRAUL, petGain, kraulGain, worldPick, MIMIK, FINDS, FIND_GROUPS, findsParse, findsSer,

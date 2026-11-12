@@ -235,6 +235,14 @@
   <button data-sig="vac-docked">in der Station</button>
   <button data-sig="vac-ride">Pika: mitfahren</button>
   <button data-sig="door">Haustür auf</button>
+  <i style="flex-basis:100%"></i><b></b>
+  <button data-win="auf">Fenster: Küche auf (seit 35 s)</button>
+  <button data-win="zu">alle zu</button>
+  <button data-win="flattern">Kammer flattert (wie am 10.11.)</button>
+  <button data-win="zwei">zwei Fenster offen</button>
+  <button data-win="nacht">Nacht, Fenster offen</button>
+  <button data-win="go">Pika: Fenster auf</button>
+  <button data-win="tag">Fähnchen</button>
 </div>
 <!-- ==================== Ende Haus-Signale ==================== -->
 
@@ -1165,6 +1173,38 @@
     const go = { 'bin-go': 'sigBinNudge', 'ward-go': 'sigWear', 'vac-ride': 'sigRide' }[w];
     if (go) cards.forEach((c) => { c._next = go; c._interrupt(); });
     push();
+  }));
+  // Offenes Fenster (0.40): drei Kontakte wie im Haus. „auf“ setzt last_changed 35 s zurück (sonst 30 s warten).
+  // „flattern“ spielt die Kammer vom 10.11. nach: seit 35 s offen (das Fenster am Bau geht auf), dann 16:01–16:02 in
+  // Echtzeit: Wechsel nach 1 bis 18 s, keiner 30 s lang. Das Fenster am Bau bleibt offen, bis 20 s nach dem letzten Zu.
+  // „go“ spielt den Auftritt noch einmal (nur in der ersten Minute nach dem Öffnen, sonst verfällt er).
+  const WN = { k: 'binary_sensor.fenster_kueche', b: 'binary_sensor.fenster_bad_unten', h: 'binary_sensor.fensterkontakt_hauswirtschaftsraum' };
+  const WNA = { k: { device_class: 'window', friendly_name: 'Küche' }, b: { device_class: 'window', friendly_name: 'Bad unten' },
+    h: { device_class: 'door', friendly_name: 'Fensterkontakt Hauswirtschaftsraum' } };
+  const wnSet = (k, st, sec = 0) => hbSet(WN[k], st, WNA[k], sec / 60);
+  let wnFlt = [];
+  for (const k of Object.keys(WN)) wnSet(k, 'off', 3600);
+  cards.forEach((c) => c.setConfig({ ...c._cfg, signals: { ...c._cfg.signals, window: Object.values(WN) } }));
+  push();
+  document.querySelectorAll('[data-win]').forEach((b) => b.addEventListener('click', () => {
+    const w = b.dataset.win;
+    wnFlt.forEach(clearTimeout);
+    wnFlt = [];
+    if (w === 'auf') wnSet('k', 'on', 35);
+    else if (w === 'zu') for (const k of Object.keys(WN)) wnSet(k, 'off');
+    else if (w === 'zwei') { wnSet('k', 'on', 35); wnSet('b', 'on', 12 * 60); }
+    else if (w === 'flattern') {
+      wnSet('h', 'on', 35);
+      let t = 3;
+      [[0, 2.3], [1, 3.4], [0, .8], [1, 18.2], [0, 2.4], [1, 5.8], [0, 1.1], [1, 9.3], [0, 7], [1, 1.4], [0, 2.1], [1, 8.9], [0, 2.5], [1, 2.7], [0, 0]]
+        .forEach(([on, d]) => { wnFlt.push(setTimeout(() => (wnSet('h', on ? 'on' : 'off'), push(), log(`Kammer ${on ? 'auf' : 'zu'}`)), t * 1000)); t += d; });
+    } else if (w === 'nacht') {
+      cards.forEach((c) => { c._dbgElev = -25; c._dbgAz = 330; c._dbgSleep = false; c._tick(); });
+      wnSet('k', 'on', 35);
+    } else if (w === 'go') cards.forEach((c) => { c._winShow(false, false); c._next = 'winAuf'; c._interrupt(); });
+    else if (w === 'tag') cards.forEach((c) => c._winTag(true));
+    push();
+    log(`Fenster: ${cards.map((c) => (c._winL?.open ? PIKA.winText(c._winL, Date.now()) : 'zu')).join(' | ')}`);
   }));
   // ==================== Ende Vorschau Haus-Signale ====================
 

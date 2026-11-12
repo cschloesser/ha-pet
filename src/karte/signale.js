@@ -7,7 +7,8 @@ import { SIG, binPlan, binDone, wardrobePick, WARD_SAY, vacMode } from '../logik
 import { SIG_BIN, SIG_VAC, SIG_WEAR } from '../grafik/signale.js';
 
 export class Signale {
-  // Konfiguration `signals`: { waste: calendar.*, wardrobe: true, vacuum: vacuum.*, door: binary_sensor.* }. Alles ist
+  // Konfiguration `signals`: { waste: calendar.*, wardrobe: true, vacuum: vacuum.*, door: binary_sensor.*, window:
+  // binary_sensor.* oder Liste (seit 0.40, karte/fenster.js) }. Alles ist
   // aus, solange nichts eingetragen ist. Was alle Geräte gleich zeigen sollen, folgt aus den Zuständen in HA; nur
   // „Tonne steht draußen“ steht im Tagesplan (Bit MEM_TONNE, siehe logik/signale.js).
 
@@ -38,17 +39,20 @@ export class Signale {
       this._sigD = d;
       if (prev && d?.state === 'on' && prev.state !== 'on') this._sigDoorOpen(d);
     }
+    this._winHass(hass);
   }
 
   _attachSig() {
     this._sigBinSync();
     this._sigWearSync();
     this._sigVacSync();
+    this._winAttach();
   }
 
   _detachSig() {
     this._sigFcStop();
     clearTimeout(this._sigVacT);
+    this._winDetach();
   }
 
   _hiddenSig(hidden) {
@@ -60,11 +64,13 @@ export class Signale {
     this._sigBinSync(true);
     this._sigWearSync(true);
     this._sigVacSync(true);
+    this._winLayoutSig();
   }
 
   _tickSig() {
     this._sigBinSync();
     this._sigWearSync();
+    this._winTick();
   }
 
   // Wach, zu sehen und nicht verreist: Dann erinnert er

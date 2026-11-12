@@ -284,7 +284,7 @@ export class BeschaeftigungenGross {
     // Farbe nur dort setzen, wo sie gebraucht wird (an der Szene würde sie den ganzen Baum neu berechnen)
     const next = () => {
       const c = pick(TV_COLORS);
-      for (const el of [this._el.tvl, this._el.lights, this._el.pika]) el.style.setProperty('--tvc', c);
+      for (const el of [this._el.tvl, this._el.lights, this._el.pika, this._el.fen].filter(Boolean)) el.style.setProperty('--tvc', c);
       // Bewegung reduzieren: Das Bild wechselt seltener (und flackert nicht, siehe Stil)
       this._tvT = setTimeout(next, calmMotion() ? rnd(4000, 9000) : rnd(600, 2600));
     };

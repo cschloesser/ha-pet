@@ -2,6 +2,50 @@
 
 Jede Version der Pika Pet Card, die neueste zuerst.
 
+## 0.40.0 (2026-11-12)
+
+Offenes Fenster: Ist im Haus ein Fenster offen, öffnet der Pika das runde Fenster an seinem Bau. Alles folgt aus den Kontakten in HA, darum zeigen alle Geräte dasselbe; der Tagesplan braucht kein Zeichen. Nur der Erdhügel (`areal: huegel`) hat ein Fenster. Zustand und Tagesplan in den Helfern bleiben, wie sie sind.
+
+- Neue Option `signals.window`: ein Kontakt oder eine Liste, Einträge auch als `{ entity, name }` (eigener Name im Fähnchen, nur im YAML). Im Editor ein Feld mit mehreren Kontakten in der Gruppe „Haus-Signale“.
+- „Offen“ heißt: Ein Kontakt ist mindestens 30 s offen (`on`). „Zu“ heißt: Seit 20 s ist keiner mehr offen. Gerechnet wird mit `last_changed` und der Uhr von HA, nicht mit dem Laden der Seite. `unavailable`, `unknown` und leere Zustände zählen als zu.
+- Fenster geht auf, und der Pika ist wach und frei: Er spitzt die Ohren, hoppelt in den Bau, der Flügel schwingt an der linken Kante auf, er schaut mit dem Kopf heraus (Pfoten auf dem Sims), schnuppert und sagt „frische Luft!“ (Sprechblase am Fenster), dann kommt er wieder heraus. Schläft er, ist Nacht oder Urlaub, ist er beschäftigt oder die Karte nicht zu sehen, geht es von selbst auf. Kommt ein angesetzter Auftritt nicht dran, geht es nach 15 s von selbst auf. Ein liegengebliebener Auftritt (über Schlaf oder Abhängen) verfällt nach einer Minute.
+- Solange offen: Die Vorhänge wehen nach außen über den Rahmen. Auf der Seite, wohin der Wind im Bild weht, wehen sie weit, auf der anderen wenig; bei mehr Wind weiter und schneller (`_windDir`, `_wind`). In Dämmerung und Nacht leuchtet das Zimmer warm, und Licht fällt auf den Hügel. Flügel und Vorhänge haben dafür ihre warme Kopie (`.lt`, wie das Fensterlicht im Bau). Bei Wolken und in der Dämmerung dämmert das Fenster mit dem Bau (Licht `LICHT`, nicht nachts). Sieht er fern, flackert es im offenen Fenster in der Farbe des Fernsehers. Bei „Bewegung reduzieren“ hängen die Vorhänge schräg still, die Nase schnuppert nicht.
+- Alles zu: Ist er in der Nähe (höchstens 30 % der Kartenbreite vom Fenster) und frei, schließt er es selbst: Kopf heraus, Flügel zu, „zu!“ oder „so.“, wieder heraus. Sonst schließt es von selbst.
+- Antippen des offenen Fensters (nur der Kreis, nicht der Hügel daneben) zeigt 9 s lang ein Fähnchen wie bei den Geräten: „offen: Küche, Bad unten · seit 12 Min“. Es nennt höchstens drei Namen, der Rest steht als „+2“. In der Nachfrist steht „alle zu · gerade eben“. Die Namen kommen aus HA ohne „Fenster“ oder „Fensterkontakt“ davor. Auch per Tastatur erreichbar, mit Beschriftung für den Bildschirmleser.
+- Laden während offen: Das Fenster ist sofort offen, ohne Auftritt, mit demselben „seit“. Ändert jemand die Kontakte im Editor oder das Areal, gilt das ebenso.
+- Ebene: neuer Rang `fenster` auf der Reihe des Baus, über Fensterlicht und Fernsehlicht, unter der Festdeko am Bau (`src/logik/buehne.js`). Mit und ohne `depth` gleich. Die Bühnen-Aufnahme kennt das Fenster (`dev/buehne-aufnahme.js`, die volle Szene öffnet zwei Fenster). In `test/buehne-szene.json` ist es in `huegel-breit` nachgetragen; die übrigen Figuren und ihre Reihenfolge blieben bei der neuen Aufnahme unverändert.
+- Gemessen im 7-Tage-Verlauf der neun Fenster- und Türkontakte im Haus (bis 12. 11. 2026, liegt als `test/fenster-verlauf.json` bei den Tests):
+  - 25 Lüft-Episoden, gut drei am Tag.
+  - Bad unten stand bis knapp 3 Stunden offen, die Balkontür in einer Nacht über 9 Stunden.
+  - Die Tür der Kammer (Hauswirtschaftsraum) flatterte am 10. 11. fünf Minuten lang mit 40 Wechseln (Pausen bis 11 s). Mit der Nachfrist von 20 s ist das ein Lüften; ohne sie ginge das Fenster am Bau fünfmal auf und zu.
+  - Am Morgen des 11. 11. waren fünf Fenster zugleich offen, ein Lüften.
+- Grenzen:
+  - Ein frisch geladenes Gerät kennt die Vorgeschichte nicht. Lädt es mitten im Flattern oder in den 20 s Nachfrist, zeigt es kurz „zu“, die anderen „offen“. Am Verlauf nachgerechnet, Ladezeitpunkt alle 10 s über die ganze Woche: bei 80 von 60 124 (0,13 %). Die andere Regel („offen, sobald einer offen ist“) läge bei 97. Damit so ein Gerät den Auftritt nicht mitten im Lüften spielt, gibt es in den ersten 50 s nach dem Laden keinen Auftritt, nur das Fenster.
+  - Geht ein offener Kontakt beim Neustart von HA kurz auf `unavailable`, zählt „seit“ danach neu. War er länger als 20 s weg, geht das Fenster am Bau dazwischen zu.
+  - Ob er hinläuft, entscheidet jedes Gerät für sich (wie bei der Haustür). Das Fenster selbst ist auf allen gleich.
+  - Einträge mit `name` kann der Editor nicht darstellen (das Feld ist eine einfache Liste von Kontakten).
+- Bewusst nicht: Erinnerungen bei Kälte oder Regen, ein Fenster an Felsen, Baumstumpf und Geröllhalde (dort werden die Kontakte gar nicht gelesen).
+- Vorschau, Zeile Haus-Signale:
+  - „Fenster: Küche auf (seit 35 s)“, „alle zu“, „zwei Fenster offen“, „Nacht, Fenster offen“, „Fähnchen“.
+  - „Kammer flattert (wie am 10.11.)“: erst 35 s offen, dann Wechsel nach 1 bis 18 s in Echtzeit; das Fenster bleibt offen.
+  - „Pika: Fenster auf“: der Auftritt, nur in der ersten Minute nach dem Öffnen.
+- Geprüft in der Vorschau: Auftritt Auf und Zu, Schließen von selbst, Nacht mit Licht, Fähnchen, Flattern, Wolken, `depth`, zwei Karten (breit und schmal). Bildschirmfotos bei Tag (Kopf im Fenster) und Nacht.
+- Ein Review des Diffs ohne Kenntnis der Absicht im Einzelnen hat Folgendes gefunden. Behoben:
+  - Das ganze Kästchen um das Fenster fing Tipps ab.
+  - Der Auftritt spielte auf einem frisch geladenen Gerät mitten im Lüften.
+  - Ein liegengebliebener Auftritt lief am nächsten Morgen.
+  - Nach dem Abhängen blieb das Fenster unter Umständen falsch gezeigt (jetzt gleicht der Takt alle 20 s an).
+  - Ein Optionswechsel spielte einen Auftritt.
+  - Das Zumachen prüfte vor dem Schließen nicht noch einmal.
+  - Ein Übergang blieb nach dem Laden aus.
+  - Das Fähnchen nannte in der Nachfrist Namen.
+  - Die Farbe des Fernsehers fehlte im Fenster.
+  - Bei Wolken und in der Dämmerung blieb das Fenster hell.
+  - Der Knopf „flattern“ zeigte nichts.
+- Entwicklung:
+  - 82 Module, neu: `src/logik/fenster.js`, `src/karte/fenster.js`, `src/grafik/fenster.js` und `src/stil/fenster.js`. `src/karte/` hat jetzt 31 Module.
+  - 147 Tests, 7 davon neu: Option und Namen; die Regeln 30 s, 20 s und unavailable; der echte Verlauf mit Flattern, lange offen und mehreren zugleich; Laden während offen; die Entscheidung der Karte; Selbstheilung; Editor und Ebene.
+
 ## 0.39.2 (2026-11-12)
 
 Messung der Bildrate auf dem echten Gerät. Am Verhalten der Karte ändert sich nichts.

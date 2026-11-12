@@ -60,7 +60,7 @@
  */
 (() => {
   // src/version.js
-  var VERSION = "0.39.2";
+  var VERSION = "0.40.0";
 
   // src/logik/hilfen.js
   var Cancel = class extends Error {
@@ -795,7 +795,7 @@
   var CRIT_KINDS = Object.keys(CRIT);
   var CRIT_LATE = 2e4;
   var CRIT_BACK = 45e3;
-  var critJoin = (kind, pk) => Math.max(CRIT_LATE, kind === "bird" ? pk.stay - 5e3 : kind === "frog" ? pk.stay - 3e3 : kind === "snail" ? 3e4 : 0);
+  var critJoin = (kind, pk2) => Math.max(CRIT_LATE, kind === "bird" ? pk2.stay - 5e3 : kind === "frog" ? pk2.stay - 3e3 : kind === "snail" ? 3e4 : 0);
   var FRIEND_SCALE = 0.85;
   var FRIEND_WIN = { win: 30 * 6e4, p: 1, spread: 20 * 6e4, stay: [3, 6] };
   var FRIEND_LAST = 25e3;
@@ -1528,6 +1528,51 @@
     return merged;
   };
 
+  // src/logik/fenster.js
+  var WIN = { open: 3e4, close: 2e4, list: 3 };
+  var winIds = (v) => {
+    const out = [];
+    for (const x of Array.isArray(v) ? v : v ? [v] : []) {
+      const id = typeof x === "string" ? x.trim() : typeof x?.entity === "string" ? x.entity.trim() : "";
+      if (!id || out.some((o) => o.id === id)) continue;
+      const name = typeof x === "object" && x && typeof x.name === "string" && x.name.trim() ? x.name.trim() : null;
+      out.push({ id, name });
+    }
+    return out;
+  };
+  var winName = (st, id, name) => {
+    if (name) return name;
+    const fn = String(st?.attributes?.friendly_name || "").trim();
+    const kurz = fn.replace(/^(fenster|tür|tuer)?(kontakt|sensor)?\s+/i, "").replace(/\s+(kontakt|contact|sensor)$/i, "").trim();
+    return kurz || fn || String(id).replace(/^[^.]*\./, "");
+  };
+  var winLage = (rows, now, was) => {
+    const on = rows.filter((r) => r.state === "on");
+    const names = on.map((r) => r.name);
+    const first = on.length ? Math.min(...on.map((r) => r.t)) : null;
+    if (was?.open) {
+      if (on.length) return { open: true, since: Math.min(was.since, first), names, due: null };
+      const zu = Math.max(0, ...rows.map((r) => r.t).filter(Number.isFinite));
+      if (now - zu < WIN.close) return { open: true, since: was.since, names: [], due: zu + WIN.close };
+      return { open: false, since: null, names: [], due: null };
+    }
+    if (on.length && now - first >= WIN.open) return { open: true, since: first, names, due: null };
+    return { open: false, since: null, names: [], due: on.length ? first + WIN.open : null };
+  };
+  var winSeit = (ms) => {
+    const m = Math.max(0, Math.floor(ms / 6e4));
+    if (m < 1) return "seit eben";
+    if (m < 60) return `seit ${m} Min`;
+    const h = Math.floor(m / 60);
+    return `seit ${h} Std${m % 60 ? ` ${m % 60} Min` : ""}`;
+  };
+  var winText = (lage, now) => {
+    const n = lage.names;
+    if (!n.length) return "alle zu · gerade eben";
+    const shown = n.slice(0, WIN.list).join(", ") + (n.length > WIN.list ? ` +${n.length - WIN.list}` : "");
+    return `offen: ${shown} · ${winSeit(now - lage.since)}`;
+  };
+
   // src/logik/urlaub.js
   var URLAUB = { keep: 24 * 36e5, restore: 15 * 6e4, min: 30 * 6e4 };
   var urlaubAt = (ur, t) => !!ur && t >= ur.t && (ur.d == null || t < ur.t + ur.d);
@@ -1596,7 +1641,8 @@
     vacation: true,
     // Haus-Bote: über jedem Gerät all = Fortschritt (Balken, Restzeit) und „fertig“, done = nur „fertig“, none = nichts
     appliance_labels: "all",
-    // Haus-Signale (siehe src/karte/signale.js): { waste: calendar.*, wardrobe: true, vacuum: vacuum.*, door: binary_sensor.* }
+    // Haus-Signale (siehe src/karte/signale.js): { waste: calendar.*, wardrobe: true, vacuum: vacuum.*, door: binary_sensor.*,
+    // window: binary_sensor.* oder Liste, seit 0.40, src/karte/fenster.js }
     signals: null
   };
   var EDITOR_LABEL = {
@@ -1633,7 +1679,8 @@
     waste: "Müllabfuhr (Kalender)",
     wardrobe: "Garderobe aus der Vorhersage",
     vacuum: "Saugroboter",
-    door: "Haustür (Kontakt)"
+    door: "Haustür (Kontakt)",
+    window: "Fenster und Türen (Kontakte)"
   };
   var EDITOR_HELP = {
     entity: "Damit alle Geräte denselben Pika sehen. Leer: nur in diesem Browser.",
@@ -1646,6 +1693,7 @@
     wardrobe: "Von 6 bis 10 Uhr hängt an der Tür, was man heute braucht: Gummistiefel, Schirm, Mütze, Sonnenhut.",
     vacuum: "Läuft der Sauger, fährt ein kleiner Roboter über die Wiese, und er fährt manchmal mit.",
     door: "Geht die Haustür auf, spitzt er die Ohren.",
+    window: "Ist eins mindestens 30 s offen, öffnet er das runde Fenster am Erdhügel (nur Bau „Erdhügel“). Antippen zeigt, welche offen sind.",
     vacation: "Im Tagebuch: „Ferien bei Pino“. Solange er verreist ist, ruhen Hunger, Glück, Häufchen und Päckchen-Serie.",
     sleep_start: "z. B. sunset, sunset+01:00 oder 21:00",
     sleep_end: "z. B. sunrise, sunrise-30 oder 07:00",
@@ -1669,6 +1717,8 @@
     "licht",
     "tv",
     // Bau, Stein, Fensterlicht, Fernsehlicht im Eingang
+    "fenster",
+    // das offene Fenster am Erdhügel mit Kopf und Vorhängen (seit 0.40), über dem Fensterlicht
     "festBau",
     // Lichter, Girlanden, Laterne am Bau (bis 0.37 über Blumen, Schätzen, Schildern: siehe CHANGELOG 0.38)
     "drachen",
@@ -1718,6 +1768,7 @@
     stein: "stein",
     licht: "bau",
     tv: "bau",
+    fenster: "bau",
     festBau: "bau",
     drachen: "vorn",
     blume: "vorn",
@@ -4866,6 +4917,65 @@
   @media (prefers-reduced-motion: reduce) { .sig-wear.hang, .sig-vac.drive .sig-brush, .sig-bin.in, .sig-wear.in { animation: none; } }
   `;
 
+  // src/stil/fenster.js
+  var STYLE_FEN = `
+  /* Über dem Fensterlicht des Baus (Reihe bau, Rang fenster). Zu und fertig ist es nicht zu sehen: Dann zeigen Bau und
+     Lichter das Fenster wie immer. Kein Lichtfilter: Was dämmert, hat seine warme Kopie (.lt) wie das Fensterlicht,
+     das Fell des Kopfs dunkelt wie beim Pika im Bau (PK_DIM). */
+  .fenster { position: absolute; left: 0; top: 0; z-index: ${BZ.fenster}; visibility: hidden; pointer-events: none; }
+  .fenster.da { visibility: visible; }
+  .fenster > div { position: absolute; inset: 0; pointer-events: none; }
+  .fenster svg { display: block; width: 100%; height: 100%; overflow: visible; }
+  /* Trefferfläche: nur das offene Fenster samt Rahmen (Kreis), nicht das ganze Kästchen */
+  .fenster::after {
+    content: ''; position: absolute; left: 25%; top: 25%; width: 50%; height: 50%; border-radius: 50%; pointer-events: none;
+  }
+  .fenster.da.auf::after { pointer-events: auto; cursor: pointer; }
+  /* Bei Wolken und in der Dämmerung dämmert der Fensterflügel mit dem Bau (Licht wie .burrow); nachts nicht, da
+     leuchtet das Zimmer, und Flügel und Vorhänge haben ihre warme Kopie (.lt) */
+  .fen-in, .fen-fl { transition: filter 2.5s; }
+  .shade:not(.night) .fenster > .fen-in, .shade:not(.night) .fenster > .fen-fl { filter: ${LICHT}; }
+
+  /* Licht, das nachts aus dem offenen Fenster auf den Hügel fällt */
+  .fen-spill { fill: url(#fen-schein); visibility: hidden; }
+  .fenster.auf .fen-spill { visibility: visible; }
+
+  /* Flügel: schwingt an der linken Kante nach außen auf */
+  .fen-s { transform-box: fill-box; transform-origin: 0% 50%; transition: transform .7s cubic-bezier(.5, 0, .6, 1); }
+  .fenster.auf .fen-s { transform: translateX(-3.2px) skewY(-16deg) scaleX(.3); transition: transform .9s cubic-bezier(.3, 1.35, .5, 1); }
+
+  /* Vorhänge: wehen nach außen, links um --wl, rechts um --wr (der Seite, wohin der Wind weht, mehr), schneller bei
+     mehr Wind (--ws) */
+  .fen-v { opacity: 0; transition: opacity .4s; }
+  .fenster.auf .fen-v { opacity: 1; transition: opacity .5s .35s; }
+  .fen-v1, .fen-v2 { transform-box: fill-box; transform-origin: 50% 0; }
+  .fenster.auf .fen-v1 { animation: fen-weh-l var(--ws, 1.8s) ease-in-out infinite alternate; }
+  .fenster.auf .fen-v2 { animation: fen-weh-r var(--ws, 1.8s) ease-in-out calc(var(--ws, 1.8s) * -.45) infinite alternate; }
+  @keyframes fen-weh-l { from { transform: rotate(calc(var(--wl, 24deg) * .35)); } to { transform: rotate(var(--wl, 24deg)) scaleY(1.06); } }
+  @keyframes fen-weh-r { from { transform: rotate(calc(var(--wr, 8deg) * -.35)); } to { transform: rotate(calc(var(--wr, 8deg) * -1)) scaleY(1.06); } }
+
+  /* Kopf: taucht von unten im Fenster auf (Lage in Einheiten des Bilds), schnuppert */
+  .fen-k { transform: translateY(7.5px); transition: transform .4s ease-in; }
+  .fenster.kopf .fen-k { transform: none; transition: transform .55s cubic-bezier(.3, 1.4, .5, 1); }
+  .fen-nase { transform-box: fill-box; transform-origin: 50% 30%; }
+  .fenster.schnupper .fen-nase { animation: fen-schnupp .2s ease-in-out 6 alternate; }
+  @keyframes fen-schnupp { to { transform: translateY(-.2px) scale(1.2); } }
+  .fenster .pk { ${PK_DIM(0.85, 1)} }
+  .night .fenster .pk { ${PK_DIM(0.68, 0.85)} }
+
+  /* Fähnchen (Aussehen wie bei den Geräten, .hb-tag) über allem */
+  .fen-t { position: absolute; inset: 0; pointer-events: none; z-index: var(--z-tag); }
+
+  /* Schnell wechselnde Lage nach dem Laden oder einem Größenwechsel: ohne Übergang */
+  .fenster.still .fen-s, .fenster.still .fen-v, .fenster.still .fen-k { transition: none; }
+
+  @media (prefers-reduced-motion: reduce) {
+    .fenster.auf .fen-v1, .fenster.auf .fen-v2, .fenster.schnupper .fen-nase { animation: none !important; }
+    .fenster.auf .fen-v1 { transform: rotate(calc(var(--wl, 24deg) * .6)); }
+    .fenster.auf .fen-v2 { transform: rotate(calc(var(--wr, 8deg) * -.6)); }
+  }
+`;
+
   // src/logik/tagebuch.js
   var DIARY = { keep: 3 * 864e5, max: 400, close: 6e4, gap: 100 * 6e4, acts: 2 };
   var FIND_GROUPS = ["Streicheln", "Kümmern", "Meine Welt"];
@@ -5583,7 +5693,8 @@
             { name: "waste", selector: ent("calendar") },
             { name: "wardrobe", selector: bool },
             { name: "vacuum", selector: ent("vacuum") },
-            { name: "door", selector: ent("binary_sensor") }
+            { name: "door", selector: ent("binary_sensor") },
+            { name: "window", selector: { entity: { multiple: true, filter: { domain: "binary_sensor" } } } }
           ] },
           group("Geburtstage, Haushaltsgeräte, Kaffee (YAML)", "mdi:code-braces", [
             { name: "birthdays", selector: { object: {} } },
@@ -5877,7 +5988,7 @@
         [18, 0.95, 120, -95]
       ].map(([top, s, d, dl]) => `<div class="cloud" style="top:${top}%;--s:${s};--d:${d}s;--dl:${dl}s"></div>`).join("");
       this.shadowRoot.innerHTML = `
-        <style>${STYLE}${STYLE_SKY}${STYLE_FEST}${STYLE_FRIEND}${STYLE_BOTE}${STYLE_COFFEE}${STYLE_ACT}${STYLE_GIFT}${STYLE_DIARY_BTN}${STYLE_URLAUB}${STYLE_SIG}</style>
+        <style>${STYLE}${STYLE_SKY}${STYLE_FEST}${STYLE_FRIEND}${STYLE_BOTE}${STYLE_COFFEE}${STYLE_ACT}${STYLE_GIFT}${STYLE_DIARY_BTN}${STYLE_URLAUB}${STYLE_SIG}${STYLE_FEN}</style>
         <ha-card>
           <div class="scene day">
             <div class="sky sky-day"></div><div class="sky sky-dusk"></div><div class="sky sky-night"></div>
@@ -8035,12 +8146,12 @@
       return blocks.length ? clearSpot(x, w, a, b, blocks) : x;
     }
     // pk: feste Entscheidungen aus _critNext (ohne: Zufall, Vorschau-Knöpfe); late: so viele ms nach dem Start
-    async _visit(kind, id, force = false, pk = null, late = 0) {
+    async _visit(kind, id, force = false, pk2 = null, late = 0) {
       if (!this._g || this["_" + kind]) return;
       if (!force && !this._critterWeather(kind)) return;
-      pk ??= this._critPick(kind, () => Math.random());
+      pk2 ??= this._critPick(kind, () => Math.random());
       try {
-        await this[`_${kind}Visit`](id, force, pk, late);
+        await this[`_${kind}Visit`](id, force, pk2, late);
       } catch (e) {
         if (!(e instanceof Cancel)) console.warn("pika-pet-card:", e);
       }
@@ -8081,8 +8192,8 @@
     // Tiefe: Spur eines Besuchs auf der Wiese (1 = hintere), a … b sein Bereich dort, w seine Breite (px). pk.back aus
     // dem Seed (alle Geräte gleich), _critLaneNext erzwingt sie für den nächsten Besuch, der auf die Wiese kommt
     // (Vorschau, wie _laneNext beim Pika). Hinten nur, wenn genug von a … b auf der hinteren Spur liegt (_laneRange).
-    _critLane(pk, a, b, w) {
-      const want = this._critLaneNext ?? (pk.back ? 1 : 0);
+    _critLane(pk2, a, b, w) {
+      const want = this._critLaneNext ?? (pk2.back ? 1 : 0);
       this._critLaneNext = null;
       if (!this._cfg.depth || !want) return 0;
       const [l, r] = this._laneRange(w);
@@ -8119,17 +8230,17 @@
       return x >= l && x <= r ? 1 : 0;
     }
     // Vögelchen: fliegt im Bogen an, sitzt 15–45 s (Kopf schief, picken, hüpfen, zwitschern), fliegt weg
-    async _birdVisit(id, force, pk, late = 0) {
+    async _birdVisit(id, force, pk2, late = 0) {
       const { rock, bur } = this._g;
       const spots = this._areal().perches.map(([x, y], i) => ({ id: `p${i}`, x: bur.l + x * bur.u, y: bur.base + y * bur.u }));
-      const si = Math.floor(pk.spot * (spots.length + 1));
+      const si = Math.floor(pk2.spot * (spots.length + 1));
       const rockBusy = () => this._lift !== 0 || this._action === "lookout";
       let waited = 0;
       if (si >= spots.length) {
         for (; waited < 6e3 && rockBusy(); waited += 500) await this._cw(id, 500);
       }
-      const spot = si < spots.length ? spots[si] : !rockBusy() ? { id: "rock", x: rock.l + pk.rockX * rock.ku, y: rock.top0 + 13 * rock.ku } : spots[Math.floor(pk.alt * spots.length)];
-      const v = BIRDS[pk.bird];
+      const spot = si < spots.length ? spots[si] : !rockBusy() ? { id: "rock", x: rock.l + pk2.rockX * rock.ku, y: rock.top0 + 13 * rock.ku } : spots[Math.floor(pk2.alt * spots.length)];
+      const v = BIRDS[pk2.bird];
       const el = document.createElement("div");
       el.className = "bird flying";
       el.innerHTML = `<div class="bw" role="button" aria-label="${v.name}"><div class="bf"><div class="bb">${BIRD_SVG(v)}</div></div></div>`;
@@ -8141,7 +8252,7 @@
       this._bird = b;
       this._el.birds.appendChild(el);
       try {
-        const side = pk.side;
+        const side = pk2.side;
         const dx = side * this._W * rnd(0.45, 0.7);
         const dy = -spot.y - this._H * 0.15;
         this._birdFace(b, -side);
@@ -8170,7 +8281,7 @@
           await this._cw(id, 350, b);
           el.classList.remove("land");
         }
-        const until = Date.now() + Math.max(4e3, pk.stay - late - waited);
+        const until = Date.now() + Math.max(4e3, pk2.stay - late - waited);
         while (!b.scared && Date.now() < until && (force || this._critterWeather("bird"))) {
           await this._cw(id, rnd(900, 2600), b);
           if (b.scared) break;
@@ -8191,7 +8302,7 @@
         b.sitting = false;
         el.classList.remove("tilt", "peck", "hop", "fluff");
         el.classList.add("flying");
-        const out = b.scared ? this._x > spot.x ? -1 : 1 : pk.out;
+        const out = b.scared ? this._x > spot.x ? -1 : 1 : pk2.out;
         this._birdFace(b, out);
         const dur2 = b.scared ? 900 : rnd(1200, 1600);
         el.animate([
@@ -8229,7 +8340,7 @@
       setTimeout(() => b.el.classList.remove("tilt"), 500);
     }
     // Maus: schaut seitlich oder oben hinter dem Aussichtsstein hervor, flitzt manchmal auf die Wiese
-    async _mouseVisit(id, force, pk, late = 0) {
+    async _mouseVisit(id, force, pk2, late = 0) {
       const { rock, gy, pW } = this._g;
       const mw = this._H * 0.15;
       const mh = mw * (18 / 32);
@@ -8247,9 +8358,9 @@
       const hideX = edge + mw * 0.75;
       const peekX = edge + mw * 0.1;
       const door = edge - mw * 0.6;
-      const kind = this._cfg.depth && this._critLaneNext === 1 ? "run" : pk.kind;
+      const kind = this._cfg.depth && this._critLaneNext === 1 ? "run" : pk2.kind;
       let minX = Math.max(this._g.fMin * this._W, mw);
-      if (kind === "run") m.lane = this._critLane(pk, minX, door, mw);
+      if (kind === "run") m.lane = this._critLane(pk2, minX, door, mw);
       if (m.lane) minX = Math.max(minX, this._laneRange(mw)[0]);
       const yW = m.lane ? yG - this._H * LANE_DY : yG;
       const topY = rock.top0 + 13.5 * rock.ku;
@@ -8305,7 +8416,7 @@
       try {
         try {
           if (kind === "top") {
-            const x = rock.l + pk.x * rock.ku;
+            const x = rock.l + pk2.x * rock.ku;
             face(this._x >= x ? 1 : -1);
             move(x, topY + mh * 1.1);
             await step(60);
@@ -8386,7 +8497,7 @@
     }
     // Frosch (nur bei Regen): hüpft hinter dem Aussichtsstein hervor auf die Wiese, sitzt da, quakt, schnappt mit der
     // Zunge nach Tropfen und hüpft zurück. Antippen oder ein zu naher Pika: „quak!“ und mit großen Sätzen davon.
-    async _frogVisit(id, force, pk, late = 0) {
+    async _frogVisit(id, force, pk2, late = 0) {
       const { rock, gy, pW } = this._g;
       const fw = this._H * 0.13;
       const el = document.createElement("div");
@@ -8404,7 +8515,7 @@
       const door = edge - fw * 0.6;
       let minX = Math.min(Math.max(this._g.fMin * this._W, fw), door);
       let maxX = Math.max(minX, door - fw * 0.7);
-      f.lane = this._critLane(pk, minX, maxX, fw);
+      f.lane = this._critLane(pk2, minX, maxX, fw);
       if (f.lane) {
         const [l, r] = this._laneRange(fw);
         minX = Math.min(Math.max(minX, l), door);
@@ -8456,9 +8567,9 @@
           this._critZ(f, true);
           f.out = true;
           const spot = (x) => free(this._festClear(x, fw, minX, maxX, f.lane));
-          await hop(spot(maxX - pk.x * Math.min(maxX - minX, this._H * 0.7)));
+          await hop(spot(maxX - pk2.x * Math.min(maxX - minX, this._H * 0.7)));
           this._noticeCritter(f.x, false);
-          const until = Date.now() + Math.max(3e3, pk.stay - late);
+          const until = Date.now() + Math.max(3e3, pk2.stay - late);
           let act = "croak";
           let gap = 500;
           while (Date.now() < until && (force || this._critterWeather("frog"))) {
@@ -8517,13 +8628,13 @@
     // Schnecke (nur bei Regen): kriecht hinter dem Aussichtsstein hervor ein Stück über die Wiese, reckt die Fühler,
     // schaut sich um und kriecht zurück. Weglaufen kann sie nicht: Antippen oder ein naher Pika, und sie zieht sich
     // ins Haus zurück; nach ein paar Sekunden kommt sie wieder heraus.
-    async _snailVisit(id, force, pk, late = 0) {
+    async _snailVisit(id, force, pk2, late = 0) {
       const { rock, gy, pW } = this._g;
       const sw = this._H * 0.12;
       const v = this._H * 0.035;
       const el = document.createElement("div");
       el.className = "snail left";
-      el.innerHTML = `<div class="cw" role="button" aria-label="Schnecke"><div class="cf"><div class="cb">${SNAIL_SVG(SNAILS[pk.shell])}</div></div></div>`;
+      el.innerHTML = `<div class="cw" role="button" aria-label="Schnecke"><div class="cf"><div class="cb">${SNAIL_SVG(SNAILS[pk2.shell])}</div></div></div>`;
       const yG = gy - this._H * 0.02;
       const s = { el, x: 0, y: yG, dir: -1, out: false, hidden: false, poked: false, lane: 0, yG };
       const wob = () => {
@@ -8544,7 +8655,7 @@
       const hideX = edge + sw * 0.8;
       const door = edge - sw * 0.6;
       let minX = Math.min(Math.max(this._g.fMin * this._W, sw), door);
-      s.lane = this._critLane(pk, minX, door, sw);
+      s.lane = this._critLane(pk2, minX, door, sw);
       if (s.lane) minX = Math.min(Math.max(minX, this._laneRange(sw)[0]), door);
       const yW = s.lane ? yG - this._H * LANE_DY : yG;
       const face = (d) => (s.dir = d, el.classList.toggle("left", d < 0));
@@ -8621,7 +8732,7 @@
         this._critZ(s, true);
         s.out = true;
         this._noticeCritter(s.x, false);
-        await crawl(this._festClear(door - (0.3 + 0.6 * pk.far) * Math.min(door - minX, this._H * 0.7), sw, minX, door, s.lane));
+        await crawl(this._festClear(door - (0.3 + 0.6 * pk2.far) * Math.min(door - minX, this._H * 0.7), sw, minX, door, s.lane));
         await rest(Math.max(1500, rnd(5e3, 9e3) - late));
         await crawl(door);
         s.out = false;
@@ -9650,7 +9761,7 @@
       if (!on) return;
       const next = () => {
         const c = pick(TV_COLORS);
-        for (const el of [this._el.tvl, this._el.lights, this._el.pika]) el.style.setProperty("--tvc", c);
+        for (const el of [this._el.tvl, this._el.lights, this._el.pika, this._el.fen].filter(Boolean)) el.style.setProperty("--tvc", c);
         this._tvT = setTimeout(next, calmMotion() ? rnd(4e3, 9e3) : rnd(600, 2600));
       };
       next();
@@ -19344,7 +19455,8 @@
 
   // src/karte/signale.js
   var Signale = class {
-    // Konfiguration `signals`: { waste: calendar.*, wardrobe: true, vacuum: vacuum.*, door: binary_sensor.* }. Alles ist
+    // Konfiguration `signals`: { waste: calendar.*, wardrobe: true, vacuum: vacuum.*, door: binary_sensor.*, window:
+    // binary_sensor.* oder Liste (seit 0.40, karte/fenster.js) }. Alles ist
     // aus, solange nichts eingetragen ist. Was alle Geräte gleich zeigen sollen, folgt aus den Zuständen in HA; nur
     // „Tonne steht draußen“ steht im Tagesplan (Bit MEM_TONNE, siehe logik/signale.js).
     _sigCfg() {
@@ -19373,15 +19485,18 @@
         this._sigD = d;
         if (prev && d?.state === "on" && prev.state !== "on") this._sigDoorOpen(d);
       }
+      this._winHass(hass);
     }
     _attachSig() {
       this._sigBinSync();
       this._sigWearSync();
       this._sigVacSync();
+      this._winAttach();
     }
     _detachSig() {
       this._sigFcStop();
       clearTimeout(this._sigVacT);
+      this._winDetach();
     }
     _hiddenSig(hidden) {
       if (hidden) clearTimeout(this._sigVacT);
@@ -19391,10 +19506,12 @@
       this._sigBinSync(true);
       this._sigWearSync(true);
       this._sigVacSync(true);
+      this._winLayoutSig();
     }
     _tickSig() {
       this._sigBinSync();
       this._sigWearSync();
+      this._winTick();
     }
     // Wach, zu sehen und nicht verreist: Dann erinnert er
     _sigAwake() {
@@ -19796,6 +19913,359 @@
     }
   };
 
+  // src/grafik/fenster.js
+  var FEN = { cx: 80, cy: 33, r: 4.3, box: 14 };
+  var VB = `${-FEN.box} ${-FEN.box} ${FEN.box * 2} ${FEN.box * 2}`;
+  var OUT4 = "#5a4030";
+  var pk = (k, hex) => `var(--pk-${k}, ${hex})`;
+  var VORHANG = "M-.7 0 C-.3 1.2 -.9 2.6 -.5 4 C-.2 5 -.7 5.8 -.3 6.6 L-1.9 6.3 C-2.2 5.2 -1.6 4 -2 2.6 C-2.3 1.4 -1.9 .6 -2 0Z";
+  var VORHANG_P = `<path d="${VORHANG}" fill="#e58a7a" stroke="#b5604f" stroke-width=".2"/><path class="lt" d="${VORHANG}" fill="#d9705f"/>`;
+  var FEN_INNEN = `<svg viewBox="${VB}" aria-hidden="true">
+    <defs>
+      <radialGradient id="fen-raum" cx=".5" cy=".75" r=".8"><stop offset="0" stop-color="#3a2a1e"/><stop offset="1" stop-color="#120c08"/></radialGradient>
+      <radialGradient id="fen-schein"><stop offset="0" stop-color="#ffb347" stop-opacity=".7"/><stop offset="1" stop-color="#ffb347" stop-opacity="0"/></radialGradient>
+    </defs>
+    <ellipse class="lt fen-spill" cx="1.5" cy="7.5" rx="11" ry="7"/>
+    <circle cx="0" cy="0" r="${FEN.r}" fill="url(#fen-raum)"/>
+    <circle class="lt" cx="0" cy="0" r="${FEN.r}" fill="#ffcf70" fill-opacity=".9"/>
+    <circle class="tvw" cx="0" cy="0" r="${FEN.r}"/>
+    <g class="fen-v">
+      <g transform="translate(-1.4 -3.7)"><g class="fen-v1">${VORHANG_P}</g></g>
+      <g transform="translate(3.9 -3.2)"><g class="fen-v2">${VORHANG_P}</g></g>
+    </g>
+  </svg>`;
+  var FEN_KOPF = `<svg viewBox="${VB}" aria-hidden="true">
+    <defs><clipPath id="fen-rund"><circle cx="0" cy="0" r="${FEN.r}"/></clipPath></defs>
+    <g clip-path="url(#fen-rund)"><g class="fen-k pk">
+      <g stroke="${OUT4}" stroke-width=".35">
+        <circle cx="-2.25" cy="-1.5" r="1.4" fill="${pk("ear", "#efe3d3")}"/><circle cx="2.25" cy="-1.5" r="1.4" fill="${pk("ear", "#efe3d3")}"/>
+      </g>
+      <g fill="${pk("ein", "#e3a990")}"><ellipse cx="-2.25" cy="-1.35" rx=".65" ry=".75"/><ellipse cx="2.25" cy="-1.35" rx=".65" ry=".75"/></g>
+      <ellipse cx="0" cy="1" rx="3.25" ry="2.75" fill="${pk("fu1", "#d0ad8d")}" stroke="${OUT4}" stroke-width=".4"/>
+      <ellipse cx="0" cy="2.15" rx="1.6" ry="1.05" fill="${pk("mou", "#f4e8d8")}"/>
+      <g class="fen-aug" fill="#2a1a12"><ellipse cx="-1.2" cy=".55" rx=".42" ry=".5"/><ellipse cx="1.2" cy=".55" rx=".42" ry=".5"/></g>
+      <g fill="#fff"><circle cx="-1.05" cy=".38" r=".15"/><circle cx="1.35" cy=".38" r=".15"/></g>
+      <g class="fen-nase">
+        <ellipse cx="0" cy="1.62" rx=".42" ry=".3" fill="${OUT4}"/>
+        <path d="M-.6 2 l-1.9 -.35 M-.6 2.2 l-1.9 .3 M.6 2 l1.9 -.35 M.6 2.2 l1.9 .3" stroke="${OUT4}" stroke-width=".14" stroke-linecap="round" opacity=".7"/>
+      </g>
+      <g fill="${pk("paw", "#ecdcc6")}" stroke="${OUT4}" stroke-width=".3">
+        <ellipse cx="-1.7" cy="3.85" rx=".95" ry=".62"/><ellipse cx="1.7" cy="3.85" rx=".95" ry=".62"/>
+      </g>
+    </g></g>
+  </svg>`;
+  var SCHEIBE = (glas, vh, sp) => `<circle cx="0" cy="0" r="${FEN.r}" fill="${glas}"/>
+      <path d="M-3.7 -2.6 Q-1.4 -2 -.6 2.6 L-3.6 2.6Z M3.7 -2.6 Q1.4 -2 .6 2.6 L3.6 2.6Z" fill="${vh}" opacity=".85"/>
+      <path d="M0 -${FEN.r} V${FEN.r} M-${FEN.r} 0 H${FEN.r}" stroke="${sp}" stroke-width="1"/>`;
+  var FEN_FLUEGEL = `<svg viewBox="${VB}" aria-hidden="true">
+    <g class="fen-s">
+      ${SCHEIBE("#cfe6f2", "#e58a7a", "#9a6a45")}
+      <g class="lt">${SCHEIBE("#ffcf70", "#d9705f", "#7a5236")}</g>
+      <circle cx="0" cy="0" r="${FEN.r}" fill="none" stroke="#5e3d26" stroke-width=".5"/>
+    </g>
+  </svg>`;
+
+  // src/karte/fenster.js
+  var WIN_FREI = ["idle", "look", "wander", "groom", "squeak", "curious", "nibble", "lookout"];
+  var Fenster = class {
+    // Option signals.window (ein Kontakt oder eine Liste). Nur der Erdhügel (areal huegel) hat ein Fenster; die
+    // anderen Areale lesen die Kontakte gar nicht erst.
+    _winOn() {
+      return this._arealKey === "huegel" && winIds(this._sigCfg().window).length > 0;
+    }
+    // Aus _hassSig: Zustände merken, Lage neu bestimmen (nur wenn sich ein Kontakt geändert hat)
+    _winHass(hass) {
+      const ids = this._winOn() ? winIds(this._sigCfg().window) : [];
+      const st = ids.map(({ id }) => hass.states[id]);
+      const key = ids.map((x) => x.id + "|" + (x.name || "")).join(",");
+      if (key === this._winKey && st.length === (this._winSt?.length ?? -1) && st.every((s, i) => s === this._winSt[i])) return;
+      if (key !== this._winKey) this._winL = null;
+      this._winKey = key;
+      this._winIds = ids;
+      this._winSt = st;
+      this._winEval();
+    }
+    // Lage aus Zustand und last_changed (Uhr von HA) → Fenster zeigen; Wechsel lösen den Pika oder das Fenster aus
+    _winEval() {
+      clearTimeout(this._winT);
+      if (!this._winOn() || !this._winIds?.length) {
+        this._winL = null;
+        this._winShow(false, false);
+        return;
+      }
+      const now = this._haNow();
+      const rows = this._winIds.map(({ id, name }, i) => {
+        const s = this._winSt?.[i];
+        return { id, name: winName(s, id, name), state: s?.state, t: Date.parse(s?.last_changed) || 0 };
+      });
+      const was = this._winL;
+      const L = winLage(rows, now, was);
+      this._winL = L;
+      if (L.due != null) this._winT = setTimeout(() => this._winEval(), clamp(L.due - now + 60, 60, 2 ** 31 - 1));
+      this._winTagSync();
+      if (!this._g || !this._el) return;
+      if (was == null) {
+        this._winFresh = now;
+        return this._winShow(L.open, false);
+      }
+      if (L.open === !!was.open) return;
+      if (now - (this._winFresh || 0) < WIN.open + WIN.close) return this._winShow(L.open, true);
+      if (L.open) this._winOpened();
+      else this._winClosed();
+    }
+    // Wach, frei, zu sehen? Dann darf er hin. Schlaf, Urlaub, Nacht: nicht (das Fenster folgt trotzdem dem Haus).
+    _winFrei() {
+      return this._sigAwake() && this._running && !this._next && !this._inside && !this._wx?.shelter && !this._el.scene.classList.contains("night") && WIN_FREI.includes(this._action);
+    }
+    _winOpened() {
+      if (this._winFrei()) {
+        this._next = "winAuf";
+        this._interrupt();
+        this._winFallback(true);
+      } else this._winShow(true, true);
+    }
+    _winClosed() {
+      const E = this._el.fen;
+      const near = this._g && E && (this._inside || Math.abs(this._x - E._x) < this._W * 0.3);
+      if (this._winShown && near && this._winFrei()) {
+        this._next = "winZu";
+        this._interrupt();
+        this._winFallback(false);
+      } else this._winShow(false, true);
+    }
+    _winFallback(open) {
+      clearTimeout(this._winFbT);
+      this._winFbT = setTimeout(() => {
+        if (!!this._winL?.open === open && this._winShown !== open && !["winAuf", "winZu"].includes(this._action)) this._winShow(open, true);
+      }, 15e3);
+    }
+    // Das Fenster-Element (drei Lagen, siehe grafik/fenster.js), einmal angelegt, solange der Erdhügel da ist
+    _winEl() {
+      if (!this._el || !this._g) return null;
+      let E = this._el.fen;
+      if (E) return E;
+      E = document.createElement("div");
+      E.className = "fenster";
+      E.setAttribute("role", "button");
+      E.innerHTML = `<div class="fen-in">${FEN_INNEN}</div><div class="fen-ko">${FEN_KOPF}</div><div class="fen-fl">${FEN_FLUEGEL}</div>`;
+      E.addEventListener("click", (e) => {
+        e.stopPropagation();
+        this._winTag(!this._winTagEl?.classList.contains("open"));
+      });
+      this._keyTap(E);
+      this._el.props.appendChild(E);
+      this._el.fen = E;
+      this._winLayout();
+      return E;
+    }
+    // Lage und Größe: Fenstermitte im Bau (80 | 33 Bau-Einheiten), Wind für die Vorhänge
+    _winLayout() {
+      const E = this._el?.fen;
+      if (!E) return;
+      if (!this._g || this._arealKey !== "huegel") {
+        this._el.fen = null;
+        E.remove();
+        this._winTagClose();
+        this._winShown = false;
+        return;
+      }
+      const { l, u, base } = this._g.bur;
+      const s = FEN.box * u;
+      E._x = l + FEN.cx * u;
+      E._y = base + FEN.cy * u;
+      E._r = FEN.r * u;
+      Object.assign(E.style, { left: `${(E._x - s).toFixed(1)}px`, top: `${(E._y - s).toFixed(1)}px`, width: `${(2 * s).toFixed(1)}px`, height: `${(2 * s).toFixed(1)}px` });
+      this._winWind();
+    }
+    // Vorhänge wehen nach außen über den Rahmen, der auf der Seite, wohin der Wind im Bild weht, weit, der andere
+    // wenig; bei mehr Wind weiter und schneller
+    _winWind() {
+      const E = this._el?.fen;
+      if (!E) return;
+      const w = this._wind || 0;
+      const a = clamp(24 + w * 0.8, 24, 50);
+      const links = this._windDir < 0;
+      E.style.setProperty("--wl", `${(links ? a : a * 0.3).toFixed(1)}deg`);
+      E.style.setProperty("--wr", `${(links ? a * 0.3 : a).toFixed(1)}deg`);
+      E.style.setProperty("--ws", `${clamp(2.4 - w / 25, 0.7, 2.4).toFixed(2)}s`);
+    }
+    // Fenster auf oder zu zeigen. anim: aufschwingen bzw. zuschwingen (sonst sofort). Zu und fertig: ganz weg, dann
+    // zeigen Bau und Lichter das geschlossene Fenster wie immer.
+    _winShow(open, anim) {
+      clearTimeout(this._winHideT);
+      if (!open && !this._el?.fen) {
+        this._winShown = false;
+        return;
+      }
+      const E = this._winEl();
+      if (!E) return;
+      this._winShown = open;
+      E.classList.toggle("still", !anim);
+      clearTimeout(this._winStillT);
+      if (!anim) this._winStillT = setTimeout(() => E.classList.remove("still"), 60);
+      E.classList.add("da");
+      if (open && anim && !E.classList.contains("auf")) {
+        void E.offsetWidth;
+      }
+      E.classList.toggle("auf", open);
+      E.setAttribute("aria-label", open && this._winL?.open ? `Fenster: ${winText(this._winL, this._haNow())}` : "Fenster zu");
+      if (!open) {
+        E.classList.remove("kopf", "schnupper");
+        this._winTagClose();
+        this._winHideT = setTimeout(() => !this._winShown && E.classList.remove("da"), anim ? 1e3 : 0);
+      }
+    }
+    // ---------- Auftritte ----------
+    // Fenster geht auf: in den Bau hoppeln, Fenster aufschwingen, Kopf heraus, schnuppern, „frische Luft!“, raus
+    async _winAuf() {
+      const E = this._winEl();
+      const L = this._winL;
+      if (!E || !L?.open || this._winShown || this._haNow() - (L.since + WIN.open) > 6e4) {
+        if (L?.open && !this._winShown) this._winShow(true, true);
+        return;
+      }
+      try {
+        this._cls("stw", 550, true);
+        await this._wait(400);
+        await this._enterBurrow(1.3);
+        await this._wait(400);
+        if (!this._winL?.open) return;
+        this._winShow(true, true);
+        await this._wait(900);
+        await this._winKopf(E, true);
+        E.classList.add("schnupper");
+        await this._wait(1300);
+        E.classList.remove("schnupper");
+        this._winSay(pick(["frische Luft!", "frische Luft!", "ahh, Luft!"]), 1900);
+        await this._wait(2100);
+        await this._winKopf(E, false);
+        await this._wait(300);
+        await this._comeOut();
+      } finally {
+        E.classList.remove("kopf", "schnupper");
+        if (this._winL?.open && !this._winShown) this._winShow(true, true);
+      }
+    }
+    // Alles zu: Ist er in der Nähe, schließt er sein Fenster selbst (Kopf heraus, Flügel zu, wieder heraus)
+    async _winZu() {
+      const E = this._el?.fen;
+      if (!E || this._winL?.open || !this._winShown) return;
+      try {
+        await this._enterBurrow(1.2);
+        await this._wait(300);
+        if (this._winL?.open) return;
+        await this._winKopf(E, true);
+        await this._wait(500);
+        if (this._winL?.open) return;
+        this._winShow(false, true);
+        this._winSay(pick(["zu!", "so.", "Fenster zu!"]), 1300);
+        await this._wait(1300);
+        await this._comeOut();
+      } finally {
+        E.classList.remove("kopf", "schnupper");
+        if (!this._winL?.open && this._winShown) this._winShow(false, true);
+      }
+    }
+    async _winKopf(E, on) {
+      E.classList.toggle("kopf", on);
+      await this._wait(on ? 650 : 450);
+    }
+    // Sprechblase am Fenster statt am Eingang (der Anker --ax/--ay gilt, solange er im Bau ist; _pose setzt ihn zurück)
+    _winSay(text, ms) {
+      const E = this._el.fen;
+      if (E && this._inside) {
+        const { pH, pW, gy } = this._g;
+        const ts = this._el.psay.style;
+        ts.setProperty("--ax", `${(E._x - E._r * 0.4 - (this._x - pW / 2)).toFixed(1)}px`);
+        ts.setProperty("--ay", `${(E._y - E._r * 1.5 - (gy - pH * 0.945)).toFixed(1)}px`);
+      }
+      this._say(text, ms);
+      this._bubbleRefit();
+    }
+    // ---------- Fähnchen ----------
+    // Antippen des offenen Fensters: welche Fenster im Haus offen sind und seit wann (9 s, wie bei den Geräten)
+    _winTag(open) {
+      const E = this._el?.fen;
+      clearTimeout(this._winTagT);
+      if (!open || !E || !this._winL?.open) return this._winTagClose();
+      let t = this._winTagEl;
+      if (!t) {
+        let box = this._el.fenTags;
+        if (!box) {
+          box = this._el.fenTags = document.createElement("div");
+          box.className = "fen-t";
+          this._el.props.appendChild(box);
+        }
+        t = this._winTagEl = document.createElement("div");
+        t.className = "hb-tag fen-tag";
+        t.addEventListener("click", (e) => {
+          e.stopPropagation();
+          this._winTagClose();
+        });
+        box.appendChild(t);
+      }
+      this._winTagSync();
+      t.style.left = "0px";
+      const w = t.offsetWidth;
+      const h = t.offsetHeight;
+      t.style.left = `${clamp(E._x - w / 2, 4, this._W - w - 4).toFixed(1)}px`;
+      t.style.top = `${clamp(E._y - E._r * 1.7 - h - 4, 2, this._Hs - h - 4).toFixed(1)}px`;
+      t.classList.add("open");
+      this._winTagT = setTimeout(() => this._winTagClose(), 9e3);
+    }
+    _winTagSync() {
+      const t = this._winTagEl;
+      const L = this._winL;
+      const txt = L?.open ? winText(L, this._haNow()) : "";
+      if (this._el?.fen && L?.open) this._el.fen.setAttribute("aria-label", `Fenster: ${txt}`);
+      if (!t) return;
+      if (!L?.open) return this._winTagClose();
+      const i = txt.lastIndexOf(" · ");
+      t.innerHTML = "";
+      const b = document.createElement("b");
+      b.textContent = i > 0 ? txt.slice(0, i) : txt;
+      const m = document.createElement("div");
+      m.className = "more";
+      m.textContent = i > 0 ? txt.slice(i + 3) : "";
+      t.append(b, m);
+    }
+    _winTagClose() {
+      clearTimeout(this._winTagT);
+      this._winTagEl?.classList.remove("open");
+    }
+    // ---------- Lebenszyklus (aus den Haus-Signalen) ----------
+    // Nach dem Aufbau (auch Areal- oder Größenwechsel): Lage neu lesen und so zeigen, wie sie ist
+    _winLayoutSig() {
+      this._winLayout();
+      if (this._hass) this._winHass(this._hass);
+      const L = this._winL;
+      if (this._g && L && !!L.open !== !!this._winShown && !["winAuf", "winZu"].includes(this._action)) this._winShow(!!L.open, false);
+    }
+    _winTick() {
+      this._winWind();
+      if (this._winIds?.length) this._winEval();
+      this._winHeal();
+    }
+    // Gezeigt anders als die Lage (ein Auftritt kam nicht dran, die Karte war abgehängt): angleichen, außer ein Auftritt
+    // läuft oder steht an (dafür gibt es die 15 s des Ersatz-Zeitgebers)
+    _winHeal() {
+      const L = this._winL;
+      const busy = ["winAuf", "winZu"].includes(this._action) || ["winAuf", "winZu"].includes(this._next);
+      if (this._g && L && !!L.open !== !!this._winShown && !busy) this._winShow(!!L.open, true);
+    }
+    _winAttach() {
+      if (this._winIds?.length) this._winEval();
+      this._winHeal();
+    }
+    _winDetach() {
+      clearTimeout(this._winT);
+      clearTimeout(this._winFbT);
+      clearTimeout(this._winTagT);
+      clearTimeout(this._winStillT);
+      if (["winAuf", "winZu"].includes(this._next)) this._next = null;
+    }
+  };
+
   // src/karte/messung.js
   var Messung = class {
     _messungFrei() {
@@ -19956,9 +20426,9 @@
         this._stats = null;
         if (!ent) this._loadLocal();
       }
-      const pk = `${this._cfg.plan_entity || ""}|${this._cfg.name}`;
-      if (pk !== this._planKey) {
-        this._planKey = pk;
+      const pk2 = `${this._cfg.plan_entity || ""}|${this._cfg.name}`;
+      if (pk2 !== this._planKey) {
+        this._planKey = pk2;
         this._planReset();
       }
       const ck = this._cfg.chronicle_entity || "";
@@ -20215,6 +20685,7 @@
     Chronik,
     Urlaub,
     Signale,
+    Fenster,
     Messung
   ];
   for (const Teil of TEILE) {
@@ -20227,7 +20698,7 @@
   }
 
   // src/index.js
-  var STYLES = [STYLE, STYLE_SKY, STYLE_FEST, STYLE_FRIEND, STYLE_BOTE, STYLE_COFFEE, STYLE_ACT, STYLE_GIFT, STYLE_DIARY_BTN, STYLE_URLAUB, STYLE_SIG].join("");
+  var STYLES = [STYLE, STYLE_SKY, STYLE_FEST, STYLE_FRIEND, STYLE_BOTE, STYLE_COFFEE, STYLE_ACT, STYLE_GIFT, STYLE_DIARY_BTN, STYLE_URLAUB, STYLE_SIG, STYLE_FEN].join("");
   if (!customElements.get("pika-pet-card")) {
     customElements.define("pika-pet-card", PikaPetCard);
     window.customCards = window.customCards || [];
@@ -20294,6 +20765,12 @@
       vacRuns,
       MEM_TONNE,
       MEM_TONNE2,
+      WIN,
+      winIds,
+      winName,
+      winLage,
+      winSeit,
+      winText,
       freshStats,
       serialize,
       parseStats,
