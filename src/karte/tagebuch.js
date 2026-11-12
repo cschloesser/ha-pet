@@ -18,6 +18,8 @@ import { GIFT_ITEMS, GIFT_TRICK, GIFT_GILT, GIFT_PARCEL } from '../grafik/paeckc
 import { DIARY_BOOK, DIARY_PAW, DIARY_ICON, diaryPainting } from '../grafik/tagebuch.js';
 import { STYLE_DIARY } from '../stil/tagebuch.js';
 import { URLAUB_SIGN, URLAUB_CARD } from '../grafik/urlaub.js';
+import { FRIEND_ICON } from '../grafik/freunde.js';
+import { FRIENDS } from '../logik/besucher.js';
 
 export class Tagebuch {
   // Entdeckungen (Seite im Tagebuch, FINDS): Was schon ausprobiert wurde, merkt sich nur dieses Gerät im Browser.
@@ -287,6 +289,8 @@ export class Tagebuch {
         else out.push((gather = { t, icon: 'gather', c: 1 }));
       } else if (e.k === 'mem') {
         if (['pino', 'bird', 'plane', 'bfly', 'heart'].includes(e.b) || (e.b === 'coffee' && house && !cof)) put(t, e.b, tx(T[e.b], e.b, t));
+        // die Freunde, die statt Pino kommen: dieselben Sätze, mit ihrem Namen und Bild
+        else if (hasKey(FRIEND_ICON, e.b)) put(t, e.b, diaryPick(T.pino, e.b, Math.floor(t / 60000)).replace('{n}', FRIENDS[e.b].name), { svg: FRIEND_ICON[e.b] });
         else if (e.b === 'gut') put(t, 'gut', tx(T.gut, 'gut', t), { svg: ICON_HEART });
         else if (e.b === 'tonne' && house) put(t, 'tonne', tx(T.tonne, 'tonne', t), { svg: SIG_BIN('#7d848c') });
       } else if (e.k === 'parcel') {

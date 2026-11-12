@@ -230,6 +230,11 @@ Ein paarmal am Tag kommt **Pino** zu Besuch, ein Freund-Pika: etwas kleiner, ing
 - **Antippen** streichelt Pino: Herzchen, ein kleiner Freudensprung und ein Piep. Die Balken des Pikas ändern sich dadurch nicht. Wird der Pika gestreichelt, kommt Pino neugierig näher und schaut zu.
 - **Abschied**: Pino sagt „tschüss!“ und hoppelt zum Rand hinaus. Der Pika schaut ihm nach und lässt kurz die Ohren hängen. Geht der Pika schlafen, schlägt das Wetter um oder dämmert es (Sonne höchstens 3° über dem Horizont), geht Pino sofort.
 - Besuche werden aus der Uhrzeit berechnet, deshalb kommen Vögelchen, Maus und Pino auf allen Geräten gleichzeitig. Mit `friend: false` kommt Pino nicht, mit `friend_name` bekommt er einen anderen Namen.
+- **Weitere Freunde** (seit 0.41): Nicht jedes Mal kommt Pino. In jedem Besuchsfenster kommt einer von vier Freunden, auf allen Geräten derselbe: Pino in etwa 40 % der Besuche, Kirby, Rufus und Katzumi in je etwa 20 %. Sie kommen, spielen und gehen genau wie Pino, der Pika ruft sie beim Namen.
+  - **Kirby**: eine goldbraune Zottelkugel mit kleinen hellen Bärenohren, flacher heller Schnauze, Stummelärmchen und großen dunklen Füßen, 0,92-mal so groß wie der Pika.
+  - **Rufus**: ein cremeweißer Lockenhund mit Schlappohren (innen fast schwarz), glatter Schnauze mit hellbrauner Nase und Fellbüscheln über den Augen, 0,7-mal so groß.
+  - **Katzumi**: eine kleine Mochi-Katze in Apricot mit rostbraunen Stirnstreifen, rosa Spitzohren, Augen mit gelbgrünem Rand und kurzen Schnurrhaaren, halb so groß wie der Pika.
+  - Im Tagebuch steht jeder mit Namen und Bild, in der Chronik als `besuch=kirby`, `rufus` oder `katzumi`. `friend: false` schaltet alle vier ab. Urlaub macht der Pika weiter bei Pino, der Plüsch-Pino bleibt Pino.
 
 ## Beschäftigungen
 

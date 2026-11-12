@@ -25,8 +25,9 @@ const CHRONIK = {
 const CHRONIK_NUM = ['futter', 'streicheln', 'putzen', 'paeckchen'];
 // Besuch: Kürzel in fester Reihenfolge (unbekannte einer späteren Version dahinter, nach dem Alphabet) und aus
 // welchem Erlebnis (MEM_BITS) sie kommen
-const CHRONIK_GAST = ['pino', 'vogel', 'falter'];
-const CHRONIK_MEM = { pino: 'pino', bird: 'vogel', bfly: 'falter' };
+// (kirby, rufus, katzumi seit 0.41: die Freunde, die statt Pino kommen)
+const CHRONIK_GAST = ['pino', 'kirby', 'rufus', 'katzumi', 'vogel', 'falter'];
+const CHRONIK_MEM = { pino: 'pino', kirby: 'kirby', rufus: 'rufus', katzumi: 'katzumi', bird: 'vogel', bfly: 'falter' };
 
 // Tagesindex (pikaDay) ↔ 'JJJJ-MM-TT'. Zurück nur für Daten, die es gibt (kein 30. Februar): Hin- und Rückweg müssen
 // übereinstimmen.

@@ -1,0 +1,381 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Kirby – Entwurf</title>
+<style>
+  body { margin: 0; padding: 16px; background: #1c1c1e; color: #eee; font-family: system-ui, sans-serif; }
+  h2 { font-size: 15px; font-weight: 600; color: #ccc; margin: 22px 0 8px; }
+  .wiese { position: relative; display: flex; align-items: flex-end; gap: 28px; padding: 26px 26px 0; border-radius: 14px;
+    background: linear-gradient(#bfe0f5 0%, #e3f1f7 58%, #9fd07a 58.2%, #86c264 100%); overflow: hidden; flex-wrap: wrap; }
+  .fig { position: relative; text-align: center; }
+  .fig svg { display: block; width: 100%; height: auto; overflow: visible; }
+  .fig .sh { position: absolute; left: 22%; right: 12%; bottom: 3%; height: 7%; border-radius: 50%; background: rgba(40, 60, 20, .22); }
+  .fig figcaption { font-size: 12px; color: #2d4a1c; padding: 4px 0 10px; }
+  .pose figcaption { color: #2d4a1c; }
+
+  /* Grundzustand der Pika-Grafik (wie in src/stil): Requisiten und Mimik-Varianten aus */
+  .fig .band, .fig .arms, .fig .uke, .fig .brush, .fig .wand, .fig .rope, .fig .rgrip, .fig .bar, .fig .wpaw, .fig .nsm,
+  .fig .hats > g, .fig .slg, .fig .gspy, .fig .gcan, .fig .shades, .fig .seye, .fig .heye, .fig .mfood, .fig .paws,
+  .fig .cap, .fig .scarf, .fig .brolly, .fig .omouth, .fig .callfx, .fig .blines, .fig .wmouth, .fig .tongue, .fig .yawnm,
+  .fig .estar, .fig .sleg, .fig .epaws, .fig .book, .fig .gb, .fig .tab, .fig .kpaw, .fig .bk, .fig .cup, .fig .cfoam,
+  .fig .cup > g > g, .fig .cup .ttag, .fig .cup .cst, .fig .hoop, .fig .yo, .fig .pbl, .fig .jug, .fig .dchain,
+  .fig .dcrown, .fig .pgl, .fig .peb, .fig .sboat, .fig .mim { display: none; }
+  .fig .seye, .fig .heye { fill: none; stroke: #2a1a12; stroke-width: 1.8; stroke-linecap: round; }
+
+  /* Posen */
+  .happy .eye { display: none; } .happy .heye { display: inline; }
+  .sleep .eye, .sleep .brow { display: none; } .sleep .seye { display: inline; }
+  .coffee .cup, .coffee .cup .k-mug { display: inline; } .coffee .karm { display: none; }
+  .wave .wpaw { display: inline; } .wave .karm-n { display: none; }
+  .wet .brolly { display: inline; } .wet .karm-n { display: none; }
+  .tv .all { display: none; } .tv .bk { display: inline; }
+  .tv .bk .rim { stroke: #9fd0ff; }
+
+  .note { font-size: 13px; color: #aaa; max-width: 760px; line-height: 1.5; }
+  .gross { width: 420px; max-width: 100%; }
+</style>
+</head>
+<body>
+<h2>Nebeneinander: Pika · Pino (0,85) · Kirby (0,92) · Rufus (0,7) · Katzumi (0,5)</h2>
+<div class="wiese" id="reihe"></div>
+<h2>Kirby in ein paar Posen</h2>
+<div class="wiese" id="posen"></div>
+<h2>Rufus in ein paar Posen</h2>
+<div class="wiese" id="posen-rufus"></div>
+<h2>Katzumi in ein paar Posen</h2>
+<div class="wiese" id="posen-katzumi"></div>
+<h2>Rufus: Augenbrauen-Varianten und Schwänzchen</h2>
+<div class="wiese" id="brauen"></div>
+<h2>Kirby, Rufus und Katzumi groß</h2>
+<div class="wiese" id="gross"></div>
+<p class="note">Entwurf: Kirby entsteht wie Pino aus der Pika-Grafik (src/grafik/pika.js), nur mit Kugelkörper aus Zotteln,
+kleinen Bärenohren, flacher heller Schnauze, dunklen großen Füßen und Stummelärmchen. Dadurch erbt er alle Posen und
+Requisiten des Pikas.</p>
+
+<script type="module">
+import { OUT, PIKA_SVG } from '../src/grafik/pika.js';
+import { FRIEND_SVG } from '../src/grafik/besucher.js';
+
+// Gleichbleibender Zufall, damit die Zotteln bei jedem Laden gleich liegen
+const lcg = (s) => () => ((s = (s * 1103515245 + 12345) % 2147483648) / 2147483648);
+const f = (p) => `${p[0].toFixed(1)} ${p[1].toFixed(1)}`;
+// Zotteliger Umriss: Ellipse aus n Strähnen, jede mit leicht schräger Spitze (Fell fällt im Uhrzeigersinn)
+const fluff = (cx, cy, rx, ry, n, t, seed) => {
+  const r = lcg(seed);
+  const P = (a, k) => [cx + (rx + k) * Math.cos(a), cy + (ry + k) * Math.sin(a)];
+  const st = (2 * Math.PI) / n;
+  let a0 = -Math.PI / 2;
+  let d = `M${f(P(a0, 0))}`;
+  for (let i = 0; i < n; i++) {
+    const a1 = a0 + st;
+    const k = t * (0.55 + 0.9 * r());
+    const tip = P(a0 + st * (0.55 + 0.3 * r()), k);
+    d += ` Q${f(P(a0 + st * 0.15, k * 0.85))} ${f(tip)} Q${f(P(a1 - st * 0.05, k * 0.3))} ${f(P(a1, 0))}`;
+    a0 = a1;
+  }
+  return `${d}Z`;
+};
+// Fellstrich im Inneren: kurze, nach außen und unten fallende Häkchen, dunkel und hell gemischt
+const furTex = (cx, cy, rx, ry, n, seed, skip = () => false) => {
+  const r = lcg(seed);
+  let out = '';
+  for (let i = 0; i < n;) {
+    const u = r() * 2 - 1;
+    const v = r() * 2 - 1;
+    if (u * u + v * v > 0.92) continue;
+    const x = cx + u * rx;
+    const y = cy + v * ry;
+    if (skip(x, y)) continue;
+    i++;
+    let dx = u;
+    let dy = v + 0.9;
+    const l = Math.hypot(dx, dy) || 1;
+    dx /= l; dy /= l;
+    const L = 1.8 + 1.6 * r();
+    const bend = (r() - 0.5) * 2.6;
+    const dark = i % 3 !== 0;
+    out += `<path d="M${x.toFixed(1)} ${y.toFixed(1)} q${(dx * L / 2 - dy * bend).toFixed(1)} ${(dy * L / 2 + dx * bend).toFixed(1)} ${(dx * L).toFixed(1)} ${(dy * L).toFixed(1)}"
+      stroke="${dark ? '#8a5a26' : '#f6d49c'}" stroke-opacity="${dark ? 0.3 : 0.42}"/>`;
+  }
+  return `<g fill="none" stroke-width=".85" stroke-linecap="round">${out}</g>`;
+};
+
+// ---------- Kirby ----------
+const K = {
+  fu1: '#e2b673', fu2: '#c48c48', fu3: '#93602b', paw: '#c99350', snout: '#e4cda7', snoutRim: '#b8925e',
+  nose: '#3b2218', foot: '#8e5726', earIn: '#f2dcb4', ear: '#e4bf85', back: '#dcaa68',
+};
+const BODY = fluff(77, 56, 39, 35.5, 42, 2.5, 7);
+const BACK = fluff(86.5, 62, 29, 29.5, 36, 2.4, 11);
+const ARM = (cx, cy, cls, seed) => `<path class="karm ${cls}" d="${fluff(cx, cy, 5, 6.2, 10, 1.5, seed)}"
+        fill="url(#fur3)" stroke="${OUT}" stroke-width="1.5" stroke-linejoin="round"/>`;
+const BEAR_EAR = (cx, cy, side, seed) => `
+    <g class="ear ear-${side}">
+      <path d="${fluff(cx, cy, 7.4, 10, 14, 1.6, seed)}" fill="${K.ear}" stroke="${OUT}" stroke-width="1.8" stroke-linejoin="round"/>
+      <ellipse cx="${cx + 0.4}" cy="${cy - 0.6}" rx="3.8" ry="5.6" fill="${K.earIn}" opacity=".85"/>
+      <path d="M${cx - 3.6} ${cy - 4} q1 2 .4 4 M${cx + 3.8} ${cy - 3.4} q-.6 2 0 3.8 M${cx - 1} ${cy - 7.4} q.8 1.6 .2 3"
+        stroke="#b88a4c" stroke-width=".8" stroke-opacity=".45" fill="none" stroke-linecap="round"/>
+    </g>`;
+
+const [front, back] = PIKA_SVG.split('<g class="bk">');
+const KIRBY_SVG = [
+  ['id="fur"', 'id="fur3"'], ['url(#fur)', 'url(#fur3)'],
+  ['id="bodyclip"', 'id="bodyclip3"'], ['url(#bodyclip)', 'url(#bodyclip3)'],
+  ['#d0ad8d', K.fu1], ['#b08a68', K.fu2], ['#8a664b', K.fu3], ['#ecdcc6', K.paw],
+].reduce((svg, [a, b]) => svg.split(a).join(b), front)
+  // Körper: Zottelkugel statt Bohne
+  .replace(/<clipPath id="bodyclip3"><path d="[^"]+"\/>/, `<clipPath id="bodyclip3"><path d="${BODY}"/>`)
+  .replace(/(<g class="body">\s*<path d=")[^"]+"/, `$1${BODY}"`)
+  // kein heller Bauch, dafür Fellstrich (das Gesicht bleibt frei)
+  .replace(/<ellipse cx="82" cy="82"[^>]*\/>/, furTex(77, 56, 38, 34, 130, 3, (x, y) => ((x - 91) / 17) ** 2 + ((y - 50) / 11) ** 2 < 1)
+    + `<path d="M79 28 q2.6 4.4 .8 8 M85.6 27.4 q1.8 4.2 0 7.4 M92 28.4 q1.2 4 -.6 7 M98 30.6 q.6 3.6 -1.2 6" stroke="${K.fu3}" stroke-width="1.1"
+        stroke-opacity=".5" fill="none" stroke-linecap="round"/>`)
+  // kleine runde Bärenohren statt Pika-Ohren
+  .replace(/<g class="ear ear-(\w)">[\s\S]*?<\/g>/g, (m, s) => (s === 'l' ? BEAR_EAR(72.5, 21, s, 41) : s === 'r' ? BEAR_EAR(101.5, 27.5, s, 43) : `<g class="ear ear-${s}"></g>`))
+  // große dunkle Füße, vorn nach vorne gestreckt
+  .replace(/<g class="feet"[\s\S]*?<\/g>/, `<g class="feet" fill="${K.foot}" stroke="${OUT}" stroke-width="1.6">
+        <ellipse class="bfoot" cx="60" cy="91" rx="0" ry="0"/>
+        <ellipse class="ffoot" cx="81.5" cy="89.6" rx="10" ry="5.4"/>
+        <ellipse class="ffoot" cx="103.5" cy="88.8" rx="10.2" ry="5.6"/>
+      </g>
+      ${ARM(39.5, 63, 'karm-f', 21)}${ARM(114, 69, 'karm-n', 23)}`)
+  // flache, helle Schnauze mit dunkler Bärennase, keine Schnurrhaare
+  .replace(/<ellipse cx="91" cy="55" rx="7.5" ry="5.2"[^>]*\/>/,
+    `<ellipse cx="91.3" cy="54.8" rx="8.4" ry="6.1" fill="${K.snout}" stroke="${K.snoutRim}" stroke-width=".7"/>`)
+  .replace(/<path class="nose" d="[^"]+" fill="[^"]+"\/>/,
+    `<path class="nose" d="M87.6 50.9 q3.4 -1.7 6.8 0 q-.6 3 -3.4 3.6 q-2.8 -.6 -3.4 -3.6z" fill="${K.nose}"/>
+          <ellipse cx="90" cy="51.4" rx="1.2" ry=".6" fill="#fff" opacity=".35"/>`)
+  .replace(/<path class="wsk"[\s\S]*?\/>/, '')
+  + '<g class="bk">' + back
+  // Rückansicht: runder Zottelrücken, kleine Ohren, Schwänzchen unten (wie auf dem dritten Foto)
+    .replace(/<g class="ear ear-(\w)">[\s\S]*?<\/g>/g, (m, s) => `
+    <g class="ear ear-${s}">
+      <circle cx="${s === 'l' ? 74 : 99}" cy="31.5" r="6.8" fill="url(#fur3)" stroke="${OUT}" stroke-width="2"/>
+      <circle cx="${s === 'l' ? 74 : 99}" cy="31.5" r="6.8" fill="#140d1e" opacity=".5"/>
+      <circle class="rim" cx="${s === 'l' ? 74 : 99}" cy="31.5" r="6.8" fill="none" stroke="var(--tvc, #9fd0ff)" stroke-width="1.2"/>
+    </g>`)
+    .split('M58 92 C53 74 60 54 69 45 C71 33 79 28 86.5 28 C94 28 102 33 104 45 C113 54 120 74 115 92 C102 96 71 96 58 92Z').join(BACK)
+    .replace(/<path d="M79 35[^>]*\/>\s*<path d="M86.5 29.5[^>]*\/>/, `${furTex(86.5, 62, 28, 28, 55, 5)}
+      <path d="${fluff(86.5, 88.5, 3.4, 2.8, 7, 1.6, 31)}" fill="url(#fur3)" stroke="${OUT}" stroke-width="1.3"/>`)
+    .split('#d6b796').join(K.back).split('url(#fur)').join('url(#fur3)');
+
+// ---------- Rufus ----------
+// Zotteliger Umriss entlang eines beliebigen Pfads (hier die Bohne des Pikas): Punkte gleichmäßig abgreifen,
+// jede Strähne zeigt entlang der Außennormalen
+const NS = 'http://www.w3.org/2000/svg';
+const meas = document.createElementNS(NS, 'svg');
+meas.setAttribute('style', 'position:absolute;width:0;height:0');
+document.body.append(meas);
+const fluffD = (d, n, t, seed) => {
+  const r = lcg(seed);
+  const el = document.createElementNS(NS, 'path');
+  el.setAttribute('d', d);
+  meas.append(el);
+  const L = el.getTotalLength();
+  const pts = [...Array(n)].map((_, i) => { const q = el.getPointAtLength((L * i) / n); return [q.x, q.y]; });
+  el.remove();
+  const area = pts.reduce((a, p, i) => { const q = pts[(i + 1) % n]; return a + p[0] * q[1] - q[0] * p[1]; }, 0);
+  const sg = area > 0 ? 1 : -1;
+  let out = `M${f(pts[0])}`;
+  for (let i = 0; i < n; i++) {
+    const p0 = pts[i];
+    const p1 = pts[(i + 1) % n];
+    const len = Math.hypot(p1[0] - p0[0], p1[1] - p0[1]) || 1;
+    const nx = (sg * (p1[1] - p0[1])) / len;
+    const ny = (-sg * (p1[0] - p0[0])) / len;
+    const k = t * (0.55 + 0.9 * r());
+    const at = (u, kk) => [p0[0] + (p1[0] - p0[0]) * u + nx * kk, p0[1] + (p1[1] - p0[1]) * u + ny * kk];
+    out += ` Q${f(at(0.15, k * 0.85))} ${f(at(0.55 + 0.3 * r(), k))} Q${f(at(0.95, k * 0.3))} ${f(p1)}`;
+  }
+  return `${out}Z`;
+};
+// Locken statt Striche: kleine offene Kringel, beige und weiß gemischt
+const curls = (cx, cy, rx, ry, n, seed, skip = () => false) => {
+  const r = lcg(seed);
+  let out = '';
+  for (let i = 0; i < n;) {
+    const u = r() * 2 - 1;
+    const v = r() * 2 - 1;
+    if (u * u + v * v > 0.95) continue;
+    const x = cx + u * rx;
+    const y = cy + v * ry;
+    if (skip(x, y)) continue;
+    i++;
+    const a = r() * Math.PI * 2;
+    const s = 0.9 + 0.5 * r();
+    const dark = i % 3 !== 0;
+    const c = Math.cos(a) * s; const sn = Math.sin(a) * s;
+    out += `<path d="M${x.toFixed(1)} ${y.toFixed(1)} q${(c - sn).toFixed(1)} ${(sn + c).toFixed(1)} ${(2 * c).toFixed(1)} ${(2 * sn).toFixed(1)} t${(2 * c).toFixed(1)} ${(2 * sn).toFixed(1)}"
+      stroke="${dark ? '#c9ad84' : '#ffffff'}" stroke-opacity="${dark ? 0.45 : 0.7}"/>`;
+  }
+  return `<g fill="none" stroke-width=".8" stroke-linecap="round">${out}</g>`;
+};
+const RU = {
+  fu1: '#fffaf0', fu2: '#f1e5cd', fu3: '#d5c09c', paw: '#f4ead8', muzzle: '#fbf4e7', muzzleRim: '#cfb994',
+  nose: '#b38f74', earIn: '#2b1c15', brow: '#c4a27a',
+};
+const PIKA_BODY = PIKA_SVG.match(/<clipPath id="bodyclip"><path d="([^"]+)"/)[1];
+const RU_BODY = fluffD(PIKA_BODY, 84, 1.9, 51);
+const RU_BACK = fluffD('M58 92 C53 74 60 54 69 45 C71 33 79 28 86.5 28 C94 28 102 33 104 45 C113 54 120 74 115 92 C102 96 71 96 58 92Z', 56, 1.8, 53);
+// Schlappohr: zottelige Lasche, schräg nach außen gekippt, innen fast schwarz
+const FLOP_EAR = (cx, cy, rot, side, seed) => `
+    <g class="ear ear-${side}"><g transform="rotate(${rot} ${cx} ${cy})">
+      <path d="${fluff(cx, cy, 6, 8.8, 14, 1.8, seed)}" fill="url(#fur4)" stroke="${OUT}" stroke-width="1.7" stroke-linejoin="round"/>
+      <ellipse cx="${cx}" cy="${cy + 2.4}" rx="3.4" ry="4.6" fill="${RU.earIn}"/>
+    </g></g>`;
+const RU_FOOT = (cls, cx, cy, rx, ry, seed) => `<path class="${cls}" d="${fluff(cx, cy, rx, ry, 12, 1.3, seed)}"/>`;
+const [ruFront, ruBack] = PIKA_SVG.split('<g class="bk">');
+const RUFUS_SVG = [
+  ['id="fur"', 'id="fur4"'], ['url(#fur)', 'url(#fur4)'],
+  ['id="bodyclip"', 'id="bodyclip4"'], ['url(#bodyclip)', 'url(#bodyclip4)'],
+  ['#d0ad8d', RU.fu1], ['#b08a68', RU.fu2], ['#8a664b', RU.fu3], ['#ecdcc6', RU.paw],
+].reduce((svg, [a, b]) => svg.split(a).join(b), ruFront)
+  .replace(/<clipPath id="bodyclip4"><path d="[^"]+"\/>/, `<clipPath id="bodyclip4"><path d="${RU_BODY}"/>`)
+  .replace(/(<g class="body">\s*<path d=")[^"]+"([^>]*)stroke-width="2.6"/, `$1${RU_BODY}"$2stroke-width="2.1"`)
+  .replace(/<ellipse cx="82" cy="82"[^>]*\/>/, curls(60, 62, 52, 33, 150, 9, (x, y) => ((x - 91) / 14) ** 2 + ((y - 51) / 11) ** 2 < 1))
+  .replace(/<g class="ear ear-(\w)">[\s\S]*?<\/g>/g, (m, s) => (s === 'f' ? FLOP_EAR(70.5, 28.5, -24, s, 61) + FLOP_EAR(111.5, 29.5, 24, s, 61) : `<g class="ear ear-${s}"></g>`))
+  // Pfoten: cremeweiß und zottelig
+  .replace(/<g class="feet"[\s\S]*?<\/g>/, `<g class="feet" fill="${RU.paw}" stroke="${OUT}" stroke-width="1.5">
+        ${RU_FOOT('bfoot', 31, 90, 9.6, 3.8, 71)}${RU_FOOT('ffoot', 83, 90.6, 7.6, 3.6, 73)}${RU_FOOT('ffoot', 99, 90.2, 7.6, 3.6, 75)}
+      </g>`)
+  // Brauen: Platzhalter, die Varianten setzt RUFUS(brauen) ein
+  .replace(/<path class="brow brow-l"[^>]*\/>\s*<path class="brow brow-r"[^>]*\/>/, '<!--BRAUEN-->')
+  .replace(/<path class="wsk"[\s\S]*?\/>/, '')
+  // glatte, vorstehende Schnauze mit großer hellbrauner Nase; der ganze Mund sitzt zwei Einheiten tiefer
+  .replace(/(<g class="mouth-g">)([\s\S]*?)(<\/g>\s*<path class="cfoam")/, '$1<g transform="translate(0 2)">$2</g>$3')
+  .replace(/<ellipse cx="91" cy="55" rx="7.5" ry="5.2"[^>]*\/>/,
+    `<ellipse cx="91" cy="55.2" rx="11" ry="7.6" fill="${RU.muzzle}" stroke="${RU.muzzleRim}" stroke-width=".9"/>
+          <path d="M83 58.6 q8 4 16 0" stroke="#efe2c8" stroke-width="1.4" fill="none" stroke-linecap="round"/>`)
+  .replace(/<path class="nose" d="[^"]+" fill="[^"]+"\/>/,
+    `<path class="nose" d="M86.2 50 q4.8 -2.6 9.6 0 q-.4 3.8 -4.8 4.3 q-4.4 -.5 -4.8 -4.3z" fill="${RU.nose}" stroke="#8f6e57" stroke-width=".6"/>
+          <ellipse cx="89.4" cy="50" rx="1.6" ry=".7" fill="#fff" opacity=".35"/>`)
+  + '<g class="bk">' + ruBack
+    .replace(/<g class="ear ear-(\w)">[\s\S]*?<\/g>/g, (m, s) => {
+      const cx = s === 'l' ? 66 : 107;
+      return `
+    <g class="ear ear-${s}"><g transform="rotate(${s === 'l' ? -24 : 24} ${cx} 34)">
+      <path d="${fluff(cx, 34, 5.6, 8.4, 12, 1.6, s === 'l' ? 81 : 83)}" fill="url(#fur4)" stroke="${OUT}" stroke-width="1.8"/>
+      <path d="${fluff(cx, 34, 5.6, 8.4, 12, 1.6, s === 'l' ? 81 : 83)}" fill="#140d1e" opacity=".5"/>
+    </g></g>`;
+    })
+    .split('M58 92 C53 74 60 54 69 45 C71 33 79 28 86.5 28 C94 28 102 33 104 45 C113 54 120 74 115 92 C102 96 71 96 58 92Z').join(RU_BACK)
+    .replace(/<path d="M79 35[^>]*\/>\s*<path d="M86.5 29.5[^>]*\/>/, `${curls(86.5, 62, 27, 30, 70, 13)}
+      <g transform="rotate(18 88 82)"><path d="${fluff(88, 82, 3.8, 5.4, 10, 1.5, 91)}" fill="url(#fur4)" stroke="${OUT}" stroke-width="1.5"/>
+        <path d="M87 79.6 q1 1.6 .4 3.4 M89.2 79.4 q.8 1.6 0 3" stroke="#c9ad84" stroke-width=".7" fill="none" stroke-linecap="round"/></g>`)
+    .split('#d6b796').join(RU.fu2).split('url(#fur)').join('url(#fur4)');
+
+// Brauen-Varianten: A weiche Brauen im Fellton, B kleine Fellbüschel (gewählt), C keine
+const BRAUEN = {
+  A: `<path class="brow brow-l" d="M78.6 40.2 Q81.9 38 85.2 40" stroke="${RU.brow}" stroke-width="1.9" fill="none" stroke-linecap="round"/>
+        <path class="brow brow-r" d="M95.8 40 Q99.1 38 102.4 40.2" stroke="${RU.brow}" stroke-width="1.9" fill="none" stroke-linecap="round"/>`,
+  B: `<path class="brow brow-l" d="M78.4 41 q.6 -2.6 2.4 -1 q1 -2.6 2.6 -.6 q1.2 -1.8 2 .8" stroke="${RU.brow}" stroke-width="1.2" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+        <path class="brow brow-r" d="M95.6 41 q.8 -2.4 2 -.8 q1.6 -2 2.6 .6 q1.8 -1.6 2.4 1" stroke="${RU.brow}" stroke-width="1.2" fill="none" stroke-linecap="round" stroke-linejoin="round"/>`,
+  C: '',
+};
+const RUFUS = (b = 'B') => RUFUS_SVG.replace('<!--BRAUEN-->', BRAUEN[b]);
+
+// ---------- Katzumi ----------
+// Kleine Mochi-Katze: glatter, runder Körper mit flachem Boden, Spitzohren (innen rosa), rostbraune Streifen auf der
+// Stirn und drei Querstreifen auf dem Rücken, Augen mit gelbgrünem Rand, rosa Näschen, kurze Schnurrhaarstriche
+const KA = {
+  fu1: '#ffdcab', fu2: '#f6c08a', fu3: '#d9975c', paw: '#fbd2a0', earIn: '#f2a6b4', stripe: '#a9592b',
+  rim: '#c9d46c', nose: '#e9919c', whisk: '#3a2a22',
+};
+const KA_BODY_D = 'M42 84 C35 70 38 46 54 36 C66 28 92 27 104 36 C119 46 121 70 114 84 C110 92 98 93 78 93 C58 93 46 92 42 84Z';
+const KA_BODY = fluffD(KA_BODY_D, 110, 0.8, 101);
+const KA_BACK_D = 'M58 90 C51 76 54 52 66 42 C74 35 99 35 107 42 C119 52 122 76 115 90 C108 95 65 95 58 90Z';
+const KA_BACK = fluffD(KA_BACK_D, 90, 0.8, 103);
+// Spitzohr mit runder Spitze, Fuß bei (cx, by), um tilt Grad gekippt; hinter dem Körper, der Fuß verschwindet darin
+const CAT_EAR = (cx, by, tilt, side) => `
+    <g class="ear ear-${side}"><g transform="translate(${cx} ${by}) rotate(${tilt})">
+      <path d="M-8.5 2 L-2 -12.4 Q0 -15.6 2 -12.4 L8.5 2Z" fill="url(#fur5)" stroke="${OUT}" stroke-width="1.8" stroke-linejoin="round"/>
+      <path d="M-4.8 1 L-1.1 -8.6 Q0 -10.4 1.1 -8.6 L4.8 1Z" fill="${KA.earIn}"/>
+    </g></g>`;
+const CAT_BACK_EAR = (side) => `
+    <g class="ear ear-${side}"><g transform="translate(${side === 'l' ? 73 : 100} 44) rotate(${side === 'l' ? -14 : 14})">
+      <path d="M-8 2 L-1.8 -11.6 Q0 -14.6 1.8 -11.6 L8 2Z" fill="url(#fur5)" stroke="${OUT}" stroke-width="1.8" stroke-linejoin="round"/>
+      <path d="M-8 2 L-1.8 -11.6 Q0 -14.6 1.8 -11.6 L8 2Z" fill="#140d1e" opacity=".5"/>
+    </g></g>`;
+// Stirnzeichnung: Mittelstreifen, der sich zur Nase hin verjüngt, links und rechts je zwei kurze Balken
+const KA_MARK = `<g class="kmark" fill="${KA.stripe}">
+          <path d="M86.4 28.6 Q89.2 27.6 92 28.6 L90.1 42.4 Q89.2 44 88.3 42.4Z"/>
+          <path d="M77.6 33.6 Q81.6 31.4 86 32.4 L85.8 34.6 Q81.4 34.2 78 35.6Z M79.4 38.2 Q82.6 36.6 86.2 37.2 L86 39.2 Q82.6 39.2 79.8 40.2Z"/>
+          <path d="M92.4 32.4 Q96.8 31.4 100.6 33.8 L100.2 35.8 Q96.8 34.2 92.6 34.6Z M92.2 37.2 Q95.8 36.6 98.8 38.4 L98.4 40.4 Q95.6 39.2 92.4 39.2Z"/>
+        </g>`;
+// Rücken: Stirnzeichnung oben, drei Querstreifen
+const KA_BACK_MARK = `<g fill="${KA.stripe}">
+        <path d="M84.6 37.4 Q86.5 36.6 88.4 37.4 L87.2 47 Q86.5 48.2 85.8 47Z"/>
+        <path d="M78 40 Q81 38.6 84.4 39.2 L84.2 41 Q81 41 78.4 41.8Z M92.6 39.2 Q96 38.6 99 40 L98.6 41.8 Q96 41 92.8 41Z"/>
+        <path d="M78.4 43.6 Q81.4 42.6 84.2 43 L84 44.8 Q81.4 44.8 78.8 45.4Z M88.8 43 Q91.6 42.6 94.6 43.6 L94.2 45.4 Q91.6 44.8 89 44.8Z"/>
+      </g>
+      <g fill="none" stroke="${KA.stripe}" stroke-width="3" stroke-linecap="round">
+        <path d="M71.5 64 Q86.5 61.6 101.5 64"/><path d="M71 71.4 Q86.5 69.2 102 71.4"/><path d="M72 78.8 Q86.5 76.8 101 78.8"/>
+      </g>`;
+// Stummelschwänzchen unten, vor dem Rücken, im Fernsehlicht ebenso abgedunkelt
+const KA_TAIL_D = 'M80.6 89.6 Q80 97.6 86.6 97.8 Q93 97.6 92.4 89.6Z';
+const KA_TAIL = `
+      <g class="ktail"><path d="${KA_TAIL_D}" fill="url(#fur5)" stroke="${OUT}" stroke-width="1.6" stroke-linejoin="round"/>
+        <path d="${KA_TAIL_D}" fill="#140d1e" opacity=".5"/></g>`;
+const KA_WSK = `<path class="wsk" d="M70.4 48.6 l3.8 1.1 M70 51.2 l4 .3 M70.4 53.8 l3.8 -.6 M106.6 49.7 l3.8 -1.1 M106.4 51.5 l4 -.3 M106.6 53.2 l3.8 .6"
+              stroke="${KA.whisk}" stroke-width="1" stroke-linecap="round"/>`;
+const KA_FEET = `<g class="feet" fill="${KA.paw}" stroke="${OUT}" stroke-width="1.3">
+        <ellipse class="bfoot" cx="50" cy="91" rx="0" ry="0"/>
+        <ellipse class="ffoot" cx="83" cy="92" rx="4.6" ry="2.2"/>
+        <ellipse class="ffoot" cx="99" cy="91.6" rx="4.6" ry="2.2"/>
+      </g>`;
+const KA_NOSE = `<path class="nose" d="M89.3 52.2 q1.7 -.9 3.4 0 q-.4 1.4 -1.7 1.8 q-1.3 -.4 -1.7 -1.8z" fill="${KA.nose}" stroke="#b9646e" stroke-width=".5"/>`;
+const eyeShift = (x) => (x < 90 ? -0.8 : 1.2);
+const [kaFront, kaBack] = PIKA_SVG.split('<g class="bk">');
+const KATZUMI_SVG = [
+  ['id="fur"', 'id="fur5"'], ['url(#fur)', 'url(#fur5)'],
+  ['id="bodyclip"', 'id="bodyclip5"'], ['url(#bodyclip)', 'url(#bodyclip5)'],
+  ['#d0ad8d', KA.fu1], ['#b08a68', KA.fu2], ['#8a664b', KA.fu3], ['#ecdcc6', KA.paw],
+].reduce((svg, [a, b]) => svg.split(a).join(b), kaFront)
+  .replace(/<clipPath id="bodyclip5"><path d="[^"]+"\/>/, `<clipPath id="bodyclip5"><path d="${KA_BODY}"/>`)
+  .replace(/(<g class="body">\s*<path d=")[^"]+"([^>]*)stroke-width="2.6"/, `$1${KA_BODY}"$2stroke-width="2.3"`)
+  // statt des Bauchs: weicher Lichtfleck und die Stirnzeichnung
+  .replace(/<ellipse cx="82" cy="82"[^>]*\/>/, `<ellipse cx="66" cy="46" rx="20" ry="12" fill="#fff" opacity=".22"/>${KA_MARK}`)
+  .replace(/<g class="ear ear-(\w)">[\s\S]*?<\/g>/g, (m, side) => (side === 'l' ? CAT_EAR(66, 37, -16, side)
+    : side === 'r' ? CAT_EAR(103, 36, 16, side) : `<g class="ear ear-${side}"></g>`))
+  // keine Füße zu sehen, nur zwei kleine Pfötchen-Nubbel
+  .replace(/<g class="feet"[\s\S]*?<\/g>/, KA_FEET)
+  // Augen weiter auseinander, mit gelbgrünem Rand; Freu- und Schlafaugen wandern mit
+  .replace(/(<g class="eye eye-(l|r)">)([\s\S]*?)(<\/g>)/g, (m, a, side, inner, z) =>
+    `${a}<g transform="translate(${eyeShift(side === 'l' ? 0 : 99)} 0)">${inner.replace('fill="#2a1a12"', `fill="#2a1a12" stroke="${KA.rim}" stroke-width="1.3"`)}</g>${z}`)
+  .replace(/d="M([\d.]+) (46\.6|47\.6) q/g, (m, x, y) => `d="M${(+x + eyeShift(+x)).toFixed(1)} ${y} q`)
+  // keine Brauen, kurze Schnurrhaarstriche außen neben den Augen
+  .replace(/<path class="brow brow-l"[^>]*\/>\s*<path class="brow brow-r"[^>]*\/>/, '')
+  .replace(/<path class="wsk"[\s\S]*?\/>/, KA_WSK)
+  // keine Schnauze, kleines rosa Näschen über dem ω-Mund
+  .replace(/<ellipse cx="91" cy="55" rx="7.5" ry="5.2"[^>]*\/>/, '')
+  .replace(/<path class="nose" d="[^"]+" fill="[^"]+"\/>/, KA_NOSE)
+  + '<g class="bk">' + kaBack
+    .replace(/<g class="ear ear-(\w)">[\s\S]*?<\/g>/g, (m, side) => CAT_BACK_EAR(side))
+    .split('M58 92 C53 74 60 54 69 45 C71 33 79 28 86.5 28 C94 28 102 33 104 45 C113 54 120 74 115 92 C102 96 71 96 58 92Z').join(KA_BACK)
+    .replace(/<path d="M79 35[^>]*\/>\s*<path d="M86.5 29.5[^>]*\/>/, KA_BACK_MARK)
+    .replace(/(<path class="rim")/, `${KA_TAIL}\n      $1`)
+    .split('#d6b796').join(KA.fu2).split('url(#fur)').join('url(#fur5)');
+
+// ---------- Seite füllen ----------
+const fig = (svg, w, cap, cls = '') => `<figure class="fig ${cls}" style="width:${w}px;margin:0">
+  <div class="sh"></div>${svg}<figcaption>${cap}</figcaption></figure>`;
+const POSEN = [
+  ['', 'ruhig'], ['happy', 'freut sich'], ['sleep', 'döst'], ['wave', 'winkt'], ['coffee', 'Kakao'],
+  ['wet', 'Blattschirm'], ['tv', 'von hinten'],
+];
+// Größe gegenüber dem Pika: Kirby > Rufus > Katzumi
+const GR = { pino: 0.85, kirby: 0.92, rufus: 0.7, katzumi: 0.5 };
+document.getElementById('reihe').innerHTML = fig(PIKA_SVG, 200, 'Pika') + fig(FRIEND_SVG, 200 * GR.pino, 'Pino')
+  + fig(KIRBY_SVG, 200 * GR.kirby, 'Kirby') + fig(RUFUS(), 200 * GR.rufus, 'Rufus') + fig(KATZUMI_SVG, 200 * GR.katzumi, 'Katzumi');
+document.getElementById('posen').innerHTML = POSEN.map(([c, t]) => fig(KIRBY_SVG, 160 * GR.kirby, t, c)).join('');
+document.getElementById('posen-katzumi').innerHTML = POSEN.map(([c, t]) => fig(KATZUMI_SVG, 160 * GR.katzumi, t, c)).join('');
+document.getElementById('posen-rufus').innerHTML = POSEN.map(([c, t]) => fig(RUFUS(), 160 * GR.rufus, t, c)).join('');
+document.getElementById('gross').innerHTML = fig(KIRBY_SVG, 410 * GR.kirby, 'Kirby', 'gross')
+  + fig(RUFUS(), 410 * GR.rufus, 'Rufus', 'gross') + fig(KATZUMI_SVG, 410 * GR.katzumi, 'Katzumi', 'gross');
+document.getElementById('brauen').innerHTML = [['A', 'A: weiche Brauen'], ['B', 'B: Fellbüschel'], ['C', 'C: keine']]
+  .map(([v, t]) => fig(RUFUS(v), 260, t)).join('') + fig(RUFUS(), 200, 'von hinten', 'tv');
+</script>
+</body>
+</html>

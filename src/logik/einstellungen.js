@@ -65,7 +65,7 @@ const DEFAULTS = {
 const EDITOR_LABEL = {
   name: 'Name', areal: 'Bau', entity: 'Zustand (Text-Helfer, max. 100)', plan_entity: 'Tagesplan (Text-Helfer, max. 255)',
   chronicle_entity: 'Chronik (To-do-Liste)',
-  show_stats: 'Balken anzeigen', gifts: 'Päckchen', friend: 'Pino kommt zu Besuch', festive: 'Festtage-Deko',
+  show_stats: 'Balken anzeigen', gifts: 'Päckchen', friend: 'Pino und Freunde kommen zu Besuch', festive: 'Festtage-Deko',
   sleep_start: 'Schlafenszeit', sleep_end: 'Aufwachzeit', sun_entity: 'Sonne', weather_entity: 'Wetter',
   precip_entity: 'Niederschlag (mm/h)', rain_min: 'Regen ab', shooting_stars: 'Sternschnuppen', fireflies: 'Glühwürmchen',
   flight_entity: 'Flüge (Flightradar24)', flight_radius: 'Radius', max_flights: 'Höchstens gleichzeitig',

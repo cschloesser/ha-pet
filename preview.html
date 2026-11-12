@@ -140,6 +140,9 @@
 <!-- ==================== Vorschau-Knöpfe Freund-Pika (Pino kommt zu Besuch) ==================== -->
 <div class="bar" id="bar-friend"><b>Freund-Pika</b>
   <button id="fr-come">Pino kommt</button>
+  <button data-frk="kirby">Kirby kommt</button>
+  <button data-frk="rufus">Rufus kommt</button>
+  <button data-frk="katzumi">Katzumi kommt</button>
   <button id="fr-go">Pino geht</button>
   <button data-fr="greetFriend">Pika: begrüßen</button>
   <button data-fr="chaseFriend">Pika: Fangen</button>
@@ -935,7 +938,8 @@
 
   // ==================== Vorschau Freund-Pika ====================
   // Pino kommt sofort (auch bei Regen oder nachts) bzw. geht mit Abschied; Spiele nur, solange er da ist
-  document.getElementById('fr-come').addEventListener('click', () => cards.forEach((c) => c._friendCome(undefined, undefined, true)));
+  document.getElementById('fr-come').addEventListener('click', () => cards.forEach((c) => c._friendCome(undefined, undefined, true, 'pino')));
+  document.querySelectorAll('[data-frk]').forEach((b) => b.addEventListener('click', () => cards.forEach((c) => c._friendCome(undefined, undefined, true, b.dataset.frk))));
   document.getElementById('fr-go').addEventListener('click', () => cards.forEach((c) => c._friendLeave(true)));
   document.querySelectorAll('[data-fr]').forEach((b) =>
     b.addEventListener('click', () => cards.forEach((c) => {

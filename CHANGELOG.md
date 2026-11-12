@@ -2,6 +2,22 @@
 
 Jede Version der Pika Pet Card, die neueste zuerst.
 
+## 0.41.0 (2026-11-12)
+
+Neue Freunde: Statt Pino kommen manchmal Kirby, Rufus oder Katzumi zu Besuch, nach drei Kuscheltieren.
+
+- In jedem Besuchsfenster (30 Minuten) kommt einer von vier Freunden: Pino (Anteil 0,4), Kirby, Rufus und Katzumi (je 0,2). Gewählt wird aus der Uhr (`seedRnd('friend', fenster, 4)`, `friendKind`), darum auf allen Geräten derselbe. Wann und wie lange, bleibt wie bisher. Die Anteile und Größen stehen in `FRIENDS` (`src/logik/besucher.js`).
+- Alle drei entstehen wie Pino aus der Pika-Grafik (`src/grafik/freunde.js`) und spielen dieselben Spiele (Begrüßen, Fangen, Zusammensitzen, Stein, Knabbern, Piep-Duett), Eigenleben, Streicheln und Abschied inklusive. Der Pika ruft sie beim Namen („Kirby!“, „tschüss, Rufus!“, „komm, Katzumi!“), das Etikett zum Antippen heißt „Rufus streicheln“ usw.
+  - **Kirby** (0,92): goldbraune Zottelkugel mit Fellstrich, kleine helle Halbkreis-Ohren, flache helle Schnauze mit dunkler Bärennase, große dunkle Füße, Stummelärmchen.
+  - **Rufus** (0,7): cremeweiß, liegende Bohnenform mit feinem Zottelrand und Locken-Wellen, Schlappohren oben nach außen gekippt und innen fast schwarz, glatte Schnauze mit großer hellbrauner Nase (der Mund sitzt darauf etwas tiefer), Fellbüschel als Brauen, zottelige Pfoten.
+  - **Katzumi** (0,5): glatte Mochi-Kugel in Apricot, rostbraune Stirnzeichnung, rosa Spitzohren, Augen mit gelbgrünem Rand etwas weiter auseinander, rosa Näschen über dem ω-Mund, kurze Schnurrhaarstriche, keine Brauen.
+  - Die zotteligen Umrisse rechnet die Karte beim Laden aus (feste Startwerte, überall gleich), ohne Browser-Messung; darum laufen Bau und Tests weiter in node.
+- Die Größe hängt am Freund, der gerade da ist (`_frSc`): Lage auf der Wiese, Sprechblase, Schatten und Herzchen skalieren mit. `FRIEND_SCALE` (0,85) gilt weiter für Pino.
+- Tagebuch und Chronik: Neue Bits `kirby`, `rufus`, `katzumi` im Tagesgedächtnis (`MEM_BITS` 12–14, die alten bleiben, wo sie waren; ältere Karten behalten unbekannte Bits). Im Tagebuch dieselben Sätze wie bei Pino, mit dem Namen und einem Bild des Freunds. In der Chronik `besuch=pino,kirby,rufus,katzumi,vogel,falter` in dieser Reihenfolge.
+- Bleibt Pino: `friend_name`, Urlaub bei Pino, der Plüsch-Pino, Träume und Murmeln im Schlaf. `friend: false` schaltet alle vier ab, im Editor heißt der Schalter jetzt „Pino und Freunde kommen zu Besuch“.
+- Vorschau: Knöpfe „Kirby kommt“, „Rufus kommt“, „Katzumi kommt“. Der Entwurf mit allen Posen und Größen liegt in `dev/kirby-entwurf.html`. 151 Tests.
+- Bundle +15 kB.
+
 ## 0.40.1 (2026-11-12)
 
 Safari auf iPhone und iPad: In der Dämmerung, nachts und bei bedecktem Himmel war der Erdhügel rechts senkrecht abgeschnitten (die Vorratsnische nur halb zu sehen), der Stein links und rechts (das Geröll). Gemeldet mit einem Bildschirmfoto vom Smartphone-Dashboard um 20:59. In Chrome (Vorschau, Kiosk-Tablets) war alles richtig.

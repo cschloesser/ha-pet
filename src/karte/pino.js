@@ -5,10 +5,13 @@ import { calmMotion } from '../logik/bewegung-reduzieren.js';
 import { SELF } from '../logik/zustand.js';
 import { LANE_DY, LANE_S } from '../logik/einstellungen.js';
 import { buehneZ } from '../logik/buehne.js';
-import { FRIEND_SCALE, FRIEND_WIN, FRIEND_LAST, FRIEND_ACTS, FRIEND_YIELD, FRIEND_CLS } from '../logik/besucher.js';
+import { FRIEND_SCALE, FRIENDS, friendKind, FRIEND_WIN, FRIEND_LAST, FRIEND_ACTS, FRIEND_YIELD, FRIEND_CLS } from '../logik/besucher.js';
 import { HOP_MS, hopRound, jumpBusy, chaseFar } from '../logik/beschaeftigungen.js';
 import { ICON_HEART } from '../grafik/szene.js';
 import { FRIEND_SVG } from '../grafik/besucher.js';
+import { KIRBY_SVG, RUFUS_SVG, KATZUMI_SVG } from '../grafik/freunde.js';
+
+const FRIEND_ART = { pino: FRIEND_SVG, kirby: KIRBY_SVG, rufus: RUFUS_SVG, katzumi: KATZUMI_SVG };
 
 export class Pino {
   // Pino, ein Freund-Pika, kommt ein paarmal am Tag zu Besuch. Er lebt in der Ebene .friends hinter dem Pika
@@ -40,8 +43,8 @@ export class Pino {
     const g = this._g;
     if (!g) return;
     const s = this._el.friends.style;
-    s.setProperty('--ph', `${g.pH * FRIEND_SCALE}px`);
-    s.setProperty('--pw', `${g.pW * FRIEND_SCALE}px`);
+    s.setProperty('--ph', `${g.pH * this._frSc()}px`);
+    s.setProperty('--pw', `${g.pW * this._frSc()}px`);
     const ratio = this._frLW ? this._W / this._frLW : 1;
     this._frLW = this._W;
     const fr = this._fr;
@@ -60,7 +63,7 @@ export class Pino {
     fr.mv = null;
     // Auf der hinteren Spur bleibt er dort (ihr Bereich ist ein anderer), ohne depth gibt es sie nicht mehr
     if (!this._cfg.depth) fr.lane = 0;
-    const [lo, hi] = fr.lane ? this._laneRange(g.pW * FRIEND_SCALE) : this._frRange();
+    const [lo, hi] = fr.lane ? this._laneRange(g.pW * this._frSc()) : this._frRange();
     this._frSetX(fr, clamp(fr.x * ratio, lo, hi));
   }
 
@@ -131,7 +134,7 @@ export class Pino {
       const end = at + Math.round((s0 + r(2) * (s1 - s0)) * 6e4);
       if (now >= end) continue;
       const start = Math.max(now, at);
-      return { nextInMs: start - now, stayMs: end - start, side: r(3) < 0.5 ? -1 : 1 };
+      return { nextInMs: start - now, stayMs: end - start, side: r(3) < 0.5 ? -1 : 1, kind: friendKind(r(4)) };
     }
   }
 
@@ -217,20 +220,31 @@ export class Pino {
     return String(this._cfg.friend_name || 'Pino');
   }
 
+  // Wer gerade zu Besuch ist (oder zuletzt war: Abschied, Fangen): Pino heißt wie in friend_name, die anderen fest
+  _frGuest() {
+    return this._frWho || this._frName();
+  }
+
+  // Größe des Freunds, der gerade da ist, gegenüber dem Pika
+  _frSc(fr = this._fr) {
+    return FRIENDS[fr?.kind]?.scale ?? FRIEND_SCALE;
+  }
+
   // ---------- Besuch ----------
 
-  // Pino kommt (force: sofort, bei jedem Wetter und jeder Tageszeit, für die Vorschau)
-  _friendCome(side, stayMs, force = false) {
+  // Pino (oder wer laut Plan dran ist, kind) kommt (force: sofort, bei jedem Wetter und jeder Tageszeit, für die Vorschau)
+  _friendCome(side, stayMs, force = false, kind = null) {
     if (!this._g || this._fr || !this._cfg?.friend) return;
-    if (side == null || stayMs == null) {
+    if (side == null || stayMs == null || !kind) {
       const s = this._friendSchedule();
+      kind ??= s.kind;
       side ??= s.side;
       stayMs ??= Math.max(s.stayMs, 9e4);
     }
     clearTimeout(this._frT);
     this._frT = null;
     this._frBye = null;
-    const fr = this._friendBuild();
+    const fr = this._friendBuild(FRIEND_ART[kind] ? kind : 'pino');
     fr.side = side < 0 ? -1 : 1;
     fr.planned = !force; // aus dem Besuchsplan: Das Ende folgt einer Uhrkorrektur (_clockMoved)
     fr.bad0 = force ? this._friendBad() : 0;
@@ -249,20 +263,21 @@ export class Pino {
     fr.untilT = setTimeout(() => this._fr === fr && this._friendLeave(), Math.max(0, until - Date.now()));
   }
 
-  _friendBuild() {
+  _friendBuild(kind = 'pino') {
+    this._frWho = FRIENDS[kind].name || this._frName();
     const el = document.createElement('div');
-    el.className = 'friend';
+    el.className = `friend fr-${kind}`;
     el.setAttribute('role', 'button');
-    el.setAttribute('aria-label', `${this._frName()} streicheln`);
+    el.setAttribute('aria-label', `${this._frWho} streicheln`);
     el.innerHTML = '<div class="clipw"><div class="shadow"></div><div class="depth"><div class="flip"><div class="jump">'
-      + `<div class="hop"><div class="br">${FRIEND_SVG}</div></div></div></div></div></div>`;
+      + `<div class="hop"><div class="br">${FRIEND_ART[kind]}</div></div></div></div></div></div>`;
     el.querySelectorAll('.book, .gb, .tab, .kpaw, .bk, .brolly, .cap, .cup, .cfoam, .rope, .band, .arms, .uke, .brush, .wand, .rgrip, .bar, .wpaw, .slg, .gspy, .gcan, .shades, .hoop, .yo, .pbl, .jug, .dchain, .dcrown, .pgl, .peb, .sboat').forEach((n) => n.remove());
     // Sprechblase in eigener Hülle in der Sprech-Ebene; sie läuft mit Pino mit (_frSetX, _frFace)
     const sw = document.createElement('div');
     sw.className = 'frsay';
     sw.innerHTML = '<div class="anchor"><div class="bubble say"></div></div>';
     const fr = {
-      el, sw, jump: el.querySelector('.jump'), say: sw.querySelector('.say'), mfood: el.querySelector('.mfood'),
+      kind, el, sw, jump: el.querySelector('.jump'), say: sw.querySelector('.say'), mfood: el.querySelector('.mfood'),
       x: 0, dir: 1, lift: 0, lane: 0, tok: 0, arrived: false, greeted: false, leaving: false, hurry: false, busy: false, want: null,
     };
     fr.kickP = new Promise((r) => (fr.kick = r));
@@ -270,6 +285,10 @@ export class Pino {
     this._keyTap(el);
     el.classList.toggle('cold', !!this._wx.cold);
     this._frZ(fr);
+    // Sprechblase, Schatten usw. skalieren über --ph/--pw mit seiner Größe
+    const fs = this._el.friends.style;
+    fs.setProperty('--ph', `${this._g.pH * this._frSc(fr)}px`);
+    fs.setProperty('--pw', `${this._g.pW * this._frSc(fr)}px`);
     this._el.friends.append(el, sw);
     return fr;
   }
@@ -328,7 +347,7 @@ export class Pino {
   // Vom Rand herein hoppeln, piepsen
   async _friendArrive(fr) {
     const W = this._W;
-    const fW = this._g.pW * FRIEND_SCALE;
+    const fW = this._g.pW * this._frSc();
     const [lo, hi] = this._frRange();
     const w = (ms) => this._fw(fr, ms, fr.tok);
     this._frFace(fr, -fr.side);
@@ -376,7 +395,7 @@ export class Pino {
     const w = (ms) => this._fw(fr, ms);
     this._friendSettle(fr);
     if (fr.lift > 0) await this._frHopDown(fr, w);
-    const fW = this._g.pW * FRIEND_SCALE;
+    const fW = this._g.pW * this._frSc();
     const out = fr.x < this._W / 2 ? -1 : 1;
     this._frFace(fr, this._liveX() >= fr.x ? 1 : -1);
     this._frSay(fr, 'tschüss!', 1600);
@@ -420,7 +439,7 @@ export class Pino {
       // bei Nässe nicht. Jeder andere Weg führt ihn wieder nach vorn (_friendWalkTo, Spur 0).
       const want = this._cfg.depth ? this._frLaneNext ?? (this._wx.wet ? 0 : Math.random() < 0.35 ? 1 : 0) : 0;
       this._frLaneNext = null;
-      const [l, r] = want ? this._laneRange(pW * FRIEND_SCALE) : [0, 0];
+      const [l, r] = want ? this._laneRange(pW * this._frSc()) : [0, 0];
       if (want && r - l > pW * 0.3) await this._friendWalkTo(fr, rnd(l, r), 0.9, w, false, 1);
       else await this._friendWalkTo(fr, fr.x + rnd(0.5, 1.5) * pW * pick([-1, 1]), 0.9, w);
       await w(rnd(300, 900));
@@ -514,9 +533,9 @@ export class Pino {
   // Die Nische gehört zum Bau und liegt hinten, vor ihr darf er stehen.
   _frRange() {
     const { pW, home, hay, stash } = this._g;
-    const lo = Math.max(home + pW * 0.8, stash ? 0 : hay + this._H * 0.13 + pW * FRIEND_SCALE * 0.3);
+    const lo = Math.max(home + pW * 0.8, stash ? 0 : hay + this._H * 0.13 + pW * this._frSc() * 0.3);
     // Rechts wie beim Pika (xR) ganz im Bild bleiben
-    return [lo, Math.max(lo, this._W - pW * FRIEND_SCALE * 0.45)];
+    return [lo, Math.max(lo, this._W - pW * this._frSc() * 0.45)];
   }
 
   // free: ohne Begrenzung auf die Wiese (herein- und hinaushoppeln). lane (Tiefe): 1 = hintere Spur, im Bereich
@@ -525,7 +544,7 @@ export class Pino {
     const { pW } = this._g;
     lane = this._cfg.depth ? lane : 0;
     if (!free) {
-      const [lo, hi] = lane ? this._laneRange(pW * FRIEND_SCALE) : this._frRange();
+      const [lo, hi] = lane ? this._laneRange(pW * this._frSc()) : this._frRange();
       x = clamp(x, lo, hi);
     }
     const dx = x - fr.x;
@@ -573,7 +592,7 @@ export class Pino {
     fr.mv = ms > 0 ? { ...from, x1: x, l1: lift, dy1: dy, t0: performance.now(), ms } : null;
     for (const s of [fr.el.style, fr.sw.style]) {
       s.transition = ms > 0 ? `transform ${Math.round(ms)}ms ${ease}` : 'none';
-      s.transform = `translate(${(x - (this._g.pW * FRIEND_SCALE) / 2).toFixed(1)}px, ${(-lift - dy).toFixed(1)}px)`
+      s.transform = `translate(${(x - (this._g.pW * this._frSc()) / 2).toFixed(1)}px, ${(-lift - dy).toFixed(1)}px)`
         + (sc !== 1 ? ` scale(${sc.toFixed(3)})` : '');
     }
     fr.el.classList.toggle('lane1', !!dy);
@@ -584,7 +603,7 @@ export class Pino {
       fr.laneZT = setTimeout(() => this._frZ(fr), ms / 2);
     } else this._frZ(fr);
     if (!(ms > 0)) void fr.el.offsetWidth;
-    this._bubbleFit(fr.say, x, this._g.pW * FRIEND_SCALE, sc);
+    this._bubbleFit(fr.say, x, this._g.pW * this._frSc(), sc);
   }
 
   // Tiefe (depth): Höhe der hinteren Spur über der Bodenlinie für Pino (px), sonst 0. Auf dem Stein zählt die vordere.
@@ -625,7 +644,7 @@ export class Pino {
     fr.dir = dir;
     fr.el.classList.toggle('left', dir < 0);
     fr.sw.classList.toggle('left', dir < 0);
-    this._bubbleFit(fr.say, fr.x, this._g.pW * FRIEND_SCALE, this._frLaneDy(fr) ? LANE_S : 1);
+    this._bubbleFit(fr.say, fr.x, this._g.pW * this._frSc(), this._frLaneDy(fr) ? LANE_S : 1);
   }
 
   // wie _jump: ein Sprung, der noch in der Luft ist, wird zu Ende gesprungen (fresh: _frHop trägt ihn woandershin)
@@ -677,8 +696,8 @@ export class Pino {
 
   _frHearts(fr, n) {
     const { pW, pH, gy } = this._g;
-    const fW = pW * FRIEND_SCALE;
-    const fH = pH * FRIEND_SCALE;
+    const fW = pW * this._frSc();
+    const fH = pH * this._frSc();
     const live = this._frLive(fr);
     // Auf der hinteren Spur steht er höher und um LANE_S kleiner (um die Füße): der Kopf liegt entsprechend tiefer
     const s = live.dy ? 1 - (1 - LANE_S) * Math.min(1, live.dy / (this._H * LANE_DY)) : 1;
@@ -785,12 +804,12 @@ export class Pino {
 
   // Begrüßung: hinschauen, "Pino!", hinhoppeln, Nasenstupsen
   async _greetFriend() {
-    this._memo('pino');
+    this._memo(this._fr?.kind || 'pino');
     await this._withFriend(async (fr, w) => {
       const P = this._el.pika.classList;
       this._face(fr.x >= this._x ? 1 : -1);
       P.add('look-f');
-      this._say(`${this._frName()}!`, 1600);
+      this._say(`${this._frGuest()}!`, 1600);
       this._jump('hop1');
       this._frFace(fr, this._x >= fr.x ? 1 : -1);
       await w(900);
@@ -1145,7 +1164,7 @@ export class Pino {
     // auch bei Abbruch (Streicheln, Futter, Schlaf) nicht traurig hängen bleiben: sad räumt _cleanup nicht ab
     try {
       await this._wait(800);
-      this._say(`tschüss, ${this._frName()}!`, 1500);
+      this._say(`tschüss, ${this._frGuest()}!`, 1500);
       const end = Date.now() + 5000;
       while (this._fr && Date.now() < end) {
         await this._wait(300);

@@ -4376,7 +4376,7 @@ test('Tiefe: Pino auf beiden Spuren, ohne depth wie bisher', async () => {
   const karte = (depth) => ({
     _cfg: { depth }, _H: 200, _W: 800, _g: { pW: 100, pH: 100, gy: 180, hay: 150, stash: false },
     _bubbleFit() {}, _frRange: () => [200, 760],
-    _frLive: P._frLive, _frLaneDy: P._frLaneDy, _frZ: P._frZ, _frSetX: P._frSetX, _laneRange: P._laneRange,
+    _frLive: P._frLive, _frLaneDy: P._frLaneDy, _frZ: P._frZ, _frSetX: P._frSetX, _laneRange: P._laneRange, _frSc: P._frSc,
   });
   const pino = () => ({ x: 100, lift: 0, lane: 0, el: { style: {}, classList: kl(), offsetWidth: 0 }, sw: { style: {}, classList: kl() }, say: {} });
   // ohne depth: Spur 1 gibt es nicht, Ebene und Stelle wie bis 0.38
@@ -4833,4 +4833,53 @@ test('Überstand: randStil vergrößert die Box des <svg> und zieht sie zurück,
   // Die vergrößerte Box fängt keine Tipps, die Formen darin schon
   assert.match(T.STYLES, /\.burrow svg, \.lookout svg \{ pointer-events: none; \}/);
   assert.match(T.STYLES, /\.burrow svg > \*, \.lookout svg > \* \{ pointer-events: visiblePainted; \}/);
+});
+
+test('Freunde: je Besuchsfenster kommt einer, aus der Uhr gewählt, Pino am häufigsten', () => {
+  assert.deepEqual([...T.FRIEND_KEYS], ['pino', 'kirby', 'rufus', 'katzumi']);
+  const sum = T.FRIEND_KEYS.reduce((a, k) => a + T.FRIENDS[k].w, 0);
+  assert.ok(Math.abs(sum - 1) < 1e-9);
+  assert.equal(T.friendKind(0), 'pino');
+  assert.equal(T.friendKind(0.999999), 'katzumi');
+  // Kirby > Rufus > Katzumi, alle kleiner als der Pika
+  assert.ok(T.FRIENDS.kirby.scale > T.FRIENDS.rufus.scale && T.FRIENDS.rufus.scale > T.FRIENDS.katzumi.scale);
+  // dieselbe Uhr, dasselbe Ergebnis; über viele Fenster kommen alle vier, Pino am öftesten
+  const n = {};
+  for (let k = 0; k < 4000; k++) {
+    const a = T.friendKind(T.seedRnd('friend', k, 4));
+    assert.equal(a, T.friendKind(T.seedRnd('friend', k, 4)));
+    n[a] = (n[a] || 0) + 1;
+  }
+  assert.deepEqual(Object.keys(n).sort(), [...T.FRIEND_KEYS].sort());
+  for (const k of ['kirby', 'rufus', 'katzumi']) assert.ok(n.pino > n[k], k);
+});
+
+test('Freunde: Grafiken wie Pinos (eigene ids, keine Rückansicht, keine kaputten Zahlen), Tagebuch und Chronik kennen sie', () => {
+  const art = { 3: T.KIRBY_SVG, 4: T.RUFUS_SVG, 5: T.KATZUMI_SVG };
+  for (const [n, svg] of Object.entries(art)) {
+    assert.match(svg, /^\s*<svg class="pk" viewBox="0 0 120 100"/);
+    assert.match(svg, /<\/svg>\s*$/);
+    assert.doesNotMatch(svg, /NaN|undefined|class="bk"|<!--/);
+    // nur die eigenen ids, sonst griffe er auf Fell und Clip des Pikas zu
+    assert.deepEqual([...new Set([...svg.matchAll(/id="([^"]+)"/g)].map((m) => m[1]))].sort(), [`bodyclip${n}`, `fur${n}`]);
+    assert.doesNotMatch(svg, /url\(#(?:fur|bodyclip)\)/);
+    // was die gemeinsamen Spiele brauchen, ist da
+    for (const c of ['all', 'body', 'face', 'mouth-g', 'feet', 'ffoot', 'paws', 'mfood', 'eye eye-l', 'eye eye-r', 'ear ear-l', 'ear ear-r', 'scarf']) {
+      assert.ok(svg.includes(`class="${c}`), `${n}: ${c}`);
+    }
+    const auf = (svg.match(/<g[\s>]/g) || []).length;
+    const zu = (svg.match(/<\/g>/g) || []).length;
+    assert.equal(auf, zu, `${n}: <g> ausgeglichen`);
+  }
+  for (const k of ['kirby', 'rufus', 'katzumi']) {
+    assert.ok(T.MEM_BITS.includes(k), k);
+    assert.ok(T.FRIEND_ICON[k].includes('viewBox'), k);
+  }
+  // die alten Bits bleiben, wo sie waren
+  assert.deepEqual([...T.MEM_BITS.slice(0, 12)], ['lz', 'klee', 'coffee', 'heart', 'pino', 'plane', 'bird', 'note', 'bfly', 'gut', 'tonne', 'tonne2']);
+  assert.equal(T.chronikKod({ d: '2026-11-10', besuch: ['vogel', 'katzumi', 'pino', 'kirby', 'rufus'] }), 'Pika-Tag 2026-11-10 · besuch=pino,kirby,rufus,katzumi,vogel');
+  const tag = T.pikaDay(Date.UTC(2026, 10, 10, 12));
+  const start = T.chronikStart(tag);
+  const e = T.chronikBilanz([{ t: start + 1000, k: 'mem', b: 'rufus' }, { t: start + 2000, k: 'mem', b: 'pino' }], {}, start, start + 864e5, tag);
+  assert.deepEqual([...e.besuch], ['pino', 'rufus']);
 });

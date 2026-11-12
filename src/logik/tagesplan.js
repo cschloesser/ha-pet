@@ -56,8 +56,8 @@ const PET_CLING = 10;
 const PET_CAP = 99;
 // Erlebnisse für die Träume, je ein Bit
 // (gut: kein Erlebnis, sondern „heute ist ein guter Tag“, siehe ggood; tonne: „die Tonne steht draußen“, siehe
-// Haus-Signale. Geträumt wird von beiden nicht.)
-const MEM_BITS = ['lz', 'klee', 'coffee', 'heart', 'pino', 'plane', 'bird', 'note', 'bfly', 'gut', 'tonne', 'tonne2'];
+// Haus-Signale. Geträumt wird von beiden nicht. kirby, rufus, katzumi: die Freunde, die ab 0.41 statt Pino kommen.)
+const MEM_BITS = ['lz', 'klee', 'coffee', 'heart', 'pino', 'plane', 'bird', 'note', 'bfly', 'gut', 'tonne', 'tonne2', 'kirby', 'rufus', 'katzumi'];
 const MEM_GUT = 1 << 9;
 const MEM_TONNE = 1 << 10;
 const MEM_TONNE2 = 1 << 11; // vom Vortag übernommen (wird nicht noch einmal weitergegeben)

@@ -60,7 +60,7 @@
  */
 (() => {
   // src/version.js
-  var VERSION = "0.40.1";
+  var VERSION = "0.41.0";
 
   // src/logik/hilfen.js
   var Cancel = class extends Error {
@@ -162,8 +162,8 @@
     const noon = new Date(day.getFullYear(), day.getMonth(), day.getDate(), 12).getTime();
     const j = Math.round(noon / 864e5 + 24405875e-1 - 2451545 + lng / 360) - lng / 360;
     const M = (357.5291 + 0.98560028 * j) % 360;
-    const C = 1.9148 * Math.sin(M * RAD) + 0.02 * Math.sin(2 * M * RAD) + 3e-4 * Math.sin(3 * M * RAD);
-    const L = (M + C + 282.9372) % 360;
+    const C2 = 1.9148 * Math.sin(M * RAD) + 0.02 * Math.sin(2 * M * RAD) + 3e-4 * Math.sin(3 * M * RAD);
+    const L = (M + C2 + 282.9372) % 360;
     const transit = 2451545 + j + 53e-4 * Math.sin(M * RAD) - 69e-4 * Math.sin(2 * L * RAD);
     const dec = Math.asin(Math.sin(L * RAD) * Math.sin(23.4397 * RAD));
     const h0 = (-0.833 - 2.076 * Math.sqrt(Math.max(0, elev)) / 60) * RAD;
@@ -419,13 +419,13 @@
     return d;
   };
   var wxProgThen = (log, t) => {
-    const cut = (log || []).filter((r2) => r2.t <= t);
-    const r = cut[cut.length - 1];
+    const cut2 = (log || []).filter((r2) => r2.t <= t);
+    const r = cut2[cut2.length - 1];
     if (!r) return log?.length ? "?" : null;
     if (r.c === WX_GAP) return null;
     const def = WEATHER[r.c] || {};
     if (def.storm) return "none";
-    const snow = wxSnows(r) || Math.round(snowDepth(cut, t) * 20) / 20 >= SNOW.show;
+    const snow = wxSnows(r) || Math.round(snowDepth(cut2, t) * 20) / 20 >= SNOW.show;
     return def.rain > 0 ? snow ? "none" : "rain" : snow ? "snow" : "dry";
   };
   var WX_SHOWER = /* @__PURE__ */ new Set(["rainy", "pouring", "lightning-rainy", "hail"]);
@@ -492,19 +492,19 @@
     Frankfurt: "Frankfurt"
   };
   var cityDe = (c) => CITY_DE[c] || c || "";
-  var flightNo = (f) => {
-    const n = String(f.flight_number || "").toUpperCase();
+  var flightNo = (f2) => {
+    const n = String(f2.flight_number || "").toUpperCase();
     const m = n.match(/^([A-Z0-9]{2})(\d{1,4}[A-Z]?)$/);
-    return m ? `${m[1]} ${m[2]}` : n || f.callsign || f.aircraft_registration || "✈";
+    return m ? `${m[1]} ${m[2]}` : n || f2.callsign || f2.aircraft_registration || "✈";
   };
-  var planeKind = (f) => {
-    const t = `${f.aircraft_category || ""} ${f.aircraft_model || ""}`;
+  var planeKind = (f2) => {
+    const t = `${f2.aircraft_category || ""} ${f2.aircraft_model || ""}`;
     if (/heli|rotor|Eurocopter|Airbus Helicopters|Robinson|Agusta|Sikorsky|\bBell [24]\d\d|\bEC ?1\d\d|\bH1[2-6]\d|BK.?117|AW1\d\d/i.test(t)) return "heli";
     if (/Cessna|Piper|Cirrus|Diamond|Robin|Beech|Mooney|Socata|Aquila|Extra|Ultralight|Glider|Grob|Tecnam|Zlin|Aeroprakt|Ikarus|Pilatus PC-6|light/i.test(t) && !/Citation|Jet|King Air|Pilatus PC-12|Phenom/i.test(t)) return "prop";
     return "jet";
   };
-  var flightAloft = (f, kind = planeKind(f)) => !f.on_ground && Number(f.altitude) > 80 && (Number(f.ground_speed) > 30 || kind === "heli");
-  var flightGhost = (g, f) => !!g && g.lat === Number(f.latitude) && g.lon === Number(f.longitude);
+  var flightAloft = (f2, kind = planeKind(f2)) => !f2.on_ground && Number(f2.altitude) > 80 && (Number(f2.ground_speed) > 30 || kind === "heli");
+  var flightGhost = (g, f2) => !!g && g.lat === Number(f2.latitude) && g.lon === Number(f2.longitude);
   var planeLag = (cur, nxt, max = 30) => {
     const v2 = nxt.ve * nxt.ve + nxt.vn * nxt.vn;
     if (!(v2 > 1e-9)) return 0;
@@ -556,7 +556,7 @@
   var GIFT_T = /* @__PURE__ */ new Set(["k", "b", "x"]);
   var PET_CLING = 10;
   var PET_CAP = 99;
-  var MEM_BITS = ["lz", "klee", "coffee", "heart", "pino", "plane", "bird", "note", "bfly", "gut", "tonne", "tonne2"];
+  var MEM_BITS = ["lz", "klee", "coffee", "heart", "pino", "plane", "bird", "note", "bfly", "gut", "tonne", "tonne2", "kirby", "rufus", "katzumi"];
   var MEM_GUT = 1 << 9;
   var MEM_TONNE = 1 << 10;
   var MEM_TONNE2 = 1 << 11;
@@ -565,15 +565,15 @@
   var giftU = (G) => (G.u & 255) + (G.f != null ? (G.f + 1) * 256 : 0);
   var planSer = (P) => {
     const h = P.hay;
-    const f = P.fl;
-    const fs = f ? `_${Math.round(f.t / 1e3).toString(36)}_${f.c}${f.x.toString(36).padStart(2, "0")}${f.k ? 1 : 0}` : "";
+    const f2 = P.fl;
+    const fs = f2 ? `_${Math.round(f2.t / 1e3).toString(36)}_${f2.c}${f2.x.toString(36).padStart(2, "0")}${f2.k ? 1 : 0}` : "";
     return [
       "p1",
       [h.n, Math.round(h.t / 1e3).toString(36), h.c || "-", h.m.toString(36) + fs].join("."),
-      (P.sport ? `${P.sport.d.toString(36)}.${P.sport.k.toString(36)}` : "-") + (P.fd || []).map((f2) => `_${Math.round(f2.t / 1e3).toString(36)}-${f2.x.toString(36).padStart(2, "0")}${(f2.k ? 1 : 0) + (f2.e ? 2 : 0)}`).join(""),
+      (P.sport ? `${P.sport.d.toString(36)}.${P.sport.k.toString(36)}` : "-") + (P.fd || []).map((f3) => `_${Math.round(f3.t / 1e3).toString(36)}-${f3.x.toString(36).padStart(2, "0")}${(f3.k ? 1 : 0) + (f3.e ? 2 : 0)}`).join(""),
       P.rec.map(([k, a, v]) => v ? `${k.toString(36)}:${a}:${v}` : `${k.toString(36)}:${a}`).join(",") || "-",
       (P.cute ? [P.cute.d, P.cute.n, P.cute.m].map((x) => x.toString(36)).join(".") : "-") + (P.fu ? `_${Math.round(P.fu / 1e3).toString(36)}` : ""),
-      ...P.gift ? [GIFT_F.map((f2) => P.gift[f2] == null ? "-" : (f2 === "u" ? giftU(P.gift) : Math.round(GIFT_T.has(f2) ? P.gift[f2] / 1e3 : P.gift[f2])).toString(36) + (f2 === "a" && P.gift.p != null ? `_${Math.round(P.gift.p / 1e3).toString(36)}` : "") + (f2 === "u" && P.gift.v != null ? `_${P.gift.v.toString(36)}` : "") + (f2 === "x" && P.gift.r != null ? `_${P.gift.r.toString(36)}` : "")).join(".")] : P.ur ? ["-"] : [],
+      ...P.gift ? [GIFT_F.map((f3) => P.gift[f3] == null ? "-" : (f3 === "u" ? giftU(P.gift) : Math.round(GIFT_T.has(f3) ? P.gift[f3] / 1e3 : P.gift[f3])).toString(36) + (f3 === "a" && P.gift.p != null ? `_${Math.round(P.gift.p / 1e3).toString(36)}` : "") + (f3 === "u" && P.gift.v != null ? `_${P.gift.v.toString(36)}` : "") + (f3 === "x" && P.gift.r != null ? `_${P.gift.r.toString(36)}` : "")).join(".")] : P.ur ? ["-"] : [],
       ...P.ur ? [`u${Math.round(P.ur.t / 1e3).toString(36)}${P.ur.d != null ? `.${Math.round(P.ur.d / 6e4).toString(36)}` : ""}`] : []
     ].join("|");
   };
@@ -600,7 +600,7 @@
     const gq = (p[5] || "").split(".");
     if (gq.length === GIFT_F.length) {
       const G = {};
-      GIFT_F.forEach((f, i) => G[f] = gq[i] === "-" ? null : parseInt(gq[i], 36) * (GIFT_T.has(f) ? 1e3 : 1));
+      GIFT_F.forEach((f2, i) => G[f2] = gq[i] === "-" ? null : parseInt(gq[i], 36) * (GIFT_T.has(f2) ? 1e3 : 1));
       const gp = parseInt(gq[1].split("_")[1] ?? "", 36) * 1e3;
       G.p = Number.isFinite(gp) ? gp : null;
       const gv = parseInt(gq[3].split("_")[1] ?? "", 36);
@@ -612,7 +612,7 @@
       }
       const gr = parseInt(gq[7].split("_")[1] ?? "", 36);
       G.r = Number.isFinite(gr) ? gr : null;
-      if (GIFT_F.every((f) => f === "b" || Number.isFinite(G[f]))) P.gift = G;
+      if (GIFT_F.every((f2) => f2 === "b" || Number.isFinite(G[f2]))) P.gift = G;
     }
     const [cq, fuq] = (p[4] || "-").split("_");
     const fu = parseInt(fuq ?? "", 36) * 1e3;
@@ -728,14 +728,14 @@
       const t = out.hay.t + Math.floor(Math.max(0, now - out.hay.t) / 864e5) * 864e5;
       out.hay = { n: n + 1, t, c: (c + op.c).slice(-(n + 1)), m: op.m ?? out.hay.m };
     } else if (op.t === "fdrop") {
-      const f = out.fl;
-      if (!f || f.t !== op.f.t && Math.abs(op.f.t - f.t) >= FLGIFT.gap) out.fl = { ...op.f };
+      const f2 = out.fl;
+      if (!f2 || f2.t !== op.f.t && Math.abs(op.f.t - f2.t) >= FLGIFT.gap) out.fl = { ...op.f };
     } else if (op.t === "frgone") {
       out.fu = Math.max(out.fu, op.u);
     } else if (op.t === "feed") {
-      if (!out.fd.some((f) => f.t === op.f.t)) out.fd = [...out.fd, { ...op.f }].sort((a, b) => a.t - b.t).slice(-FOOD_MAX);
+      if (!out.fd.some((f2) => f2.t === op.f.t)) out.fd = [...out.fd, { ...op.f }].sort((a, b) => a.t - b.t).slice(-FOOD_MAX);
     } else if (op.t === "fate") {
-      out.fd = out.fd.map((f) => f.t === op.ft ? { ...f, e: true } : f);
+      out.fd = out.fd.map((f2) => f2.t === op.ft ? { ...f2, e: true } : f2);
     } else if (op.t === "ftake") {
       if (out.fl?.t === op.ft) out.fl = { ...out.fl, k: true };
     } else if (op.t === "pet" || op.t === "mem") {
@@ -751,7 +751,7 @@
   var festDay = (y, m, d) => Math.round(Date.UTC(y, m - 1, d) / 864e5);
   var festEaster = (y) => {
     const a = y % 19, b = Math.floor(y / 100), c = y % 100, d = Math.floor(b / 4), e = b % 4;
-    const f = Math.floor((b + 8) / 25), g = Math.floor((b - f + 1) / 3);
+    const f2 = Math.floor((b + 8) / 25), g = Math.floor((b - f2 + 1) / 3);
     const h = (19 * a + b - d - g + 15) % 30, i = Math.floor(c / 4), k = c % 4;
     const l = (32 + 2 * e + 2 * i - h - k) % 7, m = Math.floor((a + 11 * h + 22 * l) / 451);
     const n = h + l - 7 * m + 114;
@@ -797,6 +797,18 @@
   var CRIT_BACK = 45e3;
   var critJoin = (kind, pk2) => Math.max(CRIT_LATE, kind === "bird" ? pk2.stay - 5e3 : kind === "frog" ? pk2.stay - 3e3 : kind === "snail" ? 3e4 : 0);
   var FRIEND_SCALE = 0.85;
+  var FRIENDS = {
+    pino: { scale: FRIEND_SCALE, w: 0.4 },
+    kirby: { name: "Kirby", scale: 0.92, w: 0.2 },
+    rufus: { name: "Rufus", scale: 0.7, w: 0.2 },
+    katzumi: { name: "Katzumi", scale: 0.5, w: 0.2 }
+  };
+  var FRIEND_KEYS = Object.keys(FRIENDS);
+  var friendKind = (u) => {
+    let a = 0;
+    for (const k of FRIEND_KEYS) if (u < (a += FRIENDS[k].w)) return k;
+    return "pino";
+  };
   var FRIEND_WIN = { win: 30 * 6e4, p: 1, spread: 20 * 6e4, stay: [3, 6] };
   var FRIEND_LAST = 25e3;
   var FRIEND_ACTS = /* @__PURE__ */ new Set(["greetFriend", "chaseFriend", "sitWithFriend", "rockWithFriend", "nibbleWithFriend", "squeakDuet"]);
@@ -1133,22 +1145,22 @@
   var bezAt = (x1, y1, x2, y2, x) => {
     if (!(x > 0)) return 0;
     if (x >= 1) return 1;
-    const f = (a, b, t) => 3 * a * t * (1 - t) ** 2 + 3 * b * t * t * (1 - t) + t ** 3;
+    const f2 = (a, b, t) => 3 * a * t * (1 - t) ** 2 + 3 * b * t * t * (1 - t) + t ** 3;
     let lo = 0;
     let hi = 1;
     for (let i = 0; i < 30; i++) {
       const t = (lo + hi) / 2;
-      if (f(x1, x2, t) < x) lo = t;
+      if (f2(x1, x2, t) < x) lo = t;
       else hi = t;
     }
-    return f(y1, y2, (lo + hi) / 2);
+    return f2(y1, y2, (lo + hi) / 2);
   };
-  var boatPos = (t, K) => {
-    const t1 = BOAT_T.launch + K * BOAT_T.puff;
+  var boatPos = (t, K2) => {
+    const t1 = BOAT_T.launch + K2 * BOAT_T.puff;
     if (t >= t1) return 1 - bezAt(0.42, 0, 0.58, 1, (t - t1) / (BOAT_T.back - BOAT_T.home));
     const k = Math.floor((t - BOAT_T.launch) / BOAT_T.puff);
     if (k < 0) return 0;
-    return (k + bezAt(...BOAT_EASE, (t - BOAT_T.launch - k * BOAT_T.puff - BOAT_T.blow) / BOAT_T.glide)) / K;
+    return (k + bezAt(...BOAT_EASE, (t - BOAT_T.launch - k * BOAT_T.puff - BOAT_T.blow) / BOAT_T.glide)) / K2;
   };
   var YOYO_MS = 1e3;
   var YOYO_DEAD = 3200;
@@ -1653,7 +1665,7 @@
     chronicle_entity: "Chronik (To-do-Liste)",
     show_stats: "Balken anzeigen",
     gifts: "Päckchen",
-    friend: "Pino kommt zu Besuch",
+    friend: "Pino und Freunde kommen zu Besuch",
     festive: "Festtage-Deko",
     sleep_start: "Schlafenszeit",
     sleep_end: "Aufwachzeit",
@@ -5223,9 +5235,9 @@
     { k: "plane", g: 2, t: "Flugzeug", h: "Tipp ein Flugzeug an. Ein Fähnchen zeigt, wohin es fliegt.", need: "flight" },
     { k: "device", g: 2, t: "Haushaltsgerät", h: "Tipp ein Gerät am Bau an. Ein Fähnchen zeigt, wie weit es ist.", need: "bote" }
   ];
-  var FIND_IDS = new Set(FINDS.map((f) => f.k));
+  var FIND_IDS = new Set(FINDS.map((f2) => f2.k));
   var findsParse = (s) => new Set(String(s || "").split(",").filter((k) => FIND_IDS.has(k)));
-  var findsSer = (set) => FINDS.filter((f) => set.has(f.k)).map((f) => f.k).join(",");
+  var findsSer = (set) => FINDS.filter((f2) => set.has(f2.k)).map((f2) => f2.k).join(",");
   var DIARY_TXT = {
     wake: ["Aufgewacht! Erst mal strecken und gähnen.", "Guten Morgen! Die Nase zuerst aus dem Bau gesteckt.", "Zipfelmütze ab, der Tag kann losgehen."],
     sleep: ["Zipfelmütze auf und ab in den Bau. Gute Nacht!", "Müde. Ich hab mich im Bau eingekuschelt.", "Augen zu. Schlaf gut, liebes Tagebuch."],
@@ -5365,7 +5377,7 @@
     const pets = {};
     const add = (t, k, x) => t >= from && ev.push({ t, k, ...x });
     const acts = /* @__PURE__ */ new Map();
-    const fed = new Set((P[0]?.v.fd || []).map((f) => f.t));
+    const fed = new Set((P[0]?.v.fd || []).map((f2) => f2.t));
     let pend = null;
     const petMax = (c) => c && (pets[c.d] = Math.max(pets[c.d] || 0, c.n));
     petMax(P[0]?.v.cute);
@@ -5410,10 +5422,10 @@
         if (e) e.taken = true;
         else add(t, "flower", { id: b.fl.t, taken: true });
       }
-      for (const f of b.fd) {
-        if (fed.has(f.t)) continue;
-        fed.add(f.t);
-        add(f.t, "feed");
+      for (const f2 of b.fd) {
+        if (fed.has(f2.t)) continue;
+        fed.add(f2.t);
+        add(f2.t, "feed");
       }
       const c = b.cute;
       if (c) {
@@ -5502,8 +5514,8 @@
     frisch: 1e4
   };
   var CHRONIK_NUM = ["futter", "streicheln", "putzen", "paeckchen"];
-  var CHRONIK_GAST = ["pino", "vogel", "falter"];
-  var CHRONIK_MEM = { pino: "pino", bird: "vogel", bfly: "falter" };
+  var CHRONIK_GAST = ["pino", "kirby", "rufus", "katzumi", "vogel", "falter"];
+  var CHRONIK_MEM = { pino: "pino", kirby: "kirby", rufus: "rufus", katzumi: "katzumi", bird: "vogel", bfly: "falter" };
   var chronikDatum = (tag) => Number.isInteger(tag) && tag > -7e5 && tag < 29e5 ? new Date(tag * 864e5).toISOString().slice(0, 10) : null;
   var chronikTag = (datum) => {
     const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(datum ?? ""));
@@ -5541,11 +5553,11 @@
     return i >= 0 && j >= 0 ? i - j : i >= 0 ? -1 : j >= 0 ? 1 : a < b ? -1 : a > b ? 1 : 0;
   });
   var chronikKod = (e) => {
-    const f = [];
-    for (const k of CHRONIK_NUM) if (e[k] != null) f.push(`${k}=${e[k]}`);
-    if (e.besuch) f.push(`besuch=${gastSort(e.besuch).join(",") || "-"}`);
-    for (const k of Object.keys(e.x || {}).sort()) f.push(`${k}=${e.x[k]}`);
-    return `${CHRONIK.kopf}${e.d}${f.length ? ` · ${f.join(" ")}` : ""}`;
+    const f2 = [];
+    for (const k of CHRONIK_NUM) if (e[k] != null) f2.push(`${k}=${e[k]}`);
+    if (e.besuch) f2.push(`besuch=${gastSort(e.besuch).join(",") || "-"}`);
+    for (const k of Object.keys(e.x || {}).sort()) f2.push(`${k}=${e.x[k]}`);
+    return `${CHRONIK.kopf}${e.d}${f2.length ? ` · ${f2.join(" ")}` : ""}`;
   };
   var chronikLies = (titel) => {
     if (typeof titel !== "string" || !titel.startsWith(CHRONIK.kopf)) return null;
@@ -5642,6 +5654,377 @@
     }
     return out;
   };
+
+  // src/grafik/freunde.js
+  var lcg = (s) => () => (s = (s * 1103515245 + 12345) % 2147483648) / 2147483648;
+  var f = (p) => `${p[0].toFixed(1)} ${p[1].toFixed(1)}`;
+  var fluff = (cx, cy, rx, ry, n, t, seed) => {
+    const r = lcg(seed);
+    const P = (a, k) => [cx + (rx + k) * Math.cos(a), cy + (ry + k) * Math.sin(a)];
+    const st = 2 * Math.PI / n;
+    let a0 = -Math.PI / 2;
+    let d = `M${f(P(a0, 0))}`;
+    for (let i = 0; i < n; i++) {
+      const a1 = a0 + st;
+      const k = t * (0.55 + 0.9 * r());
+      const tip = P(a0 + st * (0.55 + 0.3 * r()), k);
+      d += ` Q${f(P(a0 + st * 0.15, k * 0.85))} ${f(tip)} Q${f(P(a1 - st * 0.05, k * 0.3))} ${f(P(a1, 0))}`;
+      a0 = a1;
+    }
+    return `${d}Z`;
+  };
+  var pathPoints = (d, n) => {
+    const tk = d.match(/[MCZ]|-?(?:\d+\.?\d*|\.\d+)/g);
+    const segs = [];
+    let cur = [0, 0];
+    let start = cur;
+    for (let i = 0; i < tk.length; ) {
+      const c = tk[i++];
+      if (c === "M") start = cur = [+tk[i++], +tk[i++]];
+      else if (c === "C") {
+        while (i < tk.length && !/[MCZ]/.test(tk[i])) {
+          const q = tk.slice(i, i + 6).map(Number);
+          i += 6;
+          segs.push([cur, [q[0], q[1]], [q[2], q[3]], [q[4], q[5]]]);
+          cur = [q[4], q[5]];
+        }
+      } else if (c === "Z") {
+        if (cur[0] !== start[0] || cur[1] !== start[1]) segs.push([cur, cur, start, start]);
+        cur = start;
+      }
+    }
+    const poly = [];
+    for (const [a, b, c, e] of segs) {
+      for (let k = 0; k < 48; k++) {
+        const t = k / 48;
+        const u = 1 - t;
+        const w = [u * u * u, 3 * u * u * t, 3 * u * t * t, t * t * t];
+        poly.push([0, 1].map((j2) => w[0] * a[j2] + w[1] * b[j2] + w[2] * c[j2] + w[3] * e[j2]));
+      }
+    }
+    poly.push(poly[0]);
+    const len = [0];
+    for (let i = 1; i < poly.length; i++) len.push(len[i - 1] + Math.hypot(poly[i][0] - poly[i - 1][0], poly[i][1] - poly[i - 1][1]));
+    const L = len.at(-1);
+    const out = [];
+    let j = 1;
+    for (let i = 0; i < n; i++) {
+      const s = L * i / n;
+      while (len[j] < s) j++;
+      const u = (s - len[j - 1]) / (len[j] - len[j - 1] || 1);
+      out.push([poly[j - 1][0] + (poly[j][0] - poly[j - 1][0]) * u, poly[j - 1][1] + (poly[j][1] - poly[j - 1][1]) * u]);
+    }
+    return out;
+  };
+  var fluffPath = (d, n, t, seed) => {
+    const r = lcg(seed);
+    const pts = pathPoints(d, n);
+    const area = pts.reduce((a, p, i) => {
+      const q = pts[(i + 1) % n];
+      return a + p[0] * q[1] - q[0] * p[1];
+    }, 0);
+    const sg = area > 0 ? 1 : -1;
+    let out = `M${f(pts[0])}`;
+    for (let i = 0; i < n; i++) {
+      const p0 = pts[i];
+      const p1 = pts[(i + 1) % n];
+      const len = Math.hypot(p1[0] - p0[0], p1[1] - p0[1]) || 1;
+      const nx = sg * (p1[1] - p0[1]) / len;
+      const ny = -sg * (p1[0] - p0[0]) / len;
+      const k = t * (0.55 + 0.9 * r());
+      const at = (u, kk) => [p0[0] + (p1[0] - p0[0]) * u + nx * kk, p0[1] + (p1[1] - p0[1]) * u + ny * kk];
+      out += ` Q${f(at(0.15, k * 0.85))} ${f(at(0.55 + 0.3 * r(), k))} Q${f(at(0.95, k * 0.3))} ${f(p1)}`;
+    }
+    return `${out}Z`;
+  };
+  var furMarks = (cx, cy, rx, ry, n, seed, edge, skip, mark, [dark, light], [od, ol], sw) => {
+    const r = lcg(seed);
+    let out = "";
+    for (let i = 0; i < n; ) {
+      const u = r() * 2 - 1;
+      const v = r() * 2 - 1;
+      if (u * u + v * v > edge) continue;
+      const x = cx + u * rx;
+      const y = cy + v * ry;
+      if (skip(x, y)) continue;
+      i++;
+      const dk = i % 3 !== 0;
+      out += `<path d="${mark(x, y, u, v, r)}" stroke="${dk ? dark : light}" stroke-opacity="${dk ? od : ol}"/>`;
+    }
+    return `<g fill="none" stroke-width="${sw}" stroke-linecap="round">${out}</g>`;
+  };
+  var hook = (x, y, u, v, r) => {
+    let dx = u;
+    let dy = v + 0.9;
+    const l = Math.hypot(dx, dy) || 1;
+    dx /= l;
+    dy /= l;
+    const L = 1.8 + 1.6 * r();
+    const b = (r() - 0.5) * 2.6;
+    return `M${x.toFixed(1)} ${y.toFixed(1)} q${(dx * L / 2 - dy * b).toFixed(1)} ${(dy * L / 2 + dx * b).toFixed(1)} ${(dx * L).toFixed(1)} ${(dy * L).toFixed(1)}`;
+  };
+  var wave = (x, y, u, v, r) => {
+    const a = r() * Math.PI * 2;
+    const s = 0.9 + 0.5 * r();
+    const c = Math.cos(a) * s;
+    const sn = Math.sin(a) * s;
+    return `M${x.toFixed(1)} ${y.toFixed(1)} q${(c - sn).toFixed(1)} ${(sn + c).toFixed(1)} ${(2 * c).toFixed(1)} ${(2 * sn).toFixed(1)} t${(2 * c).toFixed(1)} ${(2 * sn).toFixed(1)}`;
+  };
+  var FRONT = PIKA_SVG.split('<g class="bk">')[0];
+  var derive = (n, c) => [
+    ['id="fur"', `id="fur${n}"`],
+    ["url(#fur)", `url(#fur${n})`],
+    ['id="bodyclip"', `id="bodyclip${n}"`],
+    ["url(#bodyclip)", `url(#bodyclip${n})`],
+    ["#d0ad8d", c.fu1],
+    ["#b08a68", c.fu2],
+    ["#8a664b", c.fu3],
+    ["#ecdcc6", c.paw]
+  ].reduce((svg, [a, b]) => svg.split(a).join(b), FRONT);
+  var body = (svg, n, d, sw = "2.6") => svg.replace(/<clipPath id="bodyclip\d"><path d="[^"]+"\/>/, `<clipPath id="bodyclip${n}"><path d="${d}"/>`).replace(/(<g class="body">\s*<path d=")[^"]+"([^>]*)stroke-width="2.6"/, `$1${d}"$2stroke-width="${sw}"`);
+  var BELLY = /<ellipse cx="82" cy="82"[^>]*\/>/;
+  var EARS = /<g class="ear ear-(\w)">[\s\S]*?<\/g>/g;
+  var FEET = /<g class="feet"[\s\S]*?<\/g>/;
+  var BROWS = /<path class="brow brow-l"[^>]*\/>\s*<path class="brow brow-r"[^>]*\/>/;
+  var WHISKERS = /<path class="wsk"[\s\S]*?\/>/;
+  var SNOUT = /<ellipse cx="91" cy="55" rx="7.5" ry="5.2"[^>]*\/>/;
+  var NOSE = /<path class="nose" d="[^"]+" fill="[^"]+"\/>/;
+  var END = "\n  </svg>";
+  var K = {
+    fu1: "#e2b673",
+    fu2: "#c48c48",
+    fu3: "#93602b",
+    paw: "#c99350",
+    snout: "#e4cda7",
+    snoutRim: "#b8925e",
+    nose: "#3b2218",
+    foot: "#8e5726",
+    ear: "#e4bf85",
+    earIn: "#f2dcb4"
+  };
+  var K_BODY = fluff(77, 56, 39, 35.5, 42, 2.5, 7);
+  var K_ARM = (cx, cy, seed) => `<path class="karm" d="${fluff(cx, cy, 5, 6.2, 10, 1.5, seed)}"
+        fill="url(#fur3)" stroke="${OUT}" stroke-width="1.5" stroke-linejoin="round"/>`;
+  var K_EAR = (cx, cy, side, seed) => `
+    <g class="ear ear-${side}">
+      <path d="${fluff(cx, cy, 7.4, 10, 14, 1.6, seed)}" fill="${K.ear}" stroke="${OUT}" stroke-width="1.8" stroke-linejoin="round"/>
+      <ellipse cx="${cx + 0.4}" cy="${cy - 0.6}" rx="3.8" ry="5.6" fill="${K.earIn}" opacity=".85"/>
+      <path d="M${cx - 3.6} ${cy - 4} q1 2 .4 4 M${cx + 3.8} ${cy - 3.4} q-.6 2 0 3.8 M${cx - 1} ${cy - 7.4} q.8 1.6 .2 3"
+        stroke="#b88a4c" stroke-width=".8" stroke-opacity=".45" fill="none" stroke-linecap="round"/>
+    </g>`;
+  var KIRBY_SVG = body(derive(3, K), 3, K_BODY).replace(BELLY, furMarks(
+    77,
+    56,
+    38,
+    34,
+    130,
+    3,
+    0.92,
+    (x, y) => ((x - 91) / 17) ** 2 + ((y - 50) / 11) ** 2 < 1,
+    hook,
+    ["#8a5a26", "#f6d49c"],
+    [0.3, 0.42],
+    ".85"
+  ) + `<path d="M79 28 q2.6 4.4 .8 8 M85.6 27.4 q1.8 4.2 0 7.4 M92 28.4 q1.2 4 -.6 7 M98 30.6 q.6 3.6 -1.2 6" stroke="${K.fu3}" stroke-width="1.1"
+        stroke-opacity=".5" fill="none" stroke-linecap="round"/>`).replace(EARS, (m, s) => s === "l" ? K_EAR(72.5, 21, s, 41) : s === "r" ? K_EAR(101.5, 27.5, s, 43) : `<g class="ear ear-${s}"></g>`).replace(FEET, `<g class="feet" fill="${K.foot}" stroke="${OUT}" stroke-width="1.6">
+        <ellipse class="bfoot" cx="60" cy="91" rx="0" ry="0"/>
+        <ellipse class="ffoot" cx="81.5" cy="89.6" rx="10" ry="5.4"/>
+        <ellipse class="ffoot" cx="103.5" cy="88.8" rx="10.2" ry="5.6"/>
+      </g>
+      ${K_ARM(39.5, 63, 21)}${K_ARM(114, 69, 23)}`).replace(SNOUT, `<ellipse cx="91.3" cy="54.8" rx="8.4" ry="6.1" fill="${K.snout}" stroke="${K.snoutRim}" stroke-width=".7"/>`).replace(NOSE, `<path class="nose" d="M87.6 50.9 q3.4 -1.7 6.8 0 q-.6 3 -3.4 3.6 q-2.8 -.6 -3.4 -3.6z" fill="${K.nose}"/>
+          <ellipse cx="90" cy="51.4" rx="1.2" ry=".6" fill="#fff" opacity=".35"/>`).replace(WHISKERS, "") + END;
+  var R = {
+    fu1: "#fffaf0",
+    fu2: "#f1e5cd",
+    fu3: "#d5c09c",
+    paw: "#f4ead8",
+    muzzle: "#fbf4e7",
+    muzzleRim: "#cfb994",
+    nose: "#b38f74",
+    earIn: "#2b1c15",
+    brow: "#c4a27a"
+  };
+  var R_BODY = fluffPath(PIKA_SVG.match(/<clipPath id="bodyclip"><path d="([^"]+)"/)[1], 84, 1.9, 51);
+  var R_EAR = (cx, cy, rot, side) => `
+    <g class="ear ear-${side}"><g transform="rotate(${rot} ${cx} ${cy})">
+      <path d="${fluff(cx, cy, 6, 8.8, 14, 1.8, 61)}" fill="url(#fur4)" stroke="${OUT}" stroke-width="1.7" stroke-linejoin="round"/>
+      <ellipse cx="${cx}" cy="${cy + 2.4}" rx="3.4" ry="4.6" fill="${R.earIn}"/>
+    </g></g>`;
+  var R_FOOT = (cls, cx, cy, rx, ry, seed) => `<path class="${cls}" d="${fluff(cx, cy, rx, ry, 12, 1.3, seed)}"/>`;
+  var R_BROW = (side, d) => `<path class="brow brow-${side}" d="${d}" stroke="${R.brow}" stroke-width="1.2" fill="none"
+          stroke-linecap="round" stroke-linejoin="round"/>`;
+  var RUFUS_SVG = body(derive(4, R), 4, R_BODY, "2.1").replace(BELLY, furMarks(
+    60,
+    62,
+    52,
+    33,
+    150,
+    9,
+    0.95,
+    (x, y) => ((x - 91) / 14) ** 2 + ((y - 51) / 11) ** 2 < 1,
+    wave,
+    ["#c9ad84", "#ffffff"],
+    [0.45, 0.7],
+    ".8"
+  )).replace(EARS, (m, s) => s === "f" ? R_EAR(70.5, 28.5, -24, "l") + R_EAR(111.5, 29.5, 24, "r") : "<g></g>").replace(FEET, `<g class="feet" fill="${R.paw}" stroke="${OUT}" stroke-width="1.5">
+        ${R_FOOT("bfoot", 31, 90, 9.6, 3.8, 71)}${R_FOOT("ffoot", 83, 90.6, 7.6, 3.6, 73)}${R_FOOT("ffoot", 99, 90.2, 7.6, 3.6, 75)}
+      </g>`).replace(BROWS, R_BROW("l", "M78.4 41 q.6 -2.6 2.4 -1 q1 -2.6 2.6 -.6 q1.2 -1.8 2 .8") + R_BROW("r", "M95.6 41 q.8 -2.4 2 -.8 q1.6 -2 2.6 .6 q1.8 -1.6 2.4 1")).replace(WHISKERS, "").replace(/(<g class="mouth-g">)([\s\S]*?)(<\/g>\s*<path class="cfoam")/, '$1<g transform="translate(0 2)">$2</g>$3').replace(SNOUT, `<ellipse cx="91" cy="55.2" rx="11" ry="7.6" fill="${R.muzzle}" stroke="${R.muzzleRim}" stroke-width=".9"/>
+          <path d="M83 58.6 q8 4 16 0" stroke="#efe2c8" stroke-width="1.4" fill="none" stroke-linecap="round"/>`).replace(NOSE, `<path class="nose" d="M86.2 50 q4.8 -2.6 9.6 0 q-.4 3.8 -4.8 4.3 q-4.4 -.5 -4.8 -4.3z" fill="${R.nose}" stroke="#8f6e57" stroke-width=".6"/>
+          <ellipse cx="89.4" cy="50" rx="1.6" ry=".7" fill="#fff" opacity=".35"/>`) + END;
+  var C = {
+    fu1: "#ffdcab",
+    fu2: "#f6c08a",
+    fu3: "#d9975c",
+    paw: "#fbd2a0",
+    earIn: "#f2a6b4",
+    stripe: "#a9592b",
+    rim: "#c9d46c",
+    nose: "#e9919c",
+    whisk: "#3a2a22"
+  };
+  var C_BODY = fluffPath("M42 84 C35 70 38 46 54 36 C66 28 92 27 104 36 C119 46 121 70 114 84 C110 92 98 93 78 93 C58 93 46 92 42 84Z", 110, 0.8, 101);
+  var C_EAR = (cx, by, tilt, side) => `
+    <g class="ear ear-${side}"><g transform="translate(${cx} ${by}) rotate(${tilt})">
+      <path d="M-8.5 2 L-2 -12.4 Q0 -15.6 2 -12.4 L8.5 2Z" fill="url(#fur5)" stroke="${OUT}" stroke-width="1.8" stroke-linejoin="round"/>
+      <path d="M-4.8 1 L-1.1 -8.6 Q0 -10.4 1.1 -8.6 L4.8 1Z" fill="${C.earIn}"/>
+    </g></g>`;
+  var C_MARK = `<g fill="${C.stripe}">
+          <path d="M86.4 28.6 Q89.2 27.6 92 28.6 L90.1 42.4 Q89.2 44 88.3 42.4Z"/>
+          <path d="M77.6 33.6 Q81.6 31.4 86 32.4 L85.8 34.6 Q81.4 34.2 78 35.6Z M79.4 38.2 Q82.6 36.6 86.2 37.2 L86 39.2 Q82.6 39.2 79.8 40.2Z"/>
+          <path d="M92.4 32.4 Q96.8 31.4 100.6 33.8 L100.2 35.8 Q96.8 34.2 92.6 34.6Z M92.2 37.2 Q95.8 36.6 98.8 38.4 L98.4 40.4 Q95.6 39.2 92.4 39.2Z"/>
+        </g>`;
+  var cShift = (x) => x < 90 ? -0.8 : 1.2;
+  var KATZUMI_SVG = body(derive(5, C), 5, C_BODY, "2.3").replace(BELLY, `<ellipse cx="66" cy="46" rx="20" ry="12" fill="#fff" opacity=".22"/>${C_MARK}`).replace(EARS, (m, s) => s === "l" ? C_EAR(66, 37, -16, s) : s === "r" ? C_EAR(103, 36, 16, s) : `<g class="ear ear-${s}"></g>`).replace(FEET, `<g class="feet" fill="${C.paw}" stroke="${OUT}" stroke-width="1.3">
+        <ellipse class="bfoot" cx="50" cy="91" rx="0" ry="0"/>
+        <ellipse class="ffoot" cx="83" cy="92" rx="4.6" ry="2.2"/>
+        <ellipse class="ffoot" cx="99" cy="91.6" rx="4.6" ry="2.2"/>
+      </g>`).replace(/(<g class="eye eye-(l|r)">)([\s\S]*?)(<\/g>)/g, (m, a, s, inner, z) => `${a}<g transform="translate(${s === "l" ? cShift(0) : cShift(99)} 0)">${inner.replace('fill="#2a1a12"', `fill="#2a1a12" stroke="${C.rim}" stroke-width="1.3"`)}</g>${z}`).replace(/d="M([\d.]+) (46\.6|47\.6) q/g, (m, x, y) => `d="M${(+x + cShift(+x)).toFixed(1)} ${y} q`).replace(BROWS, "").replace(WHISKERS, `<path class="wsk" d="M70.4 48.6 l3.8 1.1 M70 51.2 l4 .3 M70.4 53.8 l3.8 -.6 M106.6 49.7 l3.8 -1.1 M106.4 51.5 l4 -.3 M106.6 53.2 l3.8 .6"
+              stroke="${C.whisk}" stroke-width="1" stroke-linecap="round"/>`).replace(SNOUT, "").replace(NOSE, `<path class="nose" d="M89.3 52.2 q1.7 -.9 3.4 0 q-.4 1.4 -1.7 1.8 q-1.3 -.4 -1.7 -1.8z" fill="${C.nose}" stroke="#b9646e" stroke-width=".5"/>`) + END;
+  var cut = (svg, vb) => svg.replace('viewBox="0 0 120 100"', `viewBox="${vb}"`);
+  var FRIEND_ICON = { kirby: cut(KIRBY_SVG, "33 12 86 86"), rufus: cut(RUFUS_SVG, "60 14 62 62"), katzumi: cut(KATZUMI_SVG, "34 14 90 90") };
+
+  // src/grafik/besucher.js
+  var FRIEND_SVG = [
+    ['id="fur"', 'id="fur2"'],
+    ["url(#fur)", "url(#fur2)"],
+    ['id="bodyclip"', 'id="bodyclip2"'],
+    ["url(#bodyclip)", "url(#bodyclip2)"],
+    ["#d0ad8d", "#f2b36e"],
+    ["#b08a68", "#dc8640"],
+    ["#8a664b", "#a9592a"],
+    // Fellverlauf
+    ["#f0e2cf", "#fbe7cb"],
+    // Bauch
+    ["#efe3d3", "#f8e4cc"],
+    ["#e3a990", "#f0a184"],
+    // Ohrenrand, Ohr innen
+    ["#d6b796", "#efb47c"]
+    // Rückansicht
+  ].reduce((svg, [a, b]) => svg.split(a).join(b), PIKA_SVG).replace(
+    '<g clip-path="url(#bodyclip2)">',
+    '$&<ellipse class="blaze" cx="89.5" cy="32.5" rx="4.8" ry="3.2" fill="#fbf0e2" opacity=".92"/>'
+  ).replace('<g class="mfood">', `<g class="bandana">
+        <path d="M70.5 62 Q87.5 70.5 105 61.6" stroke="${OUT}" stroke-width="5.4" fill="none" stroke-linecap="round"/>
+        <path d="M70.5 62 Q87.5 70.5 105 61.6" stroke="#22b5a6" stroke-width="3.8" fill="none" stroke-linecap="round"/>
+        <path d="M79.5 65.2 L95.5 65.6 L86.6 76.4Z" fill="#22b5a6" stroke="${OUT}" stroke-width="1.2" stroke-linejoin="round"/>
+        <g fill="#f4fbf8"><circle cx="84.4" cy="67.6" r="1"/><circle cx="90.4" cy="67.8" r="1"/><circle cx="87" cy="71.6" r=".9"/>
+          <circle cx="75" cy="64.6" r=".8"/><circle cx="100" cy="64.2" r=".8"/></g>
+      </g>
+      $&`);
+  var BIRDS = [
+    { name: "Rotkehlchen", body: "#a08b70", head: "#a08b70", wing: "#85705a", breast: "#f2843a", face: "#f2843a", beak: "#3a2f28" },
+    { name: "Blaumeise", body: "#f2d14f", head: "#fbfbf7", wing: "#5b97d8", breast: "#f6dc6a", cap: "#4f8fd6", stripe: "#2c3a5a", beak: "#3a2f28" },
+    { name: "Spatz", body: "#b38d66", head: "#a8805a", wing: "#86603f", breast: "#ebe0cf", cap: "#8e9196", bib: "#3a302a", beak: "#4a3a2c" }
+  ];
+  var BOUT = "#4a3a2c";
+  var BIRD_SVG = (v) => `
+  <svg viewBox="0 0 30 26" aria-hidden="true">
+    <path d="M7.5 15.5 L.6 11.6 Q-.2 15.4 1.6 18.6Z" fill="${v.wing}" stroke="${BOUT}" stroke-width=".8" stroke-linejoin="round"/>
+    <g class="legs" stroke="#c98a4b" stroke-width="1" stroke-linecap="round" fill="none">
+      <path d="M12.5 22.5 V25.4 M11 25.6 H14 M16.5 22.5 V25.4 M15 25.6 H18"/>
+    </g>
+    <ellipse cx="14" cy="16.2" rx="10" ry="7.9" fill="${v.body}" stroke="${BOUT}" stroke-width="1"/>
+    <ellipse cx="17.6" cy="18" rx="6" ry="4.8" fill="${v.breast}"/>
+    <path class="wf" d="M6.6 13.8 Q13 10 18.6 14.6 Q14 20.4 7.4 17.2Z" fill="${v.wing}" stroke="${BOUT}" stroke-width=".7" stroke-linejoin="round"/>
+    <path class="wu" d="M9 14 Q4.6 1.6 16.4 3.2 Q17.4 9 15.4 14Z" fill="${v.wing}" stroke="${BOUT}" stroke-width=".7" stroke-linejoin="round"/>
+    <g class="bh">
+      <circle cx="20.5" cy="9.6" r="6.3" fill="${v.head}" stroke="${BOUT}" stroke-width="1"/>
+      ${v.face ? `<ellipse cx="22.2" cy="12.4" rx="4.3" ry="3.3" fill="${v.face}"/>` : ""}
+      ${v.cap ? `<path d="M14.5 7.7 A6.3 6.3 0 0 1 26.5 7.7Z" fill="${v.cap}"/>` : ""}
+      ${v.stripe ? `<path d="M15.2 10.6 Q20 9.6 26.6 9.4" stroke="${v.stripe}" stroke-width="1.1" fill="none" stroke-linecap="round"/>` : ""}
+      ${v.bib ? `<ellipse cx="23.6" cy="14" rx="1.9" ry="1.4" fill="${v.bib}"/>` : ""}
+      <circle cx="23" cy="8.7" r="1.35" fill="#1f1a17"/><circle cx="23.4" cy="8.2" r=".45" fill="#fff"/>
+      <circle cx="22.4" cy="11.8" r="1.3" fill="#f28fb1" opacity=".45"/>
+      <path d="M26.3 9.2 L29.6 10.5 L26.3 11.8Z" fill="${v.beak}" stroke="${v.beak}" stroke-width=".4" stroke-linejoin="round"/>
+    </g>
+  </svg>`;
+  var MOUSE_SVG = `
+  <svg viewBox="0 0 32 18" aria-hidden="true">
+    <path class="mtail" d="M5.5 14.5 Q-1 16 -3.5 11.5 Q-5.5 7 -1.5 5.5" stroke="#c99a98" stroke-width="1.1" fill="none" stroke-linecap="round"/>
+    <circle cx="16.8" cy="5" r="3" fill="#a8998c" stroke="#5f544b" stroke-width=".8"/>
+    <circle cx="16.8" cy="5" r="1.8" fill="#f2b8bd"/>
+    <ellipse cx="12.6" cy="12" rx="8.8" ry="5.8" fill="#a8998c" stroke="#5f544b" stroke-width=".9"/>
+    <ellipse cx="14" cy="14.6" rx="5.6" ry="2.8" fill="#e9ded2"/>
+    <g class="mhead">
+      <path d="M16 7.8 Q22 4.6 28.4 10.4 Q27.4 12.8 23 12.8 Q17.6 12.8 16 10Z" fill="#a8998c" stroke="#5f544b" stroke-width=".9" stroke-linejoin="round"/>
+      <g class="mear"><circle cx="20.4" cy="4.4" r="3.4" fill="#a8998c" stroke="#5f544b" stroke-width=".8"/>
+      <circle cx="20.4" cy="4.4" r="2.1" fill="#f2b8bd"/></g>
+      <circle cx="23.4" cy="8.6" r="1.05" fill="#1f1a17"/><circle cx="23.7" cy="8.25" r=".35" fill="#fff"/>
+      <circle class="mnose" cx="28.3" cy="10.3" r="1" fill="#e98a96"/>
+      <path class="whisk" d="M27 11 L31.2 9.6 M27 11.3 L31.4 11.6 M26.8 11.6 L30.6 13.2" stroke="#5f544b" stroke-width=".35" fill="none"/>
+    </g>
+    <g fill="#f2b8bd"><ellipse cx="8.6" cy="17.4" rx="2" ry=".9"/><ellipse cx="18" cy="17.4" rx="2" ry=".9"/></g>
+  </svg>`;
+  var FOUT = "#35581f";
+  var FROG_SVG = `
+  <svg viewBox="0 0 30 22" aria-hidden="true">
+    <g class="fxl" fill="none" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M9 16.4 L2.4 19.6 L-3.6 23.4" stroke="${FOUT}" stroke-width="4"/>
+      <path d="M9 16.4 L2.4 19.6 L-3.6 23.4" stroke="#62a441" stroke-width="2.4"/>
+      <path d="M-3.6 23.4 L-7 23 M-3.6 23.4 L-6.4 25.4" stroke="${FOUT}" stroke-width="1.5"/>
+    </g>
+    <path d="M5 19.5 Q3.4 14 9 11 Q15 7.2 21.5 7.6 Q27.8 8.2 28.2 12.4 Q28.3 15 24.8 16.6 Q22 20.5 14 20.7 Q6 20.9 5 19.5Z"
+      fill="#74b64d" stroke="${FOUT}" stroke-width="1" stroke-linejoin="round"/>
+    <path d="M11.6 20.2 Q19.6 20.6 24.4 16.4 Q26.8 15.4 27.7 13.5 Q24 15.5 19 16.6 Q13.8 17.7 11.6 20.2Z" fill="#e6efb2"/>
+    <ellipse class="fsac" cx="25" cy="16.9" rx="4.2" ry="3.5" fill="#f4f6cf" stroke="${FOUT}" stroke-width=".7"/>
+    <g fill="#5a9a3b"><circle cx="11" cy="13.2" r="1.05"/><circle cx="14.8" cy="10.7" r=".8"/><circle cx="8.3" cy="15.8" r=".7"/></g>
+    <circle cx="21.2" cy="7.3" r="3.1" fill="#74b64d" stroke="${FOUT}" stroke-width=".9"/>
+    <circle cx="21.7" cy="7.1" r="2" fill="#fdf6c9"/>
+    <ellipse cx="22.2" cy="7.2" rx="1" ry="1.35" fill="#1f1a17"/><circle cx="22.6" cy="6.6" r=".4" fill="#fff"/>
+    <circle class="flid" cx="21.7" cy="7.1" r="2.15" fill="#74b64d"/>
+    <path class="ftng" d="M27.4 13.2 Q32 12.6 36.4 8.4" stroke="#f07a95" stroke-width="1.5" fill="none" stroke-linecap="round"/>
+    <path d="M27.8 13.1 Q23.6 14.9 19.6 13.3" stroke="${FOUT}" stroke-width=".7" fill="none" stroke-linecap="round"/>
+    <circle cx="27" cy="10.7" r=".4" fill="${FOUT}"/>
+    <circle cx="19.8" cy="12.3" r="1.3" fill="#f28fb1" opacity=".5"/>
+    <g fill="none" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M20.4 16.6 Q19.7 19.4 21 21.1 H24" stroke="${FOUT}" stroke-width="2.7"/>
+      <path d="M20.4 16.6 Q19.7 19.4 21 21.1 H24" stroke="#74b64d" stroke-width="1.3"/>
+    </g>
+    <g class="fhl">
+      <path d="M4.6 19.6 Q3 13.6 9.4 13 Q14.4 12.8 14 17.6 Q13.6 20.4 10 20.6Z" fill="#62a441" stroke="${FOUT}" stroke-width=".9" stroke-linejoin="round"/>
+      <path d="M6 20.2 Q11 19.5 16.8 20.7 Q17.8 21.2 17 21.8 H6.4 Q5.2 21.3 6 20.2Z" fill="#74b64d" stroke="${FOUT}" stroke-width=".8" stroke-linejoin="round"/>
+    </g>
+  </svg>`;
+  var SNAILS = [["#d99a5b", "#8a5a2c"], ["#f0d27a", "#a8792c"], ["#e9a7a0", "#a85f5a"]];
+  var SNAIL_SVG = ([shell, line]) => `
+  <svg viewBox="0 0 30 20" aria-hidden="true">
+    <g class="sbody">
+      <g class="sfeel" stroke="#7a5a3a" stroke-width=".9" stroke-linecap="round">
+        <path d="M25 10.4 L23.8 5.2 M27.3 10.4 L28.6 5.8"/>
+        <circle cx="23.7" cy="4.5" r="1.1" fill="#1f1a17" stroke="none"/><circle cx="28.8" cy="5.1" r="1.1" fill="#1f1a17" stroke="none"/>
+        <circle cx="24" cy="4.2" r=".35" fill="#fff" stroke="none"/><circle cx="29.1" cy="4.8" r=".35" fill="#fff" stroke="none"/>
+      </g>
+      <path d="M1.6 19.3 Q4 17.3 10 17.4 L19 17.4 Q22.2 17.2 22.8 13.6 Q23.4 9.8 26.1 9.8 Q28.9 10 28.6 13.8 Q28.2 19.5 22 19.7 H3 Q1 19.8 1.6 19.3Z"
+        fill="#ecd6ac" stroke="#7a5a3a" stroke-width=".9" stroke-linejoin="round"/>
+      <path d="M26.3 14.7 q1 .8 1.8 -.1" stroke="#7a5a3a" stroke-width=".6" fill="none" stroke-linecap="round"/>
+      <circle cx="25" cy="15.6" r="1" fill="#f28fb1" opacity=".5"/>
+    </g>
+    <g class="sshell">
+      <circle cx="12.6" cy="10" r="8" fill="${shell}" stroke="#6b4a2f" stroke-width="1"/>
+      <path d="M18.2 10 A5.6 5.6 0 0 0 7 10 A4.3 4.3 0 0 0 15.6 10 A3 3 0 0 0 9.6 10 A1.9 1.9 0 0 0 13.4 10" stroke="${line}" stroke-width="1.1" fill="none" stroke-linecap="round"/>
+      <path d="M6.9 6.4 Q9 3.6 12.4 3.2" stroke="#fff" stroke-width=".9" fill="none" stroke-linecap="round" opacity=".55"/>
+    </g>
+  </svg>`;
 
   // src/karte/editor.js
   var Editor = class {
@@ -5799,25 +6182,25 @@
 
   // src/grafik/beschaeftigungen.js
   var TV_COLORS = ["#9fd0ff", "#e8f4ff", "#a8f0c6", "#ffd59e", "#c8b6ff", "#ff9fb2", "#9fe7ff"];
-  var KITE_SVG = (kx, ky, K) => {
-    const f = (n) => n.toFixed(1);
+  var KITE_SVG = (kx, ky, K2) => {
+    const f2 = (n) => n.toFixed(1);
     const bows = [1.25, 1.85, 2.45].map((t, i) => {
-      const a = f(-K * 0.12), b = f(K * 0.12), y1 = f(K * (t - 0.06)), y2 = f(K * (t + 0.06));
+      const a = f2(-K2 * 0.12), b = f2(K2 * 0.12), y1 = f2(K2 * (t - 0.06)), y2 = f2(K2 * (t + 0.06));
       return `<path d="M${a} ${y1} L${b} ${y2} L${b} ${y1} L${a} ${y2}Z" fill="${["#e8584e", "#5fb9de", "#f6c945"][i]}"/>`;
     }).join("");
     return `<svg width="1" height="1" aria-hidden="true"><g class="kl"><g class="kr">
-      <path d="M0 0 Q${f(kx * 0.6)} ${f(ky * 0.3)} ${f(kx)} ${f(ky)}" stroke="rgba(255, 255, 255, .85)" stroke-width="1" fill="none"/>
-      <g transform="translate(${f(kx)} ${f(ky)})"><g class="kb">
+      <path d="M0 0 Q${f2(kx * 0.6)} ${f2(ky * 0.3)} ${f2(kx)} ${f2(ky)}" stroke="rgba(255, 255, 255, .85)" stroke-width="1" fill="none"/>
+      <g transform="translate(${f2(kx)} ${f2(ky)})"><g class="kb">
         <g class="kt">
-          <path d="M0 ${f(K * 0.8)} q${f(K * 0.18)} ${f(K * 0.3)} 0 ${f(K * 0.6)} t0 ${f(K * 0.6)} t0 ${f(K * 0.6)}" stroke="#5a4030" stroke-width="1" fill="none"/>
+          <path d="M0 ${f2(K2 * 0.8)} q${f2(K2 * 0.18)} ${f2(K2 * 0.3)} 0 ${f2(K2 * 0.6)} t0 ${f2(K2 * 0.6)} t0 ${f2(K2 * 0.6)}" stroke="#5a4030" stroke-width="1" fill="none"/>
           ${bows}
         </g>
-        <path d="M0 ${f(-K * 0.6)} L${f(K * 0.42)} 0 L0 ${f(K * 0.8)} L${f(-K * 0.42)} 0Z" fill="#f6c945" stroke="#5a4030" stroke-width="1.2" stroke-linejoin="round"/>
-        <path d="M0 ${f(-K * 0.6)} L${f(K * 0.42)} 0 L0 0Z M0 0 L${f(-K * 0.42)} 0 L0 ${f(K * 0.8)}Z" fill="#e8584e"/>
-        <path d="M0 ${f(-K * 0.6)} V${f(K * 0.8)} M${f(-K * 0.42)} 0 H${f(K * 0.42)}" stroke="#7a5236" stroke-width=".8" opacity=".7"/>
-        <circle cx="${f(-K * 0.13)}" cy="${f(-K * 0.14)}" r="${f(K * 0.035)}" fill="#2a1a12"/>
-        <circle cx="${f(K * 0.13)}" cy="${f(-K * 0.14)}" r="${f(K * 0.035)}" fill="#2a1a12"/>
-        <path d="M${f(-K * 0.1)} ${f(K * 0.03)} q${f(K * 0.1)} ${f(K * 0.09)} ${f(K * 0.2)} 0" stroke="#2a1a12" stroke-width="1" fill="none" stroke-linecap="round"/>
+        <path d="M0 ${f2(-K2 * 0.6)} L${f2(K2 * 0.42)} 0 L0 ${f2(K2 * 0.8)} L${f2(-K2 * 0.42)} 0Z" fill="#f6c945" stroke="#5a4030" stroke-width="1.2" stroke-linejoin="round"/>
+        <path d="M0 ${f2(-K2 * 0.6)} L${f2(K2 * 0.42)} 0 L0 0Z M0 0 L${f2(-K2 * 0.42)} 0 L0 ${f2(K2 * 0.8)}Z" fill="#e8584e"/>
+        <path d="M0 ${f2(-K2 * 0.6)} V${f2(K2 * 0.8)} M${f2(-K2 * 0.42)} 0 H${f2(K2 * 0.42)}" stroke="#7a5236" stroke-width=".8" opacity=".7"/>
+        <circle cx="${f2(-K2 * 0.13)}" cy="${f2(-K2 * 0.14)}" r="${f2(K2 * 0.035)}" fill="#2a1a12"/>
+        <circle cx="${f2(K2 * 0.13)}" cy="${f2(-K2 * 0.14)}" r="${f2(K2 * 0.035)}" fill="#2a1a12"/>
+        <path d="M${f2(-K2 * 0.1)} ${f2(K2 * 0.03)} q${f2(K2 * 0.1)} ${f2(K2 * 0.09)} ${f2(K2 * 0.2)} 0" stroke="#2a1a12" stroke-width="1" fill="none" stroke-linecap="round"/>
       </g></g>
     </g></g></svg>`;
   };
@@ -5917,7 +6300,7 @@
     </svg>`;
 
   // src/grafik/tagebuch.js
-  var DI = (body) => `<svg viewBox="0 0 24 24" aria-hidden="true">${body}</svg>`;
+  var DI = (body2) => `<svg viewBox="0 0 24 24" aria-hidden="true">${body2}</svg>`;
   var DIARY_BOOK = DI(`<rect x="4.6" y="2.6" width="15" height="18.8" rx="2.2" fill="#e9a23b" stroke="${OUT}" stroke-width="1.1"/>
     <path d="M8.2 2.8 V21.2" stroke="${OUT}" stroke-width="1"/><rect x="10.4" y="6.4" width="6.6" height="4.4" rx=".8" fill="#fff3d6" stroke="${OUT}" stroke-width=".7"/>
     <path d="M14.6 21.2 v2 l1.3 -1 l1.3 1 v-2" fill="#e8584e" stroke="${OUT}" stroke-width=".6" stroke-linejoin="round"/>`);
@@ -6200,14 +6583,14 @@
       sc.add(`areal-${key}`);
       const A = this._areal();
       sc.toggle("stash", !!A.stash);
-      const svg = (body, st = "") => body ? `<svg viewBox="0 0 100 ${A.vh}" aria-hidden="true"${st}>${body}</svg>` : "";
+      const svg = (body2, st = "") => body2 ? `<svg viewBox="0 0 100 ${A.vh}" aria-hidden="true"${st}>${body2}</svg>` : "";
       this._el.burrow.innerHTML = svg(A.svg, RAND_SVG(A.rand));
       this._el.lights.innerHTML = svg(A.lights);
       if (this._plan) this._hayFromPlan();
       if (this._g) {
         this._stop();
         this._g = null;
-        this._flowers.forEach((f) => f.el.remove());
+        this._flowers.forEach((f2) => f2.el.remove());
         this._flowers = [];
         this._asleep = this._inside = false;
         this._lift = 0;
@@ -6825,7 +7208,7 @@
       }
       if (!sleepy && this._asleep) return this._run("wakeUp");
       if (this._asleep) return this._run("dream");
-      const food = this._foods.find((f) => f.landed);
+      const food = this._foods.find((f2) => f2.landed);
       const next = this._next;
       this._slot = null;
       this._slotArm();
@@ -6922,7 +7305,7 @@
     _tick() {
       if (this._away()) return this._tickCoffee();
       this._watchdog();
-      for (const f of [
+      for (const f2 of [
         this._tickCore,
         this._tickSky,
         this._tickFest,
@@ -6934,7 +7317,7 @@
         this._tickSig,
         this._diaryDot
       ]) {
-        this._guard(f.name, () => f.call(this));
+        this._guard(f2.name, () => f2.call(this));
       }
       this._guard("Chronik", () => this._chronikTick());
     }
@@ -7241,11 +7624,11 @@
       await this._wait(rnd(300, 900));
     }
     async _nibble() {
-      const f = this._nearestFlower();
-      if (!f) return;
-      await this._approach(f.xf * this._W);
-      await this._sniffPick(f);
-      await this._eat(f.color, rnd(2500, 4e3));
+      const f2 = this._nearestFlower();
+      if (!f2) return;
+      await this._approach(f2.xf * this._W);
+      await this._sniffPick(f2);
+      await this._eat(f2.color, rnd(2500, 4e3));
       this._selfFed(SELF.flower);
       if (Math.random() < 0.4) this._cls("mlem", 950, true);
       await this._wait(rnd(300, 900));
@@ -7260,10 +7643,10 @@
       const ci = Math.floor(S.r(2) * pal.length);
       const color = pal[ci];
       if (this._inside) await this._comeOut();
-      const f = this._flowers.filter((o) => o.color === color).sort((a, b) => Math.abs(a.xf * this._W - this._x) - Math.abs(b.xf * this._W - this._x))[0] || this._nearestFlower();
-      if (f) {
-        await this._approach(f.xf * this._W);
-        await this._sniffPick(f);
+      const f2 = this._flowers.filter((o) => o.color === color).sort((a, b) => Math.abs(a.xf * this._W - this._x) - Math.abs(b.xf * this._W - this._x))[0] || this._nearestFlower();
+      if (f2) {
+        await this._approach(f2.xf * this._W);
+        await this._sniffPick(f2);
       }
       this._mouth(color);
       this._el.pika.classList.add("carry");
@@ -7361,7 +7744,7 @@
       const { fMin, fMax } = this._g;
       let xf = rnd(fMin, fMax);
       if (Math.abs(xf * this._W - this._x) < this._g.pW * 0.6) xf = clamp(xf + 0.25 * pick([-1, 1]), fMin, fMax);
-      const t = Math.max(sec(this._haNow()), ...(this._plan.fd || []).map((f) => f.t + 1e3));
+      const t = Math.max(sec(this._haNow()), ...(this._plan.fd || []).map((f2) => f2.t + 1e3));
       const x = clamp(Math.round((xf - fMin) / Math.max(1e-6, fMax - fMin) * 99), 0, 99);
       this._planOp({ t: "feed", f: { t, x, k: Math.random() < 0.6 ? 0 : 1, e: false } });
     }
@@ -7371,26 +7754,26 @@
       if (!this._el || !this._g) return;
       const now = this._haNow();
       const done = this._foodDone ??= /* @__PURE__ */ new Set();
-      for (const f of this._plan?.fd || []) {
-        const have = this._foods.find((o) => o.t === f.t);
-        if (f.e) {
+      for (const f2 of this._plan?.fd || []) {
+        const have = this._foods.find((o) => o.t === f2.t);
+        if (f2.e) {
           if (have && (this._asleep || !this._running)) this._removeFood(have);
           continue;
         }
-        if (have || done.has(f.t) || now - f.t > 864e5) continue;
-        this._foodAdd(f, now - f.t < 2500);
+        if (have || done.has(f2.t) || now - f2.t > 864e5) continue;
+        this._foodAdd(f2, now - f2.t < 2500);
       }
     }
-    _foodAdd(f, drop) {
+    _foodAdd(f2, drop) {
       const { fMin, fMax } = this._g;
-      const xf = fMin + f.x / 99 * (fMax - fMin);
-      const kind = FOOD_KINDS[f.k] || "lz";
+      const xf = fMin + f2.x / 99 * (fMax - fMin);
+      const kind = FOOD_KINDS[f2.k] || "lz";
       const el = document.createElement("div");
       el.className = drop ? "food drop" : "food";
       el.style.setProperty("--xf", xf.toFixed(4));
       el.innerHTML = FOOD[kind].svg;
       this._el.foods.appendChild(el);
-      const food = { xf, kind, el, landed: !drop, t: f.t };
+      const food = { xf, kind, el, landed: !drop, t: f2.t };
       this._foods.push(food);
       const land = () => {
         food.landed = true;
@@ -7415,7 +7798,7 @@
       let xf = at == null ? null : clamp(at, fMin, fMax);
       for (let tries = 0; xf == null || at == null && tries < 12; tries++) {
         xf = rnd(fMin, fMax);
-        if (this._flowers.every((f2) => Math.abs(f2.xf - xf) * this._W > 26)) break;
+        if (this._flowers.every((f3) => Math.abs(f3.xf - xf) * this._W > 26)) break;
       }
       const color = pick(this._flowerPal());
       const el = document.createElement("div");
@@ -7424,9 +7807,9 @@
       el.style.animationDelay = grow ? "" : `${rnd(-3.6, 0).toFixed(2)}s`;
       el.innerHTML = FLOWER_SVG(color);
       this._el.flowers.appendChild(el);
-      const f = { xf, color, el };
-      this._flowers.push(f);
-      this._flowerTint(f);
+      const f2 = { xf, color, el };
+      this._flowers.push(f2);
+      this._flowerTint(f2);
     }
     // Die fünf Blumenfarben dieses Areals in dieser Jahreszeit. Im Tagesplan stehen nur ihre Nummern (Vorrat,
     // Blumengeschenk): Frühling und Sommer malen sie wie bis 0.30, Herbst und Winter in ihren eigenen Farben.
@@ -7446,9 +7829,9 @@
         fs.setProperty("--fst", dim(L.pal.stem));
         fs.setProperty("--flf", dim(L.pal.leaf));
       }
-      for (const f of only ? [only] : this._flowers) {
-        f.el.style.setProperty("--fc", dim(hexRgb(f.color)));
-        f.el.style.setProperty("--fm", dim(hexRgb(flowerMid(f.color))));
+      for (const f2 of only ? [only] : this._flowers) {
+        f2.el.style.setProperty("--fc", dim(hexRgb(f2.color)));
+        f2.el.style.setProperty("--fm", dim(hexRgb(flowerMid(f2.color))));
       }
     }
     _regrow() {
@@ -7456,23 +7839,23 @@
     }
     _nearestFlower() {
       let best = null;
-      for (const f of this._flowers) {
-        if (!best || Math.abs(f.xf * this._W - this._x) < Math.abs(best.xf * this._W - this._x)) best = f;
+      for (const f2 of this._flowers) {
+        if (!best || Math.abs(f2.xf * this._W - this._x) < Math.abs(best.xf * this._W - this._x)) best = f2;
       }
       return best;
     }
     // Erst an der Blüte schnuppern (Nase wackelt, Kopf tief), dann pflücken
-    async _sniffPick(f) {
+    async _sniffPick(f2) {
       const p = this._el.pika;
       p.classList.add("sniff");
       await this._wait(rnd(600, 900));
       p.classList.remove("sniff");
-      this._pickFlower(f);
+      this._pickFlower(f2);
     }
-    _pickFlower(f) {
-      this._flowers = this._flowers.filter((o) => o !== f);
-      f.el.classList.add("picked");
-      setTimeout(() => f.el.remove(), 400);
+    _pickFlower(f2) {
+      this._flowers = this._flowers.filter((o) => o !== f2);
+      f2.el.classList.add("picked");
+      setTimeout(() => f2.el.remove(), 400);
     }
     _removeFood(food) {
       this._foods = this._foods.filter((o) => o !== food);
@@ -7503,10 +7886,10 @@
         const n = this._blooms.length;
         const top = F - 2.2 - Math.max(Math.ceil(n / 5.5), this._hay / 3) * 1.7;
         const cx = (S.x1 + S.x2) / 2;
-        const f = (v) => +v.toFixed(2);
-        sb.innerHTML = `<path d="M${S.x1 + 0.8} ${F + 1} V${F - 1.4} Q${cx} ${f(top)} ${S.x2 - 0.8} ${F - 1.4} V${F + 1}Z" fill="#dcbc6a" stroke="#a9853a" stroke-width=".45"/><path d="M${S.x1 + 3} ${F - 1.2} l2.2 -1.4 M${cx - 2} ${F - 1} l2.6 -1.6 M${S.x2 - 6} ${F - 1.3} l2 -1.2" stroke="#b38c3c" stroke-width=".4" fill="none"/>` + this._blooms.map((b, i) => {
+        const f2 = (v) => +v.toFixed(2);
+        sb.innerHTML = `<path d="M${S.x1 + 0.8} ${F + 1} V${F - 1.4} Q${cx} ${f2(top)} ${S.x2 - 0.8} ${F - 1.4} V${F + 1}Z" fill="#dcbc6a" stroke="#a9853a" stroke-width=".45"/><path d="M${S.x1 + 3} ${F - 1.2} l2.2 -1.4 M${cx - 2} ${F - 1} l2.6 -1.6 M${S.x2 - 6} ${F - 1.3} l2 -1.2" stroke="#b38c3c" stroke-width=".4" fill="none"/>` + this._blooms.map((b, i) => {
           const [x, y] = P[i];
-          return `<g${bounce && i === n - 1 ? ' class="new"' : ""}><path d="M${f(x - 2.1)} ${f(y + 1.1)} Q${f(x - 1.1)} ${f(y + 0.3)} ${f(x)} ${f(y)}" stroke="#5e8f3e" stroke-width=".5" fill="none"/><circle cx="${f(x)}" cy="${f(y)}" r="1.5" fill="${b.color}" stroke="rgba(0,0,0,.22)" stroke-width=".25"/><circle cx="${f(x)}" cy="${f(y)}" r=".55" fill="#e0a032"/></g>`;
+          return `<g${bounce && i === n - 1 ? ' class="new"' : ""}><path d="M${f2(x - 2.1)} ${f2(y + 1.1)} Q${f2(x - 1.1)} ${f2(y + 0.3)} ${f2(x)} ${f2(y)}" stroke="#5e8f3e" stroke-width=".5" fill="none"/><circle cx="${f2(x)}" cy="${f2(y)}" r="1.5" fill="${b.color}" stroke="rgba(0,0,0,.22)" stroke-width=".25"/><circle cx="${f2(x)}" cy="${f2(y)}" r=".55" fill="#e0a032"/></g>`;
         }).join("");
         return;
       }
@@ -7828,129 +8211,6 @@
     }
   };
 
-  // src/grafik/besucher.js
-  var FRIEND_SVG = [
-    ['id="fur"', 'id="fur2"'],
-    ["url(#fur)", "url(#fur2)"],
-    ['id="bodyclip"', 'id="bodyclip2"'],
-    ["url(#bodyclip)", "url(#bodyclip2)"],
-    ["#d0ad8d", "#f2b36e"],
-    ["#b08a68", "#dc8640"],
-    ["#8a664b", "#a9592a"],
-    // Fellverlauf
-    ["#f0e2cf", "#fbe7cb"],
-    // Bauch
-    ["#efe3d3", "#f8e4cc"],
-    ["#e3a990", "#f0a184"],
-    // Ohrenrand, Ohr innen
-    ["#d6b796", "#efb47c"]
-    // Rückansicht
-  ].reduce((svg, [a, b]) => svg.split(a).join(b), PIKA_SVG).replace(
-    '<g clip-path="url(#bodyclip2)">',
-    '$&<ellipse class="blaze" cx="89.5" cy="32.5" rx="4.8" ry="3.2" fill="#fbf0e2" opacity=".92"/>'
-  ).replace('<g class="mfood">', `<g class="bandana">
-        <path d="M70.5 62 Q87.5 70.5 105 61.6" stroke="${OUT}" stroke-width="5.4" fill="none" stroke-linecap="round"/>
-        <path d="M70.5 62 Q87.5 70.5 105 61.6" stroke="#22b5a6" stroke-width="3.8" fill="none" stroke-linecap="round"/>
-        <path d="M79.5 65.2 L95.5 65.6 L86.6 76.4Z" fill="#22b5a6" stroke="${OUT}" stroke-width="1.2" stroke-linejoin="round"/>
-        <g fill="#f4fbf8"><circle cx="84.4" cy="67.6" r="1"/><circle cx="90.4" cy="67.8" r="1"/><circle cx="87" cy="71.6" r=".9"/>
-          <circle cx="75" cy="64.6" r=".8"/><circle cx="100" cy="64.2" r=".8"/></g>
-      </g>
-      $&`);
-  var BIRDS = [
-    { name: "Rotkehlchen", body: "#a08b70", head: "#a08b70", wing: "#85705a", breast: "#f2843a", face: "#f2843a", beak: "#3a2f28" },
-    { name: "Blaumeise", body: "#f2d14f", head: "#fbfbf7", wing: "#5b97d8", breast: "#f6dc6a", cap: "#4f8fd6", stripe: "#2c3a5a", beak: "#3a2f28" },
-    { name: "Spatz", body: "#b38d66", head: "#a8805a", wing: "#86603f", breast: "#ebe0cf", cap: "#8e9196", bib: "#3a302a", beak: "#4a3a2c" }
-  ];
-  var BOUT = "#4a3a2c";
-  var BIRD_SVG = (v) => `
-  <svg viewBox="0 0 30 26" aria-hidden="true">
-    <path d="M7.5 15.5 L.6 11.6 Q-.2 15.4 1.6 18.6Z" fill="${v.wing}" stroke="${BOUT}" stroke-width=".8" stroke-linejoin="round"/>
-    <g class="legs" stroke="#c98a4b" stroke-width="1" stroke-linecap="round" fill="none">
-      <path d="M12.5 22.5 V25.4 M11 25.6 H14 M16.5 22.5 V25.4 M15 25.6 H18"/>
-    </g>
-    <ellipse cx="14" cy="16.2" rx="10" ry="7.9" fill="${v.body}" stroke="${BOUT}" stroke-width="1"/>
-    <ellipse cx="17.6" cy="18" rx="6" ry="4.8" fill="${v.breast}"/>
-    <path class="wf" d="M6.6 13.8 Q13 10 18.6 14.6 Q14 20.4 7.4 17.2Z" fill="${v.wing}" stroke="${BOUT}" stroke-width=".7" stroke-linejoin="round"/>
-    <path class="wu" d="M9 14 Q4.6 1.6 16.4 3.2 Q17.4 9 15.4 14Z" fill="${v.wing}" stroke="${BOUT}" stroke-width=".7" stroke-linejoin="round"/>
-    <g class="bh">
-      <circle cx="20.5" cy="9.6" r="6.3" fill="${v.head}" stroke="${BOUT}" stroke-width="1"/>
-      ${v.face ? `<ellipse cx="22.2" cy="12.4" rx="4.3" ry="3.3" fill="${v.face}"/>` : ""}
-      ${v.cap ? `<path d="M14.5 7.7 A6.3 6.3 0 0 1 26.5 7.7Z" fill="${v.cap}"/>` : ""}
-      ${v.stripe ? `<path d="M15.2 10.6 Q20 9.6 26.6 9.4" stroke="${v.stripe}" stroke-width="1.1" fill="none" stroke-linecap="round"/>` : ""}
-      ${v.bib ? `<ellipse cx="23.6" cy="14" rx="1.9" ry="1.4" fill="${v.bib}"/>` : ""}
-      <circle cx="23" cy="8.7" r="1.35" fill="#1f1a17"/><circle cx="23.4" cy="8.2" r=".45" fill="#fff"/>
-      <circle cx="22.4" cy="11.8" r="1.3" fill="#f28fb1" opacity=".45"/>
-      <path d="M26.3 9.2 L29.6 10.5 L26.3 11.8Z" fill="${v.beak}" stroke="${v.beak}" stroke-width=".4" stroke-linejoin="round"/>
-    </g>
-  </svg>`;
-  var MOUSE_SVG = `
-  <svg viewBox="0 0 32 18" aria-hidden="true">
-    <path class="mtail" d="M5.5 14.5 Q-1 16 -3.5 11.5 Q-5.5 7 -1.5 5.5" stroke="#c99a98" stroke-width="1.1" fill="none" stroke-linecap="round"/>
-    <circle cx="16.8" cy="5" r="3" fill="#a8998c" stroke="#5f544b" stroke-width=".8"/>
-    <circle cx="16.8" cy="5" r="1.8" fill="#f2b8bd"/>
-    <ellipse cx="12.6" cy="12" rx="8.8" ry="5.8" fill="#a8998c" stroke="#5f544b" stroke-width=".9"/>
-    <ellipse cx="14" cy="14.6" rx="5.6" ry="2.8" fill="#e9ded2"/>
-    <g class="mhead">
-      <path d="M16 7.8 Q22 4.6 28.4 10.4 Q27.4 12.8 23 12.8 Q17.6 12.8 16 10Z" fill="#a8998c" stroke="#5f544b" stroke-width=".9" stroke-linejoin="round"/>
-      <g class="mear"><circle cx="20.4" cy="4.4" r="3.4" fill="#a8998c" stroke="#5f544b" stroke-width=".8"/>
-      <circle cx="20.4" cy="4.4" r="2.1" fill="#f2b8bd"/></g>
-      <circle cx="23.4" cy="8.6" r="1.05" fill="#1f1a17"/><circle cx="23.7" cy="8.25" r=".35" fill="#fff"/>
-      <circle class="mnose" cx="28.3" cy="10.3" r="1" fill="#e98a96"/>
-      <path class="whisk" d="M27 11 L31.2 9.6 M27 11.3 L31.4 11.6 M26.8 11.6 L30.6 13.2" stroke="#5f544b" stroke-width=".35" fill="none"/>
-    </g>
-    <g fill="#f2b8bd"><ellipse cx="8.6" cy="17.4" rx="2" ry=".9"/><ellipse cx="18" cy="17.4" rx="2" ry=".9"/></g>
-  </svg>`;
-  var FOUT = "#35581f";
-  var FROG_SVG = `
-  <svg viewBox="0 0 30 22" aria-hidden="true">
-    <g class="fxl" fill="none" stroke-linecap="round" stroke-linejoin="round">
-      <path d="M9 16.4 L2.4 19.6 L-3.6 23.4" stroke="${FOUT}" stroke-width="4"/>
-      <path d="M9 16.4 L2.4 19.6 L-3.6 23.4" stroke="#62a441" stroke-width="2.4"/>
-      <path d="M-3.6 23.4 L-7 23 M-3.6 23.4 L-6.4 25.4" stroke="${FOUT}" stroke-width="1.5"/>
-    </g>
-    <path d="M5 19.5 Q3.4 14 9 11 Q15 7.2 21.5 7.6 Q27.8 8.2 28.2 12.4 Q28.3 15 24.8 16.6 Q22 20.5 14 20.7 Q6 20.9 5 19.5Z"
-      fill="#74b64d" stroke="${FOUT}" stroke-width="1" stroke-linejoin="round"/>
-    <path d="M11.6 20.2 Q19.6 20.6 24.4 16.4 Q26.8 15.4 27.7 13.5 Q24 15.5 19 16.6 Q13.8 17.7 11.6 20.2Z" fill="#e6efb2"/>
-    <ellipse class="fsac" cx="25" cy="16.9" rx="4.2" ry="3.5" fill="#f4f6cf" stroke="${FOUT}" stroke-width=".7"/>
-    <g fill="#5a9a3b"><circle cx="11" cy="13.2" r="1.05"/><circle cx="14.8" cy="10.7" r=".8"/><circle cx="8.3" cy="15.8" r=".7"/></g>
-    <circle cx="21.2" cy="7.3" r="3.1" fill="#74b64d" stroke="${FOUT}" stroke-width=".9"/>
-    <circle cx="21.7" cy="7.1" r="2" fill="#fdf6c9"/>
-    <ellipse cx="22.2" cy="7.2" rx="1" ry="1.35" fill="#1f1a17"/><circle cx="22.6" cy="6.6" r=".4" fill="#fff"/>
-    <circle class="flid" cx="21.7" cy="7.1" r="2.15" fill="#74b64d"/>
-    <path class="ftng" d="M27.4 13.2 Q32 12.6 36.4 8.4" stroke="#f07a95" stroke-width="1.5" fill="none" stroke-linecap="round"/>
-    <path d="M27.8 13.1 Q23.6 14.9 19.6 13.3" stroke="${FOUT}" stroke-width=".7" fill="none" stroke-linecap="round"/>
-    <circle cx="27" cy="10.7" r=".4" fill="${FOUT}"/>
-    <circle cx="19.8" cy="12.3" r="1.3" fill="#f28fb1" opacity=".5"/>
-    <g fill="none" stroke-linecap="round" stroke-linejoin="round">
-      <path d="M20.4 16.6 Q19.7 19.4 21 21.1 H24" stroke="${FOUT}" stroke-width="2.7"/>
-      <path d="M20.4 16.6 Q19.7 19.4 21 21.1 H24" stroke="#74b64d" stroke-width="1.3"/>
-    </g>
-    <g class="fhl">
-      <path d="M4.6 19.6 Q3 13.6 9.4 13 Q14.4 12.8 14 17.6 Q13.6 20.4 10 20.6Z" fill="#62a441" stroke="${FOUT}" stroke-width=".9" stroke-linejoin="round"/>
-      <path d="M6 20.2 Q11 19.5 16.8 20.7 Q17.8 21.2 17 21.8 H6.4 Q5.2 21.3 6 20.2Z" fill="#74b64d" stroke="${FOUT}" stroke-width=".8" stroke-linejoin="round"/>
-    </g>
-  </svg>`;
-  var SNAILS = [["#d99a5b", "#8a5a2c"], ["#f0d27a", "#a8792c"], ["#e9a7a0", "#a85f5a"]];
-  var SNAIL_SVG = ([shell, line]) => `
-  <svg viewBox="0 0 30 20" aria-hidden="true">
-    <g class="sbody">
-      <g class="sfeel" stroke="#7a5a3a" stroke-width=".9" stroke-linecap="round">
-        <path d="M25 10.4 L23.8 5.2 M27.3 10.4 L28.6 5.8"/>
-        <circle cx="23.7" cy="4.5" r="1.1" fill="#1f1a17" stroke="none"/><circle cx="28.8" cy="5.1" r="1.1" fill="#1f1a17" stroke="none"/>
-        <circle cx="24" cy="4.2" r=".35" fill="#fff" stroke="none"/><circle cx="29.1" cy="4.8" r=".35" fill="#fff" stroke="none"/>
-      </g>
-      <path d="M1.6 19.3 Q4 17.3 10 17.4 L19 17.4 Q22.2 17.2 22.8 13.6 Q23.4 9.8 26.1 9.8 Q28.9 10 28.6 13.8 Q28.2 19.5 22 19.7 H3 Q1 19.8 1.6 19.3Z"
-        fill="#ecd6ac" stroke="#7a5a3a" stroke-width=".9" stroke-linejoin="round"/>
-      <path d="M26.3 14.7 q1 .8 1.8 -.1" stroke="#7a5a3a" stroke-width=".6" fill="none" stroke-linecap="round"/>
-      <circle cx="25" cy="15.6" r="1" fill="#f28fb1" opacity=".5"/>
-    </g>
-    <g class="sshell">
-      <circle cx="12.6" cy="10" r="8" fill="${shell}" stroke="#6b4a2f" stroke-width="1"/>
-      <path d="M18.2 10 A5.6 5.6 0 0 0 7 10 A4.3 4.3 0 0 0 15.6 10 A3 3 0 0 0 9.6 10 A1.9 1.9 0 0 0 13.4 10" stroke="${line}" stroke-width="1.1" fill="none" stroke-linecap="round"/>
-      <path d="M6.9 6.4 Q9 3.6 12.4 3.2" stroke="#fff" stroke-width=".9" fill="none" stroke-linecap="round" opacity=".55"/>
-    </g>
-  </svg>`;
-
   // src/karte/besucher.js
   var Besucher = class {
     // Zum Vögelchen hinschauen, piepsen – es zwitschert zurück
@@ -8000,11 +8260,11 @@
     }
     // Den Frosch anpiepsen: Er quakt zurück, der Pika zuckt zusammen
     async _watchFrog() {
-      const f = this._frog;
-      if (!f?.out) return;
+      const f2 = this._frog;
+      if (!f2?.out) return;
       const p = this._el.pika;
-      const there = () => this._frog === f && f.out;
-      this._face(f.x >= this._x ? 1 : -1);
+      const there = () => this._frog === f2 && f2.out;
+      this._face(f2.x >= this._x ? 1 : -1);
       p.classList.add("look-f");
       await this._wait(rnd(900, 1600));
       if (!there()) return;
@@ -8014,7 +8274,7 @@
       p.classList.remove("calling");
       await this._wait(rnd(300, 700));
       if (there()) {
-        this._croak(f);
+        this._croak(f2);
         await this._wait(350);
         this._jump("hop1");
         this._say("!", 800);
@@ -8519,58 +8779,58 @@
       el.className = "frog left";
       el.innerHTML = `<div class="cw" role="button" aria-label="Frosch"><div class="cf"><div class="cb">${FROG_SVG}</div></div></div>`;
       const yG = gy - this._H * 0.02;
-      const f = this._critter({ el, x: 0, y: yG, w: fw, dir: -1, out: false, lane: 0, yG });
-      el.querySelector(".cw").addEventListener("click", (e) => (e.stopPropagation(), this._found("visitor"), f.scare()));
+      const f2 = this._critter({ el, x: 0, y: yG, w: fw, dir: -1, out: false, lane: 0, yG });
+      el.querySelector(".cw").addEventListener("click", (e) => (e.stopPropagation(), this._found("visitor"), f2.scare()));
       this._keyTap(el.querySelector(".cw"));
-      this._frog = f;
-      this._critZ(f, false);
+      this._frog = f2;
+      this._critZ(f2, false);
       this._el.mice.appendChild(el);
       const edge = rock.l + 7 * rock.ku;
       const hideX = edge + fw * 0.8;
       const door = edge - fw * 0.6;
       let minX = Math.min(Math.max(this._g.fMin * this._W, fw), door);
       let maxX = Math.max(minX, door - fw * 0.7);
-      f.lane = this._critLane(pk2, minX, maxX, fw);
-      if (f.lane) {
+      f2.lane = this._critLane(pk2, minX, maxX, fw);
+      if (f2.lane) {
         const [l, r] = this._laneRange(fw);
         minX = Math.min(Math.max(minX, l), door);
         maxX = Math.max(minX, Math.min(maxX, r));
       }
-      const yW = f.lane ? yG - this._H * LANE_DY : yG;
-      const face = (d) => (f.dir = d, el.classList.toggle("left", d < 0));
-      const move = (x, ms = 0, y = f.y) => {
+      const yW = f2.lane ? yG - this._H * LANE_DY : yG;
+      const face = (d) => (f2.dir = d, el.classList.toggle("left", d < 0));
+      const move = (x, ms = 0, y = f2.y) => {
         el.style.transition = ms ? `transform ${ms}ms linear` : "none";
-        el.style.transform = this._critXf(f, x, y);
-        f.x = x;
-        f.y = y;
+        el.style.transform = this._critXf(f2, x, y);
+        f2.x = x;
+        f2.y = y;
         if (!ms) void el.offsetWidth;
       };
       const FLEE = {};
       const step = async (ms) => {
-        await this._cw(id, ms, f);
-        if (f.out && Math.abs(this._liveX() - f.x) < pW * 0.55) f.scare();
-        if (f.scared) throw FLEE;
+        await this._cw(id, ms, f2);
+        if (f2.out && Math.abs(this._liveX() - f2.x) < pW * 0.55) f2.scare();
+        if (f2.scared) throw FLEE;
       };
-      const hop = async (x, fast = false, y = f.y) => {
-        const L = this._H * (fast ? 0.34 : 0.22) * this._critS(f, f.y);
-        while (Math.abs(x - f.x) > 1) {
-          const d = clamp(x - f.x, -L, L);
+      const hop = async (x, fast = false, y = f2.y) => {
+        const L = this._H * (fast ? 0.34 : 0.22) * this._critS(f2, f2.y);
+        while (Math.abs(x - f2.x) > 1) {
+          const d = clamp(x - f2.x, -L, L);
           const k = Math.abs(d) / L;
           face(d > 0 ? 1 : -1);
           const ms = (fast ? 240 : 320) + k * 90;
           el.style.setProperty("--hd", `${ms}ms`);
           el.style.setProperty("--fh", `${-Math.round(40 + 80 * k)}%`);
           el.classList.add("leap");
-          move(f.x + d, ms, f.y + (y - f.y) * (d / (x - f.x)));
+          move(f2.x + d, ms, f2.y + (y - f2.y) * (d / (x - f2.x)));
           await (fast ? this._cw(id, ms) : step(ms));
           el.classList.remove("leap");
           await (fast ? this._cw(id, 50) : step(rnd(140, 420)));
         }
-        if (Math.abs(y - f.y) > 0.5) move(f.x, 0, y);
+        if (Math.abs(y - f2.y) > 0.5) move(f2.x, 0, y);
       };
       const free = (x) => {
         const s = this._snail;
-        if (!s?.out || (s.lane || 0) !== f.lane || Math.abs(x - s.x) >= fw) return x;
+        if (!s?.out || (s.lane || 0) !== f2.lane || Math.abs(x - s.x) >= fw) return x;
         const side = x < s.x && s.x - fw * 1.1 >= minX || s.x + fw * 1.1 > maxX ? -1 : 1;
         return clamp(s.x + side * fw * 1.1, minX, maxX);
       };
@@ -8579,66 +8839,66 @@
           move(hideX);
           await step(60);
           await hop(door, false, yW);
-          this._critZ(f, true);
-          f.out = true;
-          const spot = (x) => free(this._festClear(x, fw, minX, maxX, f.lane));
+          this._critZ(f2, true);
+          f2.out = true;
+          const spot = (x) => free(this._festClear(x, fw, minX, maxX, f2.lane));
           await hop(spot(maxX - pk2.x * Math.min(maxX - minX, this._H * 0.7)));
-          this._noticeCritter(f.x, false);
+          this._noticeCritter(f2.x, false);
           const until = Date.now() + Math.max(3e3, pk2.stay - late);
           let act = "croak";
           let gap = 500;
           while (Date.now() < until && (force || this._critterWeather("frog"))) {
             await step(gap);
-            if (free(f.x) !== f.x) await hop(free(f.x));
+            if (free(f2.x) !== f2.x) await hop(free(f2.x));
             else if (act === "croak") {
               for (let n = Math.random() < 0.4 ? 2 : 1; n > 0; n--) {
-                this._croak(f);
+                this._croak(f2);
                 await step(1050);
               }
-            } else if (act === "turn") face(-f.dir);
+            } else if (act === "turn") face(-f2.dir);
             else if (act === "zap") {
               el.classList.add("zap");
               await step(400);
               el.classList.remove("zap");
-            } else await hop(spot(clamp(f.x + rnd(0.8, 2) * fw * pick([-1, 1]), minX, maxX)));
+            } else await hop(spot(clamp(f2.x + rnd(0.8, 2) * fw * pick([-1, 1]), minX, maxX)));
             act = weighted([[3, "croak"], [2, "turn"], [2, "hop"], [1.5, "zap"]]);
             gap = rnd(900, 2400);
           }
           await hop(door);
-          f.out = false;
-          this._critZ(f, false);
+          f2.out = false;
+          this._critZ(f2, false);
           await hop(hideX, false, yG);
         } catch (e) {
           if (e !== FLEE) throw e;
-          const at = this._critLive(f);
-          move(at.x, 0, f.lane ? at.y : f.y);
+          const at = this._critLive(f2);
+          move(at.x, 0, f2.lane ? at.y : f2.y);
           el.classList.remove("leap", "croak", "zap");
-          f.out = false;
-          this._peep(f.x, f.y - fw * 0.95 * this._critS(f, f.y), "quak!");
+          f2.out = false;
+          this._peep(f2.x, f2.y - fw * 0.95 * this._critS(f2, f2.y), "quak!");
           await this._cw(id, 120);
           if (el.classList.contains("vorn")) {
             await hop(door, true, yW);
-            this._critZ(f, false);
+            this._critZ(f2, false);
           }
           await hop(hideX, true, yG);
           await this._cw(id, 200);
         }
       } finally {
-        if (this._frog === f) this._frog = null;
+        if (this._frog === f2) this._frog = null;
         el.remove();
       }
     }
     // Schallblase bläht sich zweimal, „quak!“ steigt auf
-    _croak(f) {
-      if (!f?.out || f.scared) return;
-      const el = f.el;
+    _croak(f2) {
+      if (!f2?.out || f2.scared) return;
+      const el = f2.el;
       el.classList.remove("croak");
       void el.offsetWidth;
       el.classList.add("croak");
-      clearTimeout(f.croakT);
-      f.croakT = setTimeout(() => el.classList.remove("croak"), 950);
-      const k = this._critS(f, f.y);
-      this._peep(f.x + f.dir * f.w * 0.3 * k, f.y - f.w * 0.85 * k, pick(["quak!", "quak!", "quaak!"]));
+      clearTimeout(f2.croakT);
+      f2.croakT = setTimeout(() => el.classList.remove("croak"), 950);
+      const k = this._critS(f2, f2.y);
+      this._peep(f2.x + f2.dir * f2.w * 0.3 * k, f2.y - f2.w * 0.85 * k, pick(["quak!", "quak!", "quaak!"]));
     }
     // Schnecke (nur bei Regen): kriecht hinter dem Aussichtsstein hervor ein Stück über die Wiese, reckt die Fühler,
     // schaut sich um und kriecht zurück. Weglaufen kann sie nicht: Antippen oder ein naher Pika, und sie zieht sich
@@ -8871,25 +9131,25 @@
       const t0 = Number.isFinite(lu) ? Math.min(now, lu - (this._clockOff ?? lu - now)) : now;
       if (!this._attached || this._away()) return;
       const kx = 111.32 * Math.cos(cfg.latitude * RAD);
-      const R = Number(this._cfg.flight_radius) || 15;
-      const idOf = (f) => String(f.id || f.callsign || f.flight_number || f.aircraft_registration || "");
+      const R2 = Number(this._cfg.flight_radius) || 15;
+      const idOf = (f2) => String(f2.id || f2.callsign || f2.flight_number || f2.aircraft_registration || "");
       const list = [];
       const ghosts = this._ghosts ??= /* @__PURE__ */ new Map();
       const seen = /* @__PURE__ */ new Set();
-      for (const f of Array.isArray(st?.attributes?.flights) ? st.attributes.flights : []) {
-        if (!f || typeof f !== "object" || !idOf(f)) continue;
-        const alt = Number(f.altitude);
-        const gs = Number(f.ground_speed) || 0;
-        const lat = Number(f.latitude);
-        const lon = Number(f.longitude);
-        if (!flightAloft(f) || !Number.isFinite(lat) || !Number.isFinite(lon)) continue;
-        seen.add(idOf(f));
-        if (flightGhost(ghosts.get(idOf(f)), f)) continue;
-        ghosts.delete(idOf(f));
+      for (const f2 of Array.isArray(st?.attributes?.flights) ? st.attributes.flights : []) {
+        if (!f2 || typeof f2 !== "object" || !idOf(f2)) continue;
+        const alt = Number(f2.altitude);
+        const gs = Number(f2.ground_speed) || 0;
+        const lat = Number(f2.latitude);
+        const lon = Number(f2.longitude);
+        if (!flightAloft(f2) || !Number.isFinite(lat) || !Number.isFinite(lon)) continue;
+        seen.add(idOf(f2));
+        if (flightGhost(ghosts.get(idOf(f2)), f2)) continue;
+        ghosts.delete(idOf(f2));
         const e = lonDiff(lon, cfg.longitude) * kx;
         const n = (lat - cfg.latitude) * 110.57;
-        if (Math.max(Math.abs(e), Math.abs(n)) >= 0.99 * R) continue;
-        list.push({ f, e, n, alt, gs, slant: Math.hypot(e, n, alt * 3048e-7) });
+        if (Math.max(Math.abs(e), Math.abs(n)) >= 0.99 * R2) continue;
+        list.push({ f: f2, e, n, alt, gs, slant: Math.hypot(e, n, alt * 3048e-7) });
       }
       for (const id of ghosts.keys()) if (!seen.has(id)) ghosts.delete(id);
       list.sort((a, b) => a.slant - b.slant);
@@ -8945,18 +9205,18 @@
       }
       return null;
     }
-    _newPlane(id, f) {
-      const kind = planeKind(f);
+    _newPlane(id, f2) {
+      const kind = planeKind(f2);
       const el = document.createElement("div");
       el.className = `plane ${kind}`;
       el.innerHTML = `<div class="pl-s"><div class="pl-f"><div class="trail"></div>${PLANE_SVG[kind]}</div></div>`;
-      el.style.setProperty("--tail", TAIL[f.airline_icao] || TAIL_DEFAULT[kind]);
+      el.style.setProperty("--tail", TAIL[f2.airline_icao] || TAIL_DEFAULT[kind]);
       const tag = document.createElement("div");
       tag.className = "ptag";
       const hit = document.createElement("div");
       hit.className = "phit";
       hit.setAttribute("role", "button");
-      const p = { id, kind, f, el, tag, hit, s: el.firstElementChild, size: PLANE_SIZE[kind], fresh: true };
+      const p = { id, kind, f: f2, el, tag, hit, s: el.firstElementChild, size: PLANE_SIZE[kind], fresh: true };
       const below = (e) => this._tapBelow(e);
       const flip = () => {
         clearTimeout(p.openT);
@@ -8996,26 +9256,26 @@
       return p;
     }
     _planeText(p) {
-      const f = p.f;
+      const f2 = p.f;
       const cfg = this._hass?.config;
-      const orig = cityDe(f.airport_origin_city);
-      const dest = cityDe(f.airport_destination_city);
-      const dLat = Number(f.airport_destination_latitude);
-      const dLon = Number(f.airport_destination_longitude);
+      const orig = cityDe(f2.airport_origin_city);
+      const dest = cityDe(f2.airport_destination_city);
+      const dLat = Number(f2.airport_destination_latitude);
+      const dLon = Number(f2.airport_destination_longitude);
       const landsHere = cfg && Number.isFinite(dLat) && Number.isFinite(dLon) && Math.hypot(lonDiff(dLon, cfg.longitude) * 111.32 * Math.cos(cfg.latitude * RAD), (dLat - cfg.latitude) * 110.57) < 30;
       const route = landsHere && orig ? `aus ${orig}` : dest ? `→ ${dest}` : "";
-      const alt = Math.round((p.altNow ?? p.alt ?? Number(f.altitude)) * 0.3048 / 10) * 10;
-      const kmh = Math.round(Number(f.ground_speed) * 1.852);
+      const alt = Math.round((p.altNow ?? p.alt ?? Number(f2.altitude)) * 0.3048 / 10) * 10;
+      const kmh = Math.round(Number(f2.ground_speed) * 1.852);
       const more = [
-        [f.airline_short || f.airline, String(f.aircraft_model || "").replace(/-\S+$/, "")].filter(Boolean).join(" · "),
+        [f2.airline_short || f2.airline, String(f2.aircraft_model || "").replace(/-\S+$/, "")].filter(Boolean).join(" · "),
         orig && dest ? `${orig} → ${dest}` : "",
         `${alt.toLocaleString("de-DE")} m${kmh ? ` · ${kmh} km/h` : ""}`
       ].filter(Boolean);
-      const html = `<b>${esc(flightNo(f))}</b>${route ? ` ${esc(route)}` : ""}` + more.map((l) => `<div class="more">${esc(l)}</div>`).join("");
+      const html = `<b>${esc(flightNo(f2))}</b>${route ? ` ${esc(route)}` : ""}` + more.map((l) => `<div class="more">${esc(l)}</div>`).join("");
       if (html === p.html) return;
       p.html = html;
       p.tag.innerHTML = html;
-      p.hit.setAttribute("aria-label", `Flug ${flightNo(f)} ${route}`.trim());
+      p.hit.setAttribute("aria-label", `Flug ${flightNo(f2)} ${route}`.trim());
       p.tw = 0;
     }
     // Auch bei laufendem Takt gleich neu rechnen (neue Meldung): Jeder Schritt startet am gerade sichtbaren Punkt
@@ -9043,7 +9303,7 @@
       const W = this._W;
       const H = this._H;
       const Hs = this._Hs;
-      const R = Number(this._cfg.flight_radius) || 15;
+      const R2 = Number(this._cfg.flight_radius) || 15;
       const vs = this._viewN() ? -1 : 1;
       const shown = [];
       const fresh = [];
@@ -9054,9 +9314,9 @@
         const e = p.e + p.ve * dt;
         const n = p.n + p.vn * dt;
         const alt = Math.max(80, p.alt + p.vz * Math.min(dt, 30));
-        const x = W * (0.5 - vs * e / R * 0.46);
+        const x = W * (0.5 - vs * e / R2 * 0.46);
         const af = clamp(Math.log1p(alt / 1e3) / Math.log1p(40), 0, 1);
-        const y = Hs * clamp(49 - af * 36 - clamp(vs * n / R, -1, 1) * 4, 13, 49) / 100;
+        const y = Hs * clamp(49 - af * 36 - clamp(vs * n / R2, -1, 1) * 4, 13, 49) / 100;
         const slant = Math.hypot(e, n, alt * 3048e-7);
         const sc = clamp(1.6 / slant, 0.1, 0.36) / 0.3 * p.size;
         Object.assign(p, { x, y, slant, altNow: alt });
@@ -9079,7 +9339,7 @@
         cl.toggle("left", !!p.left);
         cl.toggle("contrail", p.ct && !this._wx.wet);
         cl.toggle("hi", p.hi);
-        const pa = clamp((R - Math.max(Math.abs(e), Math.abs(n))) / (0.2 * R), 0, 1);
+        const pa = clamp((R2 - Math.max(Math.abs(e), Math.abs(n))) / (0.2 * R2), 0, 1);
         p.el.style.setProperty("--pa", pa.toFixed(2));
         if (p.fresh || p.snap) {
           p.el.style.transition = p.s.style.transition = p.tag.style.transition = p.hit.style.transition = "none";
@@ -9420,8 +9680,8 @@
     _actOk(act) {
       const wx = this._wx;
       if (act === "tv") return true;
-      const f = this._fest || {};
-      if (act === "crown" && (f.xmas || f.birthday || f.witch || f.karneval)) return false;
+      const f2 = this._fest || {};
+      if (act === "crown" && (f2.xmas || f2.birthday || f2.witch || f2.karneval)) return false;
       if (hasKey(MINI_W, act)) return miniOk(act, this._lage());
       if (wx.shelter || wx.wet) return false;
       if (act === "kite") return this._kiteWind();
@@ -9657,8 +9917,8 @@
       const [tx, ty] = kitePaw(pW, pH, KITE_LEAN.tug, KITE_LEAN.sx, KITE_LEAN.sy);
       const px = this._x + kd * rx;
       const py = gy + pH * 0.055 - this._lift + ry;
-      const K = H * 0.12;
-      const kx = clamp(px + kd * W * (0.26 + S.r(2) * 0.12), K, W - K) - px;
+      const K2 = H * 0.12;
+      const kx = clamp(px + kd * W * (0.26 + S.r(2) * 0.12), K2, W - K2) - px;
       const ky = this._sy(0.1 + S.r(3) * 0.07) - py;
       const el = document.createElement("div");
       el.className = "kite";
@@ -9668,7 +9928,7 @@
       el.style.setProperty("--ktx", `${(kd * (tx - rx)).toFixed(2)}px`);
       el.style.setProperty("--kty", `${(ty - ry).toFixed(2)}px`);
       el.style.setProperty("--kd", `${clamp(4.5 - (this._wind || 30) / 20, 1.6, 4).toFixed(2)}s`);
-      el.innerHTML = KITE_SVG(kx, ky, K);
+      el.innerHTML = KITE_SVG(kx, ky, K2);
       this._kiteAway();
       this._kiteEl = el;
       this._el.kites.appendChild(el);
@@ -10381,8 +10641,8 @@
     }
     // y für den Anteil f der Größeneinheit, gemessen ab der Oberkante der Bühne (die unteren H px der Karte): für
     // alles in der Luft, das zum Pika gehört (Drachen, Ballon, Funkeln am Himmel). Auf normalen Karten H · f.
-    _sy(f) {
-      return this._Hs - this._H + this._H * f;
+    _sy(f2) {
+      return this._Hs - this._H + this._H * f2;
     }
     // Prototyp Tiefe (depth: true): Höhe der hinteren Spur über der Bodenlinie, sonst 0
     _laneDy() {
@@ -10480,7 +10740,7 @@
       el.classList.toggle("on", on);
       if (!on) return;
       const fr = this._fr?.say === el ? this._fr : null;
-      if (fr) this._bubbleFit(el, fr.x, this._g.pW * FRIEND_SCALE);
+      if (fr) this._bubbleFit(el, fr.x, this._g.pW * this._frSc(fr));
       else if (el.parentElement === this._el.anchor) this._bubbleFit(el, this._x, this._g?.pW, this._lift > 0 ? 0.9 : 1);
     }
     // Blase el so verschieben (--bx), dass sie 4 px vom Rand bleibt. cx: Mitte der Hülle (Ziel, beim Laufen schon dort),
@@ -10491,14 +10751,14 @@
       const ax = cx + (el.parentElement.offsetLeft - w0 / 2) * s;
       const inside = el.parentElement === this._el.anchor && this._el.pika.classList.contains("inside");
       const L = ax - w * (inside ? 0.06 : 0.35);
-      let R = this._W - 4;
+      let R2 = this._W - 4;
       const sr = this._el.scene.getBoundingClientRect();
       const er = el.getBoundingClientRect();
       for (const b of [this._el.feed, this._el.gbtn]) {
         const r = b?.getBoundingClientRect();
-        if (r?.width && er.bottom > r.top && er.top < r.bottom) R = Math.min(R, r.left - sr.left - 4);
+        if (r?.width && er.bottom > r.top && er.top < r.bottom) R2 = Math.min(R2, r.left - sr.left - 4);
       }
-      const bx = L < 4 ? 4 - L : L + w > R ? Math.max(4 - L, R - (L + w)) : 0;
+      const bx = L < 4 ? 4 - L : L + w > R2 ? Math.max(4 - L, R2 - (L + w)) : 0;
       el.style.setProperty("--bx", `${bx.toFixed(1)}px`);
     }
     // Sprech- und Denkblase des Pikas neu einpassen (nach Drehen, Laufen, Bau)
@@ -10736,19 +10996,19 @@
       return "body";
     }
     async _petReact() {
-      const R = this._petReq;
+      const R2 = this._petReq;
       this._petReq = null;
-      if (!R) return;
+      if (!R2) return;
       const p = this._el.pika;
-      if (R.from === "nod") {
+      if (R2.from === "nod") {
         this._cls("hic", 340, true);
         this._say("oh!", 900);
         this._emote("drop", 1400);
         await this._wait(900);
       }
-      if (R.n >= 11) return this._petPout();
-      if (R.n >= 8) return this._petMelt();
-      if (R.n === 5) {
+      if (R2.n >= 11) return this._petPout();
+      if (R2.n >= 8) return this._petMelt();
+      if (R2.n === 5) {
         this._found("combo");
         this._jump("binky");
         this._emote("spark", 1500);
@@ -10757,11 +11017,11 @@
         await this._wait(1200);
         return;
       }
-      this._found({ "ear-l": "ear", "ear-r": "ear", body: "back" }[R.zone] || R.zone);
-      if (R.zone === "nose") return this._petNose();
-      if (R.zone === "ear-l" || R.zone === "ear-r") return this._petEar(R.zone.slice(-1));
-      if (R.zone === "belly") return this._petBelly();
-      if (R.zone === "head") return this._petHead();
+      this._found({ "ear-l": "ear", "ear-r": "ear", body: "back" }[R2.zone] || R2.zone);
+      if (R2.zone === "nose") return this._petNose();
+      if (R2.zone === "ear-l" || R2.zone === "ear-r") return this._petEar(R2.zone.slice(-1));
+      if (R2.zone === "belly") return this._petBelly();
+      if (R2.zone === "head") return this._petHead();
       this._happy();
       this._jump(Math.random() < 0.25 ? "binky" : "hop1");
       if (Math.random() < 0.35) this._say(pick(["iiep!", "mip!", "♥"]));
@@ -11092,7 +11352,7 @@
       if (E?.has(0)) add("yarn", E.get(0), 8);
       if (E?.has(1)) add("wheel", E.get(1), 4);
       if (!sc.classList.contains("snowcover")) {
-        for (const f of this._flowers) if (!f.el.classList.contains("picked")) add("flower", f.el, 6);
+        for (const f2 of this._flowers) if (!f2.el.classList.contains("picked")) add("flower", f2.el, 6);
       }
       const { hole } = this._g;
       Z.push({ k: "door", l: hole.l, t: hole.top, r: hole.r, b: hole.lip, pad: 0 });
@@ -11250,11 +11510,11 @@
     }
     // Antwort des Pikas auf einen Tipp in die Welt, wo sie eine eigene Aktion braucht (nur, wenn er nichts vorhat)
     async _worldReact() {
-      const R = this._worldReq;
+      const R2 = this._worldReq;
       this._worldReq = null;
-      if (!R) return;
-      if (R.k === "flower") {
-        if (Math.abs(R.x - this._x) > 2) this._face(R.x >= this._x ? 1 : -1);
+      if (!R2) return;
+      if (R2.k === "flower") {
+        if (Math.abs(R2.x - this._x) > 2) this._face(R2.x >= this._x ? 1 : -1);
         await this._wait(250);
         await this._sneeze(true);
       }
@@ -11397,7 +11657,7 @@
       if (S.has(k)) return;
       S.add(k);
       try {
-        for (const f of findsParse(localStorage.getItem(this._findsKey) || "")) S.add(f);
+        for (const f2 of findsParse(localStorage.getItem(this._findsKey) || "")) S.add(f2);
         localStorage.setItem(this._findsKey, findsSer(S));
       } catch (e) {
       }
@@ -11543,14 +11803,14 @@
       const now = this._haNow();
       const d0 = this._diaryDay(0);
       const d1 = this._diaryDay(1);
-      let R;
+      let R2;
       let H = { bote: [], fail: false, none: false, S: [], P: [] };
-      if (this._dbgDiary) R = { stamps: [], pets: {}, ...this._dbgDiary(d0, d1, now), data: true };
+      if (this._dbgDiary) R2 = { stamps: [], pets: {}, ...this._dbgDiary(d0, d1, now), data: true };
       else {
         H = await this._diaryHist(d1, now + 6e4);
-        R = { ...diaryDerive(H.S, H.P, d1, { decayAt: (t, h) => this._decayAt(t, h), until: now }), data: H.S.length + H.P.length > 0 };
+        R2 = { ...diaryDerive(H.S, H.P, d1, { decayAt: (t, h) => this._decayAt(t, h), until: now }), data: H.S.length + H.P.length > 0 };
       }
-      const page = (start, end, today) => this._diaryModel(start, end, R, H.bote, today, H.fail, !!H.cof);
+      const page = (start, end, today) => this._diaryModel(start, end, R2, H.bote, today, H.fail, !!H.cof);
       return { fail: H.fail, none: H.none, days: [page(d0, now + 1, true), page(d1, d0, false)] };
     }
     _diaryParcel(e, t) {
@@ -11566,7 +11826,7 @@
     }
     // Eine Seite: Einträge { t, part, icon, text, … } in Reihenfolge, Zähler (chips) und der Satz oben. cof: Die Bezüge
     // des Kaffeeautomaten kommen aus seinem Verlauf (extra, k: 'kaffee'), das Bit „Kaffee“ im Tagesplan zählt dann nicht.
-    _diaryModel(start, end, R, extra, today, fail, cof = false) {
+    _diaryModel(start, end, R2, extra, today, fail, cof = false) {
       const now = this._haNow();
       const day = new Date(start);
       const [ws, we] = this._wakeDay(day);
@@ -11582,28 +11842,28 @@
       const put = (t, icon, text, x) => out.push({ t, icon, text, ...x });
       const house = this._cfg.diary_house !== false;
       const until = Math.min(end, now);
-      const U = [...R.urlaub || []];
+      const U = [...R2.urlaub || []];
       const pu = this._plan?.ur;
       if (pu && !U.some(([a]) => a === pu.t)) U.push([pu.t, urlaubEnd(pu)]);
       const inU = (t) => U.some(([a, b]) => t >= a && t < b);
       const away = U.some(([a, b]) => a < until && b > start);
-      if (inU(Math.max(start, ws)) && !R.ev.some((e) => e.k === "urlaub" && e.t >= start && e.t < end)) {
+      if (inU(Math.max(start, ws)) && !R2.ev.some((e) => e.k === "urlaub" && e.t >= start && e.t < end)) {
         put(Math.max(start, Math.min(ws, until)), "urlaub", tx(T.urlaubTag, "urt", start), { svg: URLAUB_SIGN(fr), dim: true });
       }
       if (ws >= start && ws <= until && !inU(ws)) {
         const favs = this._tagesform(ws).fav.map((a) => T.actNoun[a]).join(" und ");
         put(ws, "wake", `${tx(T.wake, "wake", ws)} Heute hab ich Lust auf ${favs}.`);
-        const f = this._festToday(start + 8 * 36e5);
-        const fl = ["witch", "martin", "xmas", "sticks", "karneval", "ostern", "maibaum", "sommer"].filter((k) => f[k]).map((k) => T.fest[k]);
-        if (f.boot?.full) fl.push(T.fest.boot);
-        if (f.advent && day.getDay() === 0) fl.push(`Der ${f.advent.candles}. Advent! Am Kranz brennt eine Kerze mehr.`);
-        if (f.birthday) {
-          const n = f.birthday.names;
+        const f2 = this._festToday(start + 8 * 36e5);
+        const fl = ["witch", "martin", "xmas", "sticks", "karneval", "ostern", "maibaum", "sommer"].filter((k) => f2[k]).map((k) => T.fest[k]);
+        if (f2.boot?.full) fl.push(T.fest.boot);
+        if (f2.advent && day.getDay() === 0) fl.push(`Der ${f2.advent.candles}. Advent! Am Kranz brennt eine Kerze mehr.`);
+        if (f2.birthday) {
+          const n = f2.birthday.names;
           fl.push(`Alles Gute, ${n.length > 1 ? `${n.slice(0, -1).join(", ")} und ${n.at(-1)}` : n[0]}! Es gibt Kuchen.`);
         }
         fl.forEach((text, i) => put(ws + 1 + i, "fest", text, { tm: "Heute ist ein besonderer Tag" }));
       }
-      const mine = [...R.ev, ...extra].filter((e) => e.t >= start && e.t < end).sort((a, b) => a.t - b.t);
+      const mine = [...R2.ev, ...extra].filter((e) => e.t >= start && e.t < end).sort((a, b) => a.t - b.t);
       const one = /* @__PURE__ */ new Set();
       const once = (k) => !one.has(k) && !!one.add(k);
       const acts = [];
@@ -11621,6 +11881,7 @@
           else out.push(gather = { t, icon: "gather", c: 1 });
         } else if (e.k === "mem") {
           if (["pino", "bird", "plane", "bfly", "heart"].includes(e.b) || e.b === "coffee" && house && !cof) put(t, e.b, tx(T[e.b], e.b, t));
+          else if (hasKey(FRIEND_ICON, e.b)) put(t, e.b, diaryPick(T.pino, e.b, Math.floor(t / 6e4)).replace("{n}", FRIENDS[e.b].name), { svg: FRIEND_ICON[e.b] });
           else if (e.b === "gut") put(t, "gut", tx(T.gut, "gut", t), { svg: ICON_HEART });
           else if (e.b === "tonne" && house) put(t, "tonne", tx(T.tonne, "tonne", t), { svg: SIG_BIN("#7d848c") });
         } else if (e.k === "parcel") {
@@ -11683,8 +11944,8 @@
       }
       const a0 = Math.max(ws, start);
       const b0 = Math.min(we, until);
-      if (!fail && R.data && !away && b0 - a0 >= DIARY.gap) {
-        const ts = [a0, ...R.stamps.filter((t) => t > a0 && t < b0), b0];
+      if (!fail && R2.data && !away && b0 - a0 >= DIARY.gap) {
+        const ts = [a0, ...R2.stamps.filter((t) => t > a0 && t < b0), b0];
         let bi = 1;
         for (let i = 2; i < ts.length; i++) if (ts[i] - ts[i - 1] > ts[bi] - ts[bi - 1]) bi = i;
         if (ts[bi] - ts[bi - 1] >= DIARY.gap) {
@@ -11695,7 +11956,7 @@
       for (const e of out) e.part ??= partOf(e.t);
       for (const m of out.filter((e) => e.last)) m.t = Math.max(...out.filter((e) => e.part === m.part && !e.last).map((e) => e.t), m.t) + 1;
       out.sort((a, b) => a.t - b.t);
-      const pet = Math.max(R.pets[pikaDay(start + 36e5)] || 0, today ? this._cuteToday().n : 0);
+      const pet = Math.max(R2.pets[pikaDay(start + 36e5)] || 0, today ? this._cuteToday().n : 0);
       const chips = [];
       if (cnt.feed) chips.push([ICON_LEAF, `${cnt.feed}× gefüttert`]);
       if (pet) chips.push([ICON_HEART, `${pet >= PET_CAP ? `über ${PET_CAP - 1}` : pet}× gestreichelt`]);
@@ -11790,15 +12051,15 @@
         yarn: lv[0] > 0
       };
       const fr = this._frName();
-      const list = FINDS.filter((f) => !f.need || have[f.need]);
-      const n = list.filter((f) => S.has(f.k)).length;
+      const list = FINDS.filter((f2) => !f2.need || have[f2.need]);
+      const n = list.filter((f2) => S.has(f2.k)).length;
       let h = `<p class="fazit">${!n ? "Probier aus, was du mit mir und meiner Welt machen kannst!" : n >= list.length ? "Du hast alles ausprobiert, was es bei mir gibt!" : `Das kannst du mit mir und meiner Welt machen. ${n} von ${list.length} hast du schon ausprobiert.`}</p>`;
       FIND_GROUPS.forEach((g, i) => {
-        const part = list.filter((f) => f.g === i);
+        const part = list.filter((f2) => f2.g === i);
         if (!part.length) return;
-        h += `<h3>${esc(g)}</h3>${part.map((f) => {
-          const ok = S.has(f.k);
-          return `<div class="fd${ok ? " ok" : ""}"><i>${ok ? DIARY_PAW : ""}</i><div><b>${esc(f.t.replace("{n}", fr))}</b><span>${esc(f.h.replace("{n}", fr))}</span></div></div>`;
+        h += `<h3>${esc(g)}</h3>${part.map((f2) => {
+          const ok = S.has(f2.k);
+          return `<div class="fd${ok ? " ok" : ""}"><i>${ok ? DIARY_PAW : ""}</i><div><b>${esc(f2.t.replace("{n}", fr))}</b><span>${esc(f2.h.replace("{n}", fr))}</span></div></div>`;
         }).join("")}`;
       });
       return `${h}<p class="note">Die Pfoten merkt sich nur dieses Gerät.</p>`;
@@ -11838,10 +12099,10 @@
           e.stopPropagation();
           this._diaryClose();
         } else if (e.key === "Tab") {
-          const f = [...root.querySelectorAll("button, .page")];
-          const i = f.indexOf(root.activeElement);
+          const f2 = [...root.querySelectorAll("button, .page")];
+          const i = f2.indexOf(root.activeElement);
           e.preventDefault();
-          f[(i + (e.shiftKey ? -1 : 1) + f.length) % f.length].focus();
+          f2[(i + (e.shiftKey ? -1 : 1) + f2.length) % f2.length].focus();
         }
       });
       const poke = () => {
@@ -12187,13 +12448,13 @@
     }
     // Eine Blüte als Geschenk vorn ins Gras legen. Antippen nimmt sie an.
     async _gift() {
-      const f = this._nearestFlower();
-      if (!f || this._giftEl) return;
+      const f2 = this._nearestFlower();
+      if (!f2 || this._giftEl) return;
       const p = this._el.pika;
       const { pW } = this._g;
-      await this._approach(f.xf * this._W);
-      await this._sniffPick(f);
-      this._mouth(f.color);
+      await this._approach(f2.xf * this._W);
+      await this._sniffPick(f2);
+      this._mouth(f2.color);
       p.classList.add("carry");
       this._giftCarry = true;
       try {
@@ -12202,7 +12463,7 @@
         this._giftCarry = false;
         p.classList.remove("carry");
         this._mouth(null);
-        if (!this._giftEl) this._flowerGiftDrop(f.color);
+        if (!this._giftEl) this._flowerGiftDrop(f2.color);
       }
       this._say(pick(["für dich!", "für dich ♥", "hier!"]), 1800, true);
       this._blush(3e3);
@@ -12224,18 +12485,18 @@
     // wegnehmen, sobald es auf einem angetippt wurde, und nach FLGIFT.life welken lassen
     _flowerFromPlan() {
       if (!this._g || !this._el) return;
-      const f = this._plan?.fl;
-      const left = f && !f.k ? f.t + FLGIFT.life - this._haNow() : 0;
+      const f2 = this._plan?.fl;
+      const left = f2 && !f2.k ? f2.t + FLGIFT.life - this._haNow() : 0;
       const el = this._giftEl;
-      if (el && (el._t !== f?.t || left <= 0)) {
+      if (el && (el._t !== f2?.t || left <= 0)) {
         this._giftEl = null;
         clearTimeout(this._giftT);
-        if (el._t === f?.t && f.k) {
+        if (el._t === f2?.t && f2.k) {
           el.classList.add("take");
           setTimeout(() => el.remove(), 950);
         } else {
           el.classList.add("wilt");
-          if (el._t !== f?.t) el.style.transitionDuration = ".6s";
+          if (el._t !== f2?.t) el.style.transitionDuration = ".6s";
           setTimeout(() => el.remove(), 4200);
         }
       }
@@ -12243,9 +12504,9 @@
       const pal = this._flowerPal();
       const g = document.createElement("div");
       g.className = "pgift";
-      g.innerHTML = `${GIFT_SVG(pal[f.c % pal.length])}<i class="pspk"></i><i class="pspk"></i><i class="pspk"></i>`;
-      g._t = f.t;
-      g._xf = f.x / 100;
+      g.innerHTML = `${GIFT_SVG(pal[f2.c % pal.length])}<i class="pspk"></i><i class="pspk"></i><i class="pspk"></i>`;
+      g._t = f2.t;
+      g._xf = f2.x / 100;
       this._flowerGiftPlace(g);
       g.setAttribute("role", "button");
       g.setAttribute("aria-label", "Blume annehmen");
@@ -12316,7 +12577,7 @@
   var FEST_COLORS = ["#e8584e", "#f6c945", "#5fb9de", "#7cc35a", "#f28fb1", "#b99cf0", "#ff9f5a"];
   var FEST_FW_COLORS = ["#ff5a5f", "#ffd166", "#5fd1ff", "#b48cff", "#7dff9a", "#ff8ad8", "#fff3c4"];
   var festF1 = (n) => n.toFixed(1);
-  var festSvg = (vb, body, cls, st = "") => `<svg class="${cls}" viewBox="0 0 ${vb[0]} ${vb[1]}" aria-hidden="true"${st}>${body}</svg>`;
+  var festSvg = (vb, body2, cls, st = "") => `<svg class="${cls}" viewBox="0 0 ${vb[0]} ${vb[1]}" aria-hidden="true"${st}>${body2}</svg>`;
   var festBez = (a, b, c, d, t) => {
     const u = 1 - t;
     return [0, 1].map((k) => u * u * u * a[k] + 3 * u * u * t * b[k] + 3 * u * t * t * c[k] + t * t * t * d[k]);
@@ -12376,13 +12637,13 @@
   };
   var FEST_STREAMERS = (edge) => {
     const ch = festChain(edge, 1.6, 1.2);
-    const wave = (dy, ph) => festPath(ch.map(([x, y], i) => [x, y + dy + Math.sin(i * 1.15 + ph) * 0.9]));
+    const wave2 = (dy, ph) => festPath(ch.map(([x, y], i) => [x, y + dy + Math.sin(i * 1.15 + ph) * 0.9]));
     const curls = edge.slice(1, -1).filter(([x], i) => i % 2 === 0 && (x < 33 || x > 67)).map(([x, y], i) => {
       const n = 2 + i % 3;
       return `<path d="M${festF1(x)} ${festF1(y + 1)} ${"q1.5 1.6 0 3.2 q-1.5 1.6 0 3.2 ".repeat(n).trim()}" stroke="${FEST_COLORS[(i + 2) % FEST_COLORS.length]}" stroke-width=".85" fill="none" stroke-linecap="round"/>`;
     }).join("");
     return {
-      b: `<path d="${wave(0, 0)}" stroke="#f28fb1" stroke-width=".95" fill="none" stroke-linecap="round"/><path d="${wave(2.4, 1.7)}" stroke="#f6c945" stroke-width=".95" fill="none" stroke-linecap="round"/>` + curls
+      b: `<path d="${wave2(0, 0)}" stroke="#f28fb1" stroke-width=".95" fill="none" stroke-linecap="round"/><path d="${wave2(2.4, 1.7)}" stroke="#f6c945" stroke-width=".95" fill="none" stroke-linecap="round"/>` + curls
     };
   };
   var FEST_FACE = "M11.6 19 L16.4 19 L14.2 14.6Z M23.6 19 L28.4 19 L25.8 14.6Z M18.7 22 L21.3 22 L20 19.8Z M11.4 24 Q20 31.4 28.6 24 L26.8 24.4 L25.3 26 L23.6 24.6 L21.8 26.2 L20 24.8 L18.2 26.2 L16.4 24.6 L14.7 26 L13.2 24.4Z";
@@ -12588,13 +12849,13 @@
       if (!this._el) return;
       this._festEnsure();
       this._festUpdate();
-      const f = this._fest;
+      const f2 = this._fest;
       this._festArm();
       this._festMidnight();
       if (this._away() || !this._g) return;
-      if (f.witch && this._festDark() && Math.random() < 0.35) this._festBat();
+      if (f2.witch && this._festDark() && Math.random() < 0.35) this._festBat();
       const party = !this._asleep && !this._festDark() && !this._wx.wet;
-      if (f.karneval) {
+      if (f2.karneval) {
         const t = Date.now();
         this._festCfNext ??= t + rnd(5, 30) * 1e3;
         if (t >= this._festCfNext && party) {
@@ -12643,20 +12904,20 @@
       } else this._festForce("festConfetti");
     }
     _festActs({ wx, g }) {
-      const f = this._fest || {};
+      const f2 = this._fest || {};
       const pos = this._festPos || {};
       const ok = (n, min) => Date.now() >= ((this._festLast || {})[n] || 0) + min * 6e4;
       const dry = !wx.wet;
       const out = [];
-      if (f.halloween && pos.pumpkin) out.push([dry && ok("festPumpkin", 4) ? 1.5 : 0, "festPumpkin"]);
-      if (f.martin?.walk) out.push([dry && ok("festLantern", 3) ? 3 : 0, "festLantern"]);
-      if (f.boot && pos.boot) out.push([ok("festBoot", 5) ? 1.6 : 0, "festBoot"]);
-      if (f.xmas && pos.tree) out.push([ok("festTree", 4) ? 2 : 0, "festTree"]);
-      if (f.fireworks) out.push([ok("festFireworks", 2) ? 12 : 0, "festFireworks"]);
-      if (f.karneval) out.push([dry && ok("festConfetti", 4) ? 1.6 : 0, "festConfetti"]);
-      if (f.ostern && this._festEggs?.length) out.push([ok("festEgg", 3) ? 2 : 0, "festEgg"]);
-      if (f.birthday && pos.cake) out.push([!this._festCakeOut && ok("festBirthday", 4) ? 2.5 : 0, "festBirthday"]);
-      if (f.sommer) out.push([dry && g > 30 ? 3 : 0, "binky"]);
+      if (f2.halloween && pos.pumpkin) out.push([dry && ok("festPumpkin", 4) ? 1.5 : 0, "festPumpkin"]);
+      if (f2.martin?.walk) out.push([dry && ok("festLantern", 3) ? 3 : 0, "festLantern"]);
+      if (f2.boot && pos.boot) out.push([ok("festBoot", 5) ? 1.6 : 0, "festBoot"]);
+      if (f2.xmas && pos.tree) out.push([ok("festTree", 4) ? 2 : 0, "festTree"]);
+      if (f2.fireworks) out.push([ok("festFireworks", 2) ? 12 : 0, "festFireworks"]);
+      if (f2.karneval) out.push([dry && ok("festConfetti", 4) ? 1.6 : 0, "festConfetti"]);
+      if (f2.ostern && this._festEggs?.length) out.push([ok("festEgg", 3) ? 2 : 0, "festEgg"]);
+      if (f2.birthday && pos.cake) out.push([!this._festCakeOut && ok("festBirthday", 4) ? 2.5 : 0, "festBirthday"]);
+      if (f2.sommer) out.push([dry && g > 30 ? 3 : 0, "binky"]);
       return out;
     }
     // Uhr von HA: Feuerwerk, Finale und „Helau!“ kommen auf allen Geräten im selben Moment
@@ -12697,25 +12958,25 @@
       const hm = h * 60 + now.getMinutes();
       const md = mo * 100 + d;
       const day = festDay(y, mo, d);
-      const f = { year: y };
+      const f2 = { year: y };
       if (this._cfg?.festive !== false) {
         const hwNight = md === 1101 && h < 6;
-        if (md >= 1024 && md <= 1031 || hwNight) f.halloween = true;
-        if (md === 1031 || hwNight) f.witch = true;
-        if (md === 1111) f.martin = { walk: hm >= this._festEve(now, 16 * 60, 90) };
+        if (md >= 1024 && md <= 1031 || hwNight) f2.halloween = true;
+        if (md === 1031 || hwNight) f2.witch = true;
+        if (md === 1111) f2.martin = { walk: hm >= this._festEve(now, 16 * 60, 90) };
         const adv = festAdvent1(y);
-        if (day >= adv && md <= 1224) f.advent = { candles: Math.min(4, 1 + Math.floor((day - adv) / 7)) };
-        if (day >= adv || md <= 106) f.lights = true;
-        if (md === 1205 && hm >= this._festEve(now, 18 * 60, 120) || md === 1206) f.boot = { full: md === 1206 };
-        if (md >= 1224 && md <= 1226) f.xmas = true;
-        if (md === 1231 && hm >= 23 * 60 + 55 || md === 101 && h < 1) f.fireworks = true;
-        if (md === 101 && h >= 1) f.sticks = true;
+        if (day >= adv && md <= 1224) f2.advent = { candles: Math.min(4, 1 + Math.floor((day - adv) / 7)) };
+        if (day >= adv || md <= 106) f2.lights = true;
+        if (md === 1205 && hm >= this._festEve(now, 18 * 60, 120) || md === 1206) f2.boot = { full: md === 1206 };
+        if (md >= 1224 && md <= 1226) f2.xmas = true;
+        if (md === 1231 && hm >= 23 * 60 + 55 || md === 101 && h < 1) f2.fireworks = true;
+        if (md === 101 && h >= 1) f2.sticks = true;
         const [em, ed] = festEaster(y);
         const e = festDay(y, em, ed);
-        if (day >= e - 52 && day <= e - 46) f.karneval = true;
-        if (day >= e - 2 && day <= e + 1) f.ostern = true;
-        if (md === 430 && h >= 18 || md === 501) f.maibaum = true;
-        if (md === 621) f.sommer = true;
+        if (day >= e - 52 && day <= e - 46) f2.karneval = true;
+        if (day >= e - 2 && day <= e + 1) f2.ostern = true;
+        if (md === 430 && h >= 18 || md === 501) f2.maibaum = true;
+        if (md === 621) f2.sommer = true;
       }
       const leap = new Date(y, 1, 29).getMonth() === 1;
       const names = (Array.isArray(this._cfg?.birthdays) ? this._cfg.birthdays : []).filter((b) => {
@@ -12732,8 +12993,8 @@
         if (bm === 2 && bd === 29 && !leap) bd = 28;
         return bm === mo && bd === d;
       }).map((b) => String(b.name || "").trim()).filter(Boolean);
-      if (names.length) f.birthday = { names };
-      return f;
+      if (names.length) f2.birthday = { names };
+      return f2;
     }
     _festEnsure() {
       if (this._festEls || !this._el?.festB) return;
@@ -12753,17 +13014,17 @@
     }
     // Feste neu bestimmen; bei Wechsel (oder force) Hüte und Deko neu
     _festUpdate(force) {
-      const f = this._festToday();
-      const key = JSON.stringify(f);
+      const f2 = this._festToday();
+      const key = JSON.stringify(f2);
       const changed = key !== this._festKey;
       this._festKey = key;
-      this._fest = f;
-      if (changed && !f.birthday) this._festCakeOut = false;
+      this._fest = f2;
+      if (changed && !f2.birthday) this._festCakeOut = false;
       if (changed || force) {
         const p = this._el.pika.classList;
-        const hat = f.xmas ? "xmas" : f.birthday ? "party" : f.witch ? "witch" : f.karneval ? "party" : null;
+        const hat = f2.xmas ? "xmas" : f2.birthday ? "party" : f2.witch ? "witch" : f2.karneval ? "party" : null;
         for (const h of ["witch", "xmas", "party"]) p.toggle(`fest-${h}`, hat === h);
-        this._el.friends.classList.toggle("fest-xmas", !!f.xmas);
+        this._el.friends.classList.toggle("fest-xmas", !!f2.xmas);
         this._festRender();
       }
       this._festFwSync();
@@ -12773,7 +13034,7 @@
     _festRender() {
       const E = this._festEls;
       if (!E || !this._g) return;
-      const f = this._fest || {};
+      const f2 = this._fest || {};
       const { gy, hole, rock, bur, hayL, hayR } = this._g;
       const W = this._W;
       const H = this._H;
@@ -12808,14 +13069,14 @@
         const [x, w2] = fit(slot(...prefs), w);
         front.push(item(cls, x, bottom, w2, art, name));
       };
-      if (f.xmas) used.add("M");
-      if (f.halloween) ground("fpump", ["M", "R", "L"], gy + 1, H * 0.14, FEST_PUMPKIN, "pumpkin");
-      if (f.boot) ground("fboot", ["M", "R", "L"], gy + 1, H * 0.11, FEST_BOOT(f.boot.full), "boot");
-      if (f.advent) ground("fwreath", ["R", "L", "M"], gy, H * 0.2, FEST_WREATH(f.advent.candles), "wreath");
-      if (f.birthday) ground(`fcake${this._festCakeOut ? " out" : ""}`, ["R", "L", "M"], gy + 1, H * 0.14, FEST_CAKE, "cake");
-      if (f.lights) on.push(onBur("flights", FEST_LIGHTS(edge)));
-      if (f.karneval) on.push(onBur("fstream", FEST_STREAMERS(edge)));
-      if (f.martin) {
+      if (f2.xmas) used.add("M");
+      if (f2.halloween) ground("fpump", ["M", "R", "L"], gy + 1, H * 0.14, FEST_PUMPKIN, "pumpkin");
+      if (f2.boot) ground("fboot", ["M", "R", "L"], gy + 1, H * 0.11, FEST_BOOT(f2.boot.full), "boot");
+      if (f2.advent) ground("fwreath", ["R", "L", "M"], gy, H * 0.2, FEST_WREATH(f2.advent.candles), "wreath");
+      if (f2.birthday) ground(`fcake${this._festCakeOut ? " out" : ""}`, ["R", "L", "M"], gy + 1, H * 0.14, FEST_CAKE, "cake");
+      if (f2.lights) on.push(onBur("flights", FEST_LIGHTS(edge)));
+      if (f2.karneval) on.push(onBur("fstream", FEST_STREAMERS(edge)));
+      if (f2.martin) {
         const [ex, ey] = edge.reduce((a, p) => Math.abs(p[0] - 88) < Math.abs(a[0] - 88) ? p : a);
         const w = H * 0.1;
         const ax = bur.l + ex * bur.u;
@@ -12823,20 +13084,20 @@
         const h = w * 34 / 26;
         on.push(`<div class="fi flan" style="left:${festF1(ax - w / 26)}px;top:${festF1(ay - w * 4.2 / 26)}px;width:${festF1(w)}px;height:${festF1(h)}px">${festSvg(FEST_LANTERN.vb, FEST_LANTERN.b, "b")}${festSvg(FEST_LANTERN.vb, FEST_LANTERN.g, "g")}</div>`);
       }
-      if (f.xmas) {
+      if (f2.xmas) {
         const tw = H * 0.42 * 50 / 66;
         back.push(item("ftree", slots.M.x, gy + 2, tw, FEST_TREE, "tree"));
         const gw = H * 0.1;
         front.push(item("fgift", Math.min(slots.M.x, Math.max(slots.M.x - tw * 0.32, hayR + gw / 2)), gy - 1, gw, FEST_GIFT, "gift"));
       }
-      if (f.maibaum) {
+      if (f2.maibaum) {
         const top = Math.max(44, this._sy(0.16));
         const mh = gy - top;
         const mw = mh / 4;
         const x = bur.l + 80 * bur.u;
         back.push(`<div class="fi fmai" style="left:${festF1(x - mw / 2)}px;top:${festF1(top)}px;width:${festF1(mw)}px;height:${festF1(mh)}px;--wd:${this._windDir < 0 ? -1 : 1}">${festSvg(FEST_MAI.vb, FEST_MAI.b, "b")}</div>`);
       }
-      if (f.birthday || f.sommer) back.push(this._festString(f.birthday ? ["A", "L", "L", "E", "S", "♥", "G", "U", "T", "E"] : null));
+      if (f2.birthday || f2.sommer) back.push(this._festString(f2.birthday ? ["A", "L", "L", "E", "S", "♥", "G", "U", "T", "E"] : null));
       const lo = hole.r + H * 0.12;
       const hi = Math.max(lo + H * 0.3, Math.min(W - 10, rock.l + rock.w * 0.75));
       const taken = Object.values(pos);
@@ -12857,10 +13118,10 @@
         return hi;
       };
       const eggX = [];
-      if (f.ostern) {
-        const n = 4 + Math.floor(seeded(f.year, 7) * 3);
+      if (f2.ostern) {
+        const n = 4 + Math.floor(seeded(f2.year, 7) * 3);
         for (let i = 0; i < n; i++) {
-          const r = (k) => seeded(f.year, i, k);
+          const r = (k) => seeded(f2.year, i, k);
           const x = free((i + 0.2 + 0.6 * r(1)) / n, H * 0.05);
           const c1 = FEST_COLORS[Math.floor(r(2) * FEST_COLORS.length)];
           let c2 = FEST_COLORS[Math.floor(r(3) * FEST_COLORS.length)];
@@ -12873,9 +13134,9 @@
           front.push(`<div class="fi fegg" role="button" aria-label="Osterei" style="left:${festF1(x - w / 2 - 6)}px;top:${festF1(b - h - 6)}px;width:${festF1(w + 12)}px;height:${festF1(h + 12)}px"><svg class="b" viewBox="0 0 12 15" aria-hidden="true" style="rotate:${festF1((r(5) - 0.5) * 24)}deg">${FEST_EGG(c1, c2, Math.floor(r(6) * 3))}</svg></div>`);
         }
       }
-      if (f.sticks) {
+      if (f2.sticks) {
         [[0.3, -6], [0.68, 9]].forEach(([t, rot], i) => {
-          const x = free(t + (seeded(f.year, 31, i) - 0.5) * 0.1, H * 0.12);
+          const x = free(t + (seeded(f2.year, 31, i) - 0.5) * 0.1, H * 0.12);
           front.push(item("fstick", x, gy - H * 0.018, H * 0.2, FEST_STICK, `stick${i}`, `;rotate:${rot}deg`));
         });
       }
@@ -12923,8 +13184,8 @@
         flags += `<g transform="translate(${festF1(x)} ${festF1(y)}) rotate(${festF1(a * 0.6)})"><g class="fpn" style="animation-delay:${(-i * 0.29).toFixed(2)}s"><path d="M${festF1(-pw / 2)} 0 L${festF1(pw / 2)} 0 L0 ${festF1(ph)}Z" fill="${c}" stroke="${OUT}" stroke-width=".8" stroke-linejoin="round"/>` + (ch ? `<text x="0" y="${festF1(ph * 0.36)}" text-anchor="middle" dominant-baseline="middle" font-size="${festF1(pw * 0.62)}" font-weight="900" fill="#fff" stroke="rgba(90, 64, 48, .55)" stroke-width=".7" paint-order="stroke">${ch}</text>` : "") + "</g></g>";
       }
       const sw = Math.max(1.6, H * 0.012);
-      const body = `<path d="M${festF1(x2)} ${festF1(y2 - 3)} V${festF1(rock.top0 + 22 * rock.ku)}" stroke="#8a5a3b" stroke-width="${festF1(sw)}" stroke-linecap="round"/><path d="M${festF1(x1)} ${festF1(y1)} Q${festF1(cx)} ${festF1(cy)} ${festF1(x2)} ${festF1(y2)}" stroke="#7a6a5a" stroke-width="1" fill="none"/>${flags}`;
-      return `<div class="fi fwim" style="left:0;top:0;width:${W}px;height:${this._Hs}px">${festSvg([W, this._Hs], body, "b")}</div>`;
+      const body2 = `<path d="M${festF1(x2)} ${festF1(y2 - 3)} V${festF1(rock.top0 + 22 * rock.ku)}" stroke="#8a5a3b" stroke-width="${festF1(sw)}" stroke-linecap="round"/><path d="M${festF1(x1)} ${festF1(y1)} Q${festF1(cx)} ${festF1(cy)} ${festF1(x2)} ${festF1(y2)}" stroke="#7a6a5a" stroke-width="1" fill="none"/>${flags}`;
+      return `<div class="fi fwim" style="left:0;top:0;width:${W}px;height:${this._Hs}px">${festSvg([W, this._Hs], body2, "b")}</div>`;
     }
     _festWobble(el) {
       if (!el) return;
@@ -13009,7 +13270,7 @@
       const calm = calmMotion();
       const c = pick(FEST_FW_COLORS);
       const c2 = Math.random() < 0.4 ? pick(FEST_FW_COLORS) : c;
-      const R = H * rnd(0.09, 0.15);
+      const R2 = H * rnd(0.09, 0.15);
       const box = document.createElement("div");
       box.className = "fwb";
       box.style.left = `${festF1(x)}px`;
@@ -13021,7 +13282,7 @@
       const n = calm ? 0 : 11 + Math.floor(rnd(0, 4));
       for (let i = 0; i < n; i++) {
         const a = i / n * Math.PI * 2 + rnd(-0.1, 0.1);
-        const d = R * rnd(0.85, 1.1);
+        const d = R2 * rnd(0.85, 1.1);
         const p = document.createElement("i");
         p.className = "fwp";
         p.style.setProperty("--c", i % 2 ? c2 : c);
@@ -13034,7 +13295,7 @@
       }
       for (let i = 0; i < (calm ? 0 : 6); i++) {
         const a = rnd(0, Math.PI * 2);
-        const d = R * rnd(0.3, 0.9);
+        const d = R2 * rnd(0.3, 0.9);
         const s = document.createElement("i");
         s.className = "fws";
         box.appendChild(s);
@@ -13370,8 +13631,8 @@
         const aw = this._awakeMs(a, b);
         return (aw + SLEEP_DECAY * (b - a - aw)) / 36e5;
       };
-      const cut = urlaubCut(this._plan?.ur, t1, t2);
-      return h(t1, t2) - (cut ? h(cut[0], cut[1]) : 0);
+      const cut2 = urlaubCut(this._plan?.ur, t1, t2);
+      return h(t1, t2) - (cut2 ? h(cut2[0], cut2[1]) : 0);
     }
     // Umkehrung: wann ab t h Abbau-Stunden vergangen sind (wann ein Wert unter eine Grenze fällt)
     _decayAt(t, h) {
@@ -13598,6 +13859,7 @@
   };
 
   // src/karte/pino.js
+  var FRIEND_ART = { pino: FRIEND_SVG, kirby: KIRBY_SVG, rufus: RUFUS_SVG, katzumi: KATZUMI_SVG };
   var Pino = class {
     // Pino, ein Freund-Pika, kommt ein paarmal am Tag zu Besuch. Er lebt in der Ebene .friends hinter dem Pika
     // und hat einen eigenen Ablauf (_friendVisit: hereinhoppeln, Eigenleben, verabschieden, hinaus). Die
@@ -13623,8 +13885,8 @@
       const g = this._g;
       if (!g) return;
       const s = this._el.friends.style;
-      s.setProperty("--ph", `${g.pH * FRIEND_SCALE}px`);
-      s.setProperty("--pw", `${g.pW * FRIEND_SCALE}px`);
+      s.setProperty("--ph", `${g.pH * this._frSc()}px`);
+      s.setProperty("--pw", `${g.pW * this._frSc()}px`);
       const ratio = this._frLW ? this._W / this._frLW : 1;
       this._frLW = this._W;
       const fr = this._fr;
@@ -13640,7 +13902,7 @@
       fr.lift = 0;
       fr.mv = null;
       if (!this._cfg.depth) fr.lane = 0;
-      const [lo, hi] = fr.lane ? this._laneRange(g.pW * FRIEND_SCALE) : this._frRange();
+      const [lo, hi] = fr.lane ? this._laneRange(g.pW * this._frSc()) : this._frRange();
       this._frSetX(fr, clamp(fr.x * ratio, lo, hi));
     }
     _tickFriend() {
@@ -13699,7 +13961,7 @@
         const end = at + Math.round((s0 + r(2) * (s1 - s0)) * 6e4);
         if (now >= end) continue;
         const start = Math.max(now, at);
-        return { nextInMs: start - now, stayMs: end - start, side: r(3) < 0.5 ? -1 : 1 };
+        return { nextInMs: start - now, stayMs: end - start, side: r(3) < 0.5 ? -1 : 1, kind: friendKind(r(4)) };
       }
     }
     _friendOn() {
@@ -13771,19 +14033,28 @@
     _frName() {
       return String(this._cfg.friend_name || "Pino");
     }
+    // Wer gerade zu Besuch ist (oder zuletzt war: Abschied, Fangen): Pino heißt wie in friend_name, die anderen fest
+    _frGuest() {
+      return this._frWho || this._frName();
+    }
+    // Größe des Freunds, der gerade da ist, gegenüber dem Pika
+    _frSc(fr = this._fr) {
+      return FRIENDS[fr?.kind]?.scale ?? FRIEND_SCALE;
+    }
     // ---------- Besuch ----------
-    // Pino kommt (force: sofort, bei jedem Wetter und jeder Tageszeit, für die Vorschau)
-    _friendCome(side, stayMs, force = false) {
+    // Pino (oder wer laut Plan dran ist, kind) kommt (force: sofort, bei jedem Wetter und jeder Tageszeit, für die Vorschau)
+    _friendCome(side, stayMs, force = false, kind = null) {
       if (!this._g || this._fr || !this._cfg?.friend) return;
-      if (side == null || stayMs == null) {
+      if (side == null || stayMs == null || !kind) {
         const s = this._friendSchedule();
+        kind ??= s.kind;
         side ??= s.side;
         stayMs ??= Math.max(s.stayMs, 9e4);
       }
       clearTimeout(this._frT);
       this._frT = null;
       this._frBye = null;
-      const fr = this._friendBuild();
+      const fr = this._friendBuild(FRIEND_ART[kind] ? kind : "pino");
       fr.side = side < 0 ? -1 : 1;
       fr.planned = !force;
       fr.bad0 = force ? this._friendBad() : 0;
@@ -13797,17 +14068,19 @@
       clearTimeout(fr.untilT);
       fr.untilT = setTimeout(() => this._fr === fr && this._friendLeave(), Math.max(0, until - Date.now()));
     }
-    _friendBuild() {
+    _friendBuild(kind = "pino") {
+      this._frWho = FRIENDS[kind].name || this._frName();
       const el = document.createElement("div");
-      el.className = "friend";
+      el.className = `friend fr-${kind}`;
       el.setAttribute("role", "button");
-      el.setAttribute("aria-label", `${this._frName()} streicheln`);
-      el.innerHTML = `<div class="clipw"><div class="shadow"></div><div class="depth"><div class="flip"><div class="jump"><div class="hop"><div class="br">${FRIEND_SVG}</div></div></div></div></div></div>`;
+      el.setAttribute("aria-label", `${this._frWho} streicheln`);
+      el.innerHTML = `<div class="clipw"><div class="shadow"></div><div class="depth"><div class="flip"><div class="jump"><div class="hop"><div class="br">${FRIEND_ART[kind]}</div></div></div></div></div></div>`;
       el.querySelectorAll(".book, .gb, .tab, .kpaw, .bk, .brolly, .cap, .cup, .cfoam, .rope, .band, .arms, .uke, .brush, .wand, .rgrip, .bar, .wpaw, .slg, .gspy, .gcan, .shades, .hoop, .yo, .pbl, .jug, .dchain, .dcrown, .pgl, .peb, .sboat").forEach((n) => n.remove());
       const sw = document.createElement("div");
       sw.className = "frsay";
       sw.innerHTML = '<div class="anchor"><div class="bubble say"></div></div>';
       const fr = {
+        kind,
         el,
         sw,
         jump: el.querySelector(".jump"),
@@ -13830,6 +14103,9 @@
       this._keyTap(el);
       el.classList.toggle("cold", !!this._wx.cold);
       this._frZ(fr);
+      const fs = this._el.friends.style;
+      fs.setProperty("--ph", `${this._g.pH * this._frSc(fr)}px`);
+      fs.setProperty("--pw", `${this._g.pW * this._frSc(fr)}px`);
       this._el.friends.append(el, sw);
       return fr;
     }
@@ -13884,7 +14160,7 @@
     // Vom Rand herein hoppeln, piepsen
     async _friendArrive(fr) {
       const W = this._W;
-      const fW = this._g.pW * FRIEND_SCALE;
+      const fW = this._g.pW * this._frSc();
       const [lo, hi] = this._frRange();
       const w = (ms) => this._fw(fr, ms, fr.tok);
       this._frFace(fr, -fr.side);
@@ -13927,7 +14203,7 @@
       const w = (ms) => this._fw(fr, ms);
       this._friendSettle(fr);
       if (fr.lift > 0) await this._frHopDown(fr, w);
-      const fW = this._g.pW * FRIEND_SCALE;
+      const fW = this._g.pW * this._frSc();
       const out = fr.x < this._W / 2 ? -1 : 1;
       this._frFace(fr, this._liveX() >= fr.x ? 1 : -1);
       this._frSay(fr, "tschüss!", 1600);
@@ -13966,7 +14242,7 @@
       if (act === "hop") {
         const want = this._cfg.depth ? this._frLaneNext ?? (this._wx.wet ? 0 : Math.random() < 0.35 ? 1 : 0) : 0;
         this._frLaneNext = null;
-        const [l, r] = want ? this._laneRange(pW * FRIEND_SCALE) : [0, 0];
+        const [l, r] = want ? this._laneRange(pW * this._frSc()) : [0, 0];
         if (want && r - l > pW * 0.3) await this._friendWalkTo(fr, rnd(l, r), 0.9, w, false, 1);
         else await this._friendWalkTo(fr, fr.x + rnd(0.5, 1.5) * pW * pick([-1, 1]), 0.9, w);
         await w(rnd(300, 900));
@@ -14052,8 +14328,8 @@
     // Die Nische gehört zum Bau und liegt hinten, vor ihr darf er stehen.
     _frRange() {
       const { pW, home, hay, stash } = this._g;
-      const lo = Math.max(home + pW * 0.8, stash ? 0 : hay + this._H * 0.13 + pW * FRIEND_SCALE * 0.3);
-      return [lo, Math.max(lo, this._W - pW * FRIEND_SCALE * 0.45)];
+      const lo = Math.max(home + pW * 0.8, stash ? 0 : hay + this._H * 0.13 + pW * this._frSc() * 0.3);
+      return [lo, Math.max(lo, this._W - pW * this._frSc() * 0.45)];
     }
     // free: ohne Begrenzung auf die Wiese (herein- und hinaushoppeln). lane (Tiefe): 1 = hintere Spur, im Bereich
     // _laneRange; jeder Weg ohne lane führt auf die vordere zurück (wie beim Pika, _walkTo)
@@ -14061,7 +14337,7 @@
       const { pW } = this._g;
       lane = this._cfg.depth ? lane : 0;
       if (!free) {
-        const [lo, hi] = lane ? this._laneRange(pW * FRIEND_SCALE) : this._frRange();
+        const [lo, hi] = lane ? this._laneRange(pW * this._frSc()) : this._frRange();
         x = clamp(x, lo, hi);
       }
       const dx = x - fr.x;
@@ -14103,7 +14379,7 @@
       fr.mv = ms > 0 ? { ...from, x1: x, l1: lift, dy1: dy, t0: performance.now(), ms } : null;
       for (const s of [fr.el.style, fr.sw.style]) {
         s.transition = ms > 0 ? `transform ${Math.round(ms)}ms ${ease}` : "none";
-        s.transform = `translate(${(x - this._g.pW * FRIEND_SCALE / 2).toFixed(1)}px, ${(-lift - dy).toFixed(1)}px)` + (sc !== 1 ? ` scale(${sc.toFixed(3)})` : "");
+        s.transform = `translate(${(x - this._g.pW * this._frSc() / 2).toFixed(1)}px, ${(-lift - dy).toFixed(1)}px)` + (sc !== 1 ? ` scale(${sc.toFixed(3)})` : "");
       }
       fr.el.classList.toggle("lane1", !!dy);
       clearTimeout(fr.laneZT);
@@ -14112,7 +14388,7 @@
         fr.laneZT = setTimeout(() => this._frZ(fr), ms / 2);
       } else this._frZ(fr);
       if (!(ms > 0)) void fr.el.offsetWidth;
-      this._bubbleFit(fr.say, x, this._g.pW * FRIEND_SCALE, sc);
+      this._bubbleFit(fr.say, x, this._g.pW * this._frSc(), sc);
     }
     // Tiefe (depth): Höhe der hinteren Spur über der Bodenlinie für Pino (px), sonst 0. Auf dem Stein zählt die vordere.
     _frLaneDy(fr, lane = fr.lane) {
@@ -14148,7 +14424,7 @@
       fr.dir = dir;
       fr.el.classList.toggle("left", dir < 0);
       fr.sw.classList.toggle("left", dir < 0);
-      this._bubbleFit(fr.say, fr.x, this._g.pW * FRIEND_SCALE, this._frLaneDy(fr) ? LANE_S : 1);
+      this._bubbleFit(fr.say, fr.x, this._g.pW * this._frSc(), this._frLaneDy(fr) ? LANE_S : 1);
     }
     // wie _jump: ein Sprung, der noch in der Luft ist, wird zu Ende gesprungen (fresh: _frHop trägt ihn woandershin)
     _frJump(fr, kind, fresh = false) {
@@ -14194,8 +14470,8 @@
     }
     _frHearts(fr, n) {
       const { pW, pH, gy } = this._g;
-      const fW = pW * FRIEND_SCALE;
-      const fH = pH * FRIEND_SCALE;
+      const fW = pW * this._frSc();
+      const fH = pH * this._frSc();
       const live = this._frLive(fr);
       const s = live.dy ? 1 - (1 - LANE_S) * Math.min(1, live.dy / (this._H * LANE_DY)) : 1;
       const x = live.x + fr.dir * fW * 0.25 * s;
@@ -14291,12 +14567,12 @@
     }
     // Begrüßung: hinschauen, "Pino!", hinhoppeln, Nasenstupsen
     async _greetFriend() {
-      this._memo("pino");
+      this._memo(this._fr?.kind || "pino");
       await this._withFriend(async (fr, w) => {
         const P = this._el.pika.classList;
         this._face(fr.x >= this._x ? 1 : -1);
         P.add("look-f");
-        this._say(`${this._frName()}!`, 1600);
+        this._say(`${this._frGuest()}!`, 1600);
         this._jump("hop1");
         this._frFace(fr, this._x >= fr.x ? 1 : -1);
         await w(900);
@@ -14349,7 +14625,7 @@
           let rl = deep ? 1 - cl0 : 0;
           let [lo, hi] = range(rl);
           let far = chaseFar(rx, cx, lo, hi, pW);
-          const via = (f) => f ? cx > rx : cx < rx;
+          const via = (f2) => f2 ? cx > rx : cx < rx;
           if (rl !== rl0 && via(far)) {
             rl = rl0;
             [lo, hi] = range(rl);
@@ -14363,11 +14639,11 @@
           const ref = around ? cx : rx;
           const T = clamp(far ? rnd(Math.max(ref + pW, mid + (hi - mid) * 0.4), hi) : rnd(lo, Math.min(ref - pW, mid - (mid - lo) * 0.4)), lo, hi);
           const d = T > rx ? 1 : -1;
-          const C = clamp(T - d * pW * 0.7, ...range(cl));
+          const C2 = clamp(T - d * pW * 0.7, ...range(cl));
           const speed = rnd(1.9, 2.4);
           this._puff(fr.x, gy - this._frLaneDy(fr), 2);
           this._puff(this._x, gy - this._laneDy(), 2);
-          await Promise.all(pinoRuns ? [pino(T, speed, 0, rl), pika(C, speed, 280, cl)] : [pika(T, speed, 0, rl), pino(C, speed, 280, cl)]);
+          await Promise.all(pinoRuns ? [pino(T, speed, 0, rl), pika(C2, speed, 280, cl)] : [pika(T, speed, 0, rl), pino(C2, speed, 280, cl)]);
           this._puff(T, gy - lyOf(rl), 2);
           if (pinoRuns) {
             this._frFace(fr, -d);
@@ -14555,7 +14831,7 @@
         const near = (x) => (a, b) => Math.abs(a.xf * W - x) - Math.abs(b.xf * W - x);
         const f1 = [...this._flowers].sort(near(mid))[0];
         const x1 = f1.xf * W;
-        const f2 = this._flowers.filter((f) => f !== f1 && Math.abs(f.xf * W - x1) > pW * 0.7 && Math.abs(f.xf * W - x1) < W * 0.3).sort(near(x1))[0];
+        const f2 = this._flowers.filter((f3) => f3 !== f1 && Math.abs(f3.xf * W - x1) > pW * 0.7 && Math.abs(f3.xf * W - x1) < W * 0.3).sort(near(x1))[0];
         const s = this._x <= x1 ? -1 : 1;
         const fx = f2 ? f2.xf * W + (f2.xf * W > x1 ? 1 : -1) * pW * 0.32 : x1 - s * pW * 0.33;
         const tx = f2 ? f2.xf * W : x1;
@@ -14623,7 +14899,7 @@
       P.add("look-f");
       try {
         await this._wait(800);
-        this._say(`tschüss, ${this._frName()}!`, 1500);
+        this._say(`tschüss, ${this._frGuest()}!`, 1500);
         const end = Date.now() + 5e3;
         while (this._fr && Date.now() < end) {
           await this._wait(300);
@@ -14708,36 +14984,36 @@
       if (key === this._lightKey) return;
       this._lightKey = key;
       const pal = seasonPal(seasonPos(at, south));
-      const C = landColors(pal, L);
+      const C2 = landColors(pal, L);
       const st = E.scene.style;
       for (const [k, v] of [
-        ["h0", C.h0],
-        ["h1", C.h1],
-        ["h2", C.h2],
-        ["h3", C.h3],
-        ["m1", C.m1],
-        ["mcap", C.mcap],
-        ["mound", C.mound],
-        ["mound-s", C.moundS],
-        ["lb", C.lb.toFixed(3)],
-        ["ls", C.ls.toFixed(3)],
-        ["lbp", C.lbp.toFixed(3)]
+        ["h0", C2.h0],
+        ["h1", C2.h1],
+        ["h2", C2.h2],
+        ["h3", C2.h3],
+        ["m1", C2.m1],
+        ["mcap", C2.mcap],
+        ["mound", C2.mound],
+        ["mound-s", C2.moundS],
+        ["lb", C2.lb.toFixed(3)],
+        ["ls", C2.ls.toFixed(3)],
+        ["lbp", C2.lbp.toFixed(3)]
       ]) st.setProperty(`--${k}`, v);
-      cl.toggle("shade", C.lb < 0.96 || C.ls < 0.96);
+      cl.toggle("shade", C2.lb < 0.96 || C2.ls < 0.96);
       E.skyDusk.style.opacity = L.d;
       E.skyNight.style.opacity = L.n;
       E.skyGrey.style.setProperty("--gd", L.d);
       E.skyGrey.style.setProperty("--gn", L.n);
       E.skyStorm.style.opacity = L.storm ? (1 - 0.75 * L.n).toFixed(2) : 0;
-      this._lit = { lb: C.lb, ls: C.ls, pal };
+      this._lit = { lb: C2.lb, ls: C2.ls, pal };
       const sk = seasonKey(at, south);
       if (this._seasonK && this._seasonK !== sk) {
         const from = this._flowerPal();
         this._seasonK = sk;
         const to = this._flowerPal();
-        for (const f of this._flowers) {
-          f.color = to[Math.max(0, from.indexOf(f.color))];
-          f.el.innerHTML = FLOWER_SVG(f.color);
+        for (const f2 of this._flowers) {
+          f2.color = to[Math.max(0, from.indexOf(f2.color))];
+          f2.el.innerHTML = FLOWER_SVG(f2.color);
         }
         if (this._plan) this._hayFromPlan();
       }
@@ -14993,11 +15269,11 @@
       if (bolide) {
         const fx = x + dir * dx * 0.78;
         const fy = y + dy * 0.78;
-        const f = document.createElement("i");
-        f.className = "mflash";
-        f.style.cssText = `background:radial-gradient(circle at ${fx.toFixed(0)}px ${fy.toFixed(0)}px, rgba(215, 235, 255, .3), rgba(215, 235, 255, 0) ${(H * 0.5).toFixed(0)}px);animation-delay:${(dur * 0.68).toFixed(2)}s`;
-        this._el.meteors.appendChild(f);
-        setTimeout(() => f.remove(), dur * 680 + 900);
+        const f2 = document.createElement("i");
+        f2.className = "mflash";
+        f2.style.cssText = `background:radial-gradient(circle at ${fx.toFixed(0)}px ${fy.toFixed(0)}px, rgba(215, 235, 255, .3), rgba(215, 235, 255, 0) ${(H * 0.5).toFixed(0)}px);animation-delay:${(dur * 0.68).toFixed(2)}s`;
+        this._el.meteors.appendChild(f2);
+        setTimeout(() => f2.remove(), dur * 680 + 900);
       }
       const watch = !this._asleep && Math.random() < SKY.watch;
       this._met = { at: Date.now(), x: x + dir * dx / 2, dir, bolide, watch, seen: false };
@@ -15035,11 +15311,11 @@
     async _watchFireflies() {
       const p = this._el.pika;
       const { pW } = this._g;
-      let f = this._ffSpot();
-      if (f && Math.abs(f.x - this._x) > this._W * 0.3) {
-        await this._walkTo(f.x - Math.sign(f.x - this._x) * pW * rnd(0.6, 1.1), 0.7);
+      let f2 = this._ffSpot();
+      if (f2 && Math.abs(f2.x - this._x) > this._W * 0.3) {
+        await this._walkTo(f2.x - Math.sign(f2.x - this._x) * pW * rnd(0.6, 1.1), 0.7);
       }
-      if (f) this._face(f.x >= this._x ? 1 : -1);
+      if (f2) this._face(f2.x >= this._x ? 1 : -1);
       p.classList.add("crouch", "look-up");
       await this._wait(rnd(1200, 1900));
       p.classList.remove("look-up");
@@ -15051,8 +15327,8 @@
         await this._wait(rnd(600, 1200));
       }
       p.classList.remove("look-f", "look-b", "crouch");
-      f = this._ffSpot() || f;
-      if (f) this._face(f.x >= this._x ? 1 : -1);
+      f2 = this._ffSpot() || f2;
+      if (f2) this._face(f2.x >= this._x ? 1 : -1);
       p.classList.add("look-up");
       await this._wait(200);
       this._jump("hop1");
@@ -15288,8 +15564,8 @@
       sets[kind] = null;
       if (!n) return;
       const snow = kind === "s";
-      const K = snow ? 2 : 1;
-      const u = (i, j, a, b) => a + seeded(K, i, j) * (b - a);
+      const K2 = snow ? 2 : 1;
+      const u = (i, j, a, b) => a + seeded(K2, i, j) * (b - a);
       const twice = (y, style) => `<i class="${kind}" style="top:${y.toFixed(1)}%;${style}"></i><i class="${kind}" style="top:${(y + 50).toFixed(1)}%;${style}"></i>`;
       const one = (i) => {
         const at = `left:${u(i, 1, 0, 100).toFixed(1)}%`;
@@ -15306,7 +15582,7 @@
         let h = "";
         for (let i = l; i < n; i += durs.length) h += one(i);
         const inner = sways ? `<div class="pw" style="--pw:${sways[l]}s;animation-delay:${(-(t % sways[l])).toFixed(2)}s">${h}</div>` : h;
-        return `<div class="pl" style="--pd:${d}s;animation-delay:${(-((t + seeded(K, l) * d) % d)).toFixed(2)}s">${inner}</div>`;
+        return `<div class="pl" style="--pd:${d}s;animation-delay:${(-((t + seeded(K2, l) * d) % d)).toFixed(2)}s">${inner}</div>`;
       }).join("");
       this._el.precip.appendChild(el);
       void el.offsetWidth;
@@ -15353,10 +15629,10 @@
     }
     _lightning() {
       if (!this._wx.flash) return;
-      const f = this._el.flash;
-      f.classList.remove("go");
-      void f.offsetWidth;
-      f.classList.add("go");
+      const f2 = this._el.flash;
+      f2.classList.remove("go");
+      void f2.offsetWidth;
+      f2.classList.add("go");
       if (!this._asleep && this._g) {
         setTimeout(() => {
           this._jump("hop1");
@@ -15731,8 +16007,8 @@
       } else if (cur === "finished") {
         if (stChanged) a.emptyUntil = null;
       } else if (stChanged && !a.wait) {
-        const R = a.run || {};
-        const ended = R.pct == null && R.end == null ? a.changed - (R.at ?? a.changed) >= 10 * 6e4 : R.pct != null && R.pct >= 95 || R.end != null && Math.abs(R.end - a.changed) < 10 * 6e4;
+        const R2 = a.run || {};
+        const ended = R2.pct == null && R2.end == null ? a.changed - (R2.at ?? a.changed) >= 10 * 6e4 : R2.pct != null && R2.pct >= 95 || R2.end != null && Math.abs(R2.end - a.changed) < 10 * 6e4;
         if (idle && prevSt === "finished") {
           if (prevOpened) a.emptyUntil ||= 0;
           else if (byDoor) a.wait = true;
@@ -16152,19 +16428,19 @@
     // Ziel-Gerät: Wunsch aus der Vorschau (_boteFocus = Typ oder Index), sonst das erste passende; beim Beschäftigen
     // mit laufenden Geräten keins, das gerade pausiert, auf den Start wartet oder eine Störung hat
     _boteFind(type, phase) {
-      const f = this._boteFocus;
+      const f2 = this._boteFocus;
       this._boteFocus = null;
       const ok = (a) => a.el && a.spec && a.phase === phase && !a.live && (!type || a.type === type) && !(phase === "run" && BOTE_HALT.has(a.st));
       const list = this._bote?.list || [];
-      return list.find((a) => ok(a) && f != null && (a.type === f || a.idx === f)) || list.find(ok) || null;
+      return list.find((a) => ok(a) && f2 != null && (a.type === f2 || a.idx === f2)) || list.find(ok) || null;
     }
     // Standplatz neben einem Bereich L..R im Abstand off (px, von der Pika-Mitte): die nähere Seite, wenn dort Platz ist
-    _boteSpot(L, R, off) {
+    _boteSpot(L, R2, off) {
       const { pW } = this._g;
       const lo = pW * 0.45;
       const hi = this._W - pW * 0.45;
       const xl = L - off;
-      const xr = R + off;
+      const xr = R2 + off;
       const cur = this._liveX();
       let face = Math.abs(cur - xl) <= Math.abs(cur - xr) ? 1 : -1;
       if (face > 0 && xl < lo) face = -1;
@@ -16201,9 +16477,9 @@
     }
     // Effekt in die vordere Ebene; false, wenn es sie nicht (mehr) gibt (Konfiguration gewechselt)
     _boteFx(...els) {
-      const f = this._bote?.f;
-      if (!f) return false;
-      f.append(...els);
+      const f2 = this._bote?.f;
+      if (!f2) return false;
+      f2.append(...els);
       return true;
     }
     _boteBubbles(x, y, n) {
@@ -16413,10 +16689,10 @@
     // Fertig: hinhoppeln, tätscheln/stupsen, zum Betrachter schauen und Bescheid sagen
     async _boteNudge() {
       const B = this._bote;
-      const f = this._boteFocus;
+      const f2 = this._boteFocus;
       this._boteFocus = null;
       const done = (B?.list || []).filter((o) => o.phase === "done" && o.el && !o.live);
-      const a = done.find((o) => f != null && (o.type === f || o.idx === f)) || done.sort((x, y) => x.nudgeAt - y.nudgeAt)[0];
+      const a = done.find((o) => f2 != null && (o.type === f2 || o.idx === f2)) || done.sort((x, y) => x.nudgeAt - y.nudgeAt)[0];
       if (!a) return;
       const { pW } = this._g;
       const p = this._el.pika;
@@ -16471,9 +16747,9 @@
     async _boteEmpty() {
       const B = this._bote;
       if (!B?.list.length) return;
-      const f = this._boteFocus;
+      const f2 = this._boteFocus;
       this._boteFocus = null;
-      let a = f != null ? B.list.find((o) => (o.type === f || o.idx === f) && o.phase === "empty" && o.el) : null;
+      let a = f2 != null ? B.list.find((o) => (o.type === f2 || o.idx === f2) && o.phase === "empty" && o.el) : null;
       a ||= B.queue.find((o) => o.live && o.phase === "empty");
       if (!a) return;
       B.queue = B.queue.filter((o) => o !== a);
@@ -16606,15 +16882,15 @@
       this._cofA = a;
       this._cofN = n;
       this._cofS = sel;
-      const C = this._cof ??= { brew: null, pend: null, next: null, done: [] };
-      const prevSt = C.st;
-      C.st = a?.state;
+      const C2 = this._cof ??= { brew: null, pend: null, next: null, done: [] };
+      const prevSt = C2.st;
+      C2.st = a?.state;
       const prog = String(a?.state || "").toLowerCase();
       const now = this._haNow();
       if (COFFEE_PROG.test(prog)) {
-        if (C.brew?.prog !== prog) {
-          C.brew = { prog, at: Date.parse(a.last_changed) || now, sniffed: false };
-          if (this._asleep && this._el && now - C.brew.at < 6e4) {
+        if (C2.brew?.prog !== prog) {
+          C2.brew = { prog, at: Date.parse(a.last_changed) || now, sniffed: false };
+          if (this._asleep && this._el && now - C2.brew.at < 6e4) {
             this._el.pika.classList.add("peek");
             setTimeout(() => this._el.pika.classList.remove("peek"), 900);
           } else if (["idle", "look", "wander", "groom"].includes(this._action)) this._interrupt();
@@ -16622,12 +16898,12 @@
         return;
       }
       if (!a || a.state === "unavailable") return;
-      const brew = C.brew;
-      C.brew = null;
+      const brew = C2.brew;
+      C2.brew = null;
       const end = Date.parse(a.last_changed) || now;
       let key = null;
       const t0 = n && n.state !== "unavailable" && n.state !== "unknown" && Date.parse(n.last_changed);
-      const used = (k) => C.done.includes(k) || C.pend?.key === k || C.next?.key === k;
+      const used = (k) => C2.done.includes(k) || C2.pend?.key === k || C2.next?.key === k;
       if (brew) {
         if (t0 && end - t0 < 15 * 6e4 && (end - t0 >= 15e3 || end - brew.at >= 15e3)) key = n.last_changed;
       } else if (t0 && end - t0 >= 15e3 && end - t0 <= COFFEE_CTR_MS && prevSt !== "unavailable") {
@@ -16652,33 +16928,33 @@
         lv: 1,
         j: 0
       };
-      if (C.pend) P = coffeeQueue(C.pend.end, P);
+      if (C2.pend) P = coffeeQueue(C2.pend.end, P);
       if (now > P.end - 3e3) return this._coffeeMark(key);
-      if (C.pend) {
-        if (C.next) this._coffeeMark(C.next.key);
-        C.next = P;
+      if (C2.pend) {
+        if (C2.next) this._coffeeMark(C2.next.key);
+        C2.next = P;
         return;
       }
-      C.pend = P;
+      C2.pend = P;
       if (!["eatFood", "coffee", "goSleep", "wakeUp", "giftShoot", "giftOpen", "boteEmpty"].includes(this._action)) this._interrupt();
     }
     _tickCoffee() {
-      const C = this._cof;
-      if (!C) return;
+      const C2 = this._cof;
+      if (!C2) return;
       const now = this._haNow();
-      if (C.pend?.stage === "fetch" && now > C.pend.end - 3e3) {
-        this._coffeeMark(C.pend.key);
-        C.pend = null;
+      if (C2.pend?.stage === "fetch" && now > C2.pend.end - 3e3) {
+        this._coffeeMark(C2.pend.key);
+        C2.pend = null;
       }
-      if (C.pend && C.pend.stage !== "fetch" && now > C.pend.end + COFFEE_LATE && this._action !== "coffee") {
-        this._coffeeMark(C.pend.key);
-        C.pend = null;
+      if (C2.pend && C2.pend.stage !== "fetch" && now > C2.pend.end + COFFEE_LATE && this._action !== "coffee") {
+        this._coffeeMark(C2.pend.key);
+        C2.pend = null;
       }
-      if (!C.pend && C.next) {
-        C.pend = C.next;
-        C.next = null;
+      if (!C2.pend && C2.next) {
+        C2.pend = C2.next;
+        C2.next = null;
       }
-      if (C.brew && now - C.brew.at > 10 * 6e4) C.brew.sniffed = true;
+      if (C2.brew && now - C2.brew.at > 10 * 6e4) C2.brew.sniffed = true;
     }
     _coffeeDue() {
       const P = this._cof?.pend;
@@ -16689,8 +16965,8 @@
       return B && !B.sniffed ? [[60, "coffeeSniff"]] : [];
     }
     _coffeeMark(key) {
-      const C = this._cof;
-      C.done = [...C.done.filter((k) => k !== key), key].slice(-6);
+      const C2 = this._cof;
+      C2.done = [...C2.done.filter((k) => k !== key), key].slice(-6);
     }
     // Kaffeeduft: Nase hoch, schnuppern, an Kaffee denken, dann erwartungsvoll zum Bau
     async _coffeeSniff() {
@@ -17236,10 +17512,10 @@
       const B = this._gb;
       if (!B || B.stage !== "hover") return;
       const sc = this._el.scene.getBoundingClientRect();
-      const f = this._el.pika.querySelector(".slf").getBoundingClientRect();
+      const f2 = this._el.pika.querySelector(".slf").getBoundingClientRect();
       const t = B.el.querySelector(".gb-ball").getBoundingClientRect();
-      const x0 = f.left - sc.left + f.width / 2;
-      const y0 = f.top - sc.top + f.height / 2;
+      const x0 = f2.left - sc.left + f2.width / 2;
+      const y0 = f2.top - sc.top + f2.height / 2;
       let x1 = t.left - sc.left + t.width / 2;
       let y1 = t.top - sc.top + t.height / 2;
       if (!hit) {
@@ -17642,7 +17918,7 @@
       const low = lw.length > 1 ? `${lw.slice(0, -1).join(", ")} und ${lw.at(-1)}` : lw[0] || "";
       const away = this._urlaubOn();
       const next = away ? `ruht, solange ich bei ${this._frName()} bin` : G.n >= GIFT.max ? `Vorrat voll${low ? ` · bitte ${low}` : ""}` : c.broken ? `die Serie fängt neu an, sobald alles über 50 % ist${low ? `: bitte ${low}` : ""}` : c.warn ? low ? `noch ${fmt(c.grace ?? GIFT.grace)} Toleranz: bitte ${low}` : "einmal kümmern, dann läuft sie weiter" : `nächstes in ${fmt(c.left ?? GIFT.every)} Wachzeit`;
-      const f = G.f ?? 0;
+      const f2 = G.f ?? 0;
       return {
         G,
         lvs,
@@ -17651,8 +17927,8 @@
         away,
         have: lvs.filter((lv) => lv > 0).length,
         // Freundschaftstage: alle, die bis zum nächsten goldenen fehlen, und was heute schon da ist
-        friends: f,
-        dots: f % GIFT.goldDays,
+        friends: f2,
+        dots: f2 % GIFT.goldDays,
         today: this._careToday(),
         mile: [10, 25, 50, 100].find((m) => m > G.o) ?? (Math.floor(G.o / 100) + 1) * 100,
         allGold: giftAllGold(G)
@@ -17768,7 +18044,7 @@
         let best = null;
         for (let i = 0; i < 8; i++) {
           const xf = rnd(fMin, fMax);
-          const d = Math.min(1, ...this._flowers.map((f) => Math.abs(f.xf - xf)));
+          const d = Math.min(1, ...this._flowers.map((f2) => Math.abs(f2.xf - xf)));
           if (!best || d > best.d) best = { xf, d };
         }
         const spot = best.xf * W;
@@ -17966,7 +18242,7 @@
           await this._walkTo(hole.cx + pW * 0.15, 1);
           this._face(-1);
           await this._wait(500);
-          this._say(pick([`komm, ${this._frName()}!`, "hab dich!"]), 1200);
+          this._say(pick([`komm, ${this._frGuest()}!`, "hab dich!"]), 1200);
           await this._wait(900);
           const { fMin, fMax } = this._g;
           await this._walkTo((fMin + rnd(0.2, 0.45) * (fMax - fMin)) * this._W, 0.9);
@@ -18452,9 +18728,9 @@
       boat.style[dir > 0 ? "left" : "right"] = "7%";
       el.appendChild(boat);
       const span = pw * 0.86 - bw;
-      const sail = (f, ms, ease, skip = 0) => {
+      const sail = (f2, ms, ease, skip = 0) => {
         boat.style.transition = `transform ${Math.round(ms)}ms ${ease} ${-Math.round(skip)}ms, opacity .25s`;
-        boat.style.transform = `translateX(${(dir * f * span).toFixed(1)}px)`;
+        boat.style.transform = `translateX(${(dir * f2 * span).toFixed(1)}px)`;
       };
       const trip = (a, b, t0, ms, ease = `cubic-bezier(${BOAT_EASE.join(", ")})`) => {
         const late = this._planNow() - t0;
@@ -18467,8 +18743,8 @@
       this._face(dir);
       const p = this._el.pika;
       const T0 = S.start + ACT_WALK;
-      const K = boatPuffs(S.r);
-      const T1 = T0 + BOAT_T.launch + K * BOAT_T.puff;
+      const K2 = boatPuffs(S.r);
+      const T1 = T0 + BOAT_T.launch + K2 * BOAT_T.puff;
       if (this._planNow() < T0 + 1e3) {
         this._propOn("boating");
         if (this._planNow() < T0 + 400) this._say(pick(["Ahoi!", "Schiff ahoi!", "Leinen los!"]), 1300);
@@ -18478,12 +18754,12 @@
         await this._propOff("boating");
       }
       const now = this._planNow();
-      sail(boatPos(now - T0, K), 0, "linear");
+      sail(boatPos(now - T0, K2), 0, "linear");
       void boat.offsetWidth;
       boat.classList.add("afloat");
       await this._waitMax(400, T0 + BOAT_T.launch);
       p.classList.remove("sniff");
-      for (let k = clamp(Math.floor((now - T0 - BOAT_T.launch) / BOAT_T.puff), 0, K); k < K; k++) {
+      for (let k = clamp(Math.floor((now - T0 - BOAT_T.launch) / BOAT_T.puff), 0, K2); k < K2; k++) {
         const tk = T0 + BOAT_T.launch + k * BOAT_T.puff;
         const tb = tk + BOAT_T.blow;
         await this._at(tk);
@@ -18494,10 +18770,10 @@
         }
         if (this._planNow() < tb + 600) p.classList.add("blow");
         await this._at(tb);
-        trip(k / K, (k + 1) / K, tb, BOAT_T.glide);
+        trip(k / K2, (k + 1) / K2, tb, BOAT_T.glide);
         await this._at(tb + 600);
         p.classList.remove("blow");
-        if (k === K - 1 && this._planNow() < tb + 1200) this._say(pick(["drüben!", "angekommen!", "geschafft!"]), 1100);
+        if (k === K2 - 1 && this._planNow() < tb + 1200) this._say(pick(["drüben!", "angekommen!", "geschafft!"]), 1100);
       }
       await this._at(T1);
       trip(1, 0, T1, BOAT_T.back - BOAT_T.home, "ease-in-out");
@@ -18878,8 +19154,8 @@
         const h0 = gy - o.y;
         const dx = T.land - o.x;
         const el = this._aprop("glid", GLIDER_SVG, gw / 2, gw, gw * (14 / 26), true);
-        const pt = (f, h, a) => ({
-          transform: `translate(${(o.x - gw / 2 + dx * f).toFixed(1)}px, ${(-h).toFixed(1)}px) rotate(${(dir * a).toFixed(0)}deg) scaleX(${dir})`
+        const pt = (f2, h, a) => ({
+          transform: `translate(${(o.x - gw / 2 + dx * f2).toFixed(1)}px, ${(-h).toFixed(1)}px) rotate(${(dir * a).toFixed(0)}deg) scaleX(${dir})`
         });
         const frames = calmMotion() ? [pt(0, h0, 4), pt(1, pH * 0.05, 4)] : T.steep ? [
           { ...pt(0, h0, -52), easing: "ease-out" },
@@ -19079,13 +19355,13 @@
         const H = await this._diaryHist(from, now + 6e4, true);
         if (!live()) return null;
         if (H.fail || H.none || !H.ha) return false;
-        const R = diaryDerive(H.S, H.P, from, { decayAt: () => Infinity, until: now });
+        const R2 = diaryDerive(H.S, H.P, from, { decayAt: () => Infinity, until: now });
         for (const tag of fehlt) {
           const a = chronikStart(tag);
           const b = chronikStart(tag + 1);
           const drin = (t) => t >= a && t < b;
-          if (R.stamps.some(drin) || R.ev.some((e) => drin(e.t)) || chronikUrlaub(R.urlaub, a, b)) {
-            soll.set(chronikDatum(tag), chronikBilanz(R.ev, R.pets, a, b, tag, R.urlaub));
+          if (R2.stamps.some(drin) || R2.ev.some((e) => drin(e.t)) || chronikUrlaub(R2.urlaub, a, b)) {
+            soll.set(chronikDatum(tag), chronikBilanz(R2.ev, R2.pets, a, b, tag, R2.urlaub));
           }
         }
       }
@@ -20552,8 +20828,8 @@
         this._lastFlights = fl;
         this._guard("Flugzeuge", () => this._readFlights(fl));
       }
-      for (const f of [this._hassSky, this._hassFest, this._hassFriend, this._hassBote, this._hassCoffee, this._hassPlan, this._hassSig, this._hassAct]) {
-        this._guard(f.name, () => f.call(this, hass));
+      for (const f2 of [this._hassSky, this._hassFest, this._hassFriend, this._hassBote, this._hassCoffee, this._hassPlan, this._hassSig, this._hassAct]) {
+        this._guard(f2.name, () => f2.call(this, hass));
       }
       this._guard("Himmel", () => this._updateSky());
       if (fresh && this._planStale && hass.connected !== false && hass.states !== this._staleStates) this._planFresh();
@@ -20904,7 +21180,16 @@
       AREALE,
       randStil,
       LOOKOUT_SVG,
-      LOOKOUT_RAND
+      LOOKOUT_RAND,
+      FRIENDS,
+      FRIEND_KEYS,
+      friendKind,
+      FRIEND_SVG,
+      KIRBY_SVG,
+      RUFUS_SVG,
+      KATZUMI_SVG,
+      FRIEND_ICON,
+      MEM_BITS
     });
   }
 })();

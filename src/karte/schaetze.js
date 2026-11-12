@@ -328,7 +328,7 @@ export class Schaetze {
         await this._walkTo(hole.cx + pW * 0.15, 1);
         this._face(-1);
         await this._wait(500);
-        this._say(pick([`komm, ${this._frName()}!`, 'hab dich!']), 1200);
+        this._say(pick([`komm, ${this._frGuest()}!`, 'hab dich!']), 1200);
         await this._wait(900);
         // mit ihm hinaus auf die Wiese
         const { fMin, fMax } = this._g;

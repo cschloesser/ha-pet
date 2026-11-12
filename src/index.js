@@ -69,9 +69,9 @@ import {
   rainbow,
 } from './logik/wetter.js';
 import { flightAloft, flightGhost, planeLag, PLANE_OLD, planeStale, planeClock } from './logik/flugzeuge.js';
-import { HAY_MAX, PLAN_MIN, MEM_GUT, MEM_TONNE, MEM_TONNE2, planBlank, pikaDay, planSer, planParse, hayNow, planApply } from './logik/tagesplan.js';
+import { HAY_MAX, PLAN_MIN, MEM_BITS, MEM_GUT, MEM_TONNE, MEM_TONNE2, planBlank, pikaDay, planSer, planParse, hayNow, planApply } from './logik/tagesplan.js';
 import { festDay, festEaster, festAdvent1, FEST_AHEAD, festMoments, festBirthdate } from './logik/feste.js';
-import { FRIEND_LAST } from './logik/besucher.js';
+import { FRIEND_LAST, FRIENDS, FRIEND_KEYS, friendKind } from './logik/besucher.js';
 import { boteRow, boteEmptyOn, boteMap, boteLabel, boteLabelMode, boteSmell } from './logik/haus-bote.js';
 import { PET_CALM, petGain, KRAUL, kraulGain, MIMIK, worldPick } from './logik/interaktion.js';
 import {
@@ -111,6 +111,8 @@ import {
 } from './logik/chronik.js';
 import { AREALE, randStil } from './grafik/areale.js';
 import { LOOKOUT_SVG, LOOKOUT_RAND } from './grafik/szene.js';
+import { KIRBY_SVG, RUFUS_SVG, KATZUMI_SVG, FRIEND_ICON } from './grafik/freunde.js';
+import { FRIEND_SVG } from './grafik/besucher.js';
 import { PikaPetCard } from './karte.js';
 
 if (!customElements.get('pika-pet-card')) {
@@ -147,5 +149,6 @@ if (typeof globalThis !== 'undefined' && typeof globalThis.__pikaTest === 'funct
     CHRONIK, chronikDatum, chronikTag, chronikStart, chronikVersatz, chronikZoneOk, chronikKod, chronikLies, chronikMisch, chronikBilanz,
     chronikTage, chronikFehlt, chronikPlan, diaryDerive,
     AREALE, randStil, LOOKOUT_SVG, LOOKOUT_RAND,
+    FRIENDS, FRIEND_KEYS, friendKind, FRIEND_SVG, KIRBY_SVG, RUFUS_SVG, KATZUMI_SVG, FRIEND_ICON, MEM_BITS,
   });
 }

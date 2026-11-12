@@ -5,7 +5,6 @@ import { rnd, pick, clamp, hasKey } from '../logik/hilfen.js';
 import { calmMotion } from '../logik/bewegung-reduzieren.js';
 import { LANE_DY, LANE_S } from '../logik/einstellungen.js';
 import { buehneZ, REIHE } from '../logik/buehne.js';
-import { FRIEND_SCALE } from '../logik/besucher.js';
 import { MIMIK, MIMIK_CLS } from '../logik/interaktion.js';
 import { HOP_MS, hopRound, EAR_SWING, jumpBusy } from '../logik/beschaeftigungen.js';
 import { ICON_HEART, STAR } from '../grafik/szene.js';
@@ -245,7 +244,7 @@ export class Bausteine {
     if (!on) return;
     // Am Kartenrand ins Bild schieben: der Pika (auf dem Stein 0,9 groß um die Füße) bzw. Pino an seinem Ziel
     const fr = this._fr?.say === el ? this._fr : null;
-    if (fr) this._bubbleFit(el, fr.x, this._g.pW * FRIEND_SCALE);
+    if (fr) this._bubbleFit(el, fr.x, this._g.pW * this._frSc(fr));
     else if (el.parentElement === this._el.anchor) this._bubbleFit(el, this._x, this._g?.pW, this._lift > 0 ? 0.9 : 1);
   }
 

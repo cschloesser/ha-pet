@@ -22,6 +22,22 @@ const critJoin = (kind, pk) => Math.max(CRIT_LATE, kind === 'bird' ? pk.stay - 5
 // Pino ist 0,85-mal so groß wie der Pika, ingwerfarben, mit hellem Fleck auf der Stirn und türkisem Halstuch
 // (so ist er auch auf dem kleinen Tablet gleich zu erkennen).
 const FRIEND_SCALE = 0.85;
+// Ab 0.41 kommt nicht immer Pino: In jedem Besuchsfenster kommt einer der Freunde, Pino am häufigsten (w: Anteil).
+// Gewählt wird aus der Uhr (seedRnd('friend', fenster, 4), friendKind), also auf allen Geräten derselbe. name: fester
+// Name (Pinos kommt aus friend_name), scale: Größe gegenüber dem Pika. Die Schlüssel sind zugleich Bits in MEM_BITS
+// (Tagebuch, Chronik).
+const FRIENDS = {
+  pino: { scale: FRIEND_SCALE, w: 0.4 },
+  kirby: { name: 'Kirby', scale: 0.92, w: 0.2 },
+  rufus: { name: 'Rufus', scale: 0.7, w: 0.2 },
+  katzumi: { name: 'Katzumi', scale: 0.5, w: 0.2 },
+};
+const FRIEND_KEYS = Object.keys(FRIENDS);
+const friendKind = (u) => {
+  let a = 0;
+  for (const k of FRIEND_KEYS) if (u < (a += FRIENDS[k].w)) return k;
+  return 'pino';
+};
 // Besuchsplan wie bei Vögelchen und Maus aus der Uhr: 30-Minuten-Fenster, in jedem ein Besuch (p 1), Start in den
 // ersten 20 Minuten, Dauer 3–6 Minuten (spread + Dauer < Fenster), Seite links/rechts – alles aus
 // seedRnd('friend', fenster, n). Bis 0.14 waren es 45-Minuten-Fenster mit 1,5–4 Minuten: kaum je zu sehen.
@@ -37,5 +53,5 @@ const FRIEND_YIELD = { friendYield: true };
 const FRIEND_CLS = ['walking', 'groom', 'eating', 'look-f', 'look-b', 'look-up', 'calling', 'crouch', 'happy', 'nuzzle', 'wiggle'];
 
 export {
-  CRIT, CRIT_KINDS, CRIT_BACK, critJoin, FRIEND_SCALE, FRIEND_WIN, FRIEND_LAST, FRIEND_ACTS, FRIEND_YIELD, FRIEND_CLS,
+  CRIT, CRIT_KINDS, CRIT_BACK, critJoin, FRIEND_SCALE, FRIENDS, FRIEND_KEYS, friendKind, FRIEND_WIN, FRIEND_LAST, FRIEND_ACTS, FRIEND_YIELD, FRIEND_CLS,
 };
