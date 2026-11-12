@@ -4043,3 +4043,25 @@ test('Ältere Karte (0.34) und Stände von 0.35: nichts geht verloren, im Urlaub
   const st = { s: 61.5, st: sek(NOW), g: 40, gt: sek(NOW), c: sek(NOW), m: 5, l: sek(NOW) };
   assert.deepEqual(plain(ALT.parseStats(T.serialize(st))), plain(st));
 });
+
+test('Tagebuch: jeder Kaffee aus dem Verlauf des Automaten, Neustart von HA und Spülen zählen nicht', () => {
+  const P = 'consumer_products_coffee_maker_program_beverage_';
+  const h = (hh, mm, ss = 0) => new Date(2026, 10, 12, hh, mm, ss).getTime();
+  // so stand es am 12. 11. 2026 im Recorder: zwei Latte macchiato, dazwischen „unknown“
+  const rows = [
+    { t: h(4, 0), s: 'unknown' }, { t: h(7, 8, 39), s: `${P}latte_macchiato` }, { t: h(7, 10, 22), s: 'unknown' },
+    { t: h(8, 55, 19), s: `${P}latte_macchiato` }, { t: h(8, 57, 2), s: 'unknown' },
+  ];
+  assert.deepEqual(plain(T.coffeeBrews(rows).map((b) => [b.t, b.label])), [[h(7, 10, 22), 'Latte macchiato'], [h(8, 57, 2), 'Latte macchiato']]);
+  // lief schon zu Beginn des Verlaufs, kam aus „unavailable“, endete in „unavailable“, zu kurz: kein Bezug
+  assert.deepEqual(plain(T.coffeeBrews([{ t: h(4, 0), s: `${P}espresso` }, { t: h(4, 1), s: 'unknown' }])), []);
+  assert.deepEqual(plain(T.coffeeBrews([{ t: h(9, 0), s: 'unavailable' }, { t: h(9, 1), s: `${P}espresso` }, { t: h(9, 2), s: 'unknown' }])), []);
+  assert.deepEqual(plain(T.coffeeBrews([{ t: h(9, 0), s: 'unknown' }, { t: h(9, 1), s: `${P}espresso` }, { t: h(9, 2), s: 'unavailable' }])), []);
+  assert.deepEqual(plain(T.coffeeBrews([{ t: h(9, 0), s: 'unknown' }, { t: h(9, 1), s: `${P}espresso` }, { t: h(9, 1, 10), s: 'unknown' }])), []);
+  // Programmwechsel ohne Pause: zwei Bezüge; Spülen setzt kein Getränkeprogramm
+  const zwei = T.coffeeBrews([{ t: h(9, 0), s: 'off' }, { t: h(9, 1), s: `${P}espresso` }, { t: h(9, 2), s: `${P}cappuccino` },
+    { t: h(9, 3), s: 'unknown' }, { t: h(9, 4), s: 'consumer_products_coffee_maker_program_cleaning_mode_rinse' }, { t: h(9, 5), s: 'unknown' }]);
+  assert.deepEqual(plain(zwei.map((b) => b.label)), ['Espresso', 'Cappuccino']);
+  assert.equal(T.coffeeLabel(`${P}caffe_crema`), 'Caffe crema');
+  assert.equal(T.coffeeLabel('consumer_products_coffee_maker_program_coffee_world_wiener_melange'), 'Wiener melange');
+});

@@ -60,7 +60,7 @@
  */
 (() => {
   // src/version.js
-  var VERSION = "0.35.0";
+  var VERSION = "0.35.1";
 
   // src/logik/hilfen.js
   var Cancel = class extends Error {
@@ -1333,6 +1333,50 @@
   var PROPS = (pre) => PROP_SEL.map((s) => `${pre} ${s}`).join(", ");
   var KRAM = { in: 240, out: 200 };
 
+  // src/logik/kaffee.js
+  var COFFEE_PROG = /beverage|coffee_world/;
+  var COFFEE_KIND = [
+    [/latte_macchiato|caffe_latte|galao/, "latte"],
+    [/milk_froth|warm_milk/, "milk"],
+    [/cappuccino|flat_white|cortado|melange|au_lait|con_leche|brauner|macchiato|mocha|with_milk/, "capp"],
+    [/ristretto|espresso/, "esp"],
+    [/hot_water|tea/, "tea"]
+  ];
+  var coffeeKind = (prog) => (COFFEE_KIND.find(([re]) => re.test(prog)) || [0, "mug"])[1];
+  var COFFEE_CUP = { latte: "glass", milk: "glass", capp: "capp", esp: "esp", mug: "mug", tea: "mug" };
+  var COFFEE_SIPS = { latte: 8, milk: 6, capp: 6, esp: 3, mug: 7, tea: 7 };
+  var COFFEE_FOAM = /* @__PURE__ */ new Set(["latte", "milk", "capp"]);
+  var coffeeName = (prog, kind) => /cappuccino/.test(prog) ? "Cappuccino!" : /flat_white/.test(prog) ? "Flat White!" : { latte: "Latte!", milk: "Milch!", esp: "Espresso!", tea: "Tee!" }[kind] || "Kaffee!";
+  var COFFEE_FETCH = 13e3;
+  var COFFEE_CTR_MS = 3 * 6e4;
+  var COFFEE_LATE = 3e4;
+  var COFFEE_DRINK = { latte: 24e4, milk: 18e4, capp: 21e4, esp: 12e4, mug: 21e4, tea: 24e4 };
+  var coffeeLabel = (prog) => {
+    const m = /(?:beverage|coffee_world)_([a-z0-9_]+)$/.exec(String(prog || "").toLowerCase());
+    const w = (m ? m[1] : "").replace(/_/g, " ").trim();
+    return w ? w[0].toUpperCase() + w.slice(1) : "Kaffee";
+  };
+  var coffeeBrews = (rows) => {
+    const out = [];
+    let run = null;
+    let prev;
+    for (const r of rows || []) {
+      const st = String(r.s ?? "").toLowerCase();
+      const prog = COFFEE_PROG.test(st);
+      let next = false;
+      if (run && (!prog || st !== run.prog)) {
+        next = prog;
+        const d = r.t - run.at;
+        if (st !== "unavailable" && d >= 15e3 && d < 15 * 6e4) out.push({ t: r.t, at: run.at, prog: run.prog, label: coffeeLabel(run.prog) });
+        run = null;
+      }
+      if (prog && !run && prev !== void 0 && prev !== "unavailable" && (next || !COFFEE_PROG.test(prev))) run = { at: r.t, prog: st };
+      prev = st;
+    }
+    return out;
+  };
+  var COFFEE_CLS = [.../* @__PURE__ */ new Set([...Object.values(COFFEE_CUP), ...Object.keys(COFFEE_CUP)])].map((k) => `ck-${k}`);
+
   // src/logik/urlaub.js
   var URLAUB = { keep: 24 * 36e5, restore: 15 * 6e4, min: 30 * 6e4 };
   var urlaubAt = (ur, t) => !!ur && t >= ur.t && (ur.d == null || t < ur.t + ur.d);
@@ -1432,6 +1476,11 @@
       "Mit {n} gespielt. Beim Abschied hingen meine Ohren kurz."
     ],
     coffee: ["Es roch nach Kaffee. Ich hab mir auch einen geholt.", "Kaffeeduft! Ich hab mitgetrunken, Schluck für Schluck."],
+    coffeeMore: [
+      "Noch ein Kaffee! Ich hab wieder mitgetrunken.",
+      "Schon wieder Kaffeeduft. Da konnte ich nicht nein sagen.",
+      "Kaffee Nummer {z}. Jetzt bin ich hellwach!"
+    ],
     bird: ["Ein Vögelchen saß da. Ich hab gepiepst, es hat zurückgezwitschert.", "Besuch von einem Vögelchen. Wir haben uns nett unterhalten."],
     plane: ["Ein Flugzeug! Ich hab ihm lange nachgeschaut. Brumm.", "Hoch oben flog ein Flugzeug. Wo es wohl hinwollte?"],
     bfly: ["Ein Schmetterling ist auf meiner Nase gelandet. Ich hab ganz still gehalten.", "Schmetterling auf der Nase! Ich musste schielen."],
@@ -6043,26 +6092,6 @@
   // src/logik/bewegung-reduzieren.js
   var RED_MOTION = window.matchMedia?.("(prefers-reduced-motion: reduce)");
   var calmMotion = () => !!RED_MOTION?.matches;
-
-  // src/logik/kaffee.js
-  var COFFEE_PROG = /beverage|coffee_world/;
-  var COFFEE_KIND = [
-    [/latte_macchiato|caffe_latte|galao/, "latte"],
-    [/milk_froth|warm_milk/, "milk"],
-    [/cappuccino|flat_white|cortado|melange|au_lait|con_leche|brauner|macchiato|mocha|with_milk/, "capp"],
-    [/ristretto|espresso/, "esp"],
-    [/hot_water|tea/, "tea"]
-  ];
-  var coffeeKind = (prog) => (COFFEE_KIND.find(([re]) => re.test(prog)) || [0, "mug"])[1];
-  var COFFEE_CUP = { latte: "glass", milk: "glass", capp: "capp", esp: "esp", mug: "mug", tea: "mug" };
-  var COFFEE_SIPS = { latte: 8, milk: 6, capp: 6, esp: 3, mug: 7, tea: 7 };
-  var COFFEE_FOAM = /* @__PURE__ */ new Set(["latte", "milk", "capp"]);
-  var coffeeName = (prog, kind) => /cappuccino/.test(prog) ? "Cappuccino!" : /flat_white/.test(prog) ? "Flat White!" : { latte: "Latte!", milk: "Milch!", esp: "Espresso!", tea: "Tee!" }[kind] || "Kaffee!";
-  var COFFEE_FETCH = 13e3;
-  var COFFEE_CTR_MS = 3 * 6e4;
-  var COFFEE_LATE = 3e4;
-  var COFFEE_DRINK = { latte: 24e4, milk: 18e4, capp: 21e4, esp: 12e4, mug: 21e4, tea: 24e4 };
-  var COFFEE_CLS = [.../* @__PURE__ */ new Set([...Object.values(COFFEE_CUP), ...Object.keys(COFFEE_CUP)])].map((k) => `ck-${k}`);
 
   // src/karte/lebensschleife.js
   var Lebensschleife = class {
@@ -10824,7 +10853,8 @@
       const hass = this._hass;
       const { haS, haP } = this._diaryHa();
       const house = !only && c.diary_house !== false ? this._boteSync().list : [];
-      const ids = [.../* @__PURE__ */ new Set([...haS ? [c.entity] : [], ...haP ? [c.plan_entity] : [], ...house.map((a) => a.cfg.state)])];
+      const cof = !only && c.diary_house !== false && typeof c.coffee?.active === "string" ? c.coffee.active : null;
+      const ids = [.../* @__PURE__ */ new Set([...haS ? [c.entity] : [], ...haP ? [c.plan_entity] : [], ...house.map((a) => a.cfg.state), ...cof ? [cof] : []])];
       let res = {};
       let fail = false;
       if (ids.length) {
@@ -10868,7 +10898,9 @@
           last = s;
         }
       }
-      return { S, P, bote, fail, none: !fail && (haS && !S.length || haP && !P.length), ha: haS && haP };
+      const cr = cof && !fail ? rows(cof) : [];
+      for (const b of coffeeBrews(cr)) if (b.t >= from) bote.push({ t: b.t, k: "kaffee", label: b.label });
+      return { S, P, bote, fail, none: !fail && (haS && !S.length || haP && !P.length), ha: haS && haP, ...cof ? { cof: cr.length > 0 } : {} };
     }
     // Beide Seiten (heute, gestern) aus dem Verlauf. Vorschau: _dbgDiary liefert fertige Roh-Ereignisse.
     async _diaryBuild() {
@@ -10882,7 +10914,7 @@
         H = await this._diaryHist(d1, now + 6e4);
         R = { ...diaryDerive(H.S, H.P, d1, { decayAt: (t, h) => this._decayAt(t, h), until: now }), data: H.S.length + H.P.length > 0 };
       }
-      const page = (start, end, today) => this._diaryModel(start, end, R, H.bote, today, H.fail);
+      const page = (start, end, today) => this._diaryModel(start, end, R, H.bote, today, H.fail, !!H.cof);
       return { fail: H.fail, none: H.none, days: [page(d0, now + 1, true), page(d1, d0, false)] };
     }
     _diaryParcel(e, t) {
@@ -10896,8 +10928,9 @@
       if (e.what === "gilt") return `${lead} Jetzt hab ich ${GIFT_GILT[e.it].replace("%", nm).replace(/^ein goldener /, "einen goldenen ")}.`;
       return `${lead} Drin war ${it.key === "plush" ? `ein ${nm}!` : it.say}`;
     }
-    // Eine Seite: Einträge { t, part, icon, text, … } in Reihenfolge, Zähler (chips) und der Satz oben
-    _diaryModel(start, end, R, extra, today, fail) {
+    // Eine Seite: Einträge { t, part, icon, text, … } in Reihenfolge, Zähler (chips) und der Satz oben. cof: Die Bezüge
+    // des Kaffeeautomaten kommen aus seinem Verlauf (extra, k: 'kaffee'), das Bit „Kaffee“ im Tagesplan zählt dann nicht.
+    _diaryModel(start, end, R, extra, today, fail, cof = false) {
       const now = this._haNow();
       const day = new Date(start);
       const [ws, we] = this._wakeDay(day);
@@ -10938,7 +10971,7 @@
       const one = /* @__PURE__ */ new Set();
       const once = (k) => !one.has(k) && !!one.add(k);
       const acts = [];
-      const cnt = { feed: 0, clean: 0 };
+      const cnt = { feed: 0, clean: 0, coffee: 0 };
       let gather = null;
       for (const e of mine) {
         const t = e.t;
@@ -10951,7 +10984,7 @@
           if (gather) gather.c++;
           else out.push(gather = { t, icon: "gather", c: 1 });
         } else if (e.k === "mem") {
-          if (["pino", "bird", "plane", "bfly", "heart"].includes(e.b) || e.b === "coffee" && house) put(t, e.b, tx(T[e.b], e.b, t));
+          if (["pino", "bird", "plane", "bfly", "heart"].includes(e.b) || e.b === "coffee" && house && !cof) put(t, e.b, tx(T[e.b], e.b, t));
           else if (e.b === "gut") put(t, "gut", tx(T.gut, "gut", t), { svg: ICON_HEART });
         } else if (e.k === "parcel") {
           one.add("parcel");
@@ -10979,6 +11012,10 @@
         } else if (e.k === "hungry") {
           if (once("hungry")) put(t, "hungry", tx(e.eaten ? T.hungry : T.hungryNow, "hungry", t));
         } else if (e.k === "bote" && house && T.bote[e.type]) put(t, e.type, tx(T.bote[e.type], "bote", t), { tm: `${diaryTime(t)} · ${e.name}` });
+        else if (e.k === "kaffee" && house && !inU(t)) {
+          const n = ++cnt.coffee;
+          put(t, "coffee", n === 1 ? tx(T.coffee, "coffee", t) : tx(T.coffeeMore, "coffee", t).replace("{z}", n), { tm: `${diaryTime(t)} · ${e.label}` });
+        }
       }
       if (gather) gather.text = gather.c > 1 ? tx(T.gatherN, "gather", gather.t).replace("{c}", gather.c) : T.gather1[0];
       const fav = this._tagesform(start + 8 * 36e5).fav;
@@ -18986,6 +19023,8 @@
       urlaubAt,
       urlaubCut,
       chronikUrlaub,
+      coffeeBrews,
+      coffeeLabel,
       freshStats,
       serialize,
       parseStats,

@@ -2,6 +2,16 @@
 
 Jede Version der Pika Pet Card, die neueste zuerst.
 
+## 0.35.1 (2026-11-12)
+
+Jeder Kaffee im Tagebuch: Bisher stand dort nur der erste Kaffee des Tags. Das Tagebuch kannte Kaffee nur als ein Bit im Tagesplan („heute Kaffee“), das beim ersten Bezug gesetzt wird; der zweite Latte macchiato um 8:55 am 12. 11. änderte nichts mehr und kam darum nicht vor.
+
+- Das Tagebuch liest jetzt beim Aufschlagen auch den Verlauf des aktiven Programms des Kaffeeautomaten (`coffee.active`, im selben Abruf wie die Helfer und die Haushaltsgeräte). Jeder Bezug steht mit Uhrzeit und Getränk da („8:57 · Latte macchiato“), der erste des Tags mit den bisherigen Sätzen, jeder weitere mit „Noch ein Kaffee! …“, „Schon wieder Kaffeeduft …“ oder „Kaffee Nummer 2 …“. Gespeichert wird dafür nichts, auch nicht im Tagesplan.
+- Ein Bezug ist, wie live erkannt, ein Getränkeprogramm, das 15 Sekunden bis 15 Minuten lief und dann in einen anderen Zustand als „unavailable“ wechselte; auch zwei Getränke ohne Pause dazwischen. Nicht dazu: Spülen und Reinigen (kein Getränkeprogramm), ein Programm, das schon zu Beginn des gelesenen Verlaufs lief, eins nach einem Neustart von HA (kam aus „unavailable“) und eins, das in „unavailable“ endete.
+- Gemessen am Recorder vom 12. 11. 2026: aktives Programm 7:08:39 bis 7:10:22 und 8:55:19 bis 8:57:02 Latte macchiato, dazwischen „unknown“. Das ergibt zwei Einträge, 7:10 und 8:57 (Ende des Bezugs, dann holt er sich seine Tasse).
+- Liefert der Recorder für das Programm keinen einzigen Stand, steht wie bisher nur der erste Kaffee da (aus dem Tagesplan). Während eines Urlaubs steht kein Kaffee im Tagebuch, mit `diary_house: false` wie bisher keiner. Die Chronik bleibt, wie sie ist.
+- Entwicklung: 122 Tests (einer neu, mit dem echten Verlauf vom 12. 11.).
+
 ## 0.35.0 (2026-11-12)
 
 Faire Päckchen: Gold hängt an sieben guten Tagen statt an sieben lückenlosen, der Fortschritt ist zu sehen, Pech hat eine Grenze, Meilensteine werden gefeiert, und wer verreist, schickt den Pika so lange zu Pino. Dazu fünf Befunde aus dem Audit (dort Etappe „0.33“), alle vorher am Code nachgestellt.

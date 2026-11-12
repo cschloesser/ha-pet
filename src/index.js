@@ -84,6 +84,7 @@ import {
   boatPos, GLIDER_STEP, gliderThrows, groundSpot,
 } from './logik/beschaeftigungen-klein.js';
 import { GIFT, giftLv, giftTre, giftMile, giftAllGold } from './logik/paeckchen.js';
+import { coffeeBrews, coffeeLabel } from './logik/kaffee.js';
 import { URLAUB, urlaubAt, urlaubCut } from './logik/urlaub.js';
 import { FIND_GROUPS, FINDS, findsParse, findsSer, diaryDerive } from './logik/tagebuch.js';
 import {
@@ -110,7 +111,7 @@ if (typeof globalThis !== 'undefined' && typeof globalThis.__pikaTest === 'funct
   globalThis.__pikaTest({
     VERSION, PikaPetCard, PLAN_MIN, HAY_MAX, GIFT, ACT_LEN, hasKey, boteRow, clearSpot, sceneUnit,
     planBlank, planSer, planParse, planApply, hayNow, giftLv, pikaDay, MEM_GUT, giftTre, giftMile, giftAllGold,
-    URLAUB, urlaubAt, urlaubCut, chronikUrlaub,
+    URLAUB, urlaubAt, urlaubCut, chronikUrlaub, coffeeBrews, coffeeLabel,
     freshStats, serialize, parseStats, mergeStats, seedRnd, weightedR,
     sunTimes, festDay, festEaster, festAdvent1, festBirthdate,
     GAIN, PET_CALM, KRAUL, petGain, kraulGain, worldPick, MIMIK, FINDS, FIND_GROUPS, findsParse, findsSer,

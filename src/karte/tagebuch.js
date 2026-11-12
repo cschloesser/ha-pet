@@ -5,6 +5,7 @@ import { hasKey, esc } from '../logik/hilfen.js';
 import { parseStats } from '../logik/zustand.js';
 import { PLAN_MIN, FLGIFT, PET_CAP, pikaDay, planParse } from '../logik/tagesplan.js';
 import { BOTE_RUN, BOTE_DEAD, BOTE_ALIAS } from '../logik/haus-bote.js';
+import { coffeeBrews } from '../logik/kaffee.js';
 import { GIFT, GIFT_TRE, giftLvs } from '../logik/paeckchen.js';
 import { urlaubEnd, urlaubDauer } from '../logik/urlaub.js';
 import {
@@ -132,7 +133,10 @@ export class Tagebuch {
     const hass = this._hass;
     const { haS, haP } = this._diaryHa();
     const house = !only && c.diary_house !== false ? this._boteSync().list : [];
-    const ids = [...new Set([...(haS ? [c.entity] : []), ...(haP ? [c.plan_entity] : []), ...house.map((a) => a.cfg.state)])];
+    // Kaffee: jeder Bezug aus dem Verlauf des aktiven Programms (das Tagebuch kennt sonst nur „heute Kaffee“, ein Bit
+    // im Tagesplan, also nur den ersten)
+    const cof = !only && c.diary_house !== false && typeof c.coffee?.active === 'string' ? c.coffee.active : null;
+    const ids = [...new Set([...(haS ? [c.entity] : []), ...(haP ? [c.plan_entity] : []), ...house.map((a) => a.cfg.state), ...(cof ? [cof] : [])])];
     let res = {};
     let fail = false;
     if (ids.length) {
@@ -178,8 +182,11 @@ export class Tagebuch {
         last = s;
       }
     }
+    // Kaffee: kam ein Verlauf, gilt er (auch leer: dann gab es keinen Bezug); sonst bleibt das Bit im Tagesplan
+    const cr = cof && !fail ? rows(cof) : [];
+    for (const b of coffeeBrews(cr)) if (b.t >= from) bote.push({ t: b.t, k: 'kaffee', label: b.label });
     // Helfer da, aber kein einziger Stand im Verlauf: Der Recorder zeichnet ihn nicht auf
-    return { S, P, bote, fail, none: !fail && ((haS && !S.length) || (haP && !P.length)), ha: haS && haP };
+    return { S, P, bote, fail, none: !fail && ((haS && !S.length) || (haP && !P.length)), ha: haS && haP, ...(cof ? { cof: cr.length > 0 } : {}) };
   }
 
   // Beide Seiten (heute, gestern) aus dem Verlauf. Vorschau: _dbgDiary liefert fertige Roh-Ereignisse.
@@ -194,7 +201,7 @@ export class Tagebuch {
       H = await this._diaryHist(d1, now + 60000);
       R = { ...diaryDerive(H.S, H.P, d1, { decayAt: (t, h) => this._decayAt(t, h), until: now }), data: H.S.length + H.P.length > 0 };
     }
-    const page = (start, end, today) => this._diaryModel(start, end, R, H.bote, today, H.fail);
+    const page = (start, end, today) => this._diaryModel(start, end, R, H.bote, today, H.fail, !!H.cof);
     return { fail: H.fail, none: H.none, days: [page(d0, now + 1, true), page(d1, d0, false)] };
   }
 
@@ -211,8 +218,9 @@ export class Tagebuch {
     return `${lead} Drin war ${it.key === 'plush' ? `ein ${nm}!` : it.say}`;
   }
 
-  // Eine Seite: Einträge { t, part, icon, text, … } in Reihenfolge, Zähler (chips) und der Satz oben
-  _diaryModel(start, end, R, extra, today, fail) {
+  // Eine Seite: Einträge { t, part, icon, text, … } in Reihenfolge, Zähler (chips) und der Satz oben. cof: Die Bezüge
+  // des Kaffeeautomaten kommen aus seinem Verlauf (extra, k: 'kaffee'), das Bit „Kaffee“ im Tagesplan zählt dann nicht.
+  _diaryModel(start, end, R, extra, today, fail, cof = false) {
     const now = this._haNow();
     const day = new Date(start);
     const [ws, we] = this._wakeDay(day);
@@ -257,7 +265,7 @@ export class Tagebuch {
     const one = new Set(); // manches steht nur einmal am Tag da
     const once = (k) => !one.has(k) && !!one.add(k);
     const acts = [];
-    const cnt = { feed: 0, clean: 0 };
+    const cnt = { feed: 0, clean: 0, coffee: 0 };
     let gather = null;
     for (const e of mine) {
       const t = e.t;
@@ -270,7 +278,7 @@ export class Tagebuch {
         if (gather) gather.c++;
         else out.push((gather = { t, icon: 'gather', c: 1 }));
       } else if (e.k === 'mem') {
-        if (['pino', 'bird', 'plane', 'bfly', 'heart'].includes(e.b) || (e.b === 'coffee' && house)) put(t, e.b, tx(T[e.b], e.b, t));
+        if (['pino', 'bird', 'plane', 'bfly', 'heart'].includes(e.b) || (e.b === 'coffee' && house && !cof)) put(t, e.b, tx(T[e.b], e.b, t));
         else if (e.b === 'gut') put(t, 'gut', tx(T.gut, 'gut', t), { svg: ICON_HEART });
       } else if (e.k === 'parcel') {
         one.add('parcel');
@@ -295,6 +303,11 @@ export class Tagebuch {
       } else if (e.k === 'hungry') {
         if (once('hungry')) put(t, 'hungry', tx(e.eaten ? T.hungry : T.hungryNow, 'hungry', t));
       } else if (e.k === 'bote' && house && T.bote[e.type]) put(t, e.type, tx(T.bote[e.type], 'bote', t), { tm: `${diaryTime(t)} · ${e.name}` });
+      else if (e.k === 'kaffee' && house && !inU(t)) {
+        // jeder Bezug mit Uhrzeit und Getränk; der erste des Tags wie bisher, danach „noch einer“
+        const n = ++cnt.coffee;
+        put(t, 'coffee', n === 1 ? tx(T.coffee, 'coffee', t) : tx(T.coffeeMore, 'coffee', t).replace('{z}', n), { tm: `${diaryTime(t)} · ${e.label}` });
+      }
     }
     if (gather) gather.text = gather.c > 1 ? tx(T.gatherN, 'gather', gather.t).replace('{c}', gather.c) : T.gather1[0];
 

@@ -81,6 +81,8 @@ const DIARY_TXT = {
   pino: ['{n} war zu Besuch! Wir haben uns mit den Nasen angestupst.', '{n} kam vorbei. Zusammen ist alles schöner.',
     'Mit {n} gespielt. Beim Abschied hingen meine Ohren kurz.'],
   coffee: ['Es roch nach Kaffee. Ich hab mir auch einen geholt.', 'Kaffeeduft! Ich hab mitgetrunken, Schluck für Schluck.'],
+  coffeeMore: ['Noch ein Kaffee! Ich hab wieder mitgetrunken.', 'Schon wieder Kaffeeduft. Da konnte ich nicht nein sagen.',
+    'Kaffee Nummer {z}. Jetzt bin ich hellwach!'],
   bird: ['Ein Vögelchen saß da. Ich hab gepiepst, es hat zurückgezwitschert.', 'Besuch von einem Vögelchen. Wir haben uns nett unterhalten.'],
   plane: ['Ein Flugzeug! Ich hab ihm lange nachgeschaut. Brumm.', 'Hoch oben flog ein Flugzeug. Wo es wohl hinwollte?'],
   bfly: ['Ein Schmetterling ist auf meiner Nase gelandet. Ich hab ganz still gehalten.', 'Schmetterling auf der Nase! Ich musste schielen.'],

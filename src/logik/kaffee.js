@@ -28,9 +28,38 @@ const COFFEE_CTR_MS = 3 * 60000;
 // So lange nach dem letzten Schluck nach Plan darf ein unterbrochenes Trinken noch weitergehen, danach verfällt es
 const COFFEE_LATE = 30000;
 const COFFEE_DRINK = { latte: 240000, milk: 180000, capp: 210000, esp: 120000, mug: 210000, tea: 240000 };
+// Getränk in Worten fürs Tagebuch: "…_program_beverage_latte_macchiato" → "Latte macchiato"
+const coffeeLabel = (prog) => {
+  const m = /(?:beverage|coffee_world)_([a-z0-9_]+)$/.exec(String(prog || '').toLowerCase());
+  const w = (m ? m[1] : '').replace(/_/g, ' ').trim();
+  return w ? w[0].toUpperCase() + w.slice(1) : 'Kaffee';
+};
+// Bezüge aus dem Verlauf des aktiven Programms (rows: [{ t, s }] aufsteigend) → [{ t (Ende des Bezugs), at (Beginn),
+// prog, label }]. Ein Bezug ist ein Getränkeprogramm, das 15 s bis 15 Min läuft und danach in einen Zustand außer
+// "unavailable" wechselt (wie live, siehe _hassCoffee). Nicht dazu: ein Programm, das schon zu Beginn des Verlaufs lief
+// (sein Anfang fehlt), und eins, das aus "unavailable" kam oder darin endete (Neustart von HA, Verbindung weg).
+const coffeeBrews = (rows) => {
+  const out = [];
+  let run = null;
+  let prev;
+  for (const r of rows || []) {
+    const st = String(r.s ?? '').toLowerCase();
+    const prog = COFFEE_PROG.test(st);
+    let next = false; // ein Getränk folgt direkt auf das vorige (anderes Programm ohne Pause)
+    if (run && (!prog || st !== run.prog)) {
+      next = prog;
+      const d = r.t - run.at;
+      if (st !== 'unavailable' && d >= 15000 && d < 15 * 60000) out.push({ t: r.t, at: run.at, prog: run.prog, label: coffeeLabel(run.prog) });
+      run = null;
+    }
+    if (prog && !run && prev !== undefined && prev !== 'unavailable' && (next || !COFFEE_PROG.test(prev))) run = { at: r.t, prog: st };
+    prev = st;
+  }
+  return out;
+};
 const COFFEE_CLS = [...new Set([...Object.values(COFFEE_CUP), ...Object.keys(COFFEE_CUP)])].map((k) => `ck-${k}`);
 
 export {
   COFFEE_PROG, coffeeKind, COFFEE_CUP, COFFEE_SIPS, COFFEE_FOAM, coffeeName, COFFEE_FETCH, COFFEE_CTR_MS, COFFEE_LATE,
-  COFFEE_DRINK, COFFEE_CLS,
+  COFFEE_DRINK, COFFEE_CLS, coffeeLabel, coffeeBrews,
 };
