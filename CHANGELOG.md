@@ -2,6 +2,17 @@
 
 Jede Version der Pika Pet Card, die neueste zuerst.
 
+## 0.40.1 (2026-11-12)
+
+Safari auf iPhone und iPad: In der Dämmerung, nachts und bei bedecktem Himmel war der Erdhügel rechts senkrecht abgeschnitten (die Vorratsnische nur halb zu sehen), der Stein links und rechts (das Geröll). Gemeldet mit einem Bildschirmfoto vom Smartphone-Dashboard um 20:59. In Chrome (Vorschau, Kiosk-Tablets) war alles richtig.
+
+- Ursache: Seit 0.38 liegt der Lichtfilter (`.shade`) auf jeder Figur einzeln statt auf der ganzen Schicht. Bau und Stein malen absichtlich über ihre viewBox hinaus (`overflow: visible`). Safari schneidet ein Element mit Filter an seinen Boxen ab, und was ein `<svg>` über seine eigene Box hinaus malt, zählt dort nicht mit. Bei vollem Tageslicht gibt es keinen Filter, darum fiel es tagsüber nicht auf.
+- Behoben: Die Box des `<svg>` ist jetzt so groß wie die Zeichnung. `rand` am Areal (bzw. `LOOKOUT_RAND` am Stein) sagt in viewBox-Einheiten, wie weit die Zeichnung hinausragt; `randStil` (`src/grafik/areale.js`) gibt dem `<svg>` so viel `padding` und denselben negativen `margin`. Die Zeichnung bleibt, wo sie war, die Hüllen `.burrow` und `.lookout` behalten ihre Maße, damit auch Eingang, Wege, Ebenen und Trefferflächen. Ränder: Erdhügel rechts 28 (die Flanke reicht bis x 126), links 5; Felsbau 6 / 4,5 und unten 2,5; Geröllhalde je 1 links und unten; Baumstumpf keiner; Stein links 25,5, rechts 20. Die Festdeko am Bau (Lichterkette, Luftschlangen) bekommt den Rand ihres Areals.
+- Die vergrößerte Box fängt keine Tipps (`pointer-events: none` am `<svg>` von Bau und Stein), die gemalten Formen wie bisher.
+- Lokal ließ sich das Abschneiden nicht nachstellen: Das WebKit von Playwright unter Windows malt Hügel und Stein auch mit 0.40.0 vollständig. Vermutlich schneidet erst das Compositing von Safari auf iOS (Core Animation, die Figur wird für `transition: filter` eine eigene Ebene) ab. Die Box des `<svg>` zählt in jeder Engine zur gefilterten Fläche.
+- Geprüft in Chromium und WebKit (Playwright), alle vier Areale: Die Zeichnungen liegen auf den Bruchteil eines Pixels gleich wie mit 0.40.0, ebenso die Hüllen. Die Messung des Überstands in vollen Nachtszenen (Advent mit Lichterkette, Haus-Bote, Päckchen, Futter, Besucher): mit 0.40.0 Bau bis 54 px und Stein 37 / 28 px hinaus, jetzt nichts mehr. Übrig sind 1 bis 3 px an der Unterkante von Futter, Päckchen und Haus-Geräten; die liegen hinter dem Erdstreifen des Grases oder unter der Karte und sind nicht zu sehen. Auf dem iPhone selbst noch nicht geprüft.
+- Neu für die Entwicklung: `buehneUeberstand(karte)` in `dev/buehne-aufnahme.js` misst, was Elemente mit Filter über ihre Boxen hinausmalen; in der Vorschau der Knopf „Überstand prüfen“ (Zeile Tiefe). Zwei Tests rechnen die Ausdehnung der Zeichnungen von Bau und Stein aus dem SVG nach und prüfen, dass der Rand reicht und nicht viel größer ist als nötig (dabei fiel auf, dass der Felsbau links 5,75 hinausragt, nicht 5,5). 149 Tests.
+
 ## 0.40.0 (2026-11-12)
 
 Offenes Fenster: Ist im Haus ein Fenster offen, öffnet der Pika das runde Fenster an seinem Bau. Alles folgt aus den Kontakten in HA, darum zeigen alle Geräte dasselbe; der Tagesplan braucht kein Zeichen. Nur der Erdhügel (`areal: huegel`) hat ein Fenster. Zustand und Tagesplan in den Helfern bleiben, wie sie sind.

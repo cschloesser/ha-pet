@@ -4,7 +4,7 @@ import { rnd, clamp, sceneUnit } from '../logik/hilfen.js';
 import { CRIT_KINDS } from '../logik/besucher.js';
 import { ACT_PX } from '../logik/beschaeftigungen.js';
 import { PIKA_SVG } from '../grafik/pika.js';
-import { AREALE } from '../grafik/areale.js';
+import { AREALE, RAND_SVG } from '../grafik/areale.js';
 import { HAY_SVG, TUFTS_SVG, LOOKOUT_SVG, FOOD, ICON_LEAF, ICON_HEART, ICON_SPARK } from '../grafik/szene.js';
 import { GIFT_PARCEL } from '../grafik/paeckchen.js';
 import { DIARY_BOOK } from '../grafik/tagebuch.js';
@@ -199,8 +199,9 @@ export class Aufbau {
     sc.add(`areal-${key}`);
     const A = this._areal();
     sc.toggle('stash', !!A.stash);
-    const svg = (body) => (body ? `<svg viewBox="0 0 100 ${A.vh}" aria-hidden="true">${body}</svg>` : '');
-    this._el.burrow.innerHTML = svg(A.svg);
+    // Bau mit Rand (A.rand): Die Box seines <svg> deckt alles, was er malt, auch für den Lichtfilter in Safari
+    const svg = (body, st = '') => (body ? `<svg viewBox="0 0 100 ${A.vh}" aria-hidden="true"${st}>${body}</svg>` : '');
+    this._el.burrow.innerHTML = svg(A.svg, RAND_SVG(A.rand));
     this._el.lights.innerHTML = svg(A.lights);
     if (this._plan) this._hayFromPlan();
     if (this._g) {

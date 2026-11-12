@@ -3,6 +3,7 @@
 
 import { rnd } from '../logik/hilfen.js';
 import { flowerMid } from '../logik/wetter.js';
+import { RAND_SVG } from './areale.js';
 
 // So viele eingesammelte Blüten bleiben liegen (Heuhaufen oder Nische), die älteste macht Platz
 const STASH_MAX = 12;
@@ -33,8 +34,10 @@ const TUFTS_SVG = () => {
 };
 
 // Aussichtsstein mit Geröll: von oben pfeift er, wie echte Pikas. Boden bei y 46, flache Oberseite bei y 13.
+// Das Geröll liegt links bis x -25 und rechts bis x 119,1, außerhalb der viewBox: Rand wie beim Bau (randStil).
+const LOOKOUT_RAND = { r: 20, l: 25.5 };
 const LOOKOUT_SVG = `
-  <svg viewBox="0 0 100 50" aria-hidden="true">
+  <svg viewBox="0 0 100 50" aria-hidden="true"${RAND_SVG(LOOKOUT_RAND)}>
     <g stroke="#5c6166" stroke-width="1.2" transform="translate(0 -1.6)">
       <path d="M-14 47.5 L-12 40 L-4 37.5 L3 40 L4 47.5Z" fill="#8e949b" stroke-linejoin="round"/>
       <ellipse cx="-22" cy="47.6" rx="2.4" ry="1.5" fill="#9aa0a6"/><ellipse cx="-17.5" cy="46.8" rx="3.6" ry="2.2" fill="#b0b5ba"/>
@@ -135,6 +138,6 @@ const SCOOP_SVG = `
   </svg>`;
 
 export {
-  STASH_MAX, HAY_SVG, TUFTS_SVG, LOOKOUT_SVG, FLOWER_SVG, HAY_BITE, FOOD, ICON_LEAF, ICON_HEART, STAR, ICON_SPARK,
+  STASH_MAX, HAY_SVG, TUFTS_SVG, LOOKOUT_SVG, LOOKOUT_RAND, FLOWER_SVG, HAY_BITE, FOOD, ICON_LEAF, ICON_HEART, STAR, ICON_SPARK,
   POO_SVG, SCOOP_SVG,
 };

@@ -109,6 +109,8 @@ import {
   CHRONIK, chronikDatum, chronikTag, chronikStart, chronikVersatz, chronikZoneOk, chronikKod, chronikLies, chronikMisch, chronikBilanz,
   chronikTage, chronikFehlt, chronikPlan, chronikUrlaub,
 } from './logik/chronik.js';
+import { AREALE, randStil } from './grafik/areale.js';
+import { LOOKOUT_SVG, LOOKOUT_RAND } from './grafik/szene.js';
 import { PikaPetCard } from './karte.js';
 
 if (!customElements.get('pika-pet-card')) {
@@ -144,5 +146,6 @@ if (typeof globalThis !== 'undefined' && typeof globalThis.__pikaTest === 'funct
     miniStart, bigStart, ACT_WIN, ACT_GAP, BOAT_T, boatPos, boatPuffs, bezAt, gliderThrows, GLIDER_STEP, ACT_PX, wxProgThen,
     CHRONIK, chronikDatum, chronikTag, chronikStart, chronikVersatz, chronikZoneOk, chronikKod, chronikLies, chronikMisch, chronikBilanz,
     chronikTage, chronikFehlt, chronikPlan, diaryDerive,
+    AREALE, randStil, LOOKOUT_SVG, LOOKOUT_RAND,
   });
 }

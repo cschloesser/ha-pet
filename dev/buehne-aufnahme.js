@@ -208,4 +208,41 @@
     const mit = [...scene.querySelectorAll('*')].filter((e) => getComputedStyle(e).filter !== 'none');
     return { n: mit.length, wer: mit.map((e) => (typeof e.className === 'string' ? e.className : e.getAttribute('class') || e.tagName).split(' ')[0]) };
   };
+  // Überstand (seit 0.40.1): Safari/WebKit schneidet ein Element mit filter an den Boxen ab, die es und seine
+  // Nachfahren haben; was ein <svg> mit overflow: visible über seine eigene Box hinaus malt, zählt dabei nicht mit
+  // (nachts war der Erdhügel rechts senkrecht gekappt, der Stein links und rechts). Gesucht: jedes Element mit
+  // Filter (Lichtfilter in Dämmerung und Nacht, Schatten, Glanz), dessen SVG-Inhalt über alle Boxen darunter hinausragt.
+  // Zurück: [{ wer, l, r, t, b }] in px (nur Überstände über 1 px), leer = alles im Rahmen.
+  window.buehneUeberstand = (karte) => {
+    const scene = karte.shadowRoot.querySelector('.scene');
+    const name = (e) => (typeof e.className === 'string' ? e.className : e.getAttribute('class') || e.tagName).split(' ')[0] || e.tagName;
+    const out = [];
+    for (const el of [scene, ...scene.querySelectorAll('*')]) {
+      if (el instanceof SVGElement && !(el instanceof SVGSVGElement)) continue; // Filter in SVG: Rahmen ist der eigene
+      if (getComputedStyle(el).filter === 'none' || !el.getClientRects().length) continue;
+      // Boxen: das Element, seine HTML-Nachfahren und die <svg>-Wurzeln darin
+      const boxen = [el, ...el.querySelectorAll('*')].filter((e) => !(e instanceof SVGElement) || e instanceof SVGSVGElement)
+        .map((e) => e.getBoundingClientRect()).filter((q) => q.width >= 1 && q.height >= 1);
+      if (!boxen.length) continue;
+      const B = boxen.reduce((a, q) => ({ l: Math.min(a.l, q.left), r: Math.max(a.r, q.right), t: Math.min(a.t, q.top), b: Math.max(a.b, q.bottom) }),
+        { l: Infinity, r: -Infinity, t: Infinity, b: -Infinity });
+      // Gemalter Inhalt: Formen in sichtbaren SVGs (Rand der Linie mitgezählt)
+      const C = { l: Infinity, r: -Infinity, t: Infinity, b: -Infinity };
+      for (const f of el.querySelectorAll('path, circle, ellipse, rect, polygon, polyline, line, text, use')) {
+        if (!f.getClientRects().length || getComputedStyle(f).visibility === 'hidden' || f.closest('defs, clipPath, mask')) continue;
+        const bb = f.getBBox();
+        if (!bb.width && !bb.height) continue;
+        const m = f.getScreenCTM();
+        const sw = getComputedStyle(f).stroke !== 'none' ? (parseFloat(getComputedStyle(f).strokeWidth) || 0) / 2 : 0;
+        for (const [x, y] of [[bb.x - sw, bb.y - sw], [bb.x + bb.width + sw, bb.y - sw], [bb.x - sw, bb.y + bb.height + sw], [bb.x + bb.width + sw, bb.y + bb.height + sw]]) {
+          const p = new DOMPoint(x, y).matrixTransform(m);
+          C.l = Math.min(C.l, p.x); C.r = Math.max(C.r, p.x); C.t = Math.min(C.t, p.y); C.b = Math.max(C.b, p.y);
+        }
+      }
+      if (C.l === Infinity) continue;
+      const u = { l: B.l - C.l, r: C.r - B.r, t: B.t - C.t, b: C.b - B.b };
+      if (Object.values(u).some((v) => v > 1)) out.push({ wer: name(el), ...Object.fromEntries(Object.entries(u).map(([k, v]) => [k, Math.max(0, Math.round(v))])) });
+    }
+    return out;
+  };
 })();

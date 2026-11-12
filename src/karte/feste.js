@@ -8,6 +8,7 @@ import {
   FEST_COLORS, FEST_FW_COLORS, festF1, festSvg, FEST_EDGE, FEST_LIGHTS, FEST_STREAMERS, FEST_PUMPKIN, FEST_LANTERN,
   FEST_CARRY, FEST_WREATH, FEST_BOOT, FEST_TREE, FEST_GIFT, FEST_MAI, FEST_CAKE, FEST_EGG, FEST_STICK, FEST_BAT,
 } from '../grafik/feste.js';
+import { RAND_SVG } from '../grafik/areale.js';
 
 export class Feste {
   // Welche Feste heute sind, bestimmt _festToday() aus der Ortszeit (Vorschau: _dbgDate). Der 20-s-Takt prüft
@@ -301,8 +302,8 @@ export class Feste {
     };
     // Grafik in Bau-Einheiten, genau über dem Bau
     const onBur = (cls, art) => `<div class="fi ${cls}" style="left:${festF1(bur.l)}px;top:${festF1(bur.base)}px;`
-      + `width:${festF1(100 * bur.u)}px;height:${festF1(A.vh * bur.u)}px">${festSvg([100, A.vh], art.b, 'b')}`
-      + `${art.g ? festSvg([100, A.vh], art.g, 'g') : ''}</div>`;
+      + `width:${festF1(100 * bur.u)}px;height:${festF1(A.vh * bur.u)}px">${festSvg([100, A.vh], art.b, 'b', RAND_SVG(A.rand))}`
+      + `${art.g ? festSvg([100, A.vh], art.g, 'g', RAND_SVG(A.rand)) : ''}</div>`;
     const edge = FEST_EDGE[this._arealKey] || FEST_EDGE.huegel;
 
     // Boden-Deko auf einem Platz (prefs: Wunschreihenfolge)

@@ -5,14 +5,32 @@
 // zu sehen ist (x1..x2, Bogenoberkante top, Vorderkante lip, unterhalb verschwindet er). hay: linke Kante
 // des Heuhaufens als Anteil der Baubreite. stash (statt Heuhaufen): Vorratsnische im Bau (x1..x2, Bogen top,
 // Boden auf der Bodenlinie), dort legt der Pika die Blüten ab. lights: leuchtet in Dämmerung und Nacht (ungedimmt).
+// rand: so weit malt die Grafik über die viewBox hinaus (siehe randStil).
 const HOLE_GRAD = `<radialGradient id="holeg" cx=".5" cy=".9" r=".85">
       <stop offset="0" stop-color="#0d0907"/><stop offset="1" stop-color="#3b302a"/></radialGradient>`;
+// Überstand (seit 0.40.1). Bau, Stein und Festdeko malen über ihre viewBox hinaus (overflow: visible). Safari auf
+// iPhone und iPad schneidet ein Element mit filter (Lichtfilter in Dämmerung und Nacht) an seinen Boxen ab, und
+// was ein <svg> über seine Box hinaus malt, zählt dort nicht mit: Der Erdhügel war rechts senkrecht gekappt, der
+// Stein links und rechts. rand { t, r, b, l } (viewBox-Einheiten, so weit ragt die Zeichnung hinaus) macht die Box
+// des <svg> um so viel größer (padding) und zieht sie mit negativem margin wieder zurück: Die Zeichnung bleibt, wo
+// sie war, die Hülle behält ihre Maße, aber die Box deckt alles, was gemalt wird. Prozent beziehen sich auf die
+// Breite der Hülle (auch oben und unten), die viewBox ist vbW Einheiten breit. Die vergrößerte Box fängt keine
+// Tipps (pointer-events in stil/szene.js), die Formen darin wie bisher. Nachmessen in der Vorschau:
+// buehneUeberstand(karte), mit dem Rand bleibt die Liste leer.
+const randStil = (r, vbW = 100) => {
+  if (!r) return '';
+  const p = (k) => `${+(((r[k] || 0) * 100) / vbW).toFixed(2)}%`;
+  const m = (k) => (r[k] ? `-${p(k)}` : '0');
+  return `box-sizing:content-box;padding:${p('t')} ${p('r')} ${p('b')} ${p('l')};margin:${m('t')} ${m('r')} ${m('b')} ${m('l')}`;
+};
+const RAND_SVG = (r, vbW = 100) => (r ? ` style="${randStil(r, vbW)}"` : '');
+
 const GLOW_GRAD = (id, c) => `<radialGradient id="${id}"><stop offset="0" stop-color="${c}" stop-opacity=".75"/>
       <stop offset="1" stop-color="${c}" stop-opacity="0"/></radialGradient>`;
 
 const AREALE = {
   fels: {
-    name: 'Felsbau', w: 0.72, left: -0.1, vh: 66, sink: 5, hay: 0.86,
+    name: 'Felsbau', w: 0.72, left: -0.1, vh: 66, sink: 5, rand: { r: 4.5, b: 2.5, l: 6 }, hay: 0.86,
     perches: [[46, 10.2], [17, 26.2], [83, 30.2]],
     hole: { x1: 39.5, x2: 60.5, top: 34, lip: 57.5 },
     svg: `
@@ -40,7 +58,7 @@ const AREALE = {
         </g>`,
   },
   huegel: {
-    name: 'Erdhügel', w: 0.82, left: -0.06, vh: 60, sink: 4, stash: { x1: 92.5, x2: 112.5, top: 39 },
+    name: 'Erdhügel', w: 0.82, left: -0.06, vh: 60, sink: 4, rand: { t: 0.5, r: 28, b: 1.5, l: 5 }, stash: { x1: 92.5, x2: 112.5, top: 39 },
     // Laternendach, Schornstein, Schild, Blumenkasten, Hügelkuppe, Nischenbogen
     perches: [[13, 27.6], [65, 0.4], [47, 13.4], [84, 39.6], [36, 11.6], [102.5, 37.4]],
     hole: { x1: 37.5, x2: 62.5, top: 25.5, lip: 52.6 },
@@ -161,7 +179,7 @@ const AREALE = {
         <circle class="lt flk" cx="12" cy="75" r="5.5" fill="url(#mg)"/>`,
   },
   alpin: {
-    name: 'Geröllhalde', w: 0.78, left: -0.1, vh: 64, sink: 4, hay: 0.84, mountains: true,
+    name: 'Geröllhalde', w: 0.78, left: -0.1, vh: 64, sink: 4, rand: { b: 1, l: 1 }, hay: 0.84, mountains: true,
     perches: [[55, 11.5], [21, 30], [81, 30.2]],
     flowers: ['#ffffff', '#3d6fd6', '#ffffff', '#f6c945', '#b99cf0'],
     hole: { x1: 39, x2: 61, top: 34, lip: 55.3 },
@@ -183,4 +201,4 @@ const AREALE = {
   },
 };
 
-export { GLOW_GRAD, AREALE };
+export { GLOW_GRAD, AREALE, randStil, RAND_SVG };

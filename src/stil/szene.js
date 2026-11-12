@@ -170,6 +170,10 @@ const STYLE = `
   .burrow { z-index: ${BZ.bau}; }
   .lights { pointer-events: none; z-index: ${BZ.licht}; }
   .burrow svg, .lights svg { display: block; width: 100%; height: auto; overflow: visible; }
+  /* Die Box von Bau und Stein ist seit 0.40.1 so groß wie ihre Zeichnung (randStil, gegen das Abschneiden durch den
+     Lichtfilter in Safari): Tipps fangen nur die gemalten Formen, nicht die leere Box drumherum. */
+  .burrow svg, .lookout svg { pointer-events: none; }
+  .burrow svg > *, .lookout svg > * { pointer-events: visiblePainted; }
   .mound { fill: var(--mound, #94c873); stroke: var(--mound-s, #5f8f45); transition: fill 2.5s, stroke 2.5s; }
   .mound-t { stroke: var(--mound-s, #5f8f45); transition: stroke 2.5s; }
   .stump-top { fill: #d9b07c; transition: fill 2.5s; }

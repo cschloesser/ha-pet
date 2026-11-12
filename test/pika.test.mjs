@@ -4742,3 +4742,95 @@ test('Fenster: gezeigt wie die Lage, auch wenn ein Auftritt nicht drankam (Takt,
   k.c._winDetach();
   assert.equal(k.c._next, null);
 });
+
+// Überstand (0.40.1): Ausdehnung einer SVG-Zeichnung aus ihren Formen, grob und eher zu groß: Kreise, Ellipsen
+// (gedreht: der größere Radius), Rechtecke, Pfade mit allen Befehlen (Kontrollpunkte zählen mit, bei A nur der
+// Endpunkt), translate an Gruppen, halbe Linienbreite (auch geerbt). <defs> und <text> zählen nicht.
+const ausdehnung = (svg) => {
+  const E = { l: Infinity, r: -Infinity, t: Infinity, b: -Infinity };
+  const stapel = [{ dx: 0, dy: 0, sw: 0 }];
+  const attr = (s, k) => s.match(new RegExp(`(?:^|\\s)${k}="([^"]*)"`))?.[1];
+  const zahl = (s, k, d = 0) => parseFloat(attr(s, k) ?? d);
+  for (const [, zu, tag, a, selbst] of svg.replace(/<defs>[\s\S]*?<\/defs>/g, '').matchAll(/<(\/?)(\w+)([^>]*?)(\/?)>/g)) {
+    if (zu) {
+      if (tag === 'g') stapel.pop();
+      continue;
+    }
+    const o = stapel.at(-1);
+    const tr = attr(a, 'transform')?.match(/translate\(([-\d.]+)[ ,]+([-\d.]+)\)/);
+    const z = { dx: o.dx + (tr ? +tr[1] : 0), dy: o.dy + (tr ? +tr[2] : 0), sw: attr(a, 'stroke-width') ? zahl(a, 'stroke-width') / 2 : o.sw };
+    const add = (x, y, w = 0) => {
+      E.l = Math.min(E.l, z.dx + x - w - z.sw); E.r = Math.max(E.r, z.dx + x + w + z.sw);
+      E.t = Math.min(E.t, z.dy + y - w - z.sw); E.b = Math.max(E.b, z.dy + y + w + z.sw);
+    };
+    if (tag === 'g' && !selbst) stapel.push(z);
+    else if (tag === 'circle') add(zahl(a, 'cx'), zahl(a, 'cy'), zahl(a, 'r'));
+    else if (tag === 'ellipse') {
+      const [rx, ry] = [zahl(a, 'rx'), zahl(a, 'ry')];
+      if (/rotate/.test(attr(a, 'transform') || '')) add(zahl(a, 'cx'), zahl(a, 'cy'), Math.max(rx, ry));
+      else {
+        add(zahl(a, 'cx') - rx, zahl(a, 'cy') - ry);
+        add(zahl(a, 'cx') + rx, zahl(a, 'cy') + ry);
+      }
+    } else if (tag === 'rect') {
+      add(zahl(a, 'x'), zahl(a, 'y'));
+      add(zahl(a, 'x') + zahl(a, 'width'), zahl(a, 'y') + zahl(a, 'height'));
+    } else if (tag === 'path') {
+      const tok = attr(a, 'd').match(/[a-zA-Z]|-?(?:\d+\.?\d*|\.\d+)/g);
+      const N = { M: 2, L: 2, T: 2, H: 1, V: 1, C: 6, S: 4, Q: 4, A: 7, Z: 0 };
+      let i = 0, cmd = 'M', x = 0, y = 0, sx = 0, sy = 0;
+      while (i < tok.length) {
+        if (/[a-zA-Z]/.test(tok[i])) cmd = tok[i++];
+        const C = cmd.toUpperCase();
+        const rel = cmd !== C;
+        if (C === 'Z') {
+          [x, y] = [sx, sy];
+          continue;
+        }
+        const v = Array.from({ length: N[C] }, () => parseFloat(tok[i++]));
+        if (C === 'H') x = rel ? x + v[0] : v[0];
+        else if (C === 'V') y = rel ? y + v[0] : v[0];
+        else if (C === 'A') [x, y] = rel ? [x + v[5], y + v[6]] : [v[5], v[6]];
+        else {
+          for (let k = 0; k < v.length; k += 2) add(rel ? x + v[k] : v[k], rel ? y + v[k + 1] : v[k + 1]);
+          [x, y] = rel ? [x + v.at(-2), y + v.at(-1)] : [v.at(-2), v.at(-1)];
+        }
+        add(x, y);
+        if (C === 'M') {
+          [sx, sy] = [x, y];
+          cmd = rel ? 'l' : 'L';
+        }
+      }
+    }
+  }
+  return E;
+};
+
+test('Überstand: Bau und Stein liegen mit ihrer Zeichnung ganz im Rand (sonst schneidet Safari sie nachts ab)', () => {
+  const pruefe = (name, svg, vw, vh, rand = {}) => {
+    const E = ausdehnung(svg);
+    const r = { t: 0, r: 0, b: 0, l: 0, ...rand };
+    const not = { l: -E.l, r: E.r - vw, t: -E.t, b: E.b - vh }; // so weit malt die Zeichnung hinaus
+    for (const k of ['l', 'r', 't', 'b']) {
+      assert.ok(not[k] <= r[k] + 0.01, `${name}: ragt ${k} ${not[k].toFixed(2)} hinaus, Rand nur ${r[k]}`);
+      // eng: Der Rand vergrößert die gefilterte Fläche, also nicht mehr als nötig
+      assert.ok(r[k] <= Math.max(0, not[k]) + 2, `${name}: Rand ${k} ${r[k]} viel größer als nötig (${not[k].toFixed(2)})`);
+    }
+  };
+  for (const [k, A] of Object.entries(T.AREALE)) pruefe(k, A.svg, 100, A.vh, A.rand);
+  pruefe('Stein', T.LOOKOUT_SVG, 100, 50, T.LOOKOUT_RAND);
+  // Der Erdhügel ragt rechts weit hinaus (Hügelflanke bis x 126), der Stein auf beiden Seiten (Geröll)
+  assert.ok(T.AREALE.huegel.rand.r > 25 && T.LOOKOUT_RAND.l > 20 && T.LOOKOUT_RAND.r > 15);
+});
+
+test('Überstand: randStil vergrößert die Box des <svg> und zieht sie zurück, Bau, Stein und Festdeko tragen ihn', () => {
+  assert.equal(T.randStil(null), '');
+  assert.equal(T.randStil({ r: 28, l: 5 }), 'box-sizing:content-box;padding:0% 28% 0% 5%;margin:0 -28% 0 -5%');
+  assert.equal(T.randStil({ t: 1, b: 2.5 }, 50), 'box-sizing:content-box;padding:2% 0% 5% 0%;margin:-2% 0 -5% 0');
+  assert.ok(T.LOOKOUT_SVG.includes(`style="${T.randStil(T.LOOKOUT_RAND)}"`));
+  assert.match(quell, /this\._el\.burrow\.innerHTML = svg\(A\.svg, RAND_SVG\(A\.rand\)\)/);
+  assert.match(quell, /festSvg\(\[100, A\.vh\], art\.b, 'b', RAND_SVG\(A\.rand\)\)/);
+  // Die vergrößerte Box fängt keine Tipps, die Formen darin schon
+  assert.match(T.STYLES, /\.burrow svg, \.lookout svg \{ pointer-events: none; \}/);
+  assert.match(T.STYLES, /\.burrow svg > \*, \.lookout svg > \* \{ pointer-events: visiblePainted; \}/);
+});

@@ -32,6 +32,7 @@
   <button data-areal="fels">Fels</button>
   <button data-areal="stumpf">Stumpf</button>
   <button data-areal="alpin">Alpin</button>
+  <button id="ueberstand">Überstand prüfen</button>
 </div>
 <div class="bar"><b>Tageszeit</b>
   <button data-sun="110,8,0">Morgen</button>
@@ -564,6 +565,13 @@
   }
   cards.forEach((c) => c.setConfig({ name: 'Pika', entity: 'input_text.pika_status', plan_entity: 'input_text.pika_plan' }));
   push();
+
+  // Überstand (0.40.1): ragt eine Grafik mit Lichtfilter über ihre Boxen hinaus, schneidet Safari sie ab (Dämmerung,
+  // Nacht). Bis 3 px unten zählen nicht: Bei Futter, Päckchen und Geräten liegt das hinter dem Erdstreifen des Grases
+  // oder unter der Karte.
+  document.getElementById('ueberstand').addEventListener('click', () => log(cards.map((c, i) => `Karte ${i + 1}: `
+    + (buehneUeberstand(c).filter((o) => o.l > 1 || o.r > 1 || o.t > 1 || o.b > 3)
+      .map((o) => `${o.wer} links ${o.l}, rechts ${o.r}, oben ${o.t}, unten ${o.b} px`).join(' · ') || 'alles im Rahmen')).join('\n')));
 
   // Prototyp Tiefe: Schalter (setConfig wie in HA), Spur erzwingen, Areal wechseln
   const tiefeBtn = document.getElementById('tiefe');

@@ -12,7 +12,8 @@ import { GLOW_GRAD } from './areale.js';
 const FEST_COLORS = ['#e8584e', '#f6c945', '#5fb9de', '#7cc35a', '#f28fb1', '#b99cf0', '#ff9f5a'];
 const FEST_FW_COLORS = ['#ff5a5f', '#ffd166', '#5fd1ff', '#b48cff', '#7dff9a', '#ff8ad8', '#fff3c4'];
 const festF1 = (n) => n.toFixed(1);
-const festSvg = (vb, body, cls) => `<svg class="${cls}" viewBox="0 0 ${vb[0]} ${vb[1]}" aria-hidden="true">${body}</svg>`;
+// st: Zusatz im Tag, z. B. RAND_SVG für Deko in Bau-Einheiten, die wie der Bau über die viewBox hinausreicht
+const festSvg = (vb, body, cls, st = '') => `<svg class="${cls}" viewBox="0 0 ${vb[0]} ${vb[1]}" aria-hidden="true"${st}>${body}</svg>`;
 const festBez = (a, b, c, d, t) => {
   const u = 1 - t;
   return [0, 1].map((k) => u * u * u * a[k] + 3 * u * u * t * b[k] + 3 * u * t * t * c[k] + t * t * t * d[k]);
