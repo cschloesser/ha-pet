@@ -60,7 +60,7 @@
  */
 (() => {
   // src/version.js
-  var VERSION = "0.39.1";
+  var VERSION = "0.39.2";
 
   // src/logik/hilfen.js
   var Cancel = class extends Error {
@@ -6196,6 +6196,7 @@
         this._blindAt = Date.now();
         this._blindFirst = true;
         this._start();
+        this._messung().catch((e) => console.warn("pika-pet-card: Messung", e));
       } else if (this._inside) {
         this._setX(this._g.home, true);
         this._pose(this._poseName, 0);
@@ -19795,6 +19796,91 @@
     }
   };
 
+  // src/karte/messung.js
+  var Messung = class {
+    _messungFrei() {
+      try {
+        return /[?&#]pika_messung(=|&|$)/.test(window.location.href);
+      } catch {
+        return false;
+      }
+    }
+    // Bilder über ms Millisekunden zählen (requestAnimationFrame): Bilder je Sekunde, Median und 95. Perzentil der
+    // Abstände, verpasste Bilder (Abstand über 34 ms, also mehr als zwei Takte bei 60 Hz) und der längste Abstand
+    // Kommen keine Bilder (Bildschirm aus, Seite verborgen), endet sie trotzdem nach ms + 2 s, mit dem, was da ist.
+    _messRaf(ms) {
+      return new Promise((fertig) => {
+        const t = [];
+        let aus = false;
+        const ende = () => {
+          if (aus) return;
+          aus = true;
+          clearTimeout(notbremse);
+          const d = t.slice(1).map((x, i) => x - t[i]).sort((a, b) => a - b);
+          const q = (p) => d.length ? d[Math.min(d.length - 1, Math.floor(p * d.length))] : 0;
+          fertig({
+            fps: d.length ? Math.round((t.length - 1) / (t[t.length - 1] - t[0]) * 1e4) / 10 : 0,
+            med: Math.round(q(0.5) * 10) / 10,
+            p95: Math.round(q(0.95) * 10) / 10,
+            lang: d.filter((x) => x > 34).length,
+            max: Math.round(d[d.length - 1] || 0),
+            bilder: t.length
+          });
+        };
+        const notbremse = setTimeout(ende, ms + 2e3);
+        const takt = (now) => {
+          if (aus) return;
+          t.push(now);
+          if (now - t[0] < ms) requestAnimationFrame(takt);
+          else ende();
+        };
+        requestAnimationFrame(takt);
+      });
+    }
+    async _messung() {
+      if (this._messungLauf || !this._messungFrei()) return;
+      this._messungLauf = true;
+      const warte = (ms) => new Promise((r) => setTimeout(r, ms));
+      await warte(8e3);
+      const cfg = this._cfg;
+      const alt = { e: this._dbgElev, a: this._dbgAz, s: this._dbgSleep };
+      const phasen = [[28, true], [3, true], [28, false], [3, false], [3, true], [28, true]];
+      const erg = [];
+      try {
+        for (const [elev, depth] of phasen) {
+          if (!!this._cfg.depth !== depth) this.setConfig({ ...this._cfg, depth });
+          this._dbgElev = elev;
+          this._dbgAz = elev > 0 ? 180 : 245;
+          this._dbgSleep = false;
+          this._tick();
+          this._updateSky();
+          await warte(3500);
+          const r = await this._messRaf(8e3);
+          const filter = [...this.shadowRoot.querySelectorAll("*")].filter((el) => getComputedStyle(el).filter !== "none").length;
+          erg.push({ licht: elev >= 10 ? "Tag" : "Dämmerung", depth, shade: this._el.scene.classList.contains("shade"), filter, akt: this._action, ...r });
+        }
+      } finally {
+        this._dbgElev = alt.e;
+        this._dbgAz = alt.a;
+        this._dbgSleep = alt.s;
+        this.setConfig(cfg);
+        this._tick();
+        this._updateSky();
+      }
+      const zeile = (r) => `${r.licht}${r.depth ? " depth" : ""}: ${r.fps} B/s, Median ${r.med} ms, p95 ${r.p95} ms, ${r.lang} lange, max ${r.max} ms, ${r.bilder} Bilder, ${r.filter} Filter${r.shade ? " (shade)" : ""}, ${r.akt}`;
+      const text = `Pika-Messung ${VERSION} ${window.innerWidth}×${window.innerHeight} @${window.devicePixelRatio}: ` + erg.map(zeile).join(" | ");
+      console.info(text);
+      try {
+        await this._hass.callService("system_log", "write", { message: text, level: "warning", logger: "pika_pet_card.messung" }, void 0, false);
+      } catch {
+        try {
+          await this._hass.callService("persistent_notification", "create", { title: "Pika-Messung", message: text, notification_id: "pika_messung" }, void 0, false);
+        } catch {
+        }
+      }
+    }
+  };
+
   // src/karte.js
   var PikaPetCard = class extends HTMLElement {
     constructor() {
@@ -20128,7 +20214,8 @@
     BeschaeftigungenKlein,
     Chronik,
     Urlaub,
-    Signale
+    Signale,
+    Messung
   ];
   for (const Teil of TEILE) {
     for (const k of Reflect.ownKeys(Teil.prototype)) {

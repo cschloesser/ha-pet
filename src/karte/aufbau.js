@@ -333,6 +333,8 @@ export class Aufbau {
       this._blindAt = Date.now();
       this._blindFirst = true;
       this._start();
+      // Bildrate messen, nur mit pika_messung in der Adresse (src/karte/messung.js)
+      this._messung().catch((e) => console.warn('pika-pet-card: Messung', e));
     } else if (this._inside) {
       this._setX(this._g.home, true);
       this._pose(this._poseName, 0);

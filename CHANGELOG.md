@@ -2,6 +2,15 @@
 
 Jede Version der Pika Pet Card, die neueste zuerst.
 
+## 0.39.2 (2026-11-12)
+
+Messung der Bildrate auf dem echten Gerät. Am Verhalten der Karte ändert sich nichts.
+
+- Neues Modul `src/karte/messung.js`: Nennt die Adresse der Seite `pika_messung` (zum Beispiel `…/dashboard-kiosk-modern/0?pika_messung=1`), misst die Karte einmal 8 s nach dem Laden die Bildrate über requestAnimationFrame, in sechs Phasen zu 8 s: Tag und Dämmerung (Sonne 28° bzw. 3°), mit und ohne `depth`, Dämmerung mit `depth` zweimal (Streuung). Je Phase: Bilder je Sekunde, Median und 95. Perzentil der Abstände, lange Abstände (über 34 ms), der längste, die Zahl der Elemente mit Filter und die laufende Beschäftigung. Danach stellt sie Licht und Konfiguration zurück und schreibt das Ergebnis ins Systemprotokoll von HA (`system_log.write`, Logger `pika_pet_card.messung`; geht das nicht, als Benachrichtigung „Pika-Messung“) und in die Konsole. Ohne den Zusatz in der Adresse passiert nichts.
+- Kommen keine Bilder (Bildschirm geht aus, Seite verborgen), endet jede Phase nach 10 s trotzdem, und alles wird zurückgestellt. In der Vorschau mit verborgener Leiste geprüft (0 Bilder, Licht und `depth` danach wie vorher).
+- Gedacht für das Kiosk-Tablet, auf dem sich sonst nichts messen lässt: `fully_kiosk.load_url` mit dem Zusatz, Bildschirm an, nach etwa 75 s das Protokoll lesen (`system_log/list`), dann die normale Seite laden.
+- Entwicklung: 78 Module (`src/karte/` 30), weiterhin 140 Tests.
+
 ## 0.39.1 (2026-11-12)
 
 Feinschliff der Tiefe: Besucher auf der hinteren Spur sehen aus und bewegen sich wie hinten, und ein Test prüft die Bühne jetzt am echten Stil. Ohne `depth` ändert sich nichts.
