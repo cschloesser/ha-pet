@@ -149,6 +149,8 @@
   <button data-hb="washer:frac">läuft (0,45 ohne Einheit)</button>
   <button data-hb="washer:rest">Restzeit 25 Min</button>
   <button data-hb="washer:done">fertig</button>
+  <button data-hb="washer:done40">fertig seit 40 Min (müffelt)</button>
+  <button data-hb="washer:done150">fertig seit 2½ Std.</button>
   <button data-hb="washer:empty">ausgeräumt</button>
   <button data-hb="washer:off">aus</button>
   <button data-hb="washer:abort">abbrechen</button>
@@ -175,7 +177,9 @@
   <button data-hb="dishwasher:frac">läuft (0,45 ohne Einheit)</button>
   <button data-hb="dishwasher:rest">Restzeit 25 Min</button>
   <button data-hb="dishwasher:done">fertig</button>
-  <button data-hb="dishwasher:dooropen">Tür auf (bleibt fertig)</button>
+  <button data-hb="dishwasher:selfready">fertig → ready nach 1 Min (Tür zu)</button>
+  <button data-hb="dishwasher:doorblip">Tür kurz unavailable</button>
+  <button data-hb="dishwasher:dooropen">Tür auf</button>
   <button data-hb="dishwasher:doorclose">Tür zu</button>
   <button data-hb="dishwasher:empty">ausgeräumt</button>
   <button data-hb="dishwasher:off">aus</button>
@@ -183,6 +187,9 @@
   <button data-hb="dishwasher:on">einschalten</button>
   <button data-hb="dishwasher:offline">offline</button>
   <button data-hb="dishwasher:go">Pika: hingehen</button>
+  <i style="flex-basis:100%"></i><b></b>
+  <button id="hb-labels">Schilder an/aus</button>
+  <button id="hb-reload">Neuladen (Verlauf nachspielen)</button>
 </div>
 <!-- ==================== Ende Haus-Bote ==================== -->
 
@@ -197,6 +204,7 @@
   <button id="cf-fast">Bezug sofort fertig</button>
   <button id="cf-reload">Neuladen: vor 30 s fertig</button>
   <button id="cf-restart">HA-Neustart (kein Bezug)</button>
+  <button id="cf-two">Latte, gleich danach Espresso</button>
 </div>
 <!-- ==================== Ende Kaffee ==================== -->
 
@@ -894,6 +902,22 @@
         // Restzeit als Zahl in Minuten statt Zeitstempel
         hbSet(d.state, 'run');
         hbSet(d.end, '25', { unit_of_measurement: 'min', device_class: 'duration' });
+      } else if (/^done\d+$/.test(what)) {
+        // fertig seit … Minuten (Müffel-Wölkchen ab 30, Nase zuhalten ab 120)
+        const m = Number(what.slice(4));
+        hbSet(d.state, 'finished', {}, m);
+        hbSet(d.progress, '100', HB_PCT, m);
+        hbSet(d.end, 'unavailable', {}, m);
+      } else if (what === 'selfready') {
+        // Spülmaschine von Home Connect: eine Minute nach „fertig“ von selbst „ready“, die Tür bleibt zu
+        hbSet(d.state, 'finished', {}, 1);
+        hbSet(d.progress, '100', HB_PCT, 1);
+        push();
+        hbIdle(d, 'ready');
+      } else if (what === 'doorblip') {
+        hbSet(d.door, 'unavailable');
+        push();
+        hbSet(d.door, 'closed');
       } else if (what === 'done') {
         hbSet(d.state, 'finished');
         hbSet(d.progress, '100', HB_PCT);
@@ -923,6 +947,16 @@
       push();
     })
   );
+  document.getElementById('hb-labels').addEventListener('click', () => cards.forEach((c) => {
+    c.setConfig({ ...c._cfg, appliance_labels: c._cfg.appliance_labels === false });
+    c._bote?.list.forEach((a) => c._boteRender(a));
+  }));
+  // wie frisch geladen: Haus-Bote vergessen, der Verlauf (hier seit dem Laden der Seite) wird nachgespielt
+  document.getElementById('hb-reload').addEventListener('click', () => cards.forEach((c) => {
+    if (c._bote) c._boteDrop(c._bote);
+    c._bote = null;
+    c.hass = c._hass;
+  }));
   // ==================== Ende Vorschau Haus-Bote ====================
 
   // ==================== Vorschau Kaffee ====================
@@ -985,6 +1019,22 @@
     for (const id of new Set([...Object.keys(states), ...Object.values(CF)])) states[id] = { ...states[id], last_changed: t, last_updated: t };
     push();
     log('Kaffee: HA-Neustart simuliert');
+  });
+  // Zwei Bezüge kurz hintereinander: Der Espresso stellt sich hinten an (bis 0.35 verfiel er meist)
+  document.getElementById('cf-two').addEventListener('click', () => {
+    cfStart('latte_macchiato', 0.5);
+    cfEnd(0.2);
+    push();
+    setTimeout(() => {
+      cfStart('espresso');
+      push();
+      cfT = setTimeout(() => {
+        cfEnd();
+        push();
+        const P = cards[0]._cof || {};
+        log(`Kaffee: Latte trinkt er, Espresso wartet: ${P.next ? `beginnt ${Math.round((P.next.t0 - Date.now()) / 1000)} s nach jetzt, nach dem letzten Schluck des Latte` : 'nicht eingereiht'}`);
+      }, 18000);
+    }, 1500);
   });
   // ==================== Ende Vorschau Kaffee ====================
 

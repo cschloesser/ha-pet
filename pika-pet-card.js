@@ -60,7 +60,7 @@
  */
 (() => {
   // src/version.js
-  var VERSION = "0.35.1";
+  var VERSION = "0.36.0";
 
   // src/logik/hilfen.js
   var Cancel = class extends Error {
@@ -804,6 +804,10 @@
   var BOTE_K = 4e-3;
   var BOTE_EMPTY_MS = 20 * 6e4;
   var BOTE_AUTOOPEN_MS = 2 * 6e4;
+  var BOTE_LIVE_MS = 3 * 6e4;
+  var BOTE_WAIT_MS = 24 * 36e5;
+  var BOTE_HIST_MS = 24 * 36e5;
+  var BOTE_OPEN = /* @__PURE__ */ new Set(["open", "on", "opened", "offen", "auf", "ajar"]);
   var BOTE_FRONT = 1.1;
   var BOTE_FRONT_DY = 0.07;
   var BOTE_TALL = 0.55;
@@ -906,6 +910,43 @@
     off: "inactive",
     poweroff: "inactive",
     sleep: "inactive"
+  };
+  var boteState = (raw, map) => map && hasKey(map, raw) ? map[raw] : hasKey(BOTE_ALIAS, raw) ? BOTE_ALIAS[raw] : raw;
+  var boteNorm = (v) => String(v ?? "").split(".").pop().toLowerCase().replace(/[\s_-]/g, "");
+  var BOTE_KNOWN = /* @__PURE__ */ new Set([...BOTE_RUN, ...BOTE_IDLE, "finished"]);
+  var boteMap = (m) => {
+    if (!m || typeof m !== "object" || Array.isArray(m)) return null;
+    const out = /* @__PURE__ */ Object.create(null);
+    for (const [k, v] of Object.entries(m)) {
+      const n = boteNorm(v);
+      const s = hasKey(BOTE_ALIAS, n) ? BOTE_ALIAS[n] : n;
+      if (BOTE_KNOWN.has(s)) out[boteNorm(k)] = s;
+    }
+    return Object.keys(out).length ? out : null;
+  };
+  var boteEmptyOn = (c) => c?.door && c.empty_on !== "idle" ? "door" : "idle";
+  var BOTE_HALT_LABEL = { pause: "Pause", delayedstart: "wartet", actionrequired: "Hilfe!", error: "Störung", aborting: "bricht ab" };
+  var boteLabel = (a, now) => {
+    if (a.phase === "run") {
+      if (hasKey(BOTE_HALT_LABEL, a.st)) return BOTE_HALT_LABEL[a.st];
+      if (a.end != null) {
+        if (a.end <= now) return "gleich";
+        const m = Math.ceil((a.end - now) / 6e4);
+        return `${Math.floor(m / 60)}:${String(m % 60).padStart(2, "0")}`;
+      }
+      return a.pct != null ? `${Math.round(a.pct)} %` : null;
+    }
+    if (a.phase === "done") {
+      const m = Math.floor((now - (a.finAt ?? a.changed ?? now)) / 6e4);
+      return m < 1 ? "fertig" : m < 60 ? `fertig ${m} Min` : `fertig ${Math.floor(m / 60)} Std.`;
+    }
+    return null;
+  };
+  var BOTE_SMELL = [30, 120];
+  var boteSmell = (a, now) => {
+    if (a.type !== "washer" || a.phase !== "done") return 0;
+    const m = (now - (a.finAt ?? a.changed ?? now)) / 6e4;
+    return m >= BOTE_SMELL[1] ? 2 : m >= BOTE_SMELL[0] ? 1 : 0;
   };
   var BOTE_TYPE = {
     washer: "washer",
@@ -1374,6 +1415,11 @@
       prev = st;
     }
     return out;
+  };
+  var COFFEE_NEXT_GAP = 15e3;
+  var coffeeQueue = (prevEnd, P) => {
+    const t0 = Math.max(P.t0, prevEnd + COFFEE_NEXT_GAP);
+    return t0 === P.t0 ? P : { ...P, t0, end: P.end + (t0 - P.t0) };
   };
   var COFFEE_CLS = [.../* @__PURE__ */ new Set([...Object.values(COFFEE_CUP), ...Object.keys(COFFEE_CUP)])].map((k) => `ck-${k}`);
 
@@ -1893,7 +1939,9 @@
     diary: true,
     diary_house: true,
     // Urlaub bei Pino: Schalter im Tagebuch (false = kein Schalter; einen laufenden Urlaub zeigt die Karte trotzdem)
-    vacation: true
+    vacation: true,
+    // Haus-Bote: Schild über jedem Gerät (Restzeit, seit wann fertig)
+    appliance_labels: true
   };
   var EDITOR_LABEL = {
     name: "Name",
@@ -1924,7 +1972,8 @@
     coffee: "Kaffeevollautomat",
     diary: "Tagebuch",
     diary_house: "Haushalt im Tagebuch",
-    vacation: "Urlaubsschalter"
+    vacation: "Urlaubsschalter",
+    appliance_labels: "Schilder an den Geräten"
   };
   var EDITOR_HELP = {
     entity: "Damit alle Geräte denselben Pika sehen. Leer: nur in diesem Browser.",
@@ -1932,6 +1981,7 @@
     chronicle_entity: "Sein Langzeitgedächtnis: je Tag ein Eintrag mit der Tagesbilanz. Am besten eine eigene Liste; braucht beide Helfer. Leer: keine Chronik.",
     diary: "Antippen der Leiste öffnet sein Tagebuch.",
     diary_house: "Kaffee, Wäsche und Geschirr stehen mit Uhrzeit drin.",
+    appliance_labels: "Über jedem Haushaltsgerät klein die Restzeit („0:42“) bzw. seit wann es fertig ist.",
     vacation: "Im Tagebuch: „Ferien bei Pino“. Solange er verreist ist, ruhen Hunger, Glück, Häufchen und Päckchen-Serie.",
     sleep_start: "z. B. sunset, sunset+01:00 oder 21:00",
     sleep_end: "z. B. sunrise, sunrise-30 oder 07:00",
@@ -2206,6 +2256,7 @@
           group("Geburtstage, Haushaltsgeräte, Kaffee (YAML)", "mdi:code-braces", [
             { name: "birthdays", selector: { object: {} } },
             { name: "appliances", selector: { object: {} } },
+            { name: "appliance_labels", selector: bool, default: true },
             { name: "coffee", selector: { object: {} } }
           ])
         ],
@@ -4749,6 +4800,36 @@
   @keyframes hb-drumf { 0%, 100% { transform: translate(2.2px, 0); } 25% { transform: translate(0, 2.2px); } 50% { transform: translate(-2.2px, 0); } 75% { transform: translate(0, -2.2px); } }
   /* Kopf zum Betrachter gedreht */
   .pika.hb-look .face { transform: translate(-3.5px, .5px); }
+
+  /* Schild über dem Gerät (appliance_labels): groß genug für drei Meter, Ziffern gleich breit */
+  .hb-lab {
+    position: absolute; left: 0; top: 0; padding: .05em .45em .1em; border-radius: .7em; pointer-events: none; white-space: nowrap;
+    font: 800 clamp(11px, calc(var(--H) * .068), 20px)/1.25 system-ui, sans-serif; font-variant-numeric: tabular-nums;
+    color: #3d2f22; background: rgba(255, 255, 255, .88); box-shadow: 0 1px 3px rgba(0, 0, 0, .2);
+    opacity: 0; transition: opacity .5s, left .5s, top .5s;
+  }
+  .hb-lab.on { opacity: 1; }
+  .hb-lab.done { background: #fff3c4; }
+  .night .hb-lab { color: #e4e9f6; background: rgba(22, 32, 62, .8); }
+  .night .hb-lab.done { color: #fff3c4; }
+  /* Nasse Wäsche müffelt: graugrüne Wölkchen steigen vom Korb auf (ab 2 Std. mehr und dichter) */
+  .hb-sm { position: absolute; left: 30%; top: 10%; width: 40%; height: 0; display: none; pointer-events: none; }
+  .hb.hb-smell .hb-sm { display: block; }
+  .hb-sm i {
+    position: absolute; bottom: 0; width: calc(var(--H) * .045); height: calc(var(--H) * .03); border-radius: 50%;
+    background: rgba(150, 165, 110, .55); filter: blur(.5px); opacity: 0; animation: hb-muff 3.4s ease-out infinite;
+  }
+  .hb-sm i:nth-child(1) { left: 0; }
+  .hb-sm i:nth-child(2) { left: 35%; animation-delay: 1.1s; }
+  .hb-sm i:nth-child(3) { left: 70%; animation-delay: 2.2s; display: none; }
+  .hb.hb-smell2 .hb-sm i { animation-duration: 2.4s; background: rgba(130, 150, 90, .65); }
+  .hb.hb-smell2 .hb-sm i:nth-child(3) { display: block; }
+  @keyframes hb-muff {
+    0% { transform: translate(0, 0) scale(.5); opacity: 0; }
+    25% { opacity: 1; }
+    100% { transform: translate(calc(var(--H) * .015), calc(var(--H) * -.1)) scale(1.3); opacity: 0; }
+  }
+  @media (prefers-reduced-motion: reduce) { .hb-sm i { animation: none; opacity: .6; } .hb-sm i:nth-child(2) { transform: translateY(-60%); } }
 
   /* Fähnchen wie beim Flugzeug: Gerätename und Stand */
   .hb-tag {
@@ -10892,8 +10973,9 @@
         let last = null;
         for (const r of rows(a.cfg.state)) {
           const raw = norm(r.s);
-          const s = BOTE_ALIAS[raw] || raw;
+          const s = boteState(raw, a.map ?? boteMap(a.cfg.state_map));
           if (BOTE_DEAD.has(s)) continue;
+          if (s === "pause" && last === "finished") continue;
           if (s === "finished" && BOTE_RUN.has(last) && r.t >= from) bote.push({ t: r.t, k: "bote", type: a.type, name: a.name });
           last = s;
         }
@@ -14841,6 +14923,7 @@
         a.objs = o;
         this._boteRead(a, o, now);
       }
+      this._boteHist();
     }
     _attachBote() {
       if (this._boteSync().list.length) this._boteRefresh();
@@ -14904,7 +14987,26 @@
             }
             return;
           }
-          list.push({ idx: i, type, cfg: c, name: String(c.name || BOTE_NAME[type]), phase: null, view: null, nudgeAt: 0, objs: [] });
+          const emptyOn = boteEmptyOn(c);
+          if (c.empty_on != null && emptyOn !== c.empty_on) {
+            const m = `Gerät ${i + 1}: empty_on "${c.empty_on}" geht nicht${c.empty_on === "door" ? " ohne door" : " (door oder idle)"}, nehme ${emptyOn}`;
+            if (!BOTE_WARNED.has(m)) {
+              BOTE_WARNED.add(m);
+              console.warn(`pika-pet-card Haus-Bote: ${m}`);
+            }
+          }
+          list.push({
+            idx: i,
+            type,
+            cfg: c,
+            name: String(c.name || BOTE_NAME[type]),
+            phase: null,
+            view: null,
+            nudgeAt: 0,
+            objs: [],
+            emptyOn,
+            map: boteMap(c.state_map)
+          });
         });
         for (const t of Object.keys(BOTE_NAME)) {
           const same = list.filter((a) => a.type === t && !a.cfg.name);
@@ -14929,26 +15031,30 @@
       B.t?.remove();
     }
     // Neue Zustände eines Geräts lesen. Home Connect bleibt nach Programmende auf "finished", bis die Tür
-    // aufgeht, dann "ready", später "inactive"; andere Hersteller über BOTE_ALIAS. "Ausgeräumt" gilt nur nach
-    // einem echten Programmende (fertig → aus, Tür bei "fertig" geöffnet, oder läuft → aus kurz vor Schluss),
-    // nicht beim Einschalten, Abbrechen oder Löschen der Startvorwahl. Ohne echten Zustand (unavailable,
-    // unknown) bleibt das Gerät, wie es war.
-    _boteRead(a, [st, pr, en, dr], now) {
+    // aufgeht, dann "ready", später "inactive"; andere Hersteller über BOTE_ALIAS bzw. state_map. "Ausgeräumt" gilt nur
+    // nach einem echten Programmende, nicht beim Einschalten, Abbrechen oder Löschen der Startvorwahl. Wann, sagt
+    // empty_on (boteEmptyOn): "idle" (fertig → aus, oder läuft → aus kurz vor Schluss) oder, Standard mit Tür, "door":
+    // erst wenn die Tür nach Programmende aufgeht, auch wenn das Gerät inzwischen "ready" meldet (Spülmaschinen von
+    // Home Connect tun das nach einer Minute von selbst; bis 0.35 galt das als ausgeräumt). Ohne echten Zustand
+    // (unavailable, unknown) bleibt das Gerät, wie es war. Alle Fristen laufen ab dem Zeitpunkt des Ereignisses in HA,
+    // nicht ab dem Eintreffen (ein Handy-Tab, der Stunden später aufwacht, räumt nicht mehr sichtbar auf).
+    // replay: Stand aus dem Verlauf nachspielen (_boteHist): nichts zeigen, nicht melden, nicht unterbrechen.
+    _boteRead(a, [st, pr, en, dr], now, replay = false) {
       const norm = (v) => String(v ?? "").split(".").pop().toLowerCase().replace(/[\s_-]/g, "");
       const lc = (o) => Math.min(now, Date.parse(o?.last_changed) || Date.parse(o?.last_updated) || now);
       const raw = norm(st?.state);
-      let s = BOTE_ALIAS[raw] || raw;
+      let s = boteState(raw, a.map);
       const dead = BOTE_DEAD.has(s);
       const longDead = !dead && a.deadAt != null && now - a.deadAt > 15 * 6e4;
       a.deadAt = dead ? a.deadAt ?? now : null;
       const first = !a.seen || longDead;
       a.seen = true;
       if (a.st === "finished" && s === "pause" && !first) s = "finished";
-      this._boteWarn(a, st, s, dead, [pr, en, dr]);
+      if (!replay) this._boteWarn(a, st, s, dead, [pr, en, dr]);
       const pct = this._botePct(pr, a);
       const end = this._boteEnd(en, now);
       const doorDead = !dr || BOTE_DEAD.has(norm(dr.state));
-      const door = doorDead ? !!a.door : ["open", "on", "opened", "offen", "auf", "ajar"].includes(norm(dr.state));
+      const door = doorDead ? !!a.door : BOTE_OPEN.has(norm(dr.state));
       const doorAt = doorDead ? now : lc(dr);
       const prevSt = a.st;
       const prevPct = a.pct;
@@ -14964,52 +15070,54 @@
         pct: pct ?? (dead ? prevPct : null),
         end: end ?? (dead ? prevEnd : null)
       });
-      if (cur !== "finished") a.opened = false;
-      else if (stChanged) {
+      if (cur !== "finished" && !a.wait) a.opened = false;
+      else if (cur === "finished" && stChanged) {
         a.finAt = a.changed;
         a.opened = false;
+        a.wait = false;
       }
       if (BOTE_RUN.has(cur)) {
-        if (!BOTE_RUN.has(prevSt) || first) a.run = { at: first ? a.changed : now, pct: null, end: null };
-        if (pct != null) a.run.pct = pct;
-        if (end != null) a.run.end = end;
+        if (!BOTE_RUN.has(prevSt) || first) a.run = { at: a.changed, pct: null, end: null };
+        if (pct != null && (!pr || lc(pr) >= a.run.at - 5e3)) a.run.pct = pct;
+        if (end != null && (!en || lc(en) >= a.run.at - 5e3)) a.run.end = end;
+        a.wait = false;
       }
-      const idle = BOTE_IDLE.has(cur);
       let live = false;
+      const emptied = (t) => {
+        a.emptyUntil = t + BOTE_EMPTY_MS;
+        a.wait = false;
+        live = !replay && now - t < BOTE_LIVE_MS;
+      };
+      const idle = BOTE_IDLE.has(cur);
+      const byDoor = a.emptyOn === "door";
+      const doorEvent = !doorDead && !a.opened && (a.wait || cur === "finished") && doorAt >= a.finAt && (door && !prevDoor && doorAt - a.finAt > BOTE_AUTOOPEN_MS || !door && prevDoor);
       if (first) {
         if (BOTE_RUN.has(cur)) a.emptyUntil = null;
         else if (cur === "finished") {
-          a.opened = !!dr && !doorDead && doorAt - a.finAt > BOTE_AUTOOPEN_MS;
+          a.opened = !!dr && !doorDead && door && doorAt - a.finAt > BOTE_AUTOOPEN_MS;
           a.emptyUntil = a.opened ? doorAt + BOTE_EMPTY_MS : null;
         } else if (idle) {
           const near = [pr, en].some((o) => o && !BOTE_DEAD.has(norm(o.state)) && Math.abs(lc(o) - a.changed) <= 5 * 6e4);
           const pAge = pr ? a.changed - lc(pr) : NaN;
-          const ok = pct != null ? pct >= 95 && pAge >= -6e4 && pAge <= 60 * 6e4 : near;
-          a.emptyUntil = ok && !this._haBoot(a.changed) ? a.changed + BOTE_EMPTY_MS : 0;
+          const ok = pct != null ? pct >= 95 && pAge >= 3e4 && pAge <= 60 * 6e4 : near;
+          a.emptyUntil = ok && !byDoor && !this._haBoot(a.changed) ? a.changed + BOTE_EMPTY_MS : 0;
         } else a.emptyUntil = 0;
       } else if (BOTE_RUN.has(cur)) a.emptyUntil = null;
-      else if (cur === "finished") {
+      else if (doorEvent) {
+        a.opened = true;
+        emptied(doorAt);
+      } else if (cur === "finished") {
         if (stChanged) a.emptyUntil = null;
-        else if (door && !prevDoor && !a.opened && now - a.finAt > BOTE_AUTOOPEN_MS) {
-          a.opened = true;
-          a.emptyUntil = now + BOTE_EMPTY_MS;
-          live = true;
-        } else if (!door && prevDoor && !doorDead && !a.opened && now - a.finAt > BOTE_AUTOOPEN_MS) {
-          a.opened = true;
-          a.emptyUntil = now + BOTE_EMPTY_MS;
-          live = true;
-        }
-      } else if (stChanged) {
+      } else if (stChanged && !a.wait) {
         const R = a.run || {};
         const ended = R.pct == null && R.end == null ? a.changed - (R.at ?? a.changed) >= 10 * 6e4 : R.pct != null && R.pct >= 95 || R.end != null && Math.abs(R.end - a.changed) < 10 * 6e4;
         if (idle && prevSt === "finished") {
-          if (!prevOpened) {
-            a.emptyUntil = now + BOTE_EMPTY_MS;
-            live = true;
-          }
-        } else if (idle && prevSt === "run" && ended) {
-          a.emptyUntil = a.changed + BOTE_EMPTY_MS;
-          live = true;
+          if (prevOpened) a.emptyUntil ||= 0;
+          else if (byDoor) a.wait = true;
+          else emptied(a.changed);
+        } else if (idle && BOTE_RUN.has(prevSt) && ended) {
+          if (byDoor) Object.assign(a, { wait: true, finAt: a.changed, opened: false });
+          else emptied(a.changed);
         } else if (a.emptyUntil == null) {
           a.emptyUntil = 0;
         }
@@ -15018,18 +15126,74 @@
       const from = a.phase;
       if (ph !== from) {
         a.phase = ph;
-        if (ph === "done") a.nudgeAt = now + (first ? rnd(2e4, 6e4) : rnd(5e3, 12e3));
         if (ph !== "empty") a.live = false;
-        if (from === "run" && this._action === BOTE_ACT[a.type]) this._interrupt();
-        if (live && (from === "done" || from === "run") && ph === "empty") this._boteLive(a);
+        if (!replay) {
+          if (ph === "done") a.nudgeAt = now + (first ? rnd(2e4, 6e4) : rnd(5e3, 12e3));
+          if (from === "run" && this._action === BOTE_ACT[a.type]) this._interrupt();
+          if (live && (from === "done" || from === "run") && ph === "empty") this._boteLive(a);
+        }
       }
-      this._boteRender(a);
+      if (!replay) this._boteRender(a);
     }
     _botePhase(a, now) {
       if (a.deadAt != null && now - a.deadAt > 30 * 6e4) return null;
       if (BOTE_RUN.has(a.st)) return "run";
       if (a.st === "finished" && !a.opened) return "done";
+      if (a.wait && !a.opened) return now - (a.finAt ?? now) < BOTE_WAIT_MS ? "done" : null;
       return a.emptyUntil && now < a.emptyUntil ? "empty" : null;
+    }
+    // Beim Laden: Zustand und Tür der letzten 24 Stunden aus dem Recorder nachspielen. Erst damit weiß ein frisch
+    // geladenes Gerät, ob ein „ready“ ein Programmende war und ob die Tür danach wirklich aufging (ein kurzes
+    // unavailable → closed ist kein Öffnen). Einmal je Konfiguration; scheitert es, bleibt die Schätzung aus dem
+    // jetzigen Stand.
+    _boteHist() {
+      const B = this._bote;
+      const hass = this._hass;
+      if (!B?.list.length || B.hist || !hass?.callWS) return;
+      B.hist = "läuft";
+      const ids = [...new Set(B.list.flatMap((a) => [a.cfg.state, ...a.cfg.door ? [a.cfg.door] : []]))];
+      const to = this._haNow();
+      Promise.resolve(hass.callWS({
+        type: "history/history_during_period",
+        start_time: new Date(to - BOTE_HIST_MS).toISOString(),
+        end_time: new Date(to + 6e4).toISOString(),
+        entity_ids: ids,
+        minimal_response: true,
+        no_attributes: true,
+        significant_changes_only: false
+      })).then((res) => {
+        if (this._bote !== B) return;
+        B.hist = "fertig";
+        for (const a of B.list) this._boteReplay(a, res || {});
+        this._boteRefresh();
+      }).catch((e) => {
+        if (this._bote !== B) return;
+        B.hist = "fehlgeschlagen";
+        console.debug("pika-pet-card Haus-Bote: Verlauf nicht lesbar, Stand geschätzt", e);
+      });
+    }
+    // Ein Gerät aus dem Verlauf neu aufbauen, dann den jetzigen Stand darauflegen
+    _boteReplay(a, res) {
+      const rows = (id) => (Array.isArray(res[id]) ? res[id] : []).map((r) => ({ t: Math.round((Number(r.lu ?? r.lc) || Date.parse(r.last_updated || r.last_changed) / 1e3) * 1e3), s: r.s ?? r.state })).filter((r) => Number.isFinite(r.t));
+      const S = rows(a.cfg.state).map((r) => ({ ...r, k: 0 }));
+      if (!S.length) return;
+      const D = a.cfg.door ? rows(a.cfg.door).map((r) => ({ ...r, k: 1 })) : [];
+      const ev = [...S, ...D].sort((x, y) => x.t - y.t || x.k - y.k);
+      const keep = { el: a.el, bar: a.bar, tag: a.tag, view: a.view, spec: a.spec, objs: a.objs };
+      for (const k of ["seen", "st", "door", "changed", "pct", "end", "opened", "wait", "finAt", "run", "emptyUntil", "deadAt", "phase", "live"]) delete a[k];
+      const o = (r) => r && { state: r.s, last_changed: new Date(r.t).toISOString() };
+      let st = null;
+      let dr = null;
+      for (const r of ev) {
+        if (r.k) dr = r;
+        else st = r;
+        if (st) this._boteRead(a, [o(st), null, null, o(dr)], r.t, true);
+      }
+      Object.assign(a, keep);
+      const S0 = this._hass?.states || {};
+      const c = a.cfg;
+      a.objs = [S0[c.state], c.progress && S0[c.progress], c.end && S0[c.end], c.door && S0[c.door]];
+      this._boteRead(a, a.objs, this._haNow());
     }
     // Einmal je Seite und Grund melden (auch bei mehreren Karten): Entity fehlt oder Zustand unbekannt
     _boteWarn(a, st, s, dead, more) {
@@ -15115,11 +15279,11 @@
         if (label) p.push(label);
         if (a.pct != null && s !== "delayedstart") p.push(`${Math.round(a.pct)} %`);
         else if (!p.length) p.push("läuft");
-        if (a.end && s !== "aborting") p.push(`fertig um ${hm(a.end)}`);
+        if (a.end && s !== "aborting") p.push(a.end > this._haNow() ? `fertig um ${hm(a.end)}` : "gleich fertig");
         return p.join(" · ");
       }
       if (a.phase === "done") {
-        const m = Math.floor((this._haNow() - a.changed) / 6e4);
+        const m = Math.floor((this._haNow() - (a.finAt ?? a.changed)) / 6e4);
         if (m < 1) return "gerade fertig";
         return `fertig seit ${m < 60 ? `${m} Min` : `${Math.floor(m / 60)} Std.${m % 60 ? ` ${m % 60} Min` : ""}`}`;
       }
@@ -15146,11 +15310,12 @@
       const view = a.phase && a.live ? a.type === "washer" ? "empty" : "done" : a.phase;
       if (!view) {
         if (a.el) {
-          const { el: el2, bar: bar2 } = a;
-          a.el = a.bar = a.spec = a.view = null;
+          const { el: el2, bar: bar2, lab } = a;
+          a.el = a.bar = a.lab = a.spec = a.view = null;
           el2.classList.add("hb-bye");
           bar2.classList.remove("on");
-          setTimeout(() => (el2.remove(), bar2.remove()), 600);
+          lab?.classList.remove("on");
+          setTimeout(() => (el2.remove(), bar2.remove(), lab?.remove()), 600);
           this._boteTag(a, false);
           if (!noLayout) this._boteLayout();
         }
@@ -15162,7 +15327,7 @@
         const el2 = document.createElement("div");
         el2.className = `hb hb-${a.type}`;
         el2.setAttribute("role", "button");
-        el2.innerHTML = '<div class="hb-i"></div><span class="hb-a">!</span>';
+        el2.innerHTML = '<div class="hb-i"></div><span class="hb-a">!</span><span class="hb-sm"><i></i><i></i><i></i></span>';
         el2.addEventListener("click", (e) => {
           e.stopPropagation();
           this._found("device");
@@ -15175,8 +15340,12 @@
         bar2.innerHTML = "<b></b>";
         bar2.style.setProperty("--bc", BOTE_COLOR[a.type]);
         this._bote.bars.appendChild(bar2);
+        const lab = document.createElement("div");
+        lab.className = "hb-lab";
+        this._bote.bars.appendChild(lab);
         a.el = el2;
         a.bar = bar2;
+        a.lab = lab;
       }
       const el = a.el;
       if (view !== a.view) {
@@ -15198,8 +15367,13 @@
       const halt = view === "run" && BOTE_HALT.has(a.st);
       cl.toggle("hb-pause", halt);
       cl.toggle("hb-alert", view === "run" && (a.st === "error" || a.st === "actionrequired"));
-      const still = !!this._asleep || view !== "run" && this._el.scene.classList.contains("night") || view === "done" && this._haNow() - (a.finAt || 0) > 60 * 6e4;
+      const now = this._haNow();
+      const smell = a.live ? 0 : boteSmell(a, now);
+      const night = this._el.scene.classList.contains("night");
+      const still = !!this._asleep || view !== "run" && night || view === "done" && !smell && now - (a.finAt || 0) > 60 * 6e4;
       cl.toggle("hb-still", still);
+      cl.toggle("hb-smell", smell > 0 && !this._asleep && !night);
+      cl.toggle("hb-smell2", smell > 1 && !this._asleep && !night);
       const wind = this._wind || 0;
       el.style.setProperty("--hbw", `${(-(this._windDir || -1) * clamp(3 + wind / 3.5, 3, 18)).toFixed(1)}deg`);
       el.style.setProperty("--hbs", `${clamp(2.6 - wind / 25, 0.8, 2.6).toFixed(2)}s`);
@@ -15209,6 +15383,13 @@
       bar.classList.toggle("pause", halt);
       bar.classList.toggle("hb-still", still);
       if (a.pct != null) bar.style.setProperty("--p", `${a.pct.toFixed(1)}%`);
+      const lt = this._cfg.appliance_labels === false || a.live ? null : boteLabel(a, now);
+      if (a.lab.textContent !== (lt || "")) {
+        a.lab.textContent = lt || "";
+        if (a.spec && a.k) this._boteLabPos(a);
+      }
+      a.lab.classList.toggle("on", !!lt);
+      a.lab.classList.toggle("done", view === "done");
       const text = this._boteText(a);
       el.setAttribute("aria-label", `${a.name}: ${text}`);
       if (a.tag?.classList.contains("open")) this._boteTagText(a);
@@ -15283,7 +15464,20 @@
       const bottom = Math.max(ground, a.top + sp.vb[3] * k);
       bs.top = `${(fr ? Math.min(bottom + 0.012 * H, this._Hs - bh - 0.02 * H) : gy - 0.03 * H).toFixed(1)}px`;
       bs.width = `${bw.toFixed(1)}px`;
+      this._boteLabPos(a);
       if (a.tag?.classList.contains("open")) this._boteTagPos(a);
+    }
+    // Schild mittig über dem sichtbaren Teil des Requisits, ganz in der Karte
+    _boteLabPos(a) {
+      const L = a.lab;
+      if (!L || !a.spec || !this._g) return;
+      const [u0, u1] = a.spec.part;
+      const ls = L.style;
+      ls.left = "0px";
+      const w = L.offsetWidth;
+      const h = L.offsetHeight;
+      ls.left = `${clamp(this._boteX(a, (u0 + u1) / 2) - w / 2, 2, Math.max(2, this._W - w - 2)).toFixed(1)}px`;
+      ls.top = `${clamp(a.vTop - h - 0.012 * this._H, 2, Math.max(2, this._Hs - h - 2)).toFixed(1)}px`;
     }
     // Requisit-Einheiten → px; ist das Requisit schon weg (Phase vorbei), die Pika-Position bzw. die Bodenlinie
     _boteX(a, u) {
@@ -15626,6 +15820,12 @@
           this._happy(1e3);
           await this._wait(1200);
         }
+        if (boteSmell(a, this._haNow()) > 1) {
+          this._twitch();
+          this._mimik("defy", 1800);
+          this._say(pick(["puh!", "müffelt!", "puuh…"]), 1300);
+          await this._wait(1500);
+        }
         this._boteCls("hb-look");
         p.classList.add("calling");
         this._say(pick(BOTE_SAY[a.type]), 1600);
@@ -15639,7 +15839,7 @@
         p.classList.remove("calling");
         this._boteUncls();
         a.el?.classList.remove("hb-boop");
-        const late = this._haNow() - (a.finAt || 0) > 60 * 6e4;
+        const late = this._haNow() - (a.finAt || 0) > 60 * 6e4 && a.type !== "washer";
         a.nudgeAt = this._haNow() + (patted ? rnd(late ? 20 : 3, late ? 30 : 6) * 6e4 : 3e4);
       }
     }
@@ -15815,7 +16015,7 @@
       const kind = coffeeKind(p);
       const r = (i) => seedRnd("coffee", key, i);
       const sip = COFFEE_DRINK[kind] * (0.85 + r(0) * 0.3) / COFFEE_SIPS[kind];
-      const P = {
+      let P = {
         key,
         kind,
         name: coffeeName(p, kind),
@@ -15828,6 +16028,7 @@
         lv: 1,
         j: 0
       };
+      if (C.pend) P = coffeeQueue(C.pend.end, P);
       if (now > P.end - 3e3) return this._coffeeMark(key);
       if (C.pend) {
         if (C.next) this._coffeeMark(C.next.key);
@@ -19025,6 +19226,12 @@
       chronikUrlaub,
       coffeeBrews,
       coffeeLabel,
+      coffeeQueue,
+      COFFEE_NEXT_GAP,
+      boteEmptyOn,
+      boteMap,
+      boteLabel,
+      boteSmell,
       freshStats,
       serialize,
       parseStats,

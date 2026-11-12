@@ -63,6 +63,7 @@ export class Editor {
         group('Geburtstage, Haushaltsgeräte, Kaffee (YAML)', 'mdi:code-braces', [
           { name: 'birthdays', selector: { object: {} } },
           { name: 'appliances', selector: { object: {} } },
+          { name: 'appliance_labels', selector: bool, default: true },
           { name: 'coffee', selector: { object: {} } },
         ]),
       ],

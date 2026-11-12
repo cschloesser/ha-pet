@@ -175,6 +175,36 @@ const STYLE_BOTE = `
   /* Kopf zum Betrachter gedreht */
   .pika.hb-look .face { transform: translate(-3.5px, .5px); }
 
+  /* Schild über dem Gerät (appliance_labels): groß genug für drei Meter, Ziffern gleich breit */
+  .hb-lab {
+    position: absolute; left: 0; top: 0; padding: .05em .45em .1em; border-radius: .7em; pointer-events: none; white-space: nowrap;
+    font: 800 clamp(11px, calc(var(--H) * .068), 20px)/1.25 system-ui, sans-serif; font-variant-numeric: tabular-nums;
+    color: #3d2f22; background: rgba(255, 255, 255, .88); box-shadow: 0 1px 3px rgba(0, 0, 0, .2);
+    opacity: 0; transition: opacity .5s, left .5s, top .5s;
+  }
+  .hb-lab.on { opacity: 1; }
+  .hb-lab.done { background: #fff3c4; }
+  .night .hb-lab { color: #e4e9f6; background: rgba(22, 32, 62, .8); }
+  .night .hb-lab.done { color: #fff3c4; }
+  /* Nasse Wäsche müffelt: graugrüne Wölkchen steigen vom Korb auf (ab 2 Std. mehr und dichter) */
+  .hb-sm { position: absolute; left: 30%; top: 10%; width: 40%; height: 0; display: none; pointer-events: none; }
+  .hb.hb-smell .hb-sm { display: block; }
+  .hb-sm i {
+    position: absolute; bottom: 0; width: calc(var(--H) * .045); height: calc(var(--H) * .03); border-radius: 50%;
+    background: rgba(150, 165, 110, .55); filter: blur(.5px); opacity: 0; animation: hb-muff 3.4s ease-out infinite;
+  }
+  .hb-sm i:nth-child(1) { left: 0; }
+  .hb-sm i:nth-child(2) { left: 35%; animation-delay: 1.1s; }
+  .hb-sm i:nth-child(3) { left: 70%; animation-delay: 2.2s; display: none; }
+  .hb.hb-smell2 .hb-sm i { animation-duration: 2.4s; background: rgba(130, 150, 90, .65); }
+  .hb.hb-smell2 .hb-sm i:nth-child(3) { display: block; }
+  @keyframes hb-muff {
+    0% { transform: translate(0, 0) scale(.5); opacity: 0; }
+    25% { opacity: 1; }
+    100% { transform: translate(calc(var(--H) * .015), calc(var(--H) * -.1)) scale(1.3); opacity: 0; }
+  }
+  @media (prefers-reduced-motion: reduce) { .hb-sm i { animation: none; opacity: .6; } .hb-sm i:nth-child(2) { transform: translateY(-60%); } }
+
   /* Fähnchen wie beim Flugzeug: Gerätename und Stand */
   .hb-tag {
     position: absolute; left: 0; top: 0; padding: .12em .7em .18em; border-radius: .9em;

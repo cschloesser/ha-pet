@@ -3,7 +3,7 @@
 import { rnd, pick, clamp, seedRnd } from '../logik/hilfen.js';
 import {
   COFFEE_PROG, coffeeKind, COFFEE_CUP, COFFEE_SIPS, COFFEE_FOAM, coffeeName, COFFEE_FETCH, COFFEE_CTR_MS, COFFEE_LATE,
-  COFFEE_DRINK, COFFEE_CLS,
+  COFFEE_DRINK, COFFEE_CLS, coffeeQueue,
 } from '../logik/kaffee.js';
 import { JUMP_IN } from '../logik/beschaeftigungen.js';
 import { COFFEE_THINK } from '../grafik/momente.js';
@@ -73,10 +73,12 @@ export class Kaffee {
     const kind = coffeeKind(p);
     const r = (i) => seedRnd('coffee', key, i);
     const sip = (COFFEE_DRINK[kind] * (0.85 + r(0) * 0.3)) / COFFEE_SIPS[kind];
-    const P = {
+    let P = {
       key, kind, name: coffeeName(p, kind), t0: end, sip, end: end + COFFEE_FETCH + COFFEE_SIPS[kind] * sip,
       rockR: r(1), faceR: r(2), stage: 'fetch', lv: 1, j: 0,
     };
+    // Trinkt er noch den vorigen: hinten anstellen (die Zeitleiste beginnt nach dessen letztem Schluck)
+    if (C.pend) P = coffeeQueue(C.pend.end, P);
     // Auf den anderen Geräten längst ausgetrunken. Gemerkt, damit ein späteres Zucken des Programms (WLAN weg,
     // unavailable → unknown) denselben Bezug nicht noch einmal auslöst.
     if (now > P.end - 3000) return this._coffeeMark(key);

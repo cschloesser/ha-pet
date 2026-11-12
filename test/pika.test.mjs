@@ -4065,3 +4065,108 @@ test('Tagebuch: jeder Kaffee aus dem Verlauf des Automaten, Neustart von HA und 
   assert.equal(T.coffeeLabel(`${P}caffe_crema`), 'Caffe crema');
   assert.equal(T.coffeeLabel('consumer_products_coffee_maker_program_coffee_world_wiener_melange'), 'Wiener melange');
 });
+
+// Haus-Bote am Gerät: Zustände der Reihe nach einspielen (wie aus dem Verlauf), Phase zu Zeitpunkten ablesen
+const boteGeraet = (cfg) => {
+  const c = Object.create(T.PikaPetCard.prototype);
+  c._cfg = { appliances: [cfg] };
+  c._hass = { states: {} };
+  const a = c._boteSync().list[0];
+  const run = (ev, checks) => {
+    // ev: [Zeit, 's' | 'd', Wert] aufsteigend; checks: [Zeit, erwartete Phase]
+    let st = null;
+    let dr = null;
+    const o = (x) => x && { state: x[2], last_changed: new Date(x[0]).toISOString() };
+    const all = [...ev.map((e) => ({ e })), ...checks.map((k) => ({ k }))].sort((x, y) => (x.e || x.k)[0] - (y.e || y.k)[0]);
+    const got = [];
+    for (const x of all) {
+      if (x.e) {
+        if (x.e[1] === 'd') dr = x.e;
+        else st = x.e;
+        if (st) c._boteRead(a, [o(st), null, null, o(dr)], x.e[0], true);
+      } else got.push([x.k[0], c._botePhase(a, x.k[0])]);
+    }
+    return got.map(([t, p]) => `${new Date(t).toISOString().slice(5, 16)} ${p}`);
+  };
+  return { c, a, run };
+};
+
+test('Haus-Bote: Spülmaschine meldet nach einer Minute „ready“, ausgeräumt ist sie erst, wenn die Tür aufgeht (Verlauf vom 7. 11.)', () => {
+  const t = (d, hh, mm, ss = 0) => Date.UTC(2026, 10, d, hh, mm, ss);
+  const { run, a } = boteGeraet({ type: 'dishwasher', state: 'sensor.s', door: 'sensor.d' });
+  assert.equal(a.emptyOn, 'door');
+  // so stand es im Recorder (Sa 7. 11. bis So 8. 11.), Uhrzeiten hier in UTC
+  const ev = [
+    [t(7, 7, 3, 36), 's', 'ready'], [t(7, 7, 3, 36), 'd', 'closed'],
+    [t(7, 21, 12, 45), 'd', 'open'], [t(7, 21, 15, 37), 's', 'run'], [t(7, 21, 15, 38), 'd', 'closed'],
+    [t(7, 22, 59, 53), 's', 'finished'], [t(7, 23, 0, 53), 's', 'ready'],
+    [t(8, 13, 58, 34), 'd', 'open'], [t(8, 13, 58, 51), 'd', 'closed'],
+  ];
+  assert.deepEqual(run(ev, [[t(7, 22, 0), 0], [t(7, 23, 30), 0], [t(8, 9, 0), 0], [t(8, 14, 0), 0], [t(8, 14, 30), 0]]), [
+    '11-07T22:00 run', '11-07T23:30 done', '11-08T09:00 done', '11-08T14:00 empty', '11-08T14:30 null',
+  ]);
+  // Mi 11. 11.: drei Minuten nach Programmende kurz unavailable → closed (kein Öffnen), die Tür ging erst um 20:28 auf
+  const { run: run2 } = boteGeraet({ type: 'dishwasher', state: 'sensor.s', door: 'sensor.d' });
+  const ev2 = [
+    [t(11, 13, 7, 6), 's', 'ready'], [t(11, 13, 7, 6), 'd', 'closed'], [t(11, 16, 2, 49), 's', 'run'],
+    [t(11, 17, 47, 14), 's', 'finished'], [t(11, 17, 48, 14), 's', 'ready'],
+    [t(11, 17, 50, 6), 'd', 'unavailable'], [t(11, 17, 50, 7), 'd', 'closed'], [t(11, 20, 28, 59), 'd', 'open'],
+  ];
+  assert.deepEqual(run2(ev2, [[t(11, 18, 0), 0], [t(11, 20, 0), 0], [t(11, 20, 30), 0]]), ['11-11T18:00 done', '11-11T20:00 done', '11-11T20:30 empty']);
+  // ohne Tür nach einem Tag nicht mehr „fertig“
+  assert.deepEqual(run2([], [[t(12, 18, 0), 0]]), ['11-12T18:00 null']);
+});
+
+test('Haus-Bote: Waschmaschine ohne Tür (empty_on: idle), state_map, Abbruch mit altem Fortschritt zählt nicht', () => {
+  const t = (hh, mm, ss = 0) => Date.UTC(2026, 10, 8, hh, mm, ss);
+  const { run, a } = boteGeraet({ type: 'washer', state: 'sensor.w' });
+  assert.equal(a.emptyOn, 'idle');
+  // So 8. 11.: fertig 15:33, Tür auf (ready) 16:21
+  assert.deepEqual(run([[t(13, 59, 36), 's', 'ready'], [t(13, 59, 48), 's', 'run'], [t(15, 33, 17), 's', 'finished'], [t(16, 21, 25), 's', 'ready']],
+    [[t(15, 0), 0], [t(16, 0), 0], [t(16, 30), 0], [t(16, 45), 0]]), ['11-08T15:00 run', '11-08T16:00 done', '11-08T16:30 empty', '11-08T16:45 null']);
+  // eigene Zustandsnamen; „Spülen“ läuft, „Ende“ ist fertig, „Bereit“ aus
+  const { run: run2, a: a2 } = boteGeraet({ type: 'washer', state: 'sensor.w', state_map: { Spülen: 'running', Ende: 'finished', Bereit: 'ready', Quatsch: 'egal' } });
+  assert.deepEqual(plain(a2.map), { spülen: 'run', ende: 'finished', bereit: 'ready' });
+  assert.deepEqual(run2([[t(9, 0), 's', 'Bereit'], [t(9, 1), 's', 'Spülen'], [t(10, 30), 's', 'Ende']], [[t(10, 0), 0], [t(10, 40), 0]]),
+    ['11-08T10:00 run', '11-08T10:40 done']);
+  // Abbruch: Fortschritt 100 stammt vom letzten Lauf (vor dem Start gemeldet) → kein Programmende
+  const { c, a: a3 } = boteGeraet({ type: 'washer', state: 'sensor.w', progress: 'sensor.p' });
+  const o = (s, at) => ({ state: s, last_changed: new Date(at).toISOString(), attributes: { unit_of_measurement: '%' } });
+  c._boteRead(a3, [o('ready', t(9, 0)), o('100', t(8, 0)), null, null], t(9, 0), true);
+  c._boteRead(a3, [o('run', t(9, 1)), o('100', t(8, 0)), null, null], t(9, 1), true);
+  c._boteRead(a3, [o('ready', t(9, 3)), o('100', t(8, 0)), null, null], t(9, 3), true);
+  assert.equal(c._botePhase(a3, t(9, 4)), null);
+  // empty_on: door ohne Tür geht nicht, empty_on: idle mit Tür schon
+  assert.equal(T.boteEmptyOn({ empty_on: 'door' }), 'idle');
+  assert.equal(T.boteEmptyOn({ door: 'sensor.d', empty_on: 'idle' }), 'idle');
+});
+
+test('Kaffee: ein zweiter Bezug stellt sich hinten an, statt zu verfallen', () => {
+  const P1 = { t0: 0, end: 13000 + 240000 };
+  const esp = { t0: 133000, end: 133000 + 13000 + 120000 }; // Espresso, eine halbe Minute nach dem Latte bezogen
+  const Q = T.coffeeQueue(P1.end, esp);
+  assert.equal(Q.t0, P1.end + T.COFFEE_NEXT_GAP);
+  assert.equal(Q.end - Q.t0, esp.end - esp.t0); // dieselbe Trinkzeit, nur später
+  // weit genug auseinander: unverändert (dasselbe Objekt)
+  const spaet = { t0: 10 * 6e4, end: 10 * 6e4 + 133000 };
+  assert.equal(T.coffeeQueue(P1.end, spaet), spaet);
+});
+
+test('Haus-Bote: Schilder zeigen Restzeit, Fortschritt oder seit wann fertig, kurz genug für drei Meter', () => {
+  const now = Date.UTC(2026, 10, 12, 12);
+  const L = (a) => T.boteLabel(a, now);
+  assert.equal(L({ phase: 'run', st: 'run', end: now + 42 * 6e4, pct: 62 }), '0:42');
+  assert.equal(L({ phase: 'run', st: 'run', end: now + 98 * 6e4 }), '1:38');
+  assert.equal(L({ phase: 'run', st: 'run', end: now - 6e4 }), 'gleich');
+  assert.equal(L({ phase: 'run', st: 'run', end: null, pct: 61.6 }), '62 %');
+  assert.equal(L({ phase: 'run', st: 'run', end: null, pct: null }), null);
+  assert.equal(L({ phase: 'run', st: 'pause', end: now + 6e5 }), 'Pause');
+  assert.equal(L({ phase: 'run', st: 'delayedstart', end: now + 6e5 }), 'wartet');
+  assert.equal(L({ phase: 'done', finAt: now - 20000 }), 'fertig');
+  assert.equal(L({ phase: 'done', finAt: now - 35 * 6e4 }), 'fertig 35 Min');
+  assert.equal(L({ phase: 'done', finAt: now - 150 * 6e4 }), 'fertig 2 Std.');
+  assert.equal(L({ phase: 'empty' }), null);
+  // Wäsche müffelt ab 30 Min, ab 2 Std. stärker; Trockner und Spülmaschine haben keine Eile
+  const S = (type, m) => T.boteSmell({ type, phase: 'done', finAt: now - m * 6e4 }, now);
+  assert.deepEqual([S('washer', 10), S('washer', 31), S('washer', 125), S('dryer', 300), S('dishwasher', 300)], [0, 1, 2, 0, 0]);
+});

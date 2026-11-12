@@ -1,6 +1,6 @@
 // Haus-Bote: Maße, Fristen, Reihe der Requisiten, Zustände und Namen der Geräte
 
-import { clamp } from './hilfen.js';
+import { clamp, hasKey } from './hilfen.js';
 
 // Waschmaschine, Trockner und Spülmaschine (Home Connect) stehen als kleine Requisiten am Bau. Phasen je
 // Gerät: run (läuft), done (fertig, noch nicht geöffnet), empty (ausgeräumt, 20 Minuten lang).
@@ -9,6 +9,15 @@ const BOTE_K = 0.004;
 const BOTE_EMPTY_MS = 20 * 60000;
 // Spüler mit AutoOpen öffnen die Tür am Programmende selbst einen Spalt: so lange zählt Tür auf nicht als ausgeräumt
 const BOTE_AUTOOPEN_MS = 2 * 60000;
+// Ausgeräumt vor höchstens so langer Zeit: Er räumt sichtbar mit auf. Älteres (ein Tab, der Stunden später aufwacht,
+// oder der Verlauf beim Laden) zeigt nur das Ergebnis.
+const BOTE_LIVE_MS = 3 * 60000;
+// empty_on: door: So lange nach Programmende wartet es höchstens auf die Tür, dann ist es nicht mehr „fertig“
+const BOTE_WAIT_MS = 24 * 36e5;
+// Beim Laden so viel Verlauf von Zustand und Tür nachspielen
+const BOTE_HIST_MS = 24 * 36e5;
+// Tür offen
+const BOTE_OPEN = new Set(['open', 'on', 'opened', 'offen', 'auf', 'ajar']);
 // Vorn auf dem Wiesenstreifen: so viel größer und so viel × Kartenhöhe tiefer als hinten
 const BOTE_FRONT = 1.1;
 const BOTE_FRONT_DY = 0.07; // ganz vorn am unteren Rand, der Fortschrittsbalken liegt auf dem Fuß des Requisits
@@ -90,6 +99,54 @@ const BOTE_ALIAS = {
   on: 'ready', idle: 'ready', programmed: 'ready', initial: 'ready', stop: 'ready', standby: 'ready',
   off: 'inactive', poweroff: 'inactive', sleep: 'inactive',
 };
+// Zustand eines Geräts (wie norm in _boteRead: klein, ohne Leerzeichen, _ und -) → Zustand von Home Connect: erst die
+// eigene Zuordnung des Geräts (state_map), dann BOTE_ALIAS
+const boteState = (raw, map) => (map && hasKey(map, raw) ? map[raw] : hasKey(BOTE_ALIAS, raw) ? BOTE_ALIAS[raw] : raw);
+const boteNorm = (v) => String(v ?? '').split('.').pop().toLowerCase().replace(/[\s_-]/g, '');
+// state_map aus der Konfiguration ({ "Spülen": run, Ende: finished, … }): Schlüssel wie boteNorm, Werte über
+// BOTE_ALIAS auf die Namen von Home Connect (running → run). Unbrauchbares fällt weg.
+const BOTE_KNOWN = new Set([...BOTE_RUN, ...BOTE_IDLE, 'finished']);
+const boteMap = (m) => {
+  if (!m || typeof m !== 'object' || Array.isArray(m)) return null;
+  const out = Object.create(null);
+  for (const [k, v] of Object.entries(m)) {
+    const n = boteNorm(v);
+    const s = hasKey(BOTE_ALIAS, n) ? BOTE_ALIAS[n] : n;
+    if (BOTE_KNOWN.has(s)) out[boteNorm(k)] = s;
+  }
+  return Object.keys(out).length ? out : null;
+};
+// Wann gilt es als ausgeräumt? empty_on: idle (Zustand verlässt „fertig“) oder door (Tür geht nach Programmende auf).
+// Standard: door, wenn eine Tür eingetragen ist, sonst idle. door ohne Tür geht nicht.
+const boteEmptyOn = (c) => (c?.door && c.empty_on !== 'idle' ? 'door' : 'idle');
+// Schild am Gerät (appliance_labels), kurz genug, um es aus drei Metern zu lesen: läuft → Restzeit „0:42“ aus der
+// Endzeit, ohne Endzeit „62 %“, angehalten „Pause“, „wartet“ (Startvorwahl), „Hilfe!“, „Störung“; fertig → „fertig“,
+// „fertig 35 Min“, „fertig 2 Std.“; sonst (ausgeräumt, aus) keins.
+const BOTE_HALT_LABEL = { pause: 'Pause', delayedstart: 'wartet', actionrequired: 'Hilfe!', error: 'Störung', aborting: 'bricht ab' };
+const boteLabel = (a, now) => {
+  if (a.phase === 'run') {
+    if (hasKey(BOTE_HALT_LABEL, a.st)) return BOTE_HALT_LABEL[a.st];
+    if (a.end != null) {
+      if (a.end <= now) return 'gleich';
+      const m = Math.ceil((a.end - now) / 6e4);
+      return `${Math.floor(m / 60)}:${String(m % 60).padStart(2, '0')}`;
+    }
+    return a.pct != null ? `${Math.round(a.pct)} %` : null;
+  }
+  if (a.phase === 'done') {
+    const m = Math.floor((now - (a.finAt ?? a.changed ?? now)) / 6e4);
+    return m < 1 ? 'fertig' : m < 60 ? `fertig ${m} Min` : `fertig ${Math.floor(m / 60)} Std.`;
+  }
+  return null;
+};
+// Nasse Wäsche wird lauter statt leiser: ab so vielen Minuten nach Programmende Müffel-Wölkchen (1), ab dem zweiten
+// Wert hält er sich beim Erinnern die Nase zu (2). Trockner und Spülmaschine haben keine Eile.
+const BOTE_SMELL = [30, 120];
+const boteSmell = (a, now) => {
+  if (a.type !== 'washer' || a.phase !== 'done') return 0;
+  const m = (now - (a.finAt ?? a.changed ?? now)) / 6e4;
+  return m >= BOTE_SMELL[1] ? 2 : m >= BOTE_SMELL[0] ? 1 : 0;
+};
 const BOTE_TYPE = {
   washer: 'washer', washingmachine: 'washer', waschmaschine: 'washer',
   dryer: 'dryer', tumbledryer: 'dryer', trockner: 'dryer',
@@ -102,6 +159,7 @@ const BOTE_ACT = { washer: 'boteStir', dryer: 'boteWatchDrum', dishwasher: 'bote
 const BOTE_SAY = { washer: ['Wäsche!', 'fertig!', 'Wäsche!'], dryer: ['fertig!', 'Trockner!'], dishwasher: ['Geschirr!', 'fertig!', 'Geschirr!'] };
 
 export {
+  BOTE_LIVE_MS, BOTE_WAIT_MS, BOTE_HIST_MS, BOTE_OPEN, boteState, boteNorm, boteMap, boteEmptyOn, boteLabel, BOTE_SMELL, boteSmell,
   BOTE_K, BOTE_EMPTY_MS, BOTE_AUTOOPEN_MS, BOTE_FRONT, BOTE_FRONT_DY, BOTE_TALL, boteRow, BOTE_RUN, BOTE_HALT,
   BOTE_IDLE, BOTE_DEAD, BOTE_WARNED, BOTE_ALIAS, BOTE_TYPE, BOTE_NAME, BOTE_COLOR, BOTE_ACT, BOTE_SAY,
 };

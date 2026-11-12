@@ -4,7 +4,7 @@ import { VERSION } from '../version.js';
 import { hasKey, esc } from '../logik/hilfen.js';
 import { parseStats } from '../logik/zustand.js';
 import { PLAN_MIN, FLGIFT, PET_CAP, pikaDay, planParse } from '../logik/tagesplan.js';
-import { BOTE_RUN, BOTE_DEAD, BOTE_ALIAS } from '../logik/haus-bote.js';
+import { BOTE_RUN, BOTE_DEAD, boteState, boteMap } from '../logik/haus-bote.js';
 import { coffeeBrews } from '../logik/kaffee.js';
 import { GIFT, GIFT_TRE, giftLvs } from '../logik/paeckchen.js';
 import { urlaubEnd, urlaubDauer } from '../logik/urlaub.js';
@@ -176,8 +176,11 @@ export class Tagebuch {
       let last = null;
       for (const r of rows(a.cfg.state)) {
         const raw = norm(r.s);
-        const s = BOTE_ALIAS[raw] || raw;
+        const s = boteState(raw, a.map ?? boteMap(a.cfg.state_map));
         if (BOTE_DEAD.has(s)) continue;
+        // Knitterschutz: Tür auf meldet beim Trockner manchmal „pause“, danach wieder „fertig“. Das ist kein zweites
+        // Programmende (live gilt dasselbe, siehe _boteRead).
+        if (s === 'pause' && last === 'finished') continue;
         if (s === 'finished' && BOTE_RUN.has(last) && r.t >= from) bote.push({ t: r.t, k: 'bote', type: a.type, name: a.name });
         last = s;
       }

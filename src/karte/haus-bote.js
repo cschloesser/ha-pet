@@ -3,7 +3,8 @@
 import { rnd, pick, clamp, esc } from '../logik/hilfen.js';
 import {
   BOTE_K, BOTE_EMPTY_MS, BOTE_AUTOOPEN_MS, BOTE_FRONT, BOTE_FRONT_DY, BOTE_TALL, boteRow, BOTE_RUN, BOTE_HALT,
-  BOTE_IDLE, BOTE_DEAD, BOTE_WARNED, BOTE_ALIAS, BOTE_TYPE, BOTE_NAME, BOTE_COLOR, BOTE_ACT, BOTE_SAY,
+  BOTE_IDLE, BOTE_DEAD, BOTE_WARNED, BOTE_TYPE, BOTE_NAME, BOTE_COLOR, BOTE_ACT, BOTE_SAY, BOTE_OPEN, BOTE_LIVE_MS,
+  BOTE_WAIT_MS, BOTE_HIST_MS, boteState, boteMap, boteEmptyOn, boteLabel, boteSmell,
 } from '../logik/haus-bote.js';
 import { BOTE_LINE, BOTE_PLATE_SVG, BOTE_TOWEL_SVG, BOTE_SVG } from '../grafik/haus-bote.js';
 
@@ -26,6 +27,7 @@ export class HausBote {
       a.objs = o;
       this._boteRead(a, o, now);
     }
+    this._boteHist();
   }
 
   _attachBote() {
@@ -100,7 +102,18 @@ export class HausBote {
           }
           return;
         }
-        list.push({ idx: i, type, cfg: c, name: String(c.name || BOTE_NAME[type]), phase: null, view: null, nudgeAt: 0, objs: [] });
+        const emptyOn = boteEmptyOn(c);
+        if (c.empty_on != null && emptyOn !== c.empty_on) {
+          const m = `Gerät ${i + 1}: empty_on "${c.empty_on}" geht nicht${c.empty_on === 'door' ? ' ohne door' : ' (door oder idle)'}, nehme ${emptyOn}`;
+          if (!BOTE_WARNED.has(m)) {
+            BOTE_WARNED.add(m);
+            console.warn(`pika-pet-card Haus-Bote: ${m}`);
+          }
+        }
+        list.push({
+          idx: i, type, cfg: c, name: String(c.name || BOTE_NAME[type]), phase: null, view: null, nudgeAt: 0, objs: [],
+          emptyOn, map: boteMap(c.state_map),
+        });
       });
       // Zwei Geräte gleichen Typs ohne eigenen Namen: durchnummerieren, damit die Fähnchen eindeutig sind
       for (const t of Object.keys(BOTE_NAME)) {
@@ -129,15 +142,19 @@ export class HausBote {
   }
 
   // Neue Zustände eines Geräts lesen. Home Connect bleibt nach Programmende auf "finished", bis die Tür
-  // aufgeht, dann "ready", später "inactive"; andere Hersteller über BOTE_ALIAS. "Ausgeräumt" gilt nur nach
-  // einem echten Programmende (fertig → aus, Tür bei "fertig" geöffnet, oder läuft → aus kurz vor Schluss),
-  // nicht beim Einschalten, Abbrechen oder Löschen der Startvorwahl. Ohne echten Zustand (unavailable,
-  // unknown) bleibt das Gerät, wie es war.
-  _boteRead(a, [st, pr, en, dr], now) {
+  // aufgeht, dann "ready", später "inactive"; andere Hersteller über BOTE_ALIAS bzw. state_map. "Ausgeräumt" gilt nur
+  // nach einem echten Programmende, nicht beim Einschalten, Abbrechen oder Löschen der Startvorwahl. Wann, sagt
+  // empty_on (boteEmptyOn): "idle" (fertig → aus, oder läuft → aus kurz vor Schluss) oder, Standard mit Tür, "door":
+  // erst wenn die Tür nach Programmende aufgeht, auch wenn das Gerät inzwischen "ready" meldet (Spülmaschinen von
+  // Home Connect tun das nach einer Minute von selbst; bis 0.35 galt das als ausgeräumt). Ohne echten Zustand
+  // (unavailable, unknown) bleibt das Gerät, wie es war. Alle Fristen laufen ab dem Zeitpunkt des Ereignisses in HA,
+  // nicht ab dem Eintreffen (ein Handy-Tab, der Stunden später aufwacht, räumt nicht mehr sichtbar auf).
+  // replay: Stand aus dem Verlauf nachspielen (_boteHist): nichts zeigen, nicht melden, nicht unterbrechen.
+  _boteRead(a, [st, pr, en, dr], now, replay = false) {
     const norm = (v) => String(v ?? '').split('.').pop().toLowerCase().replace(/[\s_-]/g, '');
     const lc = (o) => Math.min(now, Date.parse(o?.last_changed) || Date.parse(o?.last_updated) || now);
     const raw = norm(st?.state);
-    let s = BOTE_ALIAS[raw] || raw;
+    let s = boteState(raw, a.map);
     const dead = BOTE_DEAD.has(s);
     // Lange nicht erreichbar (> 15 Min): wie nach dem Neuladen lesen, sonst käme das Aufräumen zur falschen Zeit
     const longDead = !dead && a.deadAt != null && now - a.deadAt > 15 * 60000;
@@ -146,11 +163,11 @@ export class HausBote {
     a.seen = true;
     // Trockner im Knitterschutz: Tür auf meldet manchmal "pause" – er bleibt fertig
     if (a.st === 'finished' && s === 'pause' && !first) s = 'finished';
-    this._boteWarn(a, st, s, dead, [pr, en, dr]);
+    if (!replay) this._boteWarn(a, st, s, dead, [pr, en, dr]);
     const pct = this._botePct(pr, a);
     const end = this._boteEnd(en, now);
     const doorDead = !dr || BOTE_DEAD.has(norm(dr.state));
-    const door = doorDead ? !!a.door : ['open', 'on', 'opened', 'offen', 'auf', 'ajar'].includes(norm(dr.state));
+    const door = doorDead ? !!a.door : BOTE_OPEN.has(norm(dr.state));
     const doorAt = doorDead ? now : lc(dr);
     const prevSt = a.st;
     const prevPct = a.pct;
@@ -166,27 +183,43 @@ export class HausBote {
       pct: pct ?? (dead ? prevPct : null),
       end: end ?? (dead ? prevEnd : null),
     });
-    if (cur !== 'finished') a.opened = false;
-    else if (stChanged) {
+    if (cur !== 'finished' && !a.wait) a.opened = false;
+    else if (cur === 'finished' && stChanged) {
       a.finAt = a.changed;
       a.opened = false;
+      a.wait = false;
     }
     // Programmlauf merken: seit wann, und die letzten gültigen Werte (gehen am Ende oft vor dem Zustand auf
-    // unavailable). Daran erkennt "läuft → aus", ob es ein Programmende oder ein Abbruch war.
+    // unavailable). Daran erkennt "läuft → aus", ob es ein Programmende oder ein Abbruch war. Nur Werte, die nach dem
+    // Start kamen: Ein Fortschritt von 100 vom letzten Lauf hieße sonst bei einem Abbruch gleich danach „fertig“.
     if (BOTE_RUN.has(cur)) {
-      if (!BOTE_RUN.has(prevSt) || first) a.run = { at: first ? a.changed : now, pct: null, end: null };
-      if (pct != null) a.run.pct = pct;
-      if (end != null) a.run.end = end;
+      if (!BOTE_RUN.has(prevSt) || first) a.run = { at: a.changed, pct: null, end: null };
+      if (pct != null && (!pr || lc(pr) >= a.run.at - 5000)) a.run.pct = pct;
+      if (end != null && (!en || lc(en) >= a.run.at - 5000)) a.run.end = end;
+      a.wait = false;
     }
+    // Ausgeräumt zur Zeit t: Frist ab t; sichtbar mit aufräumen nur, wenn es eben erst geschah
+    let live = false;
+    const emptied = (t) => {
+      a.emptyUntil = t + BOTE_EMPTY_MS;
+      a.wait = false;
+      live = !replay && now - t < BOTE_LIVE_MS;
+    };
     // Frist für "ausgeräumt" (emptyUntil): 0 = keine, null = läuft/fertig
     const idle = BOTE_IDLE.has(cur);
-    let live = false;
+    const byDoor = a.emptyOn === 'door';
+    // Tür nach Programmende geöffnet (nicht der AutoOpen-Spalt in den ersten 2 Minuten): ausgeräumt. Wieder zu zählt
+    // immer: Den AutoOpen-Spalt schließt kein Gerät von selbst, und wer gleich nach dem Ende ausräumt und zumacht,
+    // bliebe sonst „fertig“.
+    const doorEvent = !doorDead && !a.opened && (a.wait || cur === 'finished') && doorAt >= a.finAt
+      && ((door && !prevDoor && doorAt - a.finAt > BOTE_AUTOOPEN_MS) || (!door && prevDoor));
     if (first) {
       if (BOTE_RUN.has(cur)) a.emptyUntil = null;
       else if (cur === 'finished') {
-        // Tür später als 2 Minuten nach Programmende bewegt: ausgeräumt. Auch wenn sie jetzt wieder zu ist (geöffnet
-        // und geschlossen), sonst riefe ein später geladenes Gerät weiter, während die anderen schon Ruhe geben.
-        a.opened = !!dr && !doorDead && doorAt - a.finAt > BOTE_AUTOOPEN_MS;
+        // Tür jetzt offen und später als 2 Minuten nach Programmende geöffnet: ausgeräumt. Ein „zu“ sagt nach dem
+        // Neuladen nichts (auch ein kurzes unavailable → closed setzt last_changed neu): Ob sie dazwischen offen war,
+        // weiß erst der Verlauf (_boteHist).
+        a.opened = !!dr && !doorDead && door && doorAt - a.finAt > BOTE_AUTOOPEN_MS;
         a.emptyUntil = a.opened ? doorAt + BOTE_EMPTY_MS : null;
       } else if (idle) {
         // Nach dem Neuladen nur, wenn es plausibel ein Programmende war: Fortschritt steht noch auf (fast) 100,
@@ -194,42 +227,33 @@ export class HausBote {
         // nicht nach einem HA-Neustart, der alle last_changed gleichsetzt).
         // Kein Neustart: der setzt alle last_changed auf dieselbe Zeit (_haBoot). Der Fortschritt muss außerdem in
         // der Stunde vor dem Ausschalten so weit gekommen sein (nicht ein alter Stand vom Vortag beim Einschalten).
+        // Mit Tür (empty_on: door) weiß das erst der Verlauf: bis dahin nichts zeigen.
         const near = [pr, en].some((o) => o && !BOTE_DEAD.has(norm(o.state)) && Math.abs(lc(o) - a.changed) <= 5 * 60000);
         const pAge = pr ? a.changed - lc(pr) : NaN;
-        const ok = pct != null ? pct >= 95 && pAge >= -60000 && pAge <= 60 * 60000 : near;
-        a.emptyUntil = ok && !this._haBoot(a.changed) ? a.changed + BOTE_EMPTY_MS : 0;
+        const ok = pct != null ? pct >= 95 && pAge >= 30000 && pAge <= 60 * 60000 : near;
+        a.emptyUntil = ok && !byDoor && !this._haBoot(a.changed) ? a.changed + BOTE_EMPTY_MS : 0;
       } else a.emptyUntil = 0;
     } else if (BOTE_RUN.has(cur)) a.emptyUntil = null;
-    else if (cur === 'finished') {
+    else if (doorEvent) {
+      a.opened = true;
+      emptied(doorAt);
+    } else if (cur === 'finished') {
       if (stChanged) a.emptyUntil = null;
-      // Tür bei "fertig" geöffnet (nicht der AutoOpen-Spalt direkt am Programmende): gilt als ausgeräumt, bis der
-      // Zustand "fertig" verlässt; Tür wieder zu ändert daran nichts
-      else if (door && !prevDoor && !a.opened && now - a.finAt > BOTE_AUTOOPEN_MS) {
-        a.opened = true;
-        a.emptyUntil = now + BOTE_EMPTY_MS;
-        live = true;
-      } else if (!door && prevDoor && !doorDead && !a.opened && now - a.finAt > BOTE_AUTOOPEN_MS) {
-        // AutoOpen hatte die Tür schon geöffnet, jetzt ist sie nach dem Ausräumen wieder zu
-        a.opened = true;
-        a.emptyUntil = now + BOTE_EMPTY_MS;
-        live = true;
-      }
-    } else if (stChanged) {
+    } else if (stChanged && !a.wait) {
       // Programmende oder Abbruch? Nach den letzten gültigen Werten des Laufs; ohne Werte erst ab 10 Minuten
       // Laufzeit (ein Abbruch gleich nach dem Start, bevor Fortschritt oder Endzeit kamen, zählt nicht)
       const R = a.run || {};
       const ended = R.pct == null && R.end == null ? a.changed - (R.at ?? a.changed) >= 10 * 60000
         : (R.pct != null && R.pct >= 95) || (R.end != null && Math.abs(R.end - a.changed) < 10 * 60000);
       if (idle && prevSt === 'finished') {
-        // schon beim Türöffnen gewertet: die Frist läuft weiter
-        if (!prevOpened) {
-          a.emptyUntil = now + BOTE_EMPTY_MS;
-          live = true;
-        }
-      } else if (idle && prevSt === 'run' && ended) {
-        // direkt aus (ohne "fertig"): auch dann räumt er sichtbar mit auf
-        a.emptyUntil = a.changed + BOTE_EMPTY_MS;
-        live = true;
+        // schon beim Türöffnen gewertet: die Frist läuft weiter. Wartet es auf die Tür: weiter „fertig“.
+        if (prevOpened) a.emptyUntil ||= 0;
+        else if (byDoor) a.wait = true;
+        else emptied(a.changed);
+      } else if (idle && BOTE_RUN.has(prevSt) && ended) {
+        // direkt aus (ohne "fertig"): auch dann räumt er sichtbar mit auf; mit Tür ist es erst jetzt fertig
+        if (byDoor) Object.assign(a, { wait: true, finAt: a.changed, opened: false });
+        else emptied(a.changed);
       } else if (a.emptyUntil == null) {
         // Abbruch, Einschalten, ready → inactive …: keine neue Frist, eine laufende behält ihr Ende
         a.emptyUntil = 0;
@@ -239,13 +263,15 @@ export class HausBote {
     const from = a.phase;
     if (ph !== from) {
       a.phase = ph;
-      if (ph === 'done') a.nudgeAt = now + (first ? rnd(20000, 60000) : rnd(5000, 12000));
       if (ph !== 'empty') a.live = false;
-      // Programm vorbei, während er gerade damit spielt: aufhören
-      if (from === 'run' && this._action === BOTE_ACT[a.type]) this._interrupt();
-      if (live && (from === 'done' || from === 'run') && ph === 'empty') this._boteLive(a);
+      if (!replay) {
+        if (ph === 'done') a.nudgeAt = now + (first ? rnd(20000, 60000) : rnd(5000, 12000));
+        // Programm vorbei, während er gerade damit spielt: aufhören
+        if (from === 'run' && this._action === BOTE_ACT[a.type]) this._interrupt();
+        if (live && (from === 'done' || from === 'run') && ph === 'empty') this._boteLive(a);
+      }
     }
-    this._boteRender(a);
+    if (!replay) this._boteRender(a);
   }
 
   _botePhase(a, now) {
@@ -253,7 +279,62 @@ export class HausBote {
     if (a.deadAt != null && now - a.deadAt > 30 * 60000) return null;
     if (BOTE_RUN.has(a.st)) return 'run';
     if (a.st === 'finished' && !a.opened) return 'done';
+    // wartet auf die Tür (empty_on: door): fertig, aber nach einem Tag ohne Tür nicht mehr
+    if (a.wait && !a.opened) return now - (a.finAt ?? now) < BOTE_WAIT_MS ? 'done' : null;
     return a.emptyUntil && now < a.emptyUntil ? 'empty' : null;
+  }
+
+  // Beim Laden: Zustand und Tür der letzten 24 Stunden aus dem Recorder nachspielen. Erst damit weiß ein frisch
+  // geladenes Gerät, ob ein „ready“ ein Programmende war und ob die Tür danach wirklich aufging (ein kurzes
+  // unavailable → closed ist kein Öffnen). Einmal je Konfiguration; scheitert es, bleibt die Schätzung aus dem
+  // jetzigen Stand.
+  _boteHist() {
+    const B = this._bote;
+    const hass = this._hass;
+    if (!B?.list.length || B.hist || !hass?.callWS) return;
+    B.hist = 'läuft';
+    const ids = [...new Set(B.list.flatMap((a) => [a.cfg.state, ...(a.cfg.door ? [a.cfg.door] : [])]))];
+    const to = this._haNow();
+    Promise.resolve(hass.callWS({
+      type: 'history/history_during_period', start_time: new Date(to - BOTE_HIST_MS).toISOString(), end_time: new Date(to + 60000).toISOString(),
+      entity_ids: ids, minimal_response: true, no_attributes: true, significant_changes_only: false,
+    })).then((res) => {
+      if (this._bote !== B) return;
+      B.hist = 'fertig';
+      for (const a of B.list) this._boteReplay(a, res || {});
+      this._boteRefresh();
+    }).catch((e) => {
+      if (this._bote !== B) return;
+      B.hist = 'fehlgeschlagen';
+      console.debug('pika-pet-card Haus-Bote: Verlauf nicht lesbar, Stand geschätzt', e);
+    });
+  }
+
+  // Ein Gerät aus dem Verlauf neu aufbauen, dann den jetzigen Stand darauflegen
+  _boteReplay(a, res) {
+    const rows = (id) => (Array.isArray(res[id]) ? res[id] : [])
+      .map((r) => ({ t: Math.round((Number(r.lu ?? r.lc) || Date.parse(r.last_updated || r.last_changed) / 1000) * 1000), s: r.s ?? r.state }))
+      .filter((r) => Number.isFinite(r.t));
+    const S = rows(a.cfg.state).map((r) => ({ ...r, k: 0 }));
+    if (!S.length) return;
+    const D = a.cfg.door ? rows(a.cfg.door).map((r) => ({ ...r, k: 1 })) : [];
+    const ev = [...S, ...D].sort((x, y) => x.t - y.t || x.k - y.k);
+    const keep = { el: a.el, bar: a.bar, tag: a.tag, view: a.view, spec: a.spec, objs: a.objs };
+    for (const k of ['seen', 'st', 'door', 'changed', 'pct', 'end', 'opened', 'wait', 'finAt', 'run', 'emptyUntil', 'deadAt', 'phase', 'live']) delete a[k];
+    const o = (r) => r && { state: r.s, last_changed: new Date(r.t).toISOString() };
+    let st = null;
+    let dr = null;
+    for (const r of ev) {
+      if (r.k) dr = r;
+      else st = r;
+      if (st) this._boteRead(a, [o(st), null, null, o(dr)], r.t, true);
+    }
+    Object.assign(a, keep);
+    // der jetzige Stand (mit Fortschritt und Endzeit) obendrauf, wie ein gewöhnliches Update
+    const S0 = this._hass?.states || {};
+    const c = a.cfg;
+    a.objs = [S0[c.state], c.progress && S0[c.progress], c.end && S0[c.end], c.door && S0[c.door]];
+    this._boteRead(a, a.objs, this._haNow());
   }
 
   // Einmal je Seite und Grund melden (auch bei mehreren Karten): Entity fehlt oder Zustand unbekannt
@@ -348,11 +429,11 @@ export class HausBote {
       if (label) p.push(label);
       if (a.pct != null && s !== 'delayedstart') p.push(`${Math.round(a.pct)} %`);
       else if (!p.length) p.push('läuft');
-      if (a.end && s !== 'aborting') p.push(`fertig um ${hm(a.end)}`);
+      if (a.end && s !== 'aborting') p.push(a.end > this._haNow() ? `fertig um ${hm(a.end)}` : 'gleich fertig');
       return p.join(' · ');
     }
     if (a.phase === 'done') {
-      const m = Math.floor((this._haNow() - a.changed) / 60000);
+      const m = Math.floor((this._haNow() - (a.finAt ?? a.changed)) / 60000);
       if (m < 1) return 'gerade fertig';
       return `fertig seit ${m < 60 ? `${m} Min` : `${Math.floor(m / 60)} Std.${m % 60 ? ` ${m % 60} Min` : ''}`}`;
     }
@@ -382,11 +463,12 @@ export class HausBote {
     const view = a.phase && a.live ? (a.type === 'washer' ? 'empty' : 'done') : a.phase;
     if (!view) {
       if (a.el) {
-        const { el, bar } = a;
-        a.el = a.bar = a.spec = a.view = null;
+        const { el, bar, lab } = a;
+        a.el = a.bar = a.lab = a.spec = a.view = null;
         el.classList.add('hb-bye');
         bar.classList.remove('on');
-        setTimeout(() => (el.remove(), bar.remove()), 600);
+        lab?.classList.remove('on');
+        setTimeout(() => (el.remove(), bar.remove(), lab?.remove()), 600);
         this._boteTag(a, false);
         if (!noLayout) this._boteLayout();
       }
@@ -398,7 +480,7 @@ export class HausBote {
       const el = document.createElement('div');
       el.className = `hb hb-${a.type}`;
       el.setAttribute('role', 'button');
-      el.innerHTML = '<div class="hb-i"></div><span class="hb-a">!</span>';
+      el.innerHTML = '<div class="hb-i"></div><span class="hb-a">!</span><span class="hb-sm"><i></i><i></i><i></i></span>';
       el.addEventListener('click', (e) => {
         e.stopPropagation();
         this._found('device');
@@ -411,8 +493,13 @@ export class HausBote {
       bar.innerHTML = '<b></b>';
       bar.style.setProperty('--bc', BOTE_COLOR[a.type]);
       this._bote.bars.appendChild(bar);
+      // Schild (appliance_labels): Restzeit bzw. seit wann fertig, über dem Requisit
+      const lab = document.createElement('div');
+      lab.className = 'hb-lab';
+      this._bote.bars.appendChild(lab);
       a.el = el;
       a.bar = bar;
+      a.lab = lab;
     }
     const el = a.el;
     if (view !== a.view) {
@@ -435,10 +522,16 @@ export class HausBote {
     cl.toggle('hb-pause', halt);
     cl.toggle('hb-alert', view === 'run' && (a.st === 'error' || a.st === 'actionrequired'));
     // Ruhe, solange der Pika schläft, und nachts außer bei laufenden Geräten (schwaches Tablet)
-    // Seit über einer Stunde fertig: auch ruhig (der Pika erinnert ja weiter daran)
-    const still = !!this._asleep || (view !== 'run' && this._el.scene.classList.contains('night'))
-      || (view === 'done' && this._haNow() - (a.finAt || 0) > 60 * 60000);
+    // Seit über einer Stunde fertig: auch ruhig (der Pika erinnert ja weiter daran). Nasse Wäsche nicht: Sie wird
+    // lauter, mit Müffel-Wölkchen (boteSmell).
+    const now = this._haNow();
+    const smell = a.live ? 0 : boteSmell(a, now);
+    const night = this._el.scene.classList.contains('night');
+    const still = !!this._asleep || (view !== 'run' && night)
+      || (view === 'done' && !smell && now - (a.finAt || 0) > 60 * 60000);
     cl.toggle('hb-still', still);
+    cl.toggle('hb-smell', smell > 0 && !this._asleep && !night);
+    cl.toggle('hb-smell2', smell > 1 && !this._asleep && !night);
     // Wind: Richtung aus dem Wetter, Stärke macht das Wehen weiter und schneller
     const wind = this._wind || 0;
     el.style.setProperty('--hbw', `${(-(this._windDir || -1) * clamp(3 + wind / 3.5, 3, 18)).toFixed(1)}deg`);
@@ -449,6 +542,13 @@ export class HausBote {
     bar.classList.toggle('pause', halt);
     bar.classList.toggle('hb-still', still);
     if (a.pct != null) bar.style.setProperty('--p', `${a.pct.toFixed(1)}%`);
+    const lt = this._cfg.appliance_labels === false || a.live ? null : boteLabel(a, now);
+    if (a.lab.textContent !== (lt || '')) {
+      a.lab.textContent = lt || '';
+      if (a.spec && a.k) this._boteLabPos(a);
+    }
+    a.lab.classList.toggle('on', !!lt);
+    a.lab.classList.toggle('done', view === 'done');
     const text = this._boteText(a);
     el.setAttribute('aria-label', `${a.name}: ${text}`);
     if (a.tag?.classList.contains('open')) this._boteTagText(a);
@@ -529,7 +629,21 @@ export class HausBote {
     const bottom = Math.max(ground, a.top + sp.vb[3] * k);
     bs.top = `${(fr ? Math.min(bottom + 0.012 * H, this._Hs - bh - 0.02 * H) : gy - 0.03 * H).toFixed(1)}px`;
     bs.width = `${bw.toFixed(1)}px`;
+    this._boteLabPos(a);
     if (a.tag?.classList.contains('open')) this._boteTagPos(a);
+  }
+
+  // Schild mittig über dem sichtbaren Teil des Requisits, ganz in der Karte
+  _boteLabPos(a) {
+    const L = a.lab;
+    if (!L || !a.spec || !this._g) return;
+    const [u0, u1] = a.spec.part;
+    const ls = L.style;
+    ls.left = '0px';
+    const w = L.offsetWidth;
+    const h = L.offsetHeight;
+    ls.left = `${clamp(this._boteX(a, (u0 + u1) / 2) - w / 2, 2, Math.max(2, this._W - w - 2)).toFixed(1)}px`;
+    ls.top = `${clamp(a.vTop - h - 0.012 * this._H, 2, Math.max(2, this._Hs - h - 2)).toFixed(1)}px`;
   }
 
   // Requisit-Einheiten → px; ist das Requisit schon weg (Phase vorbei), die Pika-Position bzw. die Bodenlinie
@@ -900,6 +1014,13 @@ export class HausBote {
         this._happy(1000);
         await this._wait(1200);
       }
+      // Nasse Wäsche liegt seit Stunden: Nase zuhalten
+      if (boteSmell(a, this._haNow()) > 1) {
+        this._twitch();
+        this._mimik('defy', 1800);
+        this._say(pick(['puh!', 'müffelt!', 'puuh…']), 1300);
+        await this._wait(1500);
+      }
       // Kopf zum Betrachter, Maul auf: "Wäsche!"
       this._boteCls('hb-look');
       p.classList.add('calling');
@@ -914,8 +1035,8 @@ export class HausBote {
       p.classList.remove('calling');
       this._boteUncls();
       a.el?.classList.remove('hb-boop');
-      // Seit über einer Stunde fertig: nur noch alle 20–30 Minuten daran erinnern
-      const late = this._haNow() - (a.finAt || 0) > 60 * 60000;
+      // Seit über einer Stunde fertig: nur noch alle 20–30 Minuten daran erinnern. Nasse Wäsche nicht (sie müffelt)
+      const late = this._haNow() - (a.finAt || 0) > 60 * 60000 && a.type !== 'washer';
       a.nudgeAt = this._haNow() + (patted ? rnd(late ? 20 : 3, late ? 30 : 6) * 60000 : 30000);
     }
   }

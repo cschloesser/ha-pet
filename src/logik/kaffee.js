@@ -57,9 +57,18 @@ const coffeeBrews = (rows) => {
   }
   return out;
 };
+// Zweiter Bezug, während er den ersten noch trinkt: Er stellt sich hinten an. Seine Zeitleiste beginnt erst
+// COFFEE_NEXT_GAP nach dem letzten Schluck des ersten (Freudensprünge, Tasse zurückbringen), nicht an seinem eigenen
+// Bezugsende: sonst wäre sie zum Teil oder ganz abgelaufen, bevor er drankommt (ein Espresso eine halbe Minute nach
+// einem Latte verfiel bis 0.35 meist ganz). Jedes Gerät, das beide Bezüge sah, rechnet gleich. → verschobene Kopie
+const COFFEE_NEXT_GAP = 15000;
+const coffeeQueue = (prevEnd, P) => {
+  const t0 = Math.max(P.t0, prevEnd + COFFEE_NEXT_GAP);
+  return t0 === P.t0 ? P : { ...P, t0, end: P.end + (t0 - P.t0) };
+};
 const COFFEE_CLS = [...new Set([...Object.values(COFFEE_CUP), ...Object.keys(COFFEE_CUP)])].map((k) => `ck-${k}`);
 
 export {
   COFFEE_PROG, coffeeKind, COFFEE_CUP, COFFEE_SIPS, COFFEE_FOAM, coffeeName, COFFEE_FETCH, COFFEE_CTR_MS, COFFEE_LATE,
-  COFFEE_DRINK, COFFEE_CLS, coffeeLabel, coffeeBrews,
+  COFFEE_DRINK, COFFEE_CLS, coffeeLabel, coffeeBrews, COFFEE_NEXT_GAP, coffeeQueue,
 };
