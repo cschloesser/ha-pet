@@ -1,6 +1,10 @@
 // Stil der Päckchen und Schätze
 
-import { GILT_F } from '../grafik/paeckchen.js';
+import { GILT_F, GIFT_HAM_MS } from '../grafik/paeckchen.js';
+
+// Zeiten von Aufstellen und Abbauen der Hängematte als Anteil (ms)
+const HB = (k) => Math.round(GIFT_HAM_MS.build * k);
+const HF = (k) => Math.round(GIFT_HAM_MS.fold * k);
 import { BZ, LICHT_P } from '../logik/buehne.js';
 
 const STYLE_GIFT = `
@@ -69,6 +73,16 @@ const STYLE_GIFT = `
   .gt-ham .gnet { transform-box: view-box; transform-origin: 30px 3px; }
   .gt-ham.sway .gnet { animation: gham 2.8s ease-in-out infinite alternate; }
   @keyframes gham { from { transform: rotate(-2.5deg); } to { transform: rotate(2.5deg); } }
+  /* Aufstellen (.build, GIFT_HAM_MS.build): linkes Gestell, rechtes, dann spannt er das Netz von links hinüber.
+     Abbauen (.fold): Netz einholen, dann beide Gestelle umlegen. */
+  .gt-ham .gpost { transform-box: fill-box; transform-origin: 50% 100%; }
+  .gt-ham.build .gpl { animation: ghpost ${HB(0.24)}ms cubic-bezier(.3, 1.5, .5, 1) backwards; }
+  .gt-ham.build .gpr { animation: ghpost ${HB(0.24)}ms ${HB(0.27)}ms cubic-bezier(.3, 1.5, .5, 1) backwards; }
+  .gt-ham.build .gnet { transform-origin: 5px 3.4px; animation: ghnet ${HB(0.4)}ms ${HB(0.56)}ms cubic-bezier(.3, 1.3, .5, 1) backwards; }
+  .gt-ham.fold .gnet { transform-origin: 5px 3.4px; animation: ghnet ${HF(0.4)}ms ease-in reverse forwards; }
+  .gt-ham.fold .gpost { animation: ghpost ${HF(0.45)}ms ${HF(0.42)}ms ease-in reverse both; }
+  @keyframes ghpost { from { transform: scaleY(0); opacity: 0; } 30% { opacity: 1; } to { transform: none; } }
+  @keyframes ghnet { from { transform: scaleX(.06) scaleY(.4); opacity: 0; } 25% { opacity: 1; } to { transform: none; } }
   .gt-plush { width: calc(var(--H) * .085); margin-left: calc(var(--H) * -.0425); transform: rotate(-12deg); }
   .gt-plush svg { display: block; width: 100%; height: auto; }
   .gt-plush.out { width: calc(var(--H) * .13); margin-left: calc(var(--H) * -.065); transform: rotate(-5deg); }
@@ -98,6 +112,12 @@ const STYLE_GIFT = `
   /* Angetippt dreht es sich kurz, auch wo es sonst ruht (nachts ohne Wind, Pika schläft); nicht, wenn keiner hinsieht */
   .scene:not(.paused) .gifts .gt-wheel.tapspin .gwhl { animation-play-state: running; }
   @media (prefers-reduced-motion: reduce) { .gwhl, .gbob, .gdrift, .gt-ham .gnet { animation: none !important; } }
+  /* Bewegung reduzieren: Aufstellen und Abbauen nur ein- und ausblenden */
+  @media (prefers-reduced-motion: reduce) {
+    .gt-ham .gpost { animation: none !important; }
+    .gt-ham.build { animation: kramfade ${HB(0.5)}ms backwards; }
+    .gt-ham.fold { opacity: 0; transition: opacity ${HF(0.5)}ms; }
+  }
 
   /* Pika: Zwille, Fernrohr, Gießkanne, Sonnenbrille */
   .slg, .gspy, .gcan, .shades { display: none; }

@@ -107,10 +107,13 @@ const GIFT_BALLOON = `<svg viewBox="0 0 40 80" aria-hidden="true">
       </g>
       <svg class="gb-p" x="8" y="54" width="24" height="24" viewBox="0 0 24 24" overflow="visible">${GIFT_PARCEL.replace(/^<svg[^>]*>|<\/svg>$/g, '')}</svg>
     </svg>`;
-// Hängematte auf der Wiese: viewBox 60 × 20, tiefste Stelle des Netzes bei y 14 (darauf liegt er, GIFT_HAM_LIFT × Breite)
+// Hängematte auf der Wiese: viewBox 60 × 20, tiefste Stelle des Netzes bei y 14 (darauf liegt er, GIFT_HAM_LIFT × Breite).
+// Gestelle (.gpost) und Netz (.gnet) getrennt: Er stellt sie fürs Nickerchen nacheinander auf (.build) und baut sie ab (.fold).
 const GIFT_HAMMOCK = `<svg viewBox="0 0 60 20" aria-hidden="true">
-      <path d="M1.8 20 L5 2 L8.2 20 M51.8 20 L55 2 L58.2 20" stroke="#9a6a3c" stroke-width="1.5" fill="none" stroke-linejoin="round"/>
-      <path d="M3 13 H7 M53 13 H57" stroke="#9a6a3c" stroke-width="1.1"/>
+      <g class="gpost gpl"><path d="M1.8 20 L5 2 L8.2 20" stroke="#9a6a3c" stroke-width="1.5" fill="none" stroke-linejoin="round"/>
+        <path d="M3 13 H7" stroke="#9a6a3c" stroke-width="1.1"/></g>
+      <g class="gpost gpr"><path d="M51.8 20 L55 2 L58.2 20" stroke="#9a6a3c" stroke-width="1.5" fill="none" stroke-linejoin="round"/>
+        <path d="M53 13 H57" stroke="#9a6a3c" stroke-width="1.1"/></g>
       <g class="gnet">
         <path d="M5 3.4 L10 5 M55 3.4 L50 5" stroke="#cdbb93" stroke-width=".9"/>
         <path d="M10 5 Q30 23 50 5" stroke="${OUT}" stroke-width="4.4" fill="none" stroke-linecap="round"/>
@@ -119,6 +122,7 @@ const GIFT_HAMMOCK = `<svg viewBox="0 0 60 20" aria-hidden="true">
       </g></svg>`;
 const GIFT_HAM_W = 1.25; // Breite in Pika-Breiten
 const GIFT_HAM_LIFT = 0.1; // Höhe der Liegefläche in Breiten der Hängematte
+const GIFT_HAM_MS = { build: 1900, fold: 1100 }; // Aufstellen und Abbauen (ms, src/stil/paeckchen.js)
 // Windrad am Bau: viewBox 24 × 44, Nabe bei 12/12
 const GIFT_WHEEL = `<svg viewBox="0 0 24 44" aria-hidden="true">
       <path d="M12 12 V44" stroke="#b5793e" stroke-width="1.6" stroke-linecap="round"/>
@@ -128,5 +132,5 @@ const GILT_F = 'sepia(1) saturate(2.6) hue-rotate(8deg) brightness(1.12)';
 
 export {
   GIFT_LOW, GIFT_ITEMS, GIFT_PAPER, GIFT_BALLOONS, GIFT_GOLD, GIFT_TRICK, GIFT_GILT, GIFT_PARCEL, GIFT_BALLOON,
-  GIFT_HAMMOCK, GIFT_HAM_W, GIFT_HAM_LIFT, GIFT_WHEEL, GILT_F,
+  GIFT_HAMMOCK, GIFT_HAM_W, GIFT_HAM_LIFT, GIFT_HAM_MS, GIFT_WHEEL, GILT_F,
 };

@@ -1,5 +1,5 @@
 // Versionsnummer der Karte
 
-const VERSION = '0.41.0';
+const VERSION = '0.42.0';
 
 export { VERSION };

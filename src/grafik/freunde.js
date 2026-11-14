@@ -250,8 +250,9 @@ const KATZUMI_SVG = body(derive(5, C), 5, C_BODY, '2.3')
   .replace(SNOUT, '')
   .replace(NOSE, `<path class="nose" d="M89.3 52.2 q1.7 -.9 3.4 0 q-.4 1.4 -1.7 1.8 q-1.3 -.4 -1.7 -1.8z" fill="${C.nose}" stroke="#b9646e" stroke-width=".5"/>`) + END;
 
-// Fürs Tagebuch: dieselbe Grafik, auf Kopf bzw. Körper zugeschnitten
-const cut = (svg, vb) => svg.replace('viewBox="0 0 120 100"', `viewBox="${vb}"`);
-const FRIEND_ICON = { kirby: cut(KIRBY_SVG, '33 12 86 86'), rufus: cut(RUFUS_SVG, '60 14 62 62'), katzumi: cut(KATZUMI_SVG, '34 14 90 90') };
+// Fürs Tagebuch: dieselbe Grafik, auf Kopf bzw. Körper zugeschnitten. Die Klasse fri schaltet dort (STYLE_DIARY) den
+// Grundzustand der Figur ein: ohne ihn stünden alle Requisiten und Mimik-Varianten zugleich im Bild.
+const cut = (svg, vb) => svg.replace('class="pk" viewBox="0 0 120 100"', `class="pk fri" viewBox="${vb}"`);
+const FRIEND_ICON = { kirby: cut(KIRBY_SVG, '33 8 88 88'), rufus: cut(RUFUS_SVG, '14 3 109 109'), katzumi: cut(KATZUMI_SVG, '37 16 82 82') };
 
 export { KIRBY_SVG, RUFUS_SVG, KATZUMI_SVG, FRIEND_ICON };

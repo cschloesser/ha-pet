@@ -43,8 +43,21 @@ const DIARY_ICON = {
   bird: DI(`<path d="M9 18.6 v2.8 M13 18.6 v2.8" stroke="${OUT}" stroke-width="1" stroke-linecap="round"/><circle cx="11" cy="12" r="7.2" fill="#b5895f" stroke="${OUT}" stroke-width="1"/>
       <path d="M6.8 13.4 q4.2 3.8 8.4 0 q-.6 4.4 -4.2 4.8 q-3.6 -.4 -4.2 -4.8Z" fill="#f08a4b"/><path d="M17.8 10.4 l3.4 1.3 l-3.3 1.4Z" fill="#f6c945" stroke="${OUT}" stroke-width=".7" stroke-linejoin="round"/>
       <circle cx="14" cy="9.6" r="1" fill="#2a1a12"/>`),
-  plane: DI(`<path d="M12.2 9.8 L8.6 4.4 h2.2 l5.4 4.2" fill="#f4f6f8" stroke="#5a6470" stroke-width=".9" stroke-linejoin="round"/>
-      <path d="M2.4 13.6 L19.4 9 q2.6 -.4 2.2 1.2 q-.4 1.2 -2.2 1.7 l-5 1.5 l-4 5.2 h-2 l2 -4.4 l-4 1.2 l-1.6 1.8 H3.4 l1 -3.2Z" fill="#f4f6f8" stroke="#5a6470" stroke-width=".9" stroke-linejoin="round"/>`),
+  // Flugzeug von oben, spiegelgleich um die Mittellinie, Nase nach rechts
+  plane: DI(`<path d="M13.6 10.7 L8.4 2.6 H6.4 L8.6 10.7Z M13.6 13.3 L8.4 21.4 H6.4 L8.6 13.3Z M5.4 10.7 L3.4 7 H2 L2.6 10.7Z M5.4 13.3 L3.4 17 H2 L2.6 13.3Z"
+      fill="#dfe5ea" stroke="#5a6470" stroke-width=".9" stroke-linejoin="round"/>
+      <path d="M2.2 10.7 H18.4 Q22.4 10.7 22.4 12 Q22.4 13.3 18.4 13.3 H2.2 Q1.6 12 2.2 10.7Z" fill="#f4f6f8" stroke="#5a6470" stroke-width=".9" stroke-linejoin="round"/>
+      <path d="M19.4 11.3 Q21 11.4 21.2 12 Q21 12.6 19.4 12.7Z" fill="#7cc4ee"/>`),
+  // Saugroboter schräg von oben: runde Scheibe mit Rand, Laserturm hinten, Seitenbürste vorn links
+  sauger: DI(`<ellipse cx="12" cy="15.4" rx="10.6" ry="4.6" fill="rgba(0,0,0,.14)"/>
+      <path d="M5 15.4 l-3.4 .9 M5 15.4 l-2.2 2.5 M5 15.4 l-.2 3.2" stroke="#7a6a5a" stroke-width=".8" stroke-linecap="round"/>
+      <path d="M2.4 10.6 V13.4 A9.6 4.8 0 0 0 21.6 13.4 V10.6Z" fill="#c9d1d8" stroke="${OUT}" stroke-width="1" stroke-linejoin="round"/>
+      <path d="M2.9 12.4 A9.6 4.8 0 0 0 21.1 12.4" stroke="#8b97a3" stroke-width="1.1" fill="none"/>
+      <ellipse cx="12" cy="10.6" rx="9.6" ry="4.8" fill="#eef1f4" stroke="${OUT}" stroke-width="1"/>
+      <ellipse cx="12" cy="10.8" rx="7" ry="3.3" fill="none" stroke="#d3d9df" stroke-width=".8"/>
+      <path d="M9.6 8.2 V9.4 A2.4 1.2 0 0 0 14.4 9.4 V8.2Z" fill="#5a6470" stroke="${OUT}" stroke-width=".7" stroke-linejoin="round"/>
+      <ellipse cx="12" cy="8.2" rx="2.4" ry="1.2" fill="#8b97a3" stroke="${OUT}" stroke-width=".7"/>
+      <circle cx="15.8" cy="12.4" r=".8" fill="#5fd06a"/>`),
   bfly: DI(`<path d="M12 12 C9 3.6 1.8 5 3.8 11 c1 3 5.2 3 8.2 1Z M12 12 c3 -8.4 10.2 -7 8.2 -1 c-1 3 -5.2 3 -8.2 1Z" fill="#f28fb1" stroke="${OUT}" stroke-width=".8" stroke-linejoin="round"/>
       <path d="M12 12 c-3 1 -6 4.2 -3.2 7 c2 1 3.2 -3 3.2 -7Z M12 12 c3 1 6 4.2 3.2 7 c-2 1 -3.2 -3 -3.2 -7Z" fill="#b99cf0" stroke="${OUT}" stroke-width=".8" stroke-linejoin="round"/>
       <path d="M12 8 v10" stroke="${OUT}" stroke-width="1.5" stroke-linecap="round"/>`),

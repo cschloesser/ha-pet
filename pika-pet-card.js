@@ -60,7 +60,7 @@
  */
 (() => {
   // src/version.js
-  var VERSION = "0.41.0";
+  var VERSION = "0.42.0";
 
   // src/logik/hilfen.js
   var Cancel = class extends Error {
@@ -4755,8 +4755,10 @@
       <svg class="gb-p" x="8" y="54" width="24" height="24" viewBox="0 0 24 24" overflow="visible">${GIFT_PARCEL.replace(/^<svg[^>]*>|<\/svg>$/g, "")}</svg>
     </svg>`;
   var GIFT_HAMMOCK = `<svg viewBox="0 0 60 20" aria-hidden="true">
-      <path d="M1.8 20 L5 2 L8.2 20 M51.8 20 L55 2 L58.2 20" stroke="#9a6a3c" stroke-width="1.5" fill="none" stroke-linejoin="round"/>
-      <path d="M3 13 H7 M53 13 H57" stroke="#9a6a3c" stroke-width="1.1"/>
+      <g class="gpost gpl"><path d="M1.8 20 L5 2 L8.2 20" stroke="#9a6a3c" stroke-width="1.5" fill="none" stroke-linejoin="round"/>
+        <path d="M3 13 H7" stroke="#9a6a3c" stroke-width="1.1"/></g>
+      <g class="gpost gpr"><path d="M51.8 20 L55 2 L58.2 20" stroke="#9a6a3c" stroke-width="1.5" fill="none" stroke-linejoin="round"/>
+        <path d="M53 13 H57" stroke="#9a6a3c" stroke-width="1.1"/></g>
       <g class="gnet">
         <path d="M5 3.4 L10 5 M55 3.4 L50 5" stroke="#cdbb93" stroke-width=".9"/>
         <path d="M10 5 Q30 23 50 5" stroke="${OUT}" stroke-width="4.4" fill="none" stroke-linecap="round"/>
@@ -4765,12 +4767,15 @@
       </g></svg>`;
   var GIFT_HAM_W = 1.25;
   var GIFT_HAM_LIFT = 0.1;
+  var GIFT_HAM_MS = { build: 1900, fold: 1100 };
   var GIFT_WHEEL = `<svg viewBox="0 0 24 44" aria-hidden="true">
       <path d="M12 12 V44" stroke="#b5793e" stroke-width="1.6" stroke-linecap="round"/>
       ${GIFT_ITEMS[1].svg.replace(/^<svg[^>]*>|<\/svg>$/g, "").replace(/<path d="M12 12 V23"[^>]*\/>/, "")}</svg>`;
   var GILT_F = "sepia(1) saturate(2.6) hue-rotate(8deg) brightness(1.12)";
 
   // src/stil/paeckchen.js
+  var HB = (k) => Math.round(GIFT_HAM_MS.build * k);
+  var HF = (k) => Math.round(GIFT_HAM_MS.fold * k);
   var STYLE_GIFT = `
   /* Schätze, Päckchen, Ballon, Schild und Postkarte des Urlaubs, Garderobe: Ebene und Licht je Stück (Bühne). Wer
      selbst einen Übergang hat (.gt-can, .gpar.fade, .ursign.out, .urcard, .sig-wear), nennt filter darin mit. */
@@ -4837,6 +4842,16 @@
   .gt-ham .gnet { transform-box: view-box; transform-origin: 30px 3px; }
   .gt-ham.sway .gnet { animation: gham 2.8s ease-in-out infinite alternate; }
   @keyframes gham { from { transform: rotate(-2.5deg); } to { transform: rotate(2.5deg); } }
+  /* Aufstellen (.build, GIFT_HAM_MS.build): linkes Gestell, rechtes, dann spannt er das Netz von links hinüber.
+     Abbauen (.fold): Netz einholen, dann beide Gestelle umlegen. */
+  .gt-ham .gpost { transform-box: fill-box; transform-origin: 50% 100%; }
+  .gt-ham.build .gpl { animation: ghpost ${HB(0.24)}ms cubic-bezier(.3, 1.5, .5, 1) backwards; }
+  .gt-ham.build .gpr { animation: ghpost ${HB(0.24)}ms ${HB(0.27)}ms cubic-bezier(.3, 1.5, .5, 1) backwards; }
+  .gt-ham.build .gnet { transform-origin: 5px 3.4px; animation: ghnet ${HB(0.4)}ms ${HB(0.56)}ms cubic-bezier(.3, 1.3, .5, 1) backwards; }
+  .gt-ham.fold .gnet { transform-origin: 5px 3.4px; animation: ghnet ${HF(0.4)}ms ease-in reverse forwards; }
+  .gt-ham.fold .gpost { animation: ghpost ${HF(0.45)}ms ${HF(0.42)}ms ease-in reverse both; }
+  @keyframes ghpost { from { transform: scaleY(0); opacity: 0; } 30% { opacity: 1; } to { transform: none; } }
+  @keyframes ghnet { from { transform: scaleX(.06) scaleY(.4); opacity: 0; } 25% { opacity: 1; } to { transform: none; } }
   .gt-plush { width: calc(var(--H) * .085); margin-left: calc(var(--H) * -.0425); transform: rotate(-12deg); }
   .gt-plush svg { display: block; width: 100%; height: auto; }
   .gt-plush.out { width: calc(var(--H) * .13); margin-left: calc(var(--H) * -.065); transform: rotate(-5deg); }
@@ -4866,6 +4881,12 @@
   /* Angetippt dreht es sich kurz, auch wo es sonst ruht (nachts ohne Wind, Pika schläft); nicht, wenn keiner hinsieht */
   .scene:not(.paused) .gifts .gt-wheel.tapspin .gwhl { animation-play-state: running; }
   @media (prefers-reduced-motion: reduce) { .gwhl, .gbob, .gdrift, .gt-ham .gnet { animation: none !important; } }
+  /* Bewegung reduzieren: Aufstellen und Abbauen nur ein- und ausblenden */
+  @media (prefers-reduced-motion: reduce) {
+    .gt-ham .gpost { animation: none !important; }
+    .gt-ham.build { animation: kramfade ${HB(0.5)}ms backwards; }
+    .gt-ham.fold { opacity: 0; transition: opacity ${HF(0.5)}ms; }
+  }
 
   /* Pika: Zwille, Fernrohr, Gießkanne, Sonnenbrille */
   .slg, .gspy, .gcan, .shades { display: none; }
@@ -4991,6 +5012,12 @@
     box-shadow: 0 1px 3px rgba(90, 64, 48, .22); transform: rotate(-4deg); color: var(--soft); }
   .e:nth-child(even) .ic { transform: rotate(3deg); }
   .night .ic { background: rgba(255, 255, 255, .14); box-shadow: none; }
+  /* Besuch (Kirby, Rufus, Katzumi, FRIEND_ICON): Grundzustand der Figur wie in der Karte, Requisiten und Mimik-Varianten aus */
+  .fri .band, .fri .arms, .fri .uke, .fri .brush, .fri .wand, .fri .rope, .fri .rgrip, .fri .bar, .fri .wpaw, .fri .nsm,
+  .fri .hats > g, .fri .slg, .fri .gspy, .fri .gcan, .fri .shades, .fri .seye, .fri .heye, .fri .mfood, .fri .paws,
+  .fri .cap, .fri .scarf, .fri .brolly, .fri .omouth, .fri .callfx, .fri .blines, .fri .wmouth, .fri .tongue, .fri .yawnm,
+  .fri .estar, .fri .sleg, .fri .epaws, .fri .book, .fri .gb, .fri .tab, .fri .kpaw, .fri .bk, .fri .cup, .fri .cfoam,
+  .fri .hoop, .fri .yo, .fri .pbl, .fri .jug, .fri .dchain, .fri .dcrown, .fri .pgl, .fri .peb, .fri .sboat, .fri .mim { display: none; }
   .tm { display: block; font-size: 12px; font-weight: 700; color: var(--soft); }
   .e p { margin: 1px 0 0; font-size: 15px; line-height: 1.45; }
   .e.dim p { color: var(--soft); }
@@ -5900,8 +5927,8 @@
         <ellipse class="ffoot" cx="99" cy="91.6" rx="4.6" ry="2.2"/>
       </g>`).replace(/(<g class="eye eye-(l|r)">)([\s\S]*?)(<\/g>)/g, (m, a, s, inner, z) => `${a}<g transform="translate(${s === "l" ? cShift(0) : cShift(99)} 0)">${inner.replace('fill="#2a1a12"', `fill="#2a1a12" stroke="${C.rim}" stroke-width="1.3"`)}</g>${z}`).replace(/d="M([\d.]+) (46\.6|47\.6) q/g, (m, x, y) => `d="M${(+x + cShift(+x)).toFixed(1)} ${y} q`).replace(BROWS, "").replace(WHISKERS, `<path class="wsk" d="M70.4 48.6 l3.8 1.1 M70 51.2 l4 .3 M70.4 53.8 l3.8 -.6 M106.6 49.7 l3.8 -1.1 M106.4 51.5 l4 -.3 M106.6 53.2 l3.8 .6"
               stroke="${C.whisk}" stroke-width="1" stroke-linecap="round"/>`).replace(SNOUT, "").replace(NOSE, `<path class="nose" d="M89.3 52.2 q1.7 -.9 3.4 0 q-.4 1.4 -1.7 1.8 q-1.3 -.4 -1.7 -1.8z" fill="${C.nose}" stroke="#b9646e" stroke-width=".5"/>`) + END;
-  var cut = (svg, vb) => svg.replace('viewBox="0 0 120 100"', `viewBox="${vb}"`);
-  var FRIEND_ICON = { kirby: cut(KIRBY_SVG, "33 12 86 86"), rufus: cut(RUFUS_SVG, "60 14 62 62"), katzumi: cut(KATZUMI_SVG, "34 14 90 90") };
+  var cut = (svg, vb) => svg.replace('class="pk" viewBox="0 0 120 100"', `class="pk fri" viewBox="${vb}"`);
+  var FRIEND_ICON = { kirby: cut(KIRBY_SVG, "33 8 88 88"), rufus: cut(RUFUS_SVG, "14 3 109 109"), katzumi: cut(KATZUMI_SVG, "37 16 82 82") };
 
   // src/grafik/besucher.js
   var FRIEND_SVG = [
@@ -6336,8 +6363,21 @@
     bird: DI(`<path d="M9 18.6 v2.8 M13 18.6 v2.8" stroke="${OUT}" stroke-width="1" stroke-linecap="round"/><circle cx="11" cy="12" r="7.2" fill="#b5895f" stroke="${OUT}" stroke-width="1"/>
       <path d="M6.8 13.4 q4.2 3.8 8.4 0 q-.6 4.4 -4.2 4.8 q-3.6 -.4 -4.2 -4.8Z" fill="#f08a4b"/><path d="M17.8 10.4 l3.4 1.3 l-3.3 1.4Z" fill="#f6c945" stroke="${OUT}" stroke-width=".7" stroke-linejoin="round"/>
       <circle cx="14" cy="9.6" r="1" fill="#2a1a12"/>`),
-    plane: DI(`<path d="M12.2 9.8 L8.6 4.4 h2.2 l5.4 4.2" fill="#f4f6f8" stroke="#5a6470" stroke-width=".9" stroke-linejoin="round"/>
-      <path d="M2.4 13.6 L19.4 9 q2.6 -.4 2.2 1.2 q-.4 1.2 -2.2 1.7 l-5 1.5 l-4 5.2 h-2 l2 -4.4 l-4 1.2 l-1.6 1.8 H3.4 l1 -3.2Z" fill="#f4f6f8" stroke="#5a6470" stroke-width=".9" stroke-linejoin="round"/>`),
+    // Flugzeug von oben, spiegelgleich um die Mittellinie, Nase nach rechts
+    plane: DI(`<path d="M13.6 10.7 L8.4 2.6 H6.4 L8.6 10.7Z M13.6 13.3 L8.4 21.4 H6.4 L8.6 13.3Z M5.4 10.7 L3.4 7 H2 L2.6 10.7Z M5.4 13.3 L3.4 17 H2 L2.6 13.3Z"
+      fill="#dfe5ea" stroke="#5a6470" stroke-width=".9" stroke-linejoin="round"/>
+      <path d="M2.2 10.7 H18.4 Q22.4 10.7 22.4 12 Q22.4 13.3 18.4 13.3 H2.2 Q1.6 12 2.2 10.7Z" fill="#f4f6f8" stroke="#5a6470" stroke-width=".9" stroke-linejoin="round"/>
+      <path d="M19.4 11.3 Q21 11.4 21.2 12 Q21 12.6 19.4 12.7Z" fill="#7cc4ee"/>`),
+    // Saugroboter schräg von oben: runde Scheibe mit Rand, Laserturm hinten, Seitenbürste vorn links
+    sauger: DI(`<ellipse cx="12" cy="15.4" rx="10.6" ry="4.6" fill="rgba(0,0,0,.14)"/>
+      <path d="M5 15.4 l-3.4 .9 M5 15.4 l-2.2 2.5 M5 15.4 l-.2 3.2" stroke="#7a6a5a" stroke-width=".8" stroke-linecap="round"/>
+      <path d="M2.4 10.6 V13.4 A9.6 4.8 0 0 0 21.6 13.4 V10.6Z" fill="#c9d1d8" stroke="${OUT}" stroke-width="1" stroke-linejoin="round"/>
+      <path d="M2.9 12.4 A9.6 4.8 0 0 0 21.1 12.4" stroke="#8b97a3" stroke-width="1.1" fill="none"/>
+      <ellipse cx="12" cy="10.6" rx="9.6" ry="4.8" fill="#eef1f4" stroke="${OUT}" stroke-width="1"/>
+      <ellipse cx="12" cy="10.8" rx="7" ry="3.3" fill="none" stroke="#d3d9df" stroke-width=".8"/>
+      <path d="M9.6 8.2 V9.4 A2.4 1.2 0 0 0 14.4 9.4 V8.2Z" fill="#5a6470" stroke="${OUT}" stroke-width=".7" stroke-linejoin="round"/>
+      <ellipse cx="12" cy="8.2" rx="2.4" ry="1.2" fill="#8b97a3" stroke="${OUT}" stroke-width=".7"/>
+      <circle cx="15.8" cy="12.4" r=".8" fill="#5fd06a"/>`),
     bfly: DI(`<path d="M12 12 C9 3.6 1.8 5 3.8 11 c1 3 5.2 3 8.2 1Z M12 12 c3 -8.4 10.2 -7 8.2 -1 c-1 3 -5.2 3 -8.2 1Z" fill="#f28fb1" stroke="${OUT}" stroke-width=".8" stroke-linejoin="round"/>
       <path d="M12 12 c-3 1 -6 4.2 -3.2 7 c2 1 3.2 -3 3.2 -7Z M12 12 c3 1 6 4.2 3.2 7 c-2 1 -3.2 -3 -3.2 -7Z" fill="#b99cf0" stroke="${OUT}" stroke-width=".8" stroke-linejoin="round"/>
       <path d="M12 8 v10" stroke="${OUT}" stroke-width="1.5" stroke-linecap="round"/>`),
@@ -7178,6 +7218,10 @@
       this._kiteAway();
       this._easelAway();
       this._apropsAway();
+      if (this._hamOut && !(this._lift > 0 && this._onHam)) {
+        this._hamOut = false;
+        this._giftScene();
+      }
       this._mouth(null);
       this._bubble(this._el.think, false);
       this._action = null;
@@ -11910,7 +11954,7 @@
         } else if (e.k === "hungry") {
           if (once("hungry")) put(t, "hungry", tx(e.eaten ? T.hungry : T.hungryNow, "hungry", t));
         } else if (e.k === "bote" && house && T.bote[e.type]) put(t, e.type, tx(T.bote[e.type], "bote", t), { tm: `${diaryTime(t)} · ${e.name}` });
-        else if (e.k === "sauger" && house) put(t, "sauger", tx(T.sauger, "sauger", t), { svg: SIG_VAC, tm: `${diaryTime(t)} · ${e.min} Min` });
+        else if (e.k === "sauger" && house) put(t, "sauger", tx(T.sauger, "sauger", t), { tm: `${diaryTime(t)} · ${e.min} Min` });
         else if (e.k === "kaffee" && house && !inU(t)) {
           const n = ++cnt.coffee;
           put(t, "coffee", n === 1 ? tx(T.coffee, "coffee", t) : tx(T.coffeeMore, "coffee", t).replace("{z}", n), { tm: `${diaryTime(t)} · ${e.label}` });
@@ -17681,6 +17725,7 @@
       const sc = this._el.scene.getBoundingClientRect();
       this._giftHide = null;
       if (this._gb) this._gb.stowed = true;
+      if (key === "hammock") this._hamOut = this._hamSpot() > 0;
       this._giftScene();
       const tgt = this._gtEls?.get(t);
       const from = ie.getBoundingClientRect();
@@ -17741,10 +17786,11 @@
         p.classList.add("look-b");
         await this._wait(1500);
         p.classList.remove("look-b");
-      }
+      } else if (key === "hammock") await this._wait(1200);
+      if (key === "hammock") await this._hamFold();
     }
-    // Schätze in der Szene: Windrad und Glöckchen am Bau, Plüsch-Pino nachts im Bett, auf der Wiese höchstens zwei
-    // (Wollknäuel, Gießkanne, Hängematte; welche, wechselt jeden Tag, der neueste ist immer dabei)
+    // Schätze in der Szene: Windrad und Glöckchen am Bau, Plüsch-Pino nachts im Bett, auf der Wiese Wollknäuel und
+    // Gießkanne. Die Hängematte steht nur, solange er sie aufgestellt hat (_hamOut: Nickerchen, gerade ausgepackt).
     _giftScene() {
       if (!this._el || !this._g) return;
       const G = this._plan?.gift;
@@ -17752,14 +17798,8 @@
       const hide = this._giftHide ?? (B && !B.stowed && B.item < GIFT_TRE && G && B.z === G.z ? B.item : null);
       const lvs = this._giftOn() ? giftLvs(G, hide) : [];
       const has = (t) => lvs[t] > 0;
-      const newest = G && G.o === G.z && (G.i & 15) < GIFT_TRE ? G.i & 15 : -1;
-      const day = pikaDay(this._haNow());
-      let meadow = [0, 5, 6].filter(has);
-      if (meadow.length > 2) {
-        const rest = meadow.filter((t) => t !== newest).sort((a, b) => seeded(day, a, 71) - seeded(day, b, 71));
-        meadow = [...meadow.includes(newest) ? [newest] : [], ...rest].slice(0, 2);
-      }
-      const want = new Set(meadow);
+      const want = new Set([0, 6].filter(has));
+      if (has(5) && this._hamOut) want.add(5);
       if (has(1)) want.add(1);
       if (has(7)) want.add(7);
       if (has(2) && (this._asleep || this._plushX != null)) want.add(2);
@@ -17767,15 +17807,19 @@
       const E = this._gtEls ??= /* @__PURE__ */ new Map();
       for (const [t, el] of E) {
         if (want.has(t)) continue;
-        el.remove();
         E.delete(t);
+        if (t === 5 && el.isConnected && !el.classList.contains("fold")) {
+          el.classList.remove("build", "sway", "swing");
+          el.classList.add("fold");
+          setTimeout(() => el.remove(), GIFT_HAM_MS.fold);
+        } else el.remove();
       }
       for (const t of want) {
         let el = E.get(t);
         if (!el) {
           const key = GIFT_ITEMS[t].key;
           el = document.createElement("div");
-          el.className = `gt gt-${key === "hammock" ? "ham" : key}`;
+          el.className = `gt gt-${key === "hammock" ? "ham" : key}${key === "hammock" && this._hamBuild ? " build" : ""}`;
           el.innerHTML = key === "wheel" ? GIFT_WHEEL : key === "hammock" ? GIFT_HAMMOCK : GIFT_ITEMS[t].svg;
           (key === "plush" ? this._el.held : this._el.gifts).appendChild(el);
           E.set(t, el);
@@ -17815,9 +17859,29 @@
       const key = GIFT_ITEMS[t].key;
       if (key === "yarn" && this._yarnXf != null) return clamp(this._yarnXf, fMin, fMax) * W;
       if (key === "can") return Math.max(this._H * 0.05, this._g.hole.l - this._H * 0.07);
+      if (key === "hammock" && this._hamXf != null) return this._hamXf * W;
       const u = seeded(pikaDay(this._haNow()), t, 73);
       if (key === "hammock") return (fMin + (0.45 + 0.25 * u) * (fMax - fMin)) * W;
       return (fMin + u * (fMax - fMin)) * W;
+    }
+    // Platz für die Hängematte, bevor er sie aufstellt: wo heute Platz ist (fest je Tag, neben Geräten und Festkram).
+    // Zu sehen ist sie erst mit _hamOut (der Aufrufer setzt es beim Aufstellen), bis _hamFold oder _cleanup sie
+    // wieder abbaut. Ergebnis: Mitte in px.
+    _hamSpot() {
+      const u = seeded(pikaDay(this._haNow()), 5, 73);
+      const S = this._groundSpot(u, this._g.pW * GIFT_HAM_W * 1.1, 1);
+      this._hamXf = S.x / this._W;
+      return S.x;
+    }
+    // Hängematte abbauen (die Animation läuft in _giftScene an) und abwarten, bis sie weg ist
+    async _hamFold() {
+      if (!this._hamOut) return;
+      this._hamOut = false;
+      this._giftScene();
+      const x = this._giftX(5);
+      setTimeout(() => this._g && this._puff(x, this._g.gy, 3), GIFT_HAM_MS.fold - 250);
+      await this._wait(GIFT_HAM_MS.fold);
+      this._hamXf = null;
     }
     // Glöckchen an der Tür bimmelt (er kommt heraus, Pino kommt an)
     _giftBell(text = "bimm!") {
@@ -17895,7 +17959,7 @@
       return [
         [E.has(0) && dry ? lv[0] >= 2 ? 0.7 : 0.5 : 0, "giftYarn"],
         [E.has(6) && dry && this._flowers.length < 7 ? 0.35 : 0, "giftWater"],
-        [E.has(5) && dry ? h >= 12 && h < 18 ? 0.45 : 0.1 : 0, "giftHammock"],
+        [lv[5] && dry ? h >= 12 && h < 18 ? 0.45 : 0.1 : 0, "giftHammock"],
         [lv[4] && dry ? this._planeToWatch() ? 3 : lv[4] >= 2 && dusk && wx.cover < 70 && !wx.fog ? 1.5 : 0.3 : 0, "giftScope"],
         // Tricks (Stufe 2)
         [E.has(1) && lv[1] >= 2 && !wx.wet && (this._wind || 0) < 12 ? 0.3 : 0, "giftBlow"],
@@ -18081,14 +18145,33 @@
         can.classList.remove("away");
       }
     }
-    // Nachmittags ein Nickerchen in der Hängematte
+    // Nachmittags ein Nickerchen in der Hängematte: Er stellt sie erst auf (linkes Gestell, rechtes, dann das Netz)
+    // und baut sie danach wieder ab (_giftHamDown). Unterbrochen, bevor er drinliegt, räumt _cleanup sie weg.
     async _giftHammock() {
+      const p = this._el.pika;
+      const { pW, gy } = this._g;
+      const cx = this._hamSpot();
+      const side = this._x < cx ? -1 : 1;
+      await this._walkTo(cx + side * pW * 0.95, 1);
+      this._face(-side);
+      this._say(pick(["erst aufbauen…", "Hängematte!", "so, aufstellen…"]), 1300);
+      await this._wait(500);
+      this._hamOut = true;
+      this._hamBuild = true;
+      this._giftScene();
+      this._hamBuild = false;
       const el = this._gtEls?.get(5);
       if (!el) return;
-      const p = this._el.pika;
-      const { pW } = this._g;
-      const cx = this._giftX(5);
-      await this._walkTo(cx + (this._x < cx ? -1 : 1) * pW * 0.95, 1);
+      const half = pW * GIFT_HAM_W / 2;
+      p.classList.add("crouch");
+      this._puff(cx - half * 0.85, gy, 2);
+      await this._wait(500);
+      this._puff(cx + half * 0.85, gy, 2);
+      await this._wait(GIFT_HAM_MS.build - 500);
+      el.classList.remove("build");
+      p.classList.remove("crouch");
+      this._happy(900);
+      await this._wait(500);
       this._say(pick(["Nickerchen…", "*gähn*", "Päuschen!"]), 1300);
       await this._wait(800);
       this._onHam = true;
@@ -18116,6 +18199,11 @@
       await this._hopTo(cx + pick([-1, 1]) * this._g.pW * 0.95, 0);
       this._onHam = false;
       this._puff(this._x, this._g.gy, 2);
+      await this._wait(500);
+      this._face(cx > this._x ? 1 : -1);
+      p.classList.add("crouch");
+      await this._hamFold();
+      p.classList.remove("crouch");
     }
     // Mit dem Fernrohr auf dem Stein: Ausschau halten, am liebsten nach Flugzeugen
     async _giftScope() {

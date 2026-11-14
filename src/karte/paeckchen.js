@@ -6,7 +6,7 @@ import { PLAN_MIN, MEM_GUT, pikaDay, planParse } from '../logik/tagesplan.js';
 import { GIFT, GIFT_TRE, giftLv, giftLvs, giftOwned, giftTre, giftMile, giftAllGold } from '../logik/paeckchen.js';
 import {
   GIFT_LOW, GIFT_ITEMS, GIFT_PAPER, GIFT_BALLOONS, GIFT_GOLD, GIFT_TRICK, GIFT_GILT, GIFT_PARCEL, GIFT_BALLOON,
-  GIFT_HAMMOCK, GIFT_WHEEL,
+  GIFT_HAMMOCK, GIFT_HAM_W, GIFT_HAM_MS, GIFT_WHEEL,
 } from '../grafik/paeckchen.js';
 
 export class Paeckchen {
@@ -596,6 +596,7 @@ export class Paeckchen {
     const sc = this._el.scene.getBoundingClientRect();
     this._giftHide = null;
     if (this._gb) this._gb.stowed = true;
+    if (key === 'hammock') this._hamOut = this._hamSpot() > 0; // steht nur zum Zeigen kurz da, danach baut er sie wieder ab
     this._giftScene();
     const tgt = this._gtEls?.get(t);
     const from = ie.getBoundingClientRect();
@@ -658,11 +659,12 @@ export class Paeckchen {
       p.classList.add('look-b');
       await this._wait(1500);
       p.classList.remove('look-b');
-    }
+    } else if (key === 'hammock') await this._wait(1200);
+    if (key === 'hammock') await this._hamFold();
   }
 
-  // Schätze in der Szene: Windrad und Glöckchen am Bau, Plüsch-Pino nachts im Bett, auf der Wiese höchstens zwei
-  // (Wollknäuel, Gießkanne, Hängematte; welche, wechselt jeden Tag, der neueste ist immer dabei)
+  // Schätze in der Szene: Windrad und Glöckchen am Bau, Plüsch-Pino nachts im Bett, auf der Wiese Wollknäuel und
+  // Gießkanne. Die Hängematte steht nur, solange er sie aufgestellt hat (_hamOut: Nickerchen, gerade ausgepackt).
   _giftScene() {
     if (!this._el || !this._g) return;
     const G = this._plan?.gift;
@@ -672,14 +674,8 @@ export class Paeckchen {
     const hide = this._giftHide ?? (B && !B.stowed && B.item < GIFT_TRE && G && B.z === G.z ? B.item : null);
     const lvs = this._giftOn() ? giftLvs(G, hide) : [];
     const has = (t) => lvs[t] > 0;
-    const newest = G && G.o === G.z && (G.i & 15) < GIFT_TRE ? G.i & 15 : -1;
-    const day = pikaDay(this._haNow());
-    let meadow = [0, 5, 6].filter(has);
-    if (meadow.length > 2) {
-      const rest = meadow.filter((t) => t !== newest).sort((a, b) => seeded(day, a, 71) - seeded(day, b, 71));
-      meadow = [...(meadow.includes(newest) ? [newest] : []), ...rest].slice(0, 2);
-    }
-    const want = new Set(meadow);
+    const want = new Set([0, 6].filter(has));
+    if (has(5) && this._hamOut) want.add(5);
     if (has(1)) want.add(1);
     if (has(7)) want.add(7);
     if (has(2) && (this._asleep || this._plushX != null)) want.add(2);
@@ -687,15 +683,20 @@ export class Paeckchen {
     const E = (this._gtEls ??= new Map());
     for (const [t, el] of E) {
       if (want.has(t)) continue;
-      el.remove();
       E.delete(t);
+      // Die Hängematte baut er ab: erst das Netz, dann die Gestelle (auch nach einem Abbruch, _cleanup)
+      if (t === 5 && el.isConnected && !el.classList.contains('fold')) {
+        el.classList.remove('build', 'sway', 'swing');
+        el.classList.add('fold');
+        setTimeout(() => el.remove(), GIFT_HAM_MS.fold);
+      } else el.remove();
     }
     for (const t of want) {
       let el = E.get(t);
       if (!el) {
         const key = GIFT_ITEMS[t].key;
         el = document.createElement('div');
-        el.className = `gt gt-${key === 'hammock' ? 'ham' : key}`;
+        el.className = `gt gt-${key === 'hammock' ? 'ham' : key}${key === 'hammock' && this._hamBuild ? ' build' : ''}`;
         el.innerHTML = key === 'wheel' ? GIFT_WHEEL : key === 'hammock' ? GIFT_HAMMOCK : GIFT_ITEMS[t].svg;
         // Plüsch-Pino liegt vor ihm im Arm, also vor dem schlafenden Pika: eigene Ebene gleich nach ihm (unter Heu,
         // Gras, Geräten und Wetter, nicht in der Effekt-Ebene)
@@ -741,9 +742,31 @@ export class Paeckchen {
     const key = GIFT_ITEMS[t].key;
     if (key === 'yarn' && this._yarnXf != null) return clamp(this._yarnXf, fMin, fMax) * W;
     if (key === 'can') return Math.max(this._H * 0.05, this._g.hole.l - this._H * 0.07);
+    if (key === 'hammock' && this._hamXf != null) return this._hamXf * W;
     const u = seeded(pikaDay(this._haNow()), t, 73);
     if (key === 'hammock') return (fMin + (0.45 + 0.25 * u) * (fMax - fMin)) * W;
     return (fMin + u * (fMax - fMin)) * W;
+  }
+
+  // Platz für die Hängematte, bevor er sie aufstellt: wo heute Platz ist (fest je Tag, neben Geräten und Festkram).
+  // Zu sehen ist sie erst mit _hamOut (der Aufrufer setzt es beim Aufstellen), bis _hamFold oder _cleanup sie
+  // wieder abbaut. Ergebnis: Mitte in px.
+  _hamSpot() {
+    const u = seeded(pikaDay(this._haNow()), 5, 73);
+    const S = this._groundSpot(u, this._g.pW * GIFT_HAM_W * 1.1, 1);
+    this._hamXf = S.x / this._W;
+    return S.x;
+  }
+
+  // Hängematte abbauen (die Animation läuft in _giftScene an) und abwarten, bis sie weg ist
+  async _hamFold() {
+    if (!this._hamOut) return;
+    this._hamOut = false;
+    this._giftScene();
+    const x = this._giftX(5);
+    setTimeout(() => this._g && this._puff(x, this._g.gy, 3), GIFT_HAM_MS.fold - 250);
+    await this._wait(GIFT_HAM_MS.fold);
+    this._hamXf = null;
   }
 
   // Glöckchen an der Tür bimmelt (er kommt heraus, Pino kommt an)
@@ -830,7 +853,7 @@ export class Paeckchen {
     return [
       [E.has(0) && dry ? (lv[0] >= 2 ? 0.7 : 0.5) : 0, 'giftYarn'],
       [E.has(6) && dry && this._flowers.length < 7 ? 0.35 : 0, 'giftWater'],
-      [E.has(5) && dry ? (h >= 12 && h < 18 ? 0.45 : 0.1) : 0, 'giftHammock'],
+      [lv[5] && dry ? (h >= 12 && h < 18 ? 0.45 : 0.1) : 0, 'giftHammock'],
       [lv[4] && dry ? (this._planeToWatch() ? 3 : lv[4] >= 2 && dusk && wx.cover < 70 && !wx.fog ? 1.5 : 0.3) : 0, 'giftScope'],
       // Tricks (Stufe 2)
       [E.has(1) && lv[1] >= 2 && !wx.wet && (this._wind || 0) < 12 ? 0.3 : 0, 'giftBlow'],

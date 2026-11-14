@@ -231,6 +231,11 @@ export class Lebensschleife {
     this._kiteAway();
     this._easelAway();
     this._apropsAway();
+    // Die Hängematte steht nur, solange er sie braucht: Liegt er nicht drin (dann holt ihn giftHamDown heraus), weg damit
+    if (this._hamOut && !(this._lift > 0 && this._onHam)) {
+      this._hamOut = false;
+      this._giftScene();
+    }
     this._mouth(null);
     this._bubble(this._el.think, false);
     this._action = null;

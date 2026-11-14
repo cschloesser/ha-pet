@@ -7,7 +7,7 @@ import { PLAN_MIN, FLGIFT, PET_CAP, pikaDay, planParse } from '../logik/tagespla
 import { BOTE_RUN, BOTE_DEAD, boteState, boteMap } from '../logik/haus-bote.js';
 import { coffeeBrews } from '../logik/kaffee.js';
 import { vacRuns } from '../logik/signale.js';
-import { SIG_BIN, SIG_VAC } from '../grafik/signale.js';
+import { SIG_BIN } from '../grafik/signale.js';
 import { GIFT, GIFT_TRE, giftLvs } from '../logik/paeckchen.js';
 import { urlaubEnd, urlaubDauer } from '../logik/urlaub.js';
 import {
@@ -316,7 +316,7 @@ export class Tagebuch {
       } else if (e.k === 'hungry') {
         if (once('hungry')) put(t, 'hungry', tx(e.eaten ? T.hungry : T.hungryNow, 'hungry', t));
       } else if (e.k === 'bote' && house && T.bote[e.type]) put(t, e.type, tx(T.bote[e.type], 'bote', t), { tm: `${diaryTime(t)} · ${e.name}` });
-      else if (e.k === 'sauger' && house) put(t, 'sauger', tx(T.sauger, 'sauger', t), { svg: SIG_VAC, tm: `${diaryTime(t)} · ${e.min} Min` });
+      else if (e.k === 'sauger' && house) put(t, 'sauger', tx(T.sauger, 'sauger', t), { tm: `${diaryTime(t)} · ${e.min} Min` });
       else if (e.k === 'kaffee' && house && !inU(t)) {
         // jeder Bezug mit Uhrzeit und Getränk; der erste des Tags wie bisher, danach „noch einer“
         const n = ++cnt.coffee;

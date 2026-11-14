@@ -1361,10 +1361,10 @@
     c._updateSky();
     cuteGo(c, 'giftScope');
   }));
-  // Schaukeln: Hängematte auf die Wiese holen (sie gilt als neuester Schatz) und sicher schaukeln
+  // Schaukeln: Hängematte (mit Trick) ins Album, er stellt sie auf und schaukelt sicher
   document.getElementById('gift-swing').addEventListener('click', () => {
-    giftSet({ i: 5 });
-    cards.forEach((c) => { c._giftScene(); c._dbgSwing = true; cuteGo(c, 'giftHammock'); });
+    giftSet({ u: gift().u | 32, v: gift().v | 32 });
+    cards.forEach((c) => { c._dbgSwing = true; cuteGo(c, 'giftHammock'); });
   });
   document.getElementById('gift-rbow').addEventListener('click', () => cards.forEach((c) => cuteGo(c, 'giftWater')));
   // ==================== Ende Päckchen ====================

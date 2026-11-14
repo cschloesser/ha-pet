@@ -55,6 +55,12 @@ const STYLE_DIARY = `
     box-shadow: 0 1px 3px rgba(90, 64, 48, .22); transform: rotate(-4deg); color: var(--soft); }
   .e:nth-child(even) .ic { transform: rotate(3deg); }
   .night .ic { background: rgba(255, 255, 255, .14); box-shadow: none; }
+  /* Besuch (Kirby, Rufus, Katzumi, FRIEND_ICON): Grundzustand der Figur wie in der Karte, Requisiten und Mimik-Varianten aus */
+  .fri .band, .fri .arms, .fri .uke, .fri .brush, .fri .wand, .fri .rope, .fri .rgrip, .fri .bar, .fri .wpaw, .fri .nsm,
+  .fri .hats > g, .fri .slg, .fri .gspy, .fri .gcan, .fri .shades, .fri .seye, .fri .heye, .fri .mfood, .fri .paws,
+  .fri .cap, .fri .scarf, .fri .brolly, .fri .omouth, .fri .callfx, .fri .blines, .fri .wmouth, .fri .tongue, .fri .yawnm,
+  .fri .estar, .fri .sleg, .fri .epaws, .fri .book, .fri .gb, .fri .tab, .fri .kpaw, .fri .bk, .fri .cup, .fri .cfoam,
+  .fri .hoop, .fri .yo, .fri .pbl, .fri .jug, .fri .dchain, .fri .dcrown, .fri .pgl, .fri .peb, .fri .sboat, .fri .mim { display: none; }
   .tm { display: block; font-size: 12px; font-weight: 700; color: var(--soft); }
   .e p { margin: 1px 0 0; font-size: 15px; line-height: 1.45; }
   .e.dim p { color: var(--soft); }

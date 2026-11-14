@@ -2,6 +2,19 @@
 
 Jede Version der Pika Pet Card, die neueste zuerst.
 
+## 0.42.0 (2026-11-14)
+
+Die Hängematte steht nicht mehr dauernd auf der Wiese, und vier Symbole im Tagebuch sind klarer.
+
+- **Hängematte nur fürs Nickerchen:** Will er ein Nickerchen machen, sucht er sich einen freien Platz (`_hamSpot`, fest je Tag, neben Geräten und Festkram wie andere Requisiten), stellt erst das linke Gestell auf, dann das rechte, und spannt das Netz von links hinüber (`.build`, 1,9 s, kleine Staubwölkchen). Danach schaukelt und döst er wie bisher. Nach dem Aufstehen baut er sie wieder ab: Netz einholen, Gestelle umlegen (`.fold`, 1,1 s), weg ist sie. Beim Auspacken steht sie kurz zum Zeigen da (und zum Schaukel-Trick), dann baut er sie ab.
+  - Sie steht nur, solange `_hamOut` gilt. Wird er unterbrochen, bevor er drinliegt, räumt `_cleanup` sie weg (mit derselben Abbau-Animation); liegt er schon drin, holt ihn `giftHamDown` heraus und baut sie danach ab.
+  - Auf der Wiese liegen damit nur noch Wollknäuel und Gießkanne; die tägliche Auswahl „höchstens zwei“ entfällt. Das Nickerchen kann er machen, sobald die Hängematte im Album ist.
+  - Bewegung reduzieren: Auf- und Abbau nur ein- und ausblenden.
+- **Besuch im Tagebuch:** Die Bilder von Kirby, Rufus und Katzumi zeigten alle versteckten Requisiten der Figur zugleich (Hüte, Brille, Reifen, Blattschirm …). Jetzt schaltet die Klasse `fri` im Tagebuch den Grundzustand der Figur ein (wie in der Karte), und alle drei sind auf den ganzen Körper zugeschnitten (Rufus ragte über den Kreis hinaus).
+- **Flugzeug im Tagebuch:** neu gezeichnet, von oben und spiegelgleich, Nase nach rechts (das alte stand schief).
+- **Saugroboter im Tagebuch:** eigenes Symbol schräg von oben (runde Scheibe mit Rand, Laserturm, Seitenbürste) statt der Seitenansicht aus der Szene; in der Szene fährt er weiter von der Seite.
+- Vorschau: „Schaukeln“ legt die Hängematte samt Trick ins Album, er stellt sie auf und schaukelt. 151 Tests.
+
 ## 0.41.0 (2026-11-12)
 
 Neue Freunde: Statt Pino kommen manchmal Kirby, Rufus oder Katzumi zu Besuch, nach drei Kuscheltieren.

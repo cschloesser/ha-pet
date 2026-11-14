@@ -2,7 +2,7 @@
 
 import { rnd, pick, clamp } from '../logik/hilfen.js';
 import { giftLvs } from '../logik/paeckchen.js';
-import { GIFT_ITEMS, GIFT_HAM_W, GIFT_HAM_LIFT } from '../grafik/paeckchen.js';
+import { GIFT_ITEMS, GIFT_HAM_W, GIFT_HAM_LIFT, GIFT_HAM_MS } from '../grafik/paeckchen.js';
 
 export class Schaetze {
   // Wollknäuel anstupsen, es kullert, er hinterher
@@ -158,14 +158,33 @@ export class Schaetze {
     }
   }
 
-  // Nachmittags ein Nickerchen in der Hängematte
+  // Nachmittags ein Nickerchen in der Hängematte: Er stellt sie erst auf (linkes Gestell, rechtes, dann das Netz)
+  // und baut sie danach wieder ab (_giftHamDown). Unterbrochen, bevor er drinliegt, räumt _cleanup sie weg.
   async _giftHammock() {
+    const p = this._el.pika;
+    const { pW, gy } = this._g;
+    const cx = this._hamSpot();
+    const side = this._x < cx ? -1 : 1;
+    await this._walkTo(cx + side * pW * 0.95, 1);
+    this._face(-side);
+    this._say(pick(['erst aufbauen…', 'Hängematte!', 'so, aufstellen…']), 1300);
+    await this._wait(500);
+    this._hamOut = true;
+    this._hamBuild = true;
+    this._giftScene();
+    this._hamBuild = false;
     const el = this._gtEls?.get(5);
     if (!el) return;
-    const p = this._el.pika;
-    const { pW } = this._g;
-    const cx = this._giftX(5);
-    await this._walkTo(cx + (this._x < cx ? -1 : 1) * pW * 0.95, 1);
+    const half = (pW * GIFT_HAM_W) / 2;
+    p.classList.add('crouch');
+    this._puff(cx - half * 0.85, gy, 2);
+    await this._wait(500);
+    this._puff(cx + half * 0.85, gy, 2);
+    await this._wait(GIFT_HAM_MS.build - 500);
+    el.classList.remove('build');
+    p.classList.remove('crouch');
+    this._happy(900);
+    await this._wait(500);
     this._say(pick(['Nickerchen…', '*gähn*', 'Päuschen!']), 1300);
     await this._wait(800);
     this._onHam = true;
@@ -194,6 +213,12 @@ export class Schaetze {
     await this._hopTo(cx + pick([-1, 1]) * this._g.pW * 0.95, 0);
     this._onHam = false;
     this._puff(this._x, this._g.gy, 2);
+    // und wieder abbauen
+    await this._wait(500);
+    this._face(cx > this._x ? 1 : -1);
+    p.classList.add('crouch');
+    await this._hamFold();
+    p.classList.remove('crouch');
   }
 
   // Mit dem Fernrohr auf dem Stein: Ausschau halten, am liebsten nach Flugzeugen
