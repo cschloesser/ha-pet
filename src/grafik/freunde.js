@@ -187,7 +187,7 @@ const R = {
   nose: '#b38f74', earIn: '#2b1c15', brow: '#c4a27a',
 };
 const R_BODY = fluffPath(PIKA_SVG.match(/<clipPath id="bodyclip"><path d="([^"]+)"/)[1], 84, 1.9, 51);
-// Schlappohr: zottelige Lasche, oben nach außen gekippt; beide vor dem Kopf (in .fear)
+// Schlappohr: zottelige Lasche, oben nach außen gekippt; beide vor dem Kopf (an der Stelle von Pikas Putz-Ohr .fear)
 const R_EAR = (cx, cy, rot, side) => `
     <g class="ear ear-${side}"><g transform="rotate(${rot} ${cx} ${cy})">
       <path d="${fluff(cx, cy, 6, 8.8, 14, 1.8, 61)}" fill="url(#fur4)" stroke="${OUT}" stroke-width="1.7" stroke-linejoin="round"/>
@@ -200,6 +200,8 @@ const RUFUS_SVG = body(derive(4, R), 4, R_BODY, '2.1')
   .replace(BELLY, furMarks(60, 62, 52, 33, 150, 9, 0.95, (x, y) => ((x - 91) / 14) ** 2 + ((y - 51) / 11) ** 2 < 1, wave,
     ['#c9ad84', '#ffffff'], [0.45, 0.7], '.8'))
   .replace(EARS, (m, s) => (s === 'f' ? R_EAR(70.5, 28.5, -24, 'l') + R_EAR(111.5, 29.5, 24, 'r') : '<g></g>'))
+  // .fear ist außer beim Ohrenputzen ausgeblendet (szene.js); Rufus' Ohren sollen immer zu sehen sein
+  .replace('<g class="hd fear">', '<g class="hd">')
   .replace(FEET, `<g class="feet" fill="${R.paw}" stroke="${OUT}" stroke-width="1.5">
         ${R_FOOT('bfoot', 31, 90, 9.6, 3.8, 71)}${R_FOOT('ffoot', 83, 90.6, 7.6, 3.6, 73)}${R_FOOT('ffoot', 99, 90.2, 7.6, 3.6, 75)}
       </g>`)

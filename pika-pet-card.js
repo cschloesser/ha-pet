@@ -60,7 +60,7 @@
  */
 (() => {
   // src/version.js
-  var VERSION = "0.42.0";
+  var VERSION = "0.42.1";
 
   // src/logik/hilfen.js
   var Cancel = class extends Error {
@@ -5893,7 +5893,7 @@
     ["#c9ad84", "#ffffff"],
     [0.45, 0.7],
     ".8"
-  )).replace(EARS, (m, s) => s === "f" ? R_EAR(70.5, 28.5, -24, "l") + R_EAR(111.5, 29.5, 24, "r") : "<g></g>").replace(FEET, `<g class="feet" fill="${R.paw}" stroke="${OUT}" stroke-width="1.5">
+  )).replace(EARS, (m, s) => s === "f" ? R_EAR(70.5, 28.5, -24, "l") + R_EAR(111.5, 29.5, 24, "r") : "<g></g>").replace('<g class="hd fear">', '<g class="hd">').replace(FEET, `<g class="feet" fill="${R.paw}" stroke="${OUT}" stroke-width="1.5">
         ${R_FOOT("bfoot", 31, 90, 9.6, 3.8, 71)}${R_FOOT("ffoot", 83, 90.6, 7.6, 3.6, 73)}${R_FOOT("ffoot", 99, 90.2, 7.6, 3.6, 75)}
       </g>`).replace(BROWS, R_BROW("l", "M78.4 41 q.6 -2.6 2.4 -1 q1 -2.6 2.6 -.6 q1.2 -1.8 2 .8") + R_BROW("r", "M95.6 41 q.8 -2.4 2 -.8 q1.6 -2 2.6 .6 q1.8 -1.6 2.4 1")).replace(WHISKERS, "").replace(/(<g class="mouth-g">)([\s\S]*?)(<\/g>\s*<path class="cfoam")/, '$1<g transform="translate(0 2)">$2</g>$3').replace(SNOUT, `<ellipse cx="91" cy="55.2" rx="11" ry="7.6" fill="${R.muzzle}" stroke="${R.muzzleRim}" stroke-width=".9"/>
           <path d="M83 58.6 q8 4 16 0" stroke="#efe2c8" stroke-width="1.4" fill="none" stroke-linecap="round"/>`).replace(NOSE, `<path class="nose" d="M86.2 50 q4.8 -2.6 9.6 0 q-.4 3.8 -4.8 4.3 q-4.4 -.5 -4.8 -4.3z" fill="${R.nose}" stroke="#8f6e57" stroke-width=".6"/>

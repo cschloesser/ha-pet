@@ -2,6 +2,12 @@
 
 Jede Version der Pika Pet Card, die neueste zuerst.
 
+## 0.42.1 (2026-11-15)
+
+Rufus hat wieder Ohren.
+
+- **Rufus' Schlappohren:** Sie lagen seit 0.41 an der Stelle von Pikas Putz-Ohr, in der Gruppe `.fear`, und die ist außer beim Ohrenputzen ausgeblendet. Rufus war darum in der Karte und im Tagebuch ohne Ohren zu sehen. Seine Gruppe trägt jetzt nur noch `hd` (bewegt sich weiter mit dem Kopf), die Ohren sind immer da. 151 Tests.
+
 ## 0.42.0 (2026-11-14)
 
 Die Hängematte steht nicht mehr dauernd auf der Wiese, und vier Symbole im Tagebuch sind klarer.
