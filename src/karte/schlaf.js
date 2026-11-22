@@ -19,6 +19,7 @@ export class Schlaf {
       this._setX(this._g.home, true);
       this._inside = true;
       this._pose('sleep', 0);
+      this._bedMark(); // für diese Nacht ohne Abendritual (momente.js): Er liegt schon im Bett
     } else if (this._inside) {
       this._inside = false;
       this._pose('out', 0);
@@ -27,16 +28,22 @@ export class Schlaf {
 
   async _goSleep() {
     const p = this._el.pika;
-    this._say('*gähn*');
-    p.classList.add('yawning');
-    await this._wait(2200);
-    p.classList.remove('yawning');
+    // Abendritual (momente.js): einmal je Nacht und nur draußen, wenn jemand zusieht. Es bringt sein eigenes Gähnen
+    // mit; wird es abgebrochen, beginnt _goSleep neu und läuft dann wie bisher.
+    if (this._ritualDue()) await this._bedRitual();
+    else {
+      this._say('*gähn*');
+      p.classList.add('yawning');
+      await this._wait(2200);
+      p.classList.remove('yawning');
+    }
     if (!this._inside) await this._enterBurrow(0.7, true);
     await this._wait(900);
     this._face(1);
     this._el.pika.classList.add('sleeping');
     this._pose('sleep', 1400);
     this._asleep = true;
+    this._bedMark();
     this._updateSky();
     this._giftScene();
   }
@@ -70,8 +77,10 @@ export class Schlaf {
   }
 
   // Was er an diesem Pika-Tag erlebt hat, träumt er dreimal so oft. Schläft er schon vor 4 Uhr ein, ist es heute;
-  // wacht er nach 4 Uhr noch nicht gleich auf, gilt noch der Vortag.
-  _dreamSvg() {
+  // wacht er nach 4 Uhr noch nicht gleich auf, gilt noch der Vortag. Die Freunde (pino, kirby, rufus, katzumi) haben
+  // je ein eigenes Bild in DREAM: Wer da war, von dem träumt er. nur (Vorschau): genau dieses Motiv.
+  _dreamSvg(nur = null) {
+    if (typeof nur === 'string' && Object.keys(DREAM).includes(nur)) return DREAM[nur];
     const opts = [[1, 'lz'], [1, 'heart'], [0.6, 'klee']];
     const c = this._plan?.cute;
     if (c && c.d >= pikaDay(this._haNow()) - 1) MEM_BITS.forEach((k, i) => c.m & (1 << i) && DREAM[k] && opts.push([3, k]));
@@ -95,7 +104,7 @@ export class Schlaf {
 
   // Im Schlaf: ab und zu ein Traum, Zucken, Schmatzen oder Murmeln
   async _dream() {
-    const dbg = this._dbgDream; // Vorschau: gleich träumen
+    const dbg = this._dbgDream; // Vorschau: gleich träumen (true), als Text: von genau diesem Motiv ('kirby')
     this._dbgDream = false;
     await this._wait(dbg ? 300 : rnd(25000, 55000));
     if (!this._asleep) return;
@@ -104,7 +113,7 @@ export class Schlaf {
     if (r < 0.4) {
       const think = this._el.think;
       clearTimeout(this._thinkT);
-      think.innerHTML = this._dreamSvg();
+      think.innerHTML = this._dreamSvg(dbg);
       think.classList.add('dream');
       try {
         this._bubble(think, true);
@@ -120,8 +129,8 @@ export class Schlaf {
     } else if (r < 0.6) {
       this._cls('stw', 550, true);
     } else if (r < 0.75) {
-      // vom Freund murmelt er nur, wenn der auch zu Besuch kommt (friend: false)
-      this._say(pick(['mip…', 'mmh…', 'zzz… Löwenzahn…', ...(this._cfg.friend ? [`${this._frName()}…`] : []), 'hihi…']), 1800);
+      // vom Freund murmelt er nur, wenn der auch zu Besuch kommt (friend: false); von wem, sagt _frMumble (wer heute da war)
+      this._say(pick(['mip…', 'mmh…', 'zzz… Löwenzahn…', ...(this._cfg.friend ? [`${this._frMumble()}…`] : []), 'hihi…']), 1800);
     } else if (r < 0.85) {
       this._cls('mlem', 950, true);
     }

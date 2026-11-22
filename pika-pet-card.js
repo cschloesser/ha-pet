@@ -60,7 +60,7 @@
  */
 (() => {
   // src/version.js
-  var VERSION = "0.43.1";
+  var VERSION = "0.44.0";
 
   // src/logik/hilfen.js
   var Cancel = class extends Error {
@@ -547,7 +547,28 @@
   };
   var giftMile = (o) => o === 10 || o === 25 || o === 50 || o >= 100 && o % 100 === 0;
   var giftAllGold = (G) => !!G && (G.u & 255) === 255 && ((G.v || 0) & 65535) === 65535;
-  var GIFT_CLS = ["sling", "aim", "snap", "spy", "wcan", "pour", "shup", "wink", "hswing", "puffy"];
+  var GOLD = {
+    yarnBack: { cd: 4 * 6e4, p: 0.35 },
+    // Wollknäuel: kullert von selbst zu ihm zurück
+    wheel: { cd: 6e3 },
+    // Windrad: Lichtfunken, wenn es angepustet oder angetippt wird
+    wheelWind: { cd: 9e4, p: 0.35, min: 30 },
+    // … und im echten Wind ab min km/h (je Takt; ab da gilt die Szene als windig)
+    heart: { cd: 2500, p: 0.7 },
+    // Plüsch-Pino: Herzchen beim Kuscheln am Tag (zwei Gelegenheiten je Kuscheln)
+    heartNight: { cd: 4 * 6e4, p: 0.2 },
+    // … und nachts im Bau (je Takt)
+    sheen: { cd: 2 * 6e4, p: 0.3 },
+    // Sonnenbrille: Lichtreflex bei Sonne (je Takt)
+    spot: { p: 0.45 },
+    // Fernrohr: Der erste Blick findet immer etwas, jeder weitere mit p
+    bell: { cd: 45e3 }
+    // Glöckchen: Ein Vogel antwortet (das Glockenspiel bimmelt mehrmals: eine Antwort)
+  };
+  var goldDue = (R2, last, now, u = 0) => (last == null || Math.abs(now - last) >= (R2?.cd || 0)) && u < (R2?.p ?? 1);
+  var GOLD_BLOOM = ["#f6c945", "#e3b23c"];
+  var goldHamGuest = (L) => !L.dark && L.mo >= 3 && L.mo <= 8 && !L.wet && !L.cold && (L.wind || 0) < 30 ? "bfly" : L.dark && L.summer && !L.wet && L.flies !== false ? "ff" : "shim";
+  var GIFT_CLS = ["sling", "aim", "snap", "spy", "wcan", "pour", "shup", "wink", "hswing", "puffy", "gsheen", "gglow"];
 
   // src/logik/tagesplan.js
   var HAY_MAX = 12;
@@ -891,9 +912,19 @@
   };
   var FRIEND_WIN = { win: 30 * 6e4, p: 1, spread: 20 * 6e4, stay: [3, 6] };
   var FRIEND_LAST = 25e3;
-  var FRIEND_ACTS = /* @__PURE__ */ new Set(["greetFriend", "chaseFriend", "sitWithFriend", "rockWithFriend", "nibbleWithFriend", "squeakDuet"]);
+  var FRIEND_GAME = { kirby: "rollFriend", rufus: "fetchFriend", katzumi: "pounceFriend" };
+  var FRIEND_GAME_W = { first: 12, again: 4.5 };
+  var FRIEND_ACTS = /* @__PURE__ */ new Set([
+    "greetFriend",
+    "chaseFriend",
+    "sitWithFriend",
+    "rockWithFriend",
+    "nibbleWithFriend",
+    "squeakDuet",
+    ...Object.values(FRIEND_GAME)
+  ]);
   var FRIEND_YIELD = { friendYield: true };
-  var FRIEND_CLS = ["walking", "groom", "eating", "look-f", "look-b", "look-up", "calling", "crouch", "happy", "nuzzle", "wiggle"];
+  var FRIEND_CLS = ["walking", "groom", "eating", "look-f", "look-b", "look-up", "calling", "crouch", "happy", "nuzzle", "wiggle", "carry", "fdash", "kwig", "kroll", "crosseye", "lean"];
 
   // src/logik/haus-bote.js
   var BOTE_K = 4e-3;
@@ -1133,7 +1164,10 @@
     "stumble",
     "pant",
     "trip",
-    "bighop"
+    "bighop",
+    "rstretch",
+    "rcap",
+    "rread"
   ];
   var worldPick = (x, y, zones) => {
     let best = null;
@@ -1149,6 +1183,15 @@
     }
     return best;
   };
+  var WORLD_MIN = 40;
+  var worldHalo = (l, t, r, b, pad = 0, min = WORLD_MIN) => {
+    const px = Math.max(pad, (min - (r - l)) / 2);
+    const py = Math.max(pad, (min - (b - t)) / 2);
+    return { l: l - px, t: t - py, r: r + px, b: b + py };
+  };
+  var CHIMNEY = { huegel: { x1: 60.5, x2: 69.5, top: 0.4, bot: 16, cx: 65, cy: -1 } };
+  var RITUAL = { late: 10 * 6e4, stretch: 1700, gap: 200, yawn: 2300, cap: 700, sit: 400, read: 2200, night: 1500, look: 500, star: 2100 };
+  var RITUAL_STORY = ["…und dann schliefen alle ein.", "…und alle Sterne gingen an.", "…und der kleine Pika fand nach Hause."];
 
   // src/logik/beschaeftigungen-klein.js
   var MINI_W = {
@@ -1167,18 +1210,20 @@
     boat: 1.2,
     snowpika: 1.3,
     angel: 0.9,
-    snowball: 0.9
+    snowball: 0.9,
+    drops: 0.7,
+    twirl: 0.6
   };
   var MINI_ACTS = Object.keys(MINI_W);
   var MINI_SNOW = /* @__PURE__ */ new Set(["weights", "hula", "yoyo", "purzel", "juggle", "glider"]);
-  var MINI_RAIN = ["puddle", "boat"];
+  var MINI_RAIN = ["puddle", "boat", "drops", "twirl"];
   var MINI_SNOWONLY = /* @__PURE__ */ new Set(["snowpika", "angel", "snowball"]);
   var MINI_PROG = {
     dry: MINI_ACTS.filter((a) => !MINI_RAIN.includes(a) && !MINI_SNOWONLY.has(a)),
     rain: MINI_RAIN,
     snow: MINI_ACTS.filter((a) => MINI_SNOW.has(a) || MINI_SNOWONLY.has(a))
   };
-  var MINI_REST = 3;
+  var MINI_REST = 1.7;
   var miniProg = (L) => L.shelter ? null : L.rain > 0 && !L.snowcover ? "rain" : L.wet || L.storm ? null : L.snowcover ? "snow" : "dry";
   var miniOk = (act, L) => {
     if (L.shelter) return false;
@@ -1314,6 +1359,42 @@
     const k = bezAt(...SNOWBALL_EASE, (t - t4) / T.away);
     return { f: fb + (1 - fb) * k, s: 3 + (SNOWBALL_BIG - 3) * k };
   };
+  var DROPS_T = { look: 1500, try: 2400, drop: 300, fall: 1100, at: 1400, jump: 270, land: 330, reach: 450, early: 640 };
+  var dropsTries = (r) => 3 + Math.floor(r(1) * 3);
+  var dropsPlan = (r) => {
+    const P = Array.from({ length: dropsTries(r) }, (_, i) => ({ hit: r(10 + i) < 0.62, hop: r(20 + i) < 0.6 }));
+    if (!P.some((v) => v.hit)) P[P.length - 1].hit = true;
+    return P;
+  };
+  var dropsLen = (r) => DROPS_T.look + dropsTries(r) * DROPS_T.try;
+  var DROPS_COUNT = ["", "Einen erwischt!", "Zwei Stück!", "Drei Stück!", "Vier Stück!", "Fünf Stück!"];
+  var TWIRL_T = {
+    grip: 700,
+    slow: 1500,
+    mid: 1500,
+    fast: 1800,
+    fastMore: 1500,
+    end: 2800,
+    lift: 850,
+    crouch: 180,
+    hop: 620,
+    ring: [750, 500, 330],
+    turn: [900, 560, 320]
+  };
+  var twirlFast = (r) => TWIRL_T.fast + r(1) * TWIRL_T.fastMore;
+  var twirlLen = (r) => TWIRL_T.grip + TWIRL_T.slow + TWIRL_T.mid + twirlFast(r) + TWIRL_T.end;
+  var TWIRL_WIND = 20;
+  var TWIRL_P = [0.25, 0.6];
+  var twirlLifts = (r, wind) => r(6) < TWIRL_P[(wind || 0) >= TWIRL_WIND ? 1 : 0];
+  var twirlRings = (r) => {
+    const out = [];
+    let t = TWIRL_T.grip;
+    for (const [st, len] of [TWIRL_T.slow, TWIRL_T.mid, twirlFast(r)].entries()) {
+      for (let d = 0; d < len - 120; d += TWIRL_T.ring[st]) out.push({ t: t + d, st });
+      t += len;
+    }
+    return out;
+  };
   var groundSpot = (u, w, a, b, blocks = [], kMin = 0.6) => {
     const k = clamp((b - a) / w, kMin, 1);
     const m = w * k / 2;
@@ -1352,11 +1433,27 @@
     boat: (r) => BOAT_T.launch + boatPuffs(r) * BOAT_T.puff + BOAT_T.back,
     snowpika: (r) => 2e4 + r(1) * 6e3,
     angel: angelLen,
-    snowball: snowballLen
+    snowball: snowballLen,
+    drops: dropsLen,
+    twirl: twirlLen
   };
   var ropeJumps = (r) => 12 + Math.floor(r(5) * 18);
   var ACT_JOIN_END = 4e3;
-  var ACT_NOJOIN = /* @__PURE__ */ new Set(["gather", "rope", "weights", "hula", "yoyo", "puste", "purzel", "stones", "juggle", "crown", "glider", "angel"]);
+  var ACT_NOJOIN = /* @__PURE__ */ new Set([
+    "gather",
+    "rope",
+    "weights",
+    "hula",
+    "yoyo",
+    "puste",
+    "purzel",
+    "stones",
+    "juggle",
+    "crown",
+    "glider",
+    "angel",
+    "twirl"
+  ]);
   var bigStart = (k) => k * ACT_WIN.big + Math.floor(seedRnd("big", k, 0) * ACT_WIN.spread);
   var miniStart = (m) => m * ACT_WIN.mini + Math.floor(seedRnd("mini", m, 1) * (ACT_WIN.mini - ACT_WIN.miniRoom));
   var miniHas = (m) => seedRnd("mini", m, 0) < ACT_WIN.miniP;
@@ -1412,7 +1509,7 @@
     const far = rx === cx ? cx < (lo + hi) / 2 : rx > cx;
     return Math.abs((far ? hi : lo) - rx) < pW ? !far : far;
   };
-  var ACT_PX = /* @__PURE__ */ new Set(["glider", "purzel"]);
+  var ACT_PX = /* @__PURE__ */ new Set(["glider", "purzel", "drops", "twirl"]);
   var WX_STOP = [...ACT_BIG, ...MINI_ACTS];
   var ACT_RECENT = 3;
   var ACT_SHOW_COOL = 5 * 6e4;
@@ -1470,7 +1567,19 @@
     "angel-up",
     "sb-pat",
     "sb-push",
-    "sb-lean"
+    "sb-lean",
+    "drops",
+    "drops-up",
+    "drops-st",
+    "drops-yum",
+    "drops-no",
+    "twirl",
+    "tw-go",
+    "tw-2",
+    "tw-3",
+    "tw-end",
+    "tw-off",
+    "tw-back"
   ];
   var SPORT_WIN = [10, 180];
   var SPORT_INTRO = 1700;
@@ -1783,8 +1892,9 @@
     fireflies: true,
     // Päckchen: für gute Pflege verdient, am Ballon verschenkt (siehe src/karte/paeckchen.js)
     gifts: true,
-    // Prototyp: Kulisse mit Parallax, hintere Spur zum Herumhoppeln (nur YAML, nicht im Editor)
-    depth: false,
+    // Tiefe: Kulisse mit Parallax, hintere Spur zum Herumhoppeln für Pika, Freunde und Besuch. Seit 0.44 Standard und
+    // im Editor (bis 0.43 nur im YAML und aus); depth: false stellt die eine Spur von vorher wieder her.
+    depth: true,
     // Tagebuch: Antippen der Statusleiste zeigt, was er heute und gestern erlebt hat, und seine Schätze.
     // diary_house: false lässt Kaffee und Haushaltsgeräte darin weg.
     diary: true,
@@ -1832,7 +1942,8 @@
     wardrobe: "Garderobe aus der Vorhersage",
     vacuum: "Saugroboter",
     door: "Haustür (Kontakt)",
-    window: "Fenster und Türen (Kontakte)"
+    window: "Fenster und Türen (Kontakte)",
+    depth: "Tiefe (Pika und Besuch laufen auch auf einer hinteren Spur)"
   };
   var EDITOR_HELP = {
     entity: "Damit alle Geräte denselben Pika sehen. Leer: nur in diesem Browser.",
@@ -1846,6 +1957,7 @@
     vacuum: "Läuft der Sauger, fährt ein kleiner Roboter über die Wiese, und er fährt manchmal mit.",
     door: "Geht die Haustür auf, spitzt er die Ohren.",
     window: "Ist eins mindestens 30 s offen, öffnet er das runde Fenster am Erdhügel (nur Bau „Erdhügel“). Antippen zeigt, welche offen sind.",
+    depth: "Die Hügel stehen in Ebenen und wandern ein wenig mit. Aus: alles auf einer Spur wie bis 0.43.",
     vacation: "Im Tagebuch: „Ferien bei Pino“. Solange er verreist ist, ruhen Hunger, Glück, Häufchen und Päckchen-Serie.",
     sleep_start: "z. B. sunset, sunset+01:00 oder 21:00",
     sleep_end: "z. B. sunrise, sunrise-30 oder 07:00",
@@ -2496,7 +2608,7 @@
      gerechnet aus _light (--m1, --mcap): Dämmerung, Wolkendecke und Gewitter gleiten mit Himmel und Land. */
   .snowcover .flower { opacity: 0; } /* je Blume: Deckkraft an der Schicht machte sie zu einem eigenen Stapel */
 
-  /* ---- Prototyp Tiefe (depth: true) ----
+  /* ---- Tiefe (depth, seit 0.44 Standard) ----
      Kulisse in Ebenen: Je weiter weg, desto mehr wandert sie mit dem Pika mit (--plx -1 … 1, die Wiese
      mit Bau, Stein und Heu bleibt stehen). Ferne Hügelkette im Dunst nur hier, deckend im Dunstton (--h0),
      sonst schiene die tiefstehende Sonne durch. Einheiten der viewBox (100 breit), scaleX deckt die Ränder
@@ -3087,6 +3199,30 @@
   .calm:not(.excited):not(.sleeping) .br { animation: breathe-calm 4.8s ease-in-out infinite; }
   @keyframes breathe-calm { 50% { transform: scale(1.016, 1.03); } }
   .sleeping .br { animation: breathe-deep 4.6s ease-in-out infinite; }
+  /* ---- Abendritual (_bedRitual) ----
+     Lang strecken wie eine Katze: Brust tief, Po hoch, Vorderpfoten weit nach vorn, Augen zu, Ohren angelegt */
+  .rstretch .hop { animation: rstretch 1.7s ease-in-out both; }
+  /* (gedreht wird um die Mitte unten: translateY hebt ihn so weit an, dass die Vorderpfoten am Boden bleiben) */
+  @keyframes rstretch {
+    0%, 100% { transform: none; }
+    28%, 72% { transform: translateY(-4.5%) rotate(9deg) scale(1.16, .82); }
+    50% { transform: translateY(-5.5%) rotate(11deg) scale(1.2, .79); }
+  }
+  .rstretch .ffoot { animation: rstretch-f 1.7s ease-in-out both; }
+  @keyframes rstretch-f { 0%, 100% { transform: none; } 28%, 72% { transform: translate(14px, -6px); } 50% { transform: translate(16px, -7px); } }
+  .rstretch .eye { display: none; }
+  .rstretch .seye { display: inline; }
+  .rstretch .ear-l { transform: rotate(-30deg); }
+  .rstretch .ear-r { transform: rotate(26deg); }
+  /* Die Zipfelmütze setzt er schon draußen auf, sie plumpst von oben. Hexenhut, Partyhut und Sonnenbrille legt er
+     dafür ab wie zum Schlafen, die Weihnachtsmütze behält er auf (sie ersetzt die Zipfelmütze, STYLE_FEST). */
+  .rcap .cap { display: inline; transform-box: fill-box; transform-origin: 60% 100%; animation: rcap .45s cubic-bezier(.3, 1.5, .5, 1) both; }
+  @keyframes rcap { from { transform: translateY(-9px) rotate(-14deg); opacity: 0; } }
+  .pika.rcap.fest-xmas .cap, .pika.rcap .hat-witch, .pika.rcap .hat-party, .pika.rcap .shades { display: none; }
+  /* Die Sprechblase rückt über die Mütze: Sie läge sonst auf ihr, während er Gute Nacht sagt */
+  .pika.rcap ~ .psay .say { bottom: calc(4px + var(--ph) * .17); }
+  /* Das Buch zur Gutenachtgeschichte ist ein kleines (das Buch vom Lesen, .reading, verkleinert) */
+  .rread .book { transform-box: fill-box; transform-origin: 50% 100%; transform: scale(.72); }
 
   /* Kleine Zeichen über dem Kopf: ?, !, Schweißtropfen, Funkeln, Grummelwolke */
   .emo {
@@ -3448,6 +3584,84 @@
   }
   @keyframes squeak { 0% { opacity: 0; scale: .4; } 15% { opacity: 1; scale: 1; } 75% { opacity: 1; } 100% { opacity: 0; translate: 0 -6px; } }
 
+  /* ---- Die Welt antwortet (seit 0.44): Aussichtsstein, Vorrat, Sonne, Mond, Schornstein, Saugroboter ----
+     Jede Antwort läuft einmal ab und räumt sich selbst weg. Mit „Bewegung reduzieren“ setzt das Skript .calm: Dann
+     blendet sie an ihrem Platz auf und ab (wfade), statt zu fliegen, zu hüpfen oder hervorzuhuschen. */
+  @keyframes wfade { 0%, 100% { opacity: 0; } 25%, 70% { opacity: 1; } }
+  /* Die Maus linst hinter dem Stein hervor (_rockPeek): nur ein Bild, kein Tippziel wie die Maus zu Besuch */
+  .mouse.wpeek .mw { pointer-events: none; cursor: auto; }
+  .mouse.wpeek.calm { animation: wfade 1.9s ease-in-out both; }
+  /* Kiesel: zwei flache Hüpfer vom Fuß des Steins weg (--px) */
+  .wpeb {
+    position: absolute; width: calc(var(--H) * .036); height: calc(var(--H) * .026);
+    margin: calc(var(--H) * -.013) 0 0 calc(var(--H) * -.018); border-radius: 50%;
+    background: #a3a9ae; box-shadow: inset 0 0 0 1px #5c6166; pointer-events: none; animation: wpeb .8s linear both;
+  }
+  .night .wpeb { filter: brightness(.7); }
+  @keyframes wpeb {
+    0% { transform: translate(0, 0); animation-timing-function: ease-out; }
+    22% { transform: translate(calc(var(--px) * .3), calc(var(--H) * -.07)); animation-timing-function: ease-in; }
+    45% { transform: translate(calc(var(--px) * .6), 0); animation-timing-function: ease-out; }
+    62% { transform: translate(calc(var(--px) * .8), calc(var(--H) * -.03)); animation-timing-function: ease-in; }
+    80% { transform: translate(var(--px), 0); opacity: 1; }
+    100% { transform: translate(var(--px), 0); opacity: 0; }
+  }
+  .wpeb.calm { animation: wfade .8s ease-in-out both; }
+  /* Halme fliegen aus dem Vorrat auf und trudeln ein Stück zurück */
+  .wstalk {
+    position: absolute; width: calc(var(--H) * .055); height: 2px; margin: -1px 0 0 calc(var(--H) * -.0275); border-radius: 1px;
+    background: #c9a548; box-shadow: 0 0 0 .5px rgba(120, 90, 30, .5); pointer-events: none; opacity: 0;
+    animation: wstalk .9s ease-out both;
+  }
+  .night .wstalk { filter: brightness(.7); }
+  @keyframes wstalk {
+    0% { transform: rotate(var(--r0)); opacity: 0; }
+    15% { opacity: 1; }
+    60% { transform: translate(calc(var(--px) * .75), var(--py)) rotate(calc(var(--rot) * .7)); opacity: 1; }
+    100% { transform: translate(var(--px), calc(var(--py) * .55)) rotate(var(--rot)); opacity: 0; }
+  }
+  .wstalk.calm { transform: rotate(var(--r0)); animation: wfade .8s ease-in-out both; }
+  /* Gesicht auf Sonne und Mond (_skyFace), ein Kind der Scheibe: Es steht hinter Wolken und Hügeln wie sie */
+  .wface { position: absolute; inset: 0; pointer-events: none; animation: wface 1.6s ease-in-out both; }
+  .wface svg { display: block; width: 100%; height: 100%; overflow: visible; }
+  @keyframes wface { 0% { opacity: 0; } 14%, 78% { opacity: 1; } 100% { opacity: 0; } }
+  .wrays { stroke: #ffe27a; transform-box: view-box; transform-origin: 50px 50px; animation: wrays 1.6s ease-in-out both; }
+  .sun-low .wrays { stroke: #ffc48a; }
+  @keyframes wrays {
+    0% { transform: scale(.72); } 30% { transform: scale(1.14) rotate(10deg); } 50% { transform: scale(.96) rotate(10deg); }
+    72% { transform: scale(1.1) rotate(20deg); } 100% { transform: scale(.8) rotate(20deg); }
+  }
+  .wyawn { transform-box: fill-box; transform-origin: 50% 15%; animation: wyawn 1.6s ease-in-out both; }
+  @keyframes wyawn { 0%, 100% { transform: scale(.45, .12); } 35%, 68% { transform: scale(1); } }
+  .wz {
+    position: absolute; left: 88%; top: 4%; font-size: max(9px, calc(var(--H) * .055)); font-weight: 800; line-height: 1;
+    color: #fff; text-shadow: 0 1px 3px rgba(0, 0, 0, .45); opacity: 0; animation: wz 1.5s ease-out both;
+  }
+  .wz:last-child { left: 108%; top: -24%; font-size: max(8px, calc(var(--H) * .042)); animation-delay: .3s; }
+  @keyframes wz {
+    0% { transform: translate(-40%, 60%) scale(.5); opacity: 0; } 25% { opacity: 1; } 70% { opacity: 1; }
+    100% { transform: translate(30%, -60%) scale(1.1); opacity: 0; }
+  }
+  .wface.calm .wrays, .wface.calm .wyawn { animation: none; }
+  .wface.calm .wz { animation-name: wfade; }
+  /* Rauchring über dem Schornstein (in der Bau-Grafik, neben .smoke; zieht wie der Rauch mit dem Wind, --smx) */
+  .wring {
+    fill: none; stroke: #f4f6f8; stroke-width: 1.3; opacity: 0; transform-box: fill-box; transform-origin: center;
+    animation: wring 1.6s ease-out both;
+  }
+  .night .wring { stroke: #8f99ad; }
+  @keyframes wring {
+    0% { transform: scale(.35); opacity: 0; }
+    15% { opacity: .95; }
+    65% { opacity: .8; }
+    100% { transform: translate(calc(var(--smx, -6px) * .5), -15px) scale(1.9); opacity: 0; }
+  }
+  .wring.calm { transform: translateY(-5px) scale(1.3); animation: wfade 1.5s ease-in-out both; }
+  /* Der Saugroboter piept: Sein Licht blinkt einmal weiß auf (stärker als die Farben und das Blinken von .stop und .stuck) */
+  .sig-vac .sig-led { transform-box: fill-box; transform-origin: center; }
+  .scene .sig-vac.wbeep .sig-led { animation: wbeep .6s ease-in-out; }
+  @keyframes wbeep { 25%, 65% { fill: #fff; transform: scale(2.2); } 45% { fill: #fff; transform: scale(1.5); } }
+
   /* Häufchen liegen vorn auf dem Boden (vor dem Gras). Die Tippfläche ist größer als die Köttelchen. */
   .poops { position: absolute; inset: 0; pointer-events: none; }
   .poo {
@@ -3637,6 +3851,9 @@
     .lnd:not(.walking) .ear-l, .lnd:not(.walking) .ear-r { animation: none; }
     /* Finger setzt auf: Bäckchen und Blick reichen als Antwort, er wird nicht gestaucht */
     .pressed .jump { transform: none; }
+    /* Abendritual: Die Mütze sitzt einfach auf, beim Vorlesen wandert der Blick nicht (das Strecken lässt das Skript weg) */
+    .rcap .cap { animation: none; }
+    .rread .face { animation: none; transform: translate(0, 2px); }
     /* Blitz: nur ein sanftes, einmaliges Aufhellen statt Flackern über die ganze Karte */
     .flash.go { animation: flash-soft 1.2s ease-out; }
     @keyframes flash-soft { 15% { opacity: .18; } }
@@ -3894,6 +4111,36 @@
   .pika.wiggle .ear-l, .friend.wiggle .ear-l { animation: fwiggle .3s ease-in-out 4 alternate; }
   .pika.wiggle .ear-r, .friend.wiggle .ear-r { animation: fwiggle .3s .12s ease-in-out 4 alternate-reverse; }
   @keyframes fwiggle { from { transform: rotate(-13deg); } to { transform: rotate(9deg); } }
+
+  /* ---------- Eigene Spiele der Freunde (ab 0.44): Stöckchen, Jagd, Kullern ---------- */
+  /* Spielzeug als eigenes Element in .fx (das Stöckchen im Flug und am Boden): Mitte bei left/top 0, Größe und Lage
+     setzt das Skript (_frToy, _frToyAt). Was jemand im Maul trägt, steckt in .mf-item, .carry zeigt es (STYLE). */
+  .ftoy { position: absolute; left: 0; top: 0; pointer-events: none; transition: opacity .4s; }
+  .ftoy svg { display: block; width: 100%; height: 100%; overflow: visible; }
+  .ftoy.off { opacity: 0; }
+  /* Die Feder (das Blatt) pendelt am Faden, aufgehängt an der Spitze des Halms im Maul des Pikas */
+  .carry .fdangle { transform-box: fill-box; transform-origin: 50% 0%; animation: fdangle 1.3s ease-in-out infinite alternate; }
+  @keyframes fdangle { from { transform: rotate(-11deg); } to { transform: rotate(11deg); } }
+  /* Rufus rennt dem Stöckchen nach, die Schlappohren fliegen nach hinten (Angelpunkt oben, nicht unten wie bei
+     Stehohren). In .flip gespiegelt zeigen sie auch nach links nach hinten. */
+  .friend.fdash .ear { transform-origin: 50% 12%; }
+  .friend.fdash .ear-l { animation: fflap .2s ease-in-out infinite alternate; }
+  .friend.fdash .ear-r { animation: fflap .2s .1s ease-in-out infinite alternate; }
+  @keyframes fflap { from { transform: rotate(14deg); } to { transform: rotate(46deg); } }
+  /* Katzumi duckt sich und wackelt mit dem Hinterteil, bevor sie springt */
+  .friend.kwig .hop { animation: kwig .17s ease-in-out infinite alternate; }
+  @keyframes kwig { from { transform: scale(1.12, .82) rotate(-3.5deg); } to { transform: scale(1.12, .82) rotate(3.5deg); } }
+  /* Kirby kullert: eingerollt (Füße und Ärmchen weg) dreht er sich um die Mitte seiner Kugel, um --kra (ganze
+     Umdrehungen, auf die Länge des Wegs gerundet, mindestens eine: Er kommt aufrecht an) in --krd (so lange wie die
+     Überblendung des Wegs, _frSetX). In .flip gespiegelt dreht er nach links andersherum, also immer vorwärts. */
+  .friend.kroll .hop { transform-origin: 64.2% 56%; animation: kroll var(--krd, 1.6s) linear both; }
+  @keyframes kroll { from { transform: rotate(0deg); } to { transform: rotate(var(--kra, 360deg)); } }
+  .friend.kroll .feet, .friend.kroll .karm { display: none; }
+  /* „Bewegung reduzieren“: Das Skript spielt dann die ruhigen Fassungen (calmMotion), hier ruht zur Sicherheit auch,
+     was sich von selbst bewegt */
+  @media (prefers-reduced-motion: reduce) {
+    .carry .fdangle, .friend.fdash .ear-l, .friend.fdash .ear-r, .friend.kwig .hop, .friend.kroll .hop { animation: none; }
+  }
   `;
 
   // src/stil/haus-bote.js
@@ -4383,7 +4630,7 @@
 
   /* ---- Kleine Beschäftigungen ab 0.32: Hula-Hoop, Jo-Jo, Pusteblume, Purzelbaum, Steintürmchen, Jonglieren,
      Blumenkranz, Papierflieger; bei Regen Pfützenspringen und Papierschiffchen, bei Schnee der Schnee-Pika und
-     (ab 0.43) Schneeengel und Schneeball ---- */
+     (ab 0.43) Schneeengel und Schneeball, bei Regen (ab 0.44) Tropfen fangen und Blattschirm kreiseln ---- */
   .hoop, .yo, .pbl, .jug, .dchain, .dcrown, .pgl, .peb, .sboat { display: none; }
   .hula .hoop, .hula .arms, .yoyo .yo, .puste .pbl, .juggle .jug, .juggle .arms, .plait .dchain, .crowned .dcrown,
   .gliding .pgl, .pebble .peb, .boating .sboat { display: inline; }
@@ -4595,6 +4842,93 @@
   .sbp.off { transition: opacity .6s, filter 2.5s; }
   .sbp.off .sb-sink { transform: scaleY(.3); transition: transform .6s ease-in; }
 
+  /* Tropfen fangen: Das Blatt liegt neben ihm im Gras (.leafp, _aprop), die Pfote ist frei (.drops). Für einen
+     Tropfen legt er den Kopf zurück, das Maul steht offen, die Zunge hängt heraus (.drops-up); die Zunge ist dafür
+     größer als beim Schlecken und ragt unter dem offenen Maul hervor (das Maul liegt in der Grafik über ihr). */
+  .pika.drops .brolly { display: none; }
+  .leafp.mir > svg { transform: scaleX(-1); }
+  .drops-up .hd { transform: rotate(-13deg); }
+  .drops-up .face { transform: translate(1px, -2.5px); }
+  .drops-up .ear { transform: translateY(1px) rotate(-7deg); }
+  .drops-up .mth { display: none; }
+  .drops-up .omouth { display: inline; transform-box: fill-box; transform-origin: 50% 30%; transform: scale(1.7, 1.45); }
+  .drops-up .tongue { display: inline; transform: translateY(2.6px) scale(1.75, 2.1); }
+  .drops-up:not(.blink):not(.crosseye) .eye { transform: translateY(-1.1px); }
+  /* sich dem Tropfen entgegenstrecken (statt des Hüpfers) */
+  .drops-st .hop { transform: scale(.95, 1.09); transition: transform .3s cubic-bezier(.3, 1.5, .5, 1); }
+  /* gefangen: Er wackelt vergnügt und schleckt nach */
+  .drops-yum .hop { animation: dyum .64s ease-in-out; }
+  @keyframes dyum { 20% { transform: rotate(-5deg); } 45% { transform: rotate(5deg); } 70% { transform: rotate(-3.5deg); } 90% { transform: rotate(2deg); } }
+  .drops-yum .mth { display: none; }
+  .drops-yum .wmouth { display: inline; }
+  .drops-yum .tongue { display: inline; animation: mlem .64s ease-in-out forwards; }
+  /* daneben: Der Tropfen ist auf der Nase zerplatzt, er schüttelt den Kopf */
+  .drops-no .hd { animation: dno .62s ease-in-out; }
+  @keyframes dno { 15% { transform: rotate(-9deg); } 35% { transform: rotate(8deg); } 55% { transform: rotate(-7deg); } 75% { transform: rotate(5deg); } 90% { transform: rotate(-2deg); } }
+  /* Der dicke Tropfen (_bigDrop): Seine Spitze unten sitzt am Ziel (left, top). Er fällt über --fd aus --fy herab;
+     danach verschwindet er im Maul (.hit) oder zerplatzt. */
+  .bigdrop {
+    position: absolute; width: calc(var(--ph) * .16); margin: calc(var(--ph) * -.224) 0 0 calc(var(--ph) * -.08); pointer-events: none;
+    transform-origin: 50% 100%; opacity: 0;
+    animation: bdfall var(--fd, 1.1s) cubic-bezier(.35, 0, .8, .55) forwards, bdsplat .24s ease-out var(--fd, 1.1s) forwards;
+  }
+  .bigdrop.hit { animation-name: bdfall, bdgulp; animation-duration: var(--fd, 1.1s), .16s; }
+  .bigdrop svg { display: block; width: 100%; height: auto; }
+  @keyframes bdfall {
+    0% { transform: translateY(var(--fy)) scale(.9, 1.08); opacity: 0; }
+    12% { opacity: 1; }
+    100% { transform: translateY(0) scale(.94, 1.08); opacity: 1; }
+  }
+  @keyframes bdgulp { from { transform: scale(.9, 1); opacity: 1; } to { transform: scale(.25, .2); opacity: 0; } }
+  @keyframes bdsplat { from { transform: scale(1, 1); opacity: 1; } to { transform: scale(2.1, .22); opacity: 0; } }
+  /* die Spritzer von der Nase (_noseSplash): kleiner als die aus der Pfütze */
+  .splash.sn { width: calc(var(--ph) * .05); margin-left: calc(var(--ph) * -.025); }
+
+  /* Blattschirm kreiseln: beide Pfoten am Stiel (.twirl; die zweite ist die Pfote vom Drachen, .kpaw), das Blatt
+     pendelt nicht mehr. Ohne Regen (Vorschau) holt er es dafür hervor. Es dreht sich um seinen Stiel (.tw-go):
+     Blatt und Ader (die Pfade nach dem Stiel) klappen um die Stielspitze von links nach rechts und zurück; weil das
+     Blatt links weiter übersteht als rechts, liest sich das als Drehung. --tw: Dauer einer Umdrehung je Stufe. */
+  .pika.twirl .brolly { display: inline; }
+  .pika.wet.twirl:not(.inside) .brolly { animation: none; transform: none; }
+  .twirl .kpaw { display: inline; transform: translate(3.4px, -2.5px); }
+  .twirl .face { transform: translate(.8px, -1.4px); }
+  .brolly > path + path { transform-box: view-box; transform-origin: 99px 6px; }
+  .tw-go { --tw: ${TWIRL_T.turn[0]}ms; }
+  .tw-go.tw-2 { --tw: ${TWIRL_T.turn[1]}ms; }
+  .tw-go.tw-3 { --tw: ${TWIRL_T.turn[2]}ms; }
+  .tw-go .brolly > path + path { animation: twspin var(--tw) linear infinite; }
+  @keyframes twspin {
+    0%, 100% { transform: scaleX(1); animation-timing-function: cubic-bezier(.36, 0, .64, 1); }
+    50% { transform: scaleX(-1); animation-timing-function: cubic-bezier(.36, 0, .64, 1); }
+  }
+  /* anhalten (.tw-end): noch eine halbe Runde, immer langsamer, bis es wieder steht wie zuvor. (Aus welcher Lage
+     das Kreiseln endet, ist offen; der Sprung an den Anfang dieser halben Runde geht im schnellen Kreiseln unter.) */
+  .tw-end .brolly > path + path { animation: twend .5s cubic-bezier(.2, .7, .3, 1); }
+  @keyframes twend { 0% { transform: scaleX(-1); } 100% { transform: scaleX(1); } }
+  /* die Pfoten reiben den Stiel gegeneinander */
+  .tw-go .kpaw { animation: twpaw var(--tw) ease-in-out infinite; }
+  @keyframes twpaw { 0%, 100% { transform: translate(2.2px, -2.5px); } 50% { transform: translate(4.6px, -2.5px); } }
+  .tw-go .brolly > ellipse { transform-box: fill-box; animation: twpaw2 var(--tw) ease-in-out infinite; }
+  @keyframes twpaw2 { 0%, 100% { transform: translateX(1.2px); } 50% { transform: translateX(-1.2px); } }
+  .tw-go .face { transform: translate(1px, -2.4px); }
+  /* Tropfen, die vom Blatt fliegen (_twRing): nach außen (--dx) und im Bogen hinunter (--dy) */
+  .twdrop { position: absolute; width: calc(var(--ph) * .075); margin: calc(var(--ph) * -.05) 0 0 calc(var(--ph) * -.037); pointer-events: none; animation: twdrop .62s linear forwards; }
+  .twdrop svg { display: block; width: 100%; height: auto; }
+  @keyframes twdrop {
+    0% { transform: translate(0, 0) scale(.5); opacity: 0; animation-timing-function: cubic-bezier(.2, .6, .5, 1); }
+    14% { opacity: 1; }
+    55% { transform: translate(calc(var(--dx) * .7), calc(var(--dy) * .12)) scale(1); opacity: 1; animation-timing-function: cubic-bezier(.5, 0, .9, .5); }
+    100% { transform: translate(var(--dx), var(--dy)) scale(.8); opacity: 0; }
+  }
+  /* Der Wind hebt das Blatt aus den Pfoten (.tw-off): Stiel, Blatt und Ader steigen und treiben --twx nach vorn
+     (dorthin hüpft er gleich), die Pfoten bleiben. Beim Hüpfer (.tw-back) kommt es zurück in die Pfote, in
+     derselben Zeit und mit derselben Kurve, mit der er vorwärts springt (_hopTo): Im Bild bleibt es dabei über
+     derselben Stelle und sinkt nur. */
+  .tw-off .brolly > path { transform-box: view-box; transform-origin: 99px 6px; transform: translate(var(--twx, 0px), -30px) rotate(13deg); transition: transform ${TWIRL_T.lift}ms cubic-bezier(.2, .7, .4, 1); }
+  .tw-off.tw-back .brolly > path { transform: none; transition: transform .55s cubic-bezier(.3, .6, .4, 1); }
+  .tw-off .kpaw { transform: translate(3.4px, -7px); transition: transform .3s ease-out; }
+  .tw-off .brolly > ellipse { transform-box: fill-box; transform: translateY(-5px); transition: transform .3s ease-out; }
+
   /* Bewegung reduzieren: Nichts kreist, pendelt oder schaukelt von selbst; man sieht trotzdem, was er tut (Reifen
      schräg um den Bauch, Jo-Jo an halber Schnur, drei Beeren im Bogen). Steine und Schnee erscheinen ohne Federn. */
   @media (prefers-reduced-motion: reduce) {
@@ -4612,6 +4946,18 @@
     .ap-w, .ap-s { transform: none; }
     .sb-lean .jump, .sb-push .jump { transition: none; }
     .sb-pat .paws { animation: none; transform: translate(13px, 14px); }
+    /* Tropfen fangen und Blattschirm kreiseln: Er hüpft und streckt sich nicht (calmMotion). Der dicke Tropfen
+       fällt nicht, er blendet am Maul ein und aus; kein Wackeln, kein Kopfschütteln. Das Blatt dreht sich nicht:
+       Es steht schräg zwischen den Pfoten, und die Tropfen an seinem Rand blenden nur ein und aus. */
+    .bigdrop, .bigdrop.hit { animation: bdfade calc(var(--fd, 1.1s) + .3s) ease-in-out forwards; }
+    @keyframes bdfade { 0%, 100% { opacity: 0; } 35%, 75% { opacity: 1; } }
+    .drops-yum .hop, .drops-no .hd, .drops-yum .tongue { animation: none; }
+    .drops-st .hop { transition: none; }
+    .tw-go .brolly > path + path { animation: none; transform: scaleX(.62); }
+    .tw-end .brolly > path + path { animation: none; }
+    .tw-go .kpaw, .tw-go .brolly > ellipse { animation: none; }
+    .twdrop { animation: twfade .62s ease-in-out forwards; }
+    @keyframes twfade { 0%, 100% { opacity: 0; } 40%, 70% { opacity: 1; } }
     /* Seifenblasen wabern nicht (sie schweben weiter, platzen wie sonst); die Regenringe in der Pfütze stehen still
        da (ohne Animation ruhten sie bei opacity 0 und wären weg) */
     .bub:not(.pop) i { animation: none; }
@@ -5091,6 +5437,7 @@
         <path d="M10 5 Q30 23 50 5" stroke="${OUT}" stroke-width="4.4" fill="none" stroke-linecap="round"/>
         <path d="M10 5 Q30 23 50 5" stroke="#f6efe0" stroke-width="3.2" fill="none" stroke-linecap="round"/>
         <path d="M10 5 Q30 23 50 5" stroke="#e8584e" stroke-width="3.2" fill="none" stroke-dasharray="2.4 3"/>
+        <path class="gshm" d="M5 3.4 L10 5 Q30 23 50 5 L55 3.4" pathLength="100" stroke="#fffbe0" stroke-width="3" fill="none" stroke-linecap="round"/>
       </g></svg>`;
   var GIFT_HAM_W = 1.25;
   var GIFT_HAM_LIFT = 0.1;
@@ -5098,6 +5445,23 @@
   var GIFT_WHEEL = `<svg viewBox="0 0 24 44" aria-hidden="true">
       <path d="M12 12 V44" stroke="#b5793e" stroke-width="1.6" stroke-linecap="round"/>
       ${GIFT_ITEMS[1].svg.replace(/^<svg[^>]*>|<\/svg>$/g, "").replace(/<path d="M12 12 V23"[^>]*\/>/, "")}</svg>`;
+  var GOLD_STAR = `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="${STAR}"/></svg>`;
+  var GOLD_HEART = `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21.4l-1.5-1.3C5.4 15.4 2 12.3 2 8.5 2 5.4 4.4 3 7.5 3c1.7 0 3.4.8 4.5 2.1C13.1 3.8 14.8 3 16.5 3 19.6 3 22 5.4 22 8.5c0 3.8-3.4 6.9-8.5 11.5z"/>
+      <path class="gl" d="M6.4 7.6 q.6 -2 2.6 -2.2"/></svg>`;
+  var GOLD_PLANE = `<svg viewBox="0 0 24 11" aria-hidden="true">
+      <path d="M2 5.4 L3.2 1.2 H5.2 L6.8 4.6 H18.4 Q22.2 4.8 22.2 6.1 Q22.2 7.4 18.4 7.4 H13.2 L9.6 10.4 H7.6 L9.4 7.4 H4.2 Q2 7.2 2 5.4Z"/></svg>`;
+  var GOLD_FIREFLY = "<i></i>";
+  var GOLD_FLOWER = (c, m) => `
+  <svg class="gsun" viewBox="0 0 20 30" aria-hidden="true">
+    <path d="M10 30 Q9 20 10 11" stroke="var(--fst, #4f8a3a)" stroke-width="1.8" fill="none"/>
+    <ellipse cx="6.5" cy="22" rx="3.6" ry="1.5" fill="var(--flf, #6bab4c)" transform="rotate(-30 6.5 22)"/>
+    <ellipse cx="13.4" cy="18.4" rx="3.2" ry="1.4" fill="var(--flf, #6bab4c)" transform="rotate(28 13.4 18.4)"/>
+    <g fill="var(--fc, ${c})" stroke="rgba(0,0,0,.16)" stroke-width=".45">
+      ${[...Array(12).keys()].map((n) => `<ellipse cx="10" cy="3.3" rx="1.7" ry="3.4" transform="rotate(${n * 30} 10 8.6)"/>`).join("")}
+    </g>
+    <circle cx="10" cy="8.6" r="3.5" fill="var(--fm, ${m})" stroke="rgba(0,0,0,.2)" stroke-width=".45"/>
+    <path d="M8.4 7.6 h.1 M10.2 7 h.1 M11.6 8.2 h.1 M9.2 9.4 h.1 M10.8 10 h.1 M8.2 9 h.1" stroke="rgba(60,30,5,.45)" stroke-width=".8" stroke-linecap="round"/>
+  </svg>`;
   var GILT_F = "sepia(1) saturate(2.6) hue-rotate(8deg) brightness(1.12)";
 
   // src/stil/paeckchen.js
@@ -5208,6 +5572,120 @@
   /* Angetippt dreht es sich kurz, auch wo es sonst ruht (nachts ohne Wind, Pika schläft); nicht, wenn keiner hinsieht */
   .scene:not(.paused) .gifts .gt-wheel.tapspin .gwhl { animation-play-state: running; }
   @media (prefers-reduced-motion: reduce) { .gwhl, .gbob, .gdrift, .gt-ham .gnet { animation: none !important; } }
+
+  /* ---- Gold mit Wirkung (Stufe 3, seit 0.44): Teilchen der Zugaben in der Effekt-Ebene (_goldFx). Ohne filter (Safari
+     schneidet dessen Überstand ab): Der Lichthof ist ein eigener Verlauf hinter dem Stern. Jedes Teilchen hat eine
+     ruhige Fassung (.still, „Bewegung reduzieren“): Es blendet am Platz ein und aus, nichts treibt, dreht oder wächst. */
+  .gfx { position: absolute; width: calc(var(--H) * .058); margin: calc(var(--H) * -.029); pointer-events: none; opacity: 0;
+    font-style: normal; animation: gfx-still 1.2s ease-in-out both; }
+  .gfx::before { content: ''; position: absolute; inset: -40%; border-radius: 50%;
+    background: radial-gradient(circle, rgba(255, 232, 130, .8), rgba(255, 226, 120, 0) 68%); }
+  .gfx svg { position: relative; display: block; width: 100%; height: auto; overflow: visible; }
+  .gfx:not(.hbfly) path { fill: #ffe066; stroke: #d6920f; stroke-width: 1.5; stroke-linejoin: round; }
+  @keyframes gfx-still { 0%, 100% { opacity: 0; } 30%, 70% { opacity: 1; } }
+  /* Funkenspur des Wollknäuels, Funken über den gegossenen Blumen: ploppt auf, sinkt ein wenig und verglimmt */
+  .gfx.trail { animation: gfx-trail .9s ease-out both; }
+  @keyframes gfx-trail {
+    0% { transform: scale(0) rotate(-30deg); opacity: 0; }
+    30% { transform: scale(1.15) rotate(10deg); opacity: 1; }
+    100% { transform: translateY(calc(var(--H) * .025)) scale(.35) rotate(60deg); opacity: 0; }
+  }
+  /* Lichtfunken des Windrads: treiben mit dem Wind über die Wiese und blinken dabei */
+  .gfx.glint { width: calc(var(--H) * .064); margin: calc(var(--H) * -.032); animation: gfx-drift 2.4s ease-out both; }
+  @keyframes gfx-drift {
+    0% { transform: scale(0); opacity: 0; }
+    12% { transform: translate(calc(var(--dx) * .1), calc(var(--dy) * .1)) scale(1.2); opacity: 1; }
+    40% { transform: translate(calc(var(--dx) * .45), calc(var(--dy) * .45)) scale(.7); opacity: .9; }
+    62% { transform: translate(calc(var(--dx) * .68), calc(var(--dy) * .68)) scale(1.1); opacity: 1; }
+    100% { transform: translate(var(--dx), var(--dy)) scale(.4); opacity: 0; }
+  }
+  /* Herzchen des Plüsch-Pinos: winzig, steigt auf */
+  .gfx.heart { width: calc(var(--H) * .054); margin: calc(var(--H) * -.027); animation: gfx-heart 1.7s ease-out both; }
+  .gfx.heart path { fill: #ffcf3a; stroke-width: 1.8; }
+  .gfx.heart .gl { fill: none; stroke: #fffbe0; stroke-width: 1.6; stroke-linecap: round; }
+  @keyframes gfx-heart {
+    0% { transform: scale(.3); opacity: 0; }
+    18% { transform: translateY(calc(var(--H) * -.02)) scale(1.1); opacity: 1; }
+    100% { transform: translate(var(--dx, 0px), calc(var(--H) * -.15)) scale(.85); opacity: 0; }
+  }
+  /* „bling“ am Rand der Sonnenbrille: ein heller Stern blitzt auf */
+  .gfx.bling { width: calc(var(--H) * .075); margin: calc(var(--H) * -.0375); animation: gfx-bling .75s ease-out both; }
+  .gfx.bling path { fill: #fffbe0; stroke: #f2c230; }
+  @keyframes gfx-bling {
+    0% { transform: scale(0) rotate(0deg); opacity: 0; }
+    35% { transform: scale(1.25) rotate(40deg); opacity: 1; }
+    100% { transform: scale(.2) rotate(90deg); opacity: 0; }
+  }
+  /* Fernrohr: Stern, der dreimal aufblinkt, bzw. ein winziges Flugzeug in der Ferne, das ein Stück weiterzieht */
+  .gfx.star { width: calc(var(--H) * .05); margin: calc(var(--H) * -.025); animation: gfx-twinkle 2.3s ease-in-out both; }
+  .gfx.star path { fill: #fffbe0; stroke: #f2c230; }
+  @keyframes gfx-twinkle {
+    0%, 100% { transform: scale(.2); opacity: 0; }
+    15%, 50%, 85% { transform: scale(1.15); opacity: 1; }
+    33%, 68% { transform: scale(.55); opacity: .6; }
+  }
+  .gfx.plane { width: calc(var(--H) * .09); margin: calc(var(--H) * -.0206) calc(var(--H) * -.045); animation: gfx-plane 2.3s linear both; }
+  .gfx.plane::before { inset: -10% -5%; background: radial-gradient(ellipse, rgba(255, 236, 150, .7), rgba(255, 236, 150, 0) 70%); }
+  .gfx.plane svg { transform: scaleX(var(--fl, 1)); }
+  .gfx.plane path { fill: #5d6f88; stroke: none; }
+  .night .gfx.plane path, .dusk .gfx.plane path { fill: #c9d3e6; }
+  @keyframes gfx-plane {
+    0% { opacity: 0; }
+    20%, 75% { opacity: .85; }
+    100% { transform: translateX(var(--dx, 0px)); opacity: 0; }
+  }
+  /* Antwort des Vogels auf das Glöckchen, vom Bildrand: eine Note wie beim Zwitschern (.note) */
+  .gfx.tweet { width: auto; margin: 0; font-size: calc(var(--H) * .075); font-weight: 800; line-height: 1; color: #fff3b8;
+    text-shadow: 0 1px 2px rgba(60, 40, 30, .75), 0 0 1px rgba(60, 40, 30, .9); transform: translate(-50%, -50%); animation: gfx-tweet 1.4s ease-out both; }
+  .gfx.tweet::before { display: none; }
+  @keyframes gfx-tweet {
+    0% { transform: translate(-50%, -50%) scale(.4) rotate(-10deg); opacity: 0; }
+    20% { opacity: 1; }
+    100% { transform: translate(calc(-50% + var(--dx, 8px)), calc(-50% - var(--H) * .12)) scale(1) rotate(12deg); opacity: 0; }
+  }
+  /* Ruhig: nach den Arten, damit es deren Animation ersetzt (gleiche Spezifität, die spätere Regel gewinnt) */
+  .gfx.still { animation: gfx-still 1.4s ease-in-out both; }
+  /* Besuch auf dem Gestell der Hängematte: Schmetterling (BFLY_SVG, Füße unten in der Mitte) und Glühwürmchen. Sie
+     bleiben, solange er döst; .off: Er ist aufgewacht, sie fliegen davon. */
+  .gfx.hbfly { width: calc(var(--ph) * .13); margin: calc(var(--ph) * -.1) 0 0 calc(var(--ph) * -.065); opacity: 1; animation: none; }
+  .gfx.hbfly::before, .gfx.hff::before { display: none; }
+  .gfx.hbfly .bwl, .gfx.hbfly .bwr { transform-box: view-box; transform-origin: 10px 8px;
+    animation: bfw .16s ease-in-out 34 alternate, bfw 1.4s ease-in-out 5.5s infinite alternate; }
+  .gfx.hff { width: calc(var(--H) * .024); height: calc(var(--H) * .024); margin: calc(var(--H) * -.024) 0 0 calc(var(--H) * -.012);
+    border-radius: 50%; background: radial-gradient(circle, #fffde0 30%, #e6f56a 75%); opacity: 1;
+    box-shadow: 0 0 calc(var(--H) * .03) calc(var(--H) * .012) rgba(226, 250, 120, .75);
+    animation: gfx-ffin 2.4s 2.5s ease-out backwards, gfx-ffglow 1.9s 4.9s ease-in-out infinite alternate; }
+  @keyframes gfx-ffin {
+    0% { transform: translate(calc(var(--H) * .12), calc(var(--H) * -.2)); opacity: 0; }
+    50% { transform: translate(calc(var(--H) * -.03), calc(var(--H) * -.07)); opacity: 1; }
+    100% { transform: none; opacity: 1; }
+  }
+  @keyframes gfx-ffglow { to { opacity: .45; box-shadow: 0 0 calc(var(--H) * .015) calc(var(--H) * .004) rgba(226, 250, 120, .5); } }
+  .gfx.hbfly.still, .gfx.hff.still { animation: gfx-in .9s 2.5s ease-out both; }
+  @keyframes gfx-in { from { opacity: 0; } to { opacity: 1; } }
+  .gfx.hbfly.off, .gfx.hff.off { transition: transform .75s ease-in, opacity .75s ease-in; opacity: 0;
+    transform: translate(calc(var(--H) * .14), calc(var(--H) * -.32)); }
+  /* Goldene Hängematte ohne Besuch: Ein Schimmer läuft langsam von Seil zu Seil übers Netz (.gshim), ruhig liegt er
+     still darauf (.gglow). Wo er darin liegt, verdeckt er das Netz: Zu sehen ist der Schimmer an den Seilen und am
+     unteren Rand. */
+  .gt-ham .gshm { opacity: 0; stroke-dasharray: 16 200; stroke-dashoffset: 16; }
+  .gt-ham.gshim .gshm { animation: gshm 5.5s ease-in-out infinite; }
+  @keyframes gshm {
+    0% { stroke-dashoffset: 16; opacity: 0; }
+    8% { opacity: 1; }
+    42% { stroke-dashoffset: -100; opacity: 1; }
+    50%, 100% { stroke-dashoffset: -100; opacity: 0; }
+  }
+  .gt-ham.gglow .gshm { opacity: .55; stroke-dasharray: none; transition: opacity 1.2s; }
+  /* Goldene Blume der Gießkanne (GOLD_FLOWER): etwas größer als die Wiesenblumen, vom Boden aus. Am Bild in der
+     Blume, nicht an einer Klasse: Malt ein Wechsel der Jahreszeit sie neu, ist sie eine gewöhnliche. */
+  .flower svg.gsun { scale: 1.22; transform-origin: 50% 100%; }
+  @media (prefers-reduced-motion: reduce) {
+    .gfx:not(.hbfly):not(.hff) { animation-name: gfx-still !important; }
+    .gfx.hbfly, .gfx.hff { animation: gfx-in .9s 2.5s ease-out both !important; }
+    .gfx.hbfly .bwl, .gfx.hbfly .bwr, .gt-ham .gshm { animation: none !important; }
+    .gfx.off { transition: opacity .5s !important; transform: none !important; }
+  }
   /* Bewegung reduzieren: Aufstellen und Abbauen nur ein- und ausblenden */
   @media (prefers-reduced-motion: reduce) {
     .gt-ham .gpost { animation: none !important; }
@@ -5242,6 +5720,13 @@
   .g-can .gcan [fill="#5fae4a"] { fill: #f2c230; }
   .g-can .gcan [stroke="#8fd16f"] { stroke: #fff2b0; }
   .pour .gcr { transform: rotate(32deg); }
+  /* Goldene Sonnenbrille bei Sonne: Der Lichtreflex auf den Gläsern (dritter Pfad der Brille) wandert einmal hinüber
+     und zurück (.gsheen); ruhig glimmt er nur auf (.gglow, _goldSheen) */
+  .gsheen .shades path:nth-child(3) { animation: gsheen 1.4s ease-in-out; }
+  @keyframes gsheen { 50% { transform: translateX(5.4px); opacity: 1; stroke: #fff6c2; stroke-width: 1.5; } }
+  .gglow .shades path:nth-child(3) { animation: gglow 1.4s ease-in-out; }
+  @keyframes gglow { 50% { opacity: 1; stroke: #fff6c2; stroke-width: 1.5; } }
+  @media (prefers-reduced-motion: reduce) { .gsheen .shades path:nth-child(3) { animation-name: gglow !important; } }
 
   /* Knopf (links neben dem Futterknopf, oben rechts) mit Fortschrittsring, Album */
   .gbtn {
@@ -5659,6 +6144,12 @@
     { k: "cloud", g: 2, t: "Wolke", h: "Tipp eine Wolke an. Sie tröpfelt." },
     { k: "star", g: 2, t: "Stern", h: "Tipp abends oder nachts einen Stern an. Er fällt vom Himmel." },
     { k: "door", g: 2, t: "Tür", h: "Klopf an meine Tür. Bin ich im Bau, linse ich heraus." },
+    { k: "rock", g: 2, t: "Aussichtsstein", h: "Klopf an meinen Stein. Tock, tock: Manchmal linst die Maus dahinter hervor." },
+    { k: "hay", g: 2, t: "Vorrat", h: "Tipp auf meinen Vorrat. Es raschelt, und die Halme fliegen." },
+    { k: "sun", g: 2, t: "Sonne", h: "Tipp die Sonne an. Sie blinzelt und strahlt." },
+    { k: "moon", g: 2, t: "Mond", h: "Tipp den Mond an. Er gähnt." },
+    { k: "chimney", g: 2, t: "Schornstein", h: "Tipp auf meinen Schornstein. Er pafft einen Rauchring.", need: "chimney" },
+    { k: "vac", g: 2, t: "Saugroboter", h: "Tipp den Saugroboter an, wenn er über die Wiese fährt. Er piept.", need: "vac" },
     { k: "wheel", g: 2, t: "Windrad", h: "Stups mein Windrad an. Es dreht sich ganz schnell.", need: "wheel" },
     { k: "yarn", g: 2, t: "Wollknäuel", h: "Stups mein Wollknäuel an. Es kullert davon.", need: "yarn" },
     { k: "visitor", g: 2, t: "Besuch", h: "Tipp Vögelchen, Maus, Frosch oder Schnecke an." },
@@ -5709,7 +6200,18 @@
       sport: "geturnt"
     },
     actNoun: { read: "Lesen", game: "Gameboy", tablet: "Tablet", music: "Musik", paint: "Malen", bubbles: "Seifenblasen" },
-    motif: { blume: "eine Blume", pika: "mich selbst", pino: "{n}", bau: "meinen Bau", flieger: "ein Flugzeug", regenbogen: "einen Regenbogen" },
+    // (kirby, rufus, katzumi ab 0.44: der Freund, der beim Malen zu Besuch war; ihre Namen sind fest, nur Pinos kommt aus friend_name)
+    motif: {
+      blume: "eine Blume",
+      pika: "mich selbst",
+      pino: "{n}",
+      bau: "meinen Bau",
+      flieger: "ein Flugzeug",
+      regenbogen: "einen Regenbogen",
+      kirby: "Kirby",
+      rufus: "Rufus",
+      katzumi: "Katzumi"
+    },
     pino: [
       "{n} war zu Besuch! Wir haben uns mit den Nasen angestupst.",
       "{n} kam vorbei. Zusammen ist alles schöner.",
@@ -5774,6 +6276,17 @@
       "Für mein Nickerchen.",
       "Damit gieße ich die Blumen.",
       "Bimmelt, wenn ich rauskomme."
+    ],
+    // Was der goldene Schatz zusätzlich kann (Stufe 3, seit 0.44), Reihenfolge wie GIFT_ITEMS: steht im Album hinter „golden“
+    gold: [
+      "zieht eine Funkenspur",
+      "wirft Lichtfunken",
+      "Herzchen beim Kuscheln",
+      "blitzt in der Sonne",
+      "entdeckt jedes Mal etwas",
+      "lockt Besuch an",
+      "eine Sonnenblume wächst",
+      "ein Vogel antwortet"
     ],
     wx: {
       sunny: "sonnig",
@@ -6334,6 +6847,38 @@
               stroke="${C.whisk}" stroke-width="1" stroke-linecap="round"/>`).replace(SNOUT, "").replace(NOSE, `<path class="nose" d="M89.3 52.2 q1.7 -.9 3.4 0 q-.4 1.4 -1.7 1.8 q-1.3 -.4 -1.7 -1.8z" fill="${C.nose}" stroke="#b9646e" stroke-width=".5"/>`) + END;
   var cut = (svg, vb) => svg.replace('class="pk" viewBox="0 0 120 100"', `class="pk fri" viewBox="${vb}"`);
   var FRIEND_ICON = { kirby: cut(KIRBY_SVG, "33 8 88 88"), rufus: cut(RUFUS_SVG, "14 3 109 109"), katzumi: cut(KATZUMI_SVG, "37 16 82 82") };
+  var STICK = `<path d="M2.8 13.3 L21.2 10.7 M14.2 11.5 l2.9 -4.3" stroke="${OUT}" stroke-width="3.9" stroke-linecap="round" fill="none"/>
+    <path d="M14.2 11.5 l2.9 -4.3" stroke="#a5743f" stroke-width="2" stroke-linecap="round" fill="none"/>
+    <path d="M2.8 13.3 L21.2 10.7" stroke="#b98a55" stroke-width="2.6" stroke-linecap="round" fill="none"/>
+    <path d="M5.4 12.3 l4.6 -.65 M11.6 12.9 l5 -.7" stroke="#dbb382" stroke-width=".7" stroke-linecap="round" fill="none"/>
+    <path d="M8 13.4 l2.4 -.3" stroke="#8a5c30" stroke-width=".7" stroke-linecap="round" fill="none"/>
+    <ellipse cx="21.3" cy="10.7" rx=".7" ry="1.1" fill="#ecd3a6" transform="rotate(-8 21.3 10.7)"/>
+    <ellipse cx="17.2" cy="7.1" rx=".6" ry=".8" fill="#ecd3a6" transform="rotate(34 17.2 7.1)"/>`;
+  var FEATHER = `<path d="M12 3 Q7.2 8.6 9.2 16.4 Q10.6 20.6 12 21 Q13.4 20.6 14.8 16.4 Q16.8 8.6 12 3Z" fill="#f6f9ff" stroke="${OUT}" stroke-width="1"
+      stroke-linejoin="round"/>
+    <path d="M12 3 Q14.9 8 14.8 16.4 Q13.4 20.6 12 21Z" fill="#bcd9f4"/>
+    <path d="M12 4.6 V21 M12 9 l-2.2 2 M12 12.4 l-2.6 2.2 M12 9.6 l2.4 2 M12 13.2 l2.6 2.2" stroke="#7d9fc4" stroke-width=".7" fill="none" stroke-linecap="round"/>`;
+  var LEAF = `<path d="M12 5.4 Q6 8.4 6.6 14.6 Q7.4 19.6 12 21.2 Q16.6 19.6 17.4 14.6 Q18 8.4 12 5.4Z" fill="#e98a35" stroke="${OUT}" stroke-width="1"
+      stroke-linejoin="round"/>
+    <path d="M12 5.4 Q18 8.4 17.4 14.6 Q16.6 19.6 12 21.2Z" fill="#d36a24"/>
+    <path d="M12 2.6 V20 M12 10 l-3 2 M12 13.6 l-3.2 2 M12 10.6 l3 2 M12 14.2 l3.2 2" stroke="#8a4318" stroke-width=".7" fill="none" stroke-linecap="round"/>`;
+  var TOY_S = { stick: 1.9, dangle: 1.6, reach: 0.56 };
+  var toy = (inner) => `<svg viewBox="0 0 24 24" aria-hidden="true">${inner}</svg>`;
+  var held = (inner, { dy = 0, s = 1, rot = 0, dx = 0 } = {}) => toy(`<g transform="translate(${(-5.6 + dx).toFixed(1)} ${(7.8 + dy).toFixed(1)}) scale(${s.toFixed(2)}) rotate(${rot}) translate(-12 -12)">${inner}</g>`);
+  var DANGLE_X = 47.6;
+  var dangle = (inner) => toy(`<path d="M-6 8.2 Q14 7.4 30 -3.6 Q40 -11 ${DANGLE_X} -14" stroke="${OUT}" stroke-width="2.8" fill="none" stroke-linecap="round"/>
+    <path d="M-6 8.2 Q14 7.4 30 -3.6 Q40 -11 ${DANGLE_X} -14" stroke="#7fbf5a" stroke-width="1.5" fill="none" stroke-linecap="round"/>
+    <g class="fdangle"><path d="M${DANGLE_X} -14 V-4" stroke="#f3ead2" stroke-width=".9" fill="none"/>
+      <g transform="translate(${DANGLE_X} -5.6) scale(${TOY_S.dangle}) translate(-12 -3)">${inner}</g></g>`);
+  var FRIEND_TOY = {
+    stick: toy(STICK),
+    stickPika: held(STICK, { s: TOY_S.stick }),
+    // Rufus ist 0,7-mal so groß wie der Pika, sein Maul sitzt tiefer
+    stickRufus: held(STICK, { dy: 3.4, s: TOY_S.stick / 0.7 }),
+    dangle: { feather: dangle(FEATHER), leaf: dangle(LEAF) },
+    // Katzumi (halb so groß) hat die Beute quer im Maul
+    catch: { feather: held(FEATHER, { dy: 2, s: TOY_S.dangle / 0.6, rot: 76, dx: 5 }), leaf: held(LEAF, { dy: 2, s: TOY_S.dangle / 0.6, rot: 76, dx: 5 }) }
+  };
 
   // src/grafik/besucher.js
   var FRIEND_SVG = [
@@ -6489,7 +7034,8 @@
             { name: "festive", selector: bool, default: true },
             { name: "diary", selector: bool, default: true },
             { name: "diary_house", selector: bool, default: true },
-            { name: "vacation", selector: bool, default: true }
+            { name: "vacation", selector: bool, default: true },
+            { name: "depth", selector: bool, default: true }
           ] },
           group("Schlaf, Wetter und Himmel", "mdi:weather-night", [
             { type: "grid", name: "", schema: [
@@ -6585,6 +7131,70 @@
       <path d="M15 11 L10.8 7.6 L11.4 12.6Z"/><path d="M15 11 L19.4 8.4 L18.6 13.2Z"/>
       <path d="M15 11 L13.2 15.4 M15 11 L16.6 15.2" fill="none" stroke-linecap="round"/>
       <circle cx="15" cy="11" r="1.2"/></g></svg>`;
+  var tuft = (cx, cy, rx, ry, n, t, spitz) => {
+    const P = (a, k) => `${(cx + (rx + k) * Math.cos(a)).toFixed(1)} ${(cy + (ry + k) * Math.sin(a)).toFixed(1)}`;
+    const st = 2 * Math.PI / n;
+    let d = `M${P(-Math.PI / 2, 0)}`;
+    for (let i = 0; i < n; i++) {
+      const a = -Math.PI / 2 + i * st;
+      d += spitz ? ` Q${P(a + st * 0.2, t * 0.9)} ${P(a + st * 0.62, t)} Q${P(a + st * 0.9, t * 0.2)} ${P(a + st, 0)}` : ` Q${P(a + st * 0.5, t * 2)} ${P(a + st, 0)}`;
+    }
+    return `${d}Z`;
+  };
+  var eyes = (xl, xr, y, r, mehr = "") => [xl, xr].map((x) => `<circle cx="${x}" cy="${y}" r="${r}" fill="#2a1a12" ${mehr || 'stroke="none"'}/>`).join("");
+  var FRIEND_FACE = {
+    kirby: `<g stroke="#5a4030" stroke-width=".9" stroke-linejoin="round">
+      <circle cx="6.3" cy="6.6" r="3.1" fill="#e4bf85"/><circle cx="17.7" cy="6.6" r="3.1" fill="#e4bf85"/>
+      <circle cx="6.4" cy="6.8" r="1.5" fill="#f2dcb4" stroke="none"/><circle cx="17.6" cy="6.8" r="1.5" fill="#f2dcb4" stroke="none"/>
+      <path d="${tuft(12, 13.4, 8.5, 7.5, 13, 1.4, true)}" fill="#d9a55a"/>
+      <path d="M9.6 7.6 q.5 1 .1 1.9 M12 7.2 q.4 1 0 2 M14.4 7.6 q.3 1 -.2 1.9" fill="none" stroke="#93602b" stroke-width=".6" stroke-linecap="round"/>
+      <ellipse cx="12" cy="15.9" rx="3.7" ry="2.7" fill="#e9d3ad" stroke="#b8925e" stroke-width=".4"/>
+      <path d="M10.5 14.6 q1.5 -.8 3 0 q-.3 1.4 -1.5 1.7 q-1.2 -.3 -1.5 -1.7z" fill="#3b2218" stroke="none"/>
+      ${eyes(8.3, 15.7, 12.4, 1.25)}</g>`,
+    rufus: `<g stroke="#5a4030" stroke-width=".9" stroke-linejoin="round">
+      <path d="${tuft(12, 12.4, 7.4, 7, 11, 0.9, false)}" fill="#fbf4e4"/>
+      <path d="M5.6 7.4 Q1.6 8.4 2 14 Q2.4 17.4 4.6 17 Q6.6 16.4 6.4 12.4Z" fill="#f1e5cd"/>
+      <path d="M4.9 10 Q3.2 11.4 3.4 14 Q3.7 15.8 4.6 15.6 Q5.6 15 5.4 12.6Z" fill="#2b1c15" stroke="none"/>
+      <path d="M18.4 7.4 Q22.4 8.4 22 14 Q21.6 17.4 19.4 17 Q17.4 16.4 17.6 12.4Z" fill="#f1e5cd"/>
+      <path d="M19.1 10 Q20.8 11.4 20.6 14 Q20.3 15.8 19.4 15.6 Q18.4 15 18.6 12.6Z" fill="#2b1c15" stroke="none"/>
+      <path d="M7.7 9.7 q.5 -1.3 1.2 -.4 q.6 -1.1 1.3 .1 M13.8 9.4 q.7 -1.2 1.3 -.1 q.7 -.9 1.2 .4" fill="none" stroke="#c4a27a" stroke-width=".7" stroke-linecap="round"/>
+      ${eyes(9, 15, 11.7, 1.2)}
+      <ellipse cx="12" cy="15.4" rx="4.3" ry="3.1" fill="#fffaf0" stroke="#cfb994" stroke-width=".5"/>
+      <path d="M10.2 13.9 q1.8 -1 3.6 0 q-.2 1.5 -1.8 1.7 q-1.6 -.2 -1.8 -1.7z" fill="#b38f74" stroke="#8f6e57" stroke-width=".3"/>
+      <path d="M10.6 16.8 q.7 .7 1.4 0 q.7 .7 1.4 0" fill="none" stroke="#8f6e57" stroke-width=".5" stroke-linecap="round"/></g>`,
+    katzumi: `<g stroke="#5a4030" stroke-width=".9" stroke-linejoin="round">
+      <path d="M3.9 11 L5.4 3.4 Q6 2.4 6.9 3.2 L11.2 8Z" fill="#f6c08a"/><path d="M5.6 9 L6.3 5 L8.9 8Z" fill="#f2a6b4" stroke="none"/>
+      <path d="M20.1 11 L18.6 3.4 Q18 2.4 17.1 3.2 L12.8 8Z" fill="#f6c08a"/><path d="M18.4 9 L17.7 5 L15.1 8Z" fill="#f2a6b4" stroke="none"/>
+      <ellipse cx="12" cy="14" rx="9.2" ry="7.2" fill="#ffd9a6"/>
+      <path d="M11.1 7 Q12 6.7 12.9 7 L12.3 11 Q12 11.5 11.7 11Z M8 8.4 Q9.3 7.7 10.5 7.9 L10.4 8.9 Q9.2 8.8 8.2 9.3Z M13.5 7.9 Q14.7 7.7 16 8.4 L15.8 9.3 Q14.8 8.8 13.6 8.9Z"
+        fill="#a9592b" stroke="none"/>
+      ${eyes(8, 16, 13.4, 1.3, 'stroke="#c9d46c" stroke-width=".7"')}
+      <path d="M11.3 15.2 q.7 -.4 1.4 0 q-.2 .7 -.7 .9 q-.5 -.2 -.7 -.9z" fill="#e9919c" stroke="none"/>
+      <path d="M10.8 17 q.6 .6 1.2 0 q.6 .6 1.2 0" fill="none" stroke-width=".5" stroke-linecap="round"/>
+      <path d="M4.6 14.4 l-2.4 -.6 M4.6 15.8 l-2.4 .5 M19.4 14.4 l2.4 -.6 M19.4 15.8 l2.4 .5" fill="none" stroke="#3a2a22" stroke-width=".5" stroke-linecap="round"/></g>`
+  };
+  var face = (k) => `<svg viewBox="0 0 24 24">${FRIEND_FACE[k]}</svg>`;
+  var SUN_FACE = `<svg viewBox="0 0 100 100" aria-hidden="true">
+    <g class="wrays" stroke-width="7" stroke-linecap="round">
+      ${Array.from({ length: 12 }, (_, i) => {
+    const a = i * Math.PI / 6;
+    const p = (r) => `${(50 + Math.sin(a) * r).toFixed(1)} ${(50 - Math.cos(a) * r).toFixed(1)}`;
+    return `<path d="M${p(64)} L${p(i % 2 ? 76 : 84)}"/>`;
+  }).join("")}
+    </g>
+    <g fill="none" stroke="#b46a12" stroke-width="5" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M25 42 l13 6 l-13 6"/><path d="M75 42 l-13 6 l13 6"/><path d="M37 66 q13 11 26 0"/>
+    </g>
+    <ellipse cx="22" cy="63" rx="7" ry="4.5" fill="#ff9a6a" opacity=".55"/><ellipse cx="78" cy="63" rx="7" ry="4.5" fill="#ff9a6a" opacity=".55"/>
+  </svg>`;
+  var MOON_FACE = `<svg viewBox="0 0 100 100" aria-hidden="true">
+    <g fill="none" stroke-linecap="round">
+      <path d="M26 44 q9 8 18 0 M56 44 q9 8 18 0" stroke="#fffbe6" stroke-opacity=".8" stroke-width="10"/>
+      <path d="M26 44 q9 8 18 0 M56 44 q9 8 18 0" stroke="#5f5a80" stroke-width="5"/>
+    </g>
+    <ellipse class="wyawn" cx="50" cy="68" rx="11" ry="13.5" fill="#fffbe6" opacity=".8"/>
+    <ellipse class="wyawn" cx="50" cy="68.5" rx="8" ry="10.5" fill="#5f5a80"/>
+  </svg><b class="wz">z</b><b class="wz">z</b>`;
   var DREAM = {
     lz: FOOD.lz.svg,
     klee: FOOD.klee.svg,
@@ -6609,7 +7219,10 @@
       <path d="M18.6 10.4 L22 11.6 L18.8 12.8Z" fill="#f2b53c"/></svg>`,
     note: `<svg viewBox="0 0 24 24"><path d="M9 18 V6.2 L19 4 V15.6" stroke="#5a4030" stroke-width="1.7" fill="none" stroke-linejoin="round"/>
       <ellipse cx="6.8" cy="18" rx="2.8" ry="2.1" fill="#5a4030"/><ellipse cx="16.8" cy="15.8" rx="2.8" ry="2.1" fill="#5a4030"/></svg>`,
-    bfly: BFLY_SVG(BFLY_COLORS[0])
+    bfly: BFLY_SVG(BFLY_COLORS[0]),
+    kirby: face("kirby"),
+    rufus: face("rufus"),
+    katzumi: face("katzumi")
   };
 
   // src/grafik/beschaeftigungen.js
@@ -6667,6 +7280,7 @@
       </g></g>
     </g></g></svg>`;
   };
+  var FRIEND_PIC = (k) => `<g transform="translate(19.2 34.8) scale(.6)">${FRIEND_FACE[k]}</g>`;
   var EASEL_MOTIF = {
     blume: ["#f28fb1", `<path d="M24 47 V37" stroke="#4f8a3a" stroke-width="1.2"/>
       <ellipse cx="26.6" cy="42.2" rx="2.6" ry="1" fill="#5fae4a" transform="rotate(-30 26.6 42.2)"/>
@@ -6691,7 +7305,13 @@
     regenbogen: ["#e8584e", ["#e8584e", "#f28c28", "#f6c945", "#5fae4a", "#4f86c6"].map((c, i) => {
       const r = 17 - i * 1.6;
       return `<path d="M${30 - r} 41 A${r} ${r} 0 0 1 ${30 + r} 41" stroke="${c}" stroke-width="1.7" fill="none"/>`;
-    }).join("")]
+    }).join("")],
+    // Ab 0.44: Ist Kirby, Rufus oder Katzumi zu Besuch, malt er den Gast (_paintMotif), an der Stelle von Pinos Kopf.
+    // Die Köpfe sind die aus der Traumblase (FRIEND_FACE, 24 × 24), auf 0,6 verkleinert. Die Namen stehen als Variante
+    // im Tagesplan ("…:paint:katzumi") und dürfen höchstens 7 Zeichen haben: Der Helfer fasst 255 Zeichen.
+    kirby: ["#d9a55a", FRIEND_PIC("kirby")],
+    rufus: ["#f1e5cd", FRIEND_PIC("rufus")],
+    katzumi: ["#f6c08a", FRIEND_PIC("katzumi")]
   };
   var EASEL_SVG = (motif) => `
     <svg viewBox="0 0 60 80" aria-hidden="true">
@@ -6777,6 +7397,13 @@
         <path d="M19 17 q7 -6 15 -3"/><path d="M41 29 q5 4 4 10"/><path d="M19 36 q3 5 9 6"/>
         <circle cx="42" cy="19" r="1.3" fill="#c6d2df" stroke="none"/><circle cx="30" cy="30" r="1.2" fill="#c6d2df" stroke="none"/>
       </g>
+    </svg>`;
+  var LEAF_SVG = `<svg viewBox="0 0 64 22" aria-hidden="true">
+      <path d="M2 17.4 Q10 14.2 21 15.4" stroke="#4f8a3a" stroke-width="2.2" fill="none" stroke-linecap="round"/>
+      <path d="M17 15.6 Q22 4.4 40 3.2 Q57 2.6 62 11.6 Q58.6 15.6 52.4 15 Q48.6 19.6 41.6 17.4 Q35.4 20.8 29 17.6 Q22.4 19.4 17 15.6Z"
+            fill="#5fae4a" stroke="#3f7f31" stroke-width="1.4" stroke-linejoin="round"/>
+      <path d="M20 14.6 Q39 6.4 59 11" stroke="#8fd16f" stroke-width="1.1" fill="none" stroke-linecap="round"/>
+      <ellipse cx="33" cy="12" rx="2" ry="1.1" fill="#dff1ff" opacity=".85"/><ellipse cx="47.6" cy="9.4" rx="1.6" ry=".9" fill="#dff1ff" opacity=".8"/>
     </svg>`;
 
   // src/grafik/tagebuch.js
@@ -7241,6 +7868,7 @@
         this._setX(this._g.home, true);
         this._inside = true;
         this._pose("sleep", 0);
+        this._bedMark();
       } else if (this._inside) {
         this._inside = false;
         this._pose("out", 0);
@@ -7248,16 +7876,20 @@
     }
     async _goSleep() {
       const p = this._el.pika;
-      this._say("*gähn*");
-      p.classList.add("yawning");
-      await this._wait(2200);
-      p.classList.remove("yawning");
+      if (this._ritualDue()) await this._bedRitual();
+      else {
+        this._say("*gähn*");
+        p.classList.add("yawning");
+        await this._wait(2200);
+        p.classList.remove("yawning");
+      }
       if (!this._inside) await this._enterBurrow(0.7, true);
       await this._wait(900);
       this._face(1);
       this._el.pika.classList.add("sleeping");
       this._pose("sleep", 1400);
       this._asleep = true;
+      this._bedMark();
       this._updateSky();
       this._giftScene();
     }
@@ -7287,8 +7919,10 @@
       if (!(c.m & b)) this._planOp({ t: "mem", d: c.d, b });
     }
     // Was er an diesem Pika-Tag erlebt hat, träumt er dreimal so oft. Schläft er schon vor 4 Uhr ein, ist es heute;
-    // wacht er nach 4 Uhr noch nicht gleich auf, gilt noch der Vortag.
-    _dreamSvg() {
+    // wacht er nach 4 Uhr noch nicht gleich auf, gilt noch der Vortag. Die Freunde (pino, kirby, rufus, katzumi) haben
+    // je ein eigenes Bild in DREAM: Wer da war, von dem träumt er. nur (Vorschau): genau dieses Motiv.
+    _dreamSvg(nur = null) {
+      if (typeof nur === "string" && Object.keys(DREAM).includes(nur)) return DREAM[nur];
       const opts = [[1, "lz"], [1, "heart"], [0.6, "klee"]];
       const c = this._plan?.cute;
       if (c && c.d >= pikaDay(this._haNow()) - 1) MEM_BITS.forEach((k, i) => c.m & 1 << i && DREAM[k] && opts.push([3, k]));
@@ -7319,7 +7953,7 @@
       if (r < 0.4) {
         const think = this._el.think;
         clearTimeout(this._thinkT);
-        think.innerHTML = this._dreamSvg();
+        think.innerHTML = this._dreamSvg(dbg);
         think.classList.add("dream");
         try {
           this._bubble(think, true);
@@ -7335,7 +7969,7 @@
       } else if (r < 0.6) {
         this._cls("stw", 550, true);
       } else if (r < 0.75) {
-        this._say(pick(["mip…", "mmh…", "zzz… Löwenzahn…", ...this._cfg.friend ? [`${this._frName()}…`] : [], "hihi…"]), 1800);
+        this._say(pick(["mip…", "mmh…", "zzz… Löwenzahn…", ...this._cfg.friend ? [`${this._frMumble()}…`] : [], "hihi…"]), 1800);
       } else if (r < 0.85) {
         this._cls("mlem", 950, true);
       }
@@ -8541,9 +9175,9 @@
     _poopsSeen() {
       const res = this._poops();
       const key = this._poopPending?.key;
-      const held = key && this._stats ? res.piles.find((p) => this._pileKey(p) === key) : null;
-      if (!held) return res;
-      const piles = res.piles.filter((p) => p !== held);
+      const held2 = key && this._stats ? res.piles.find((p) => this._pileKey(p) === key) : null;
+      if (!held2) return res;
+      const piles = res.piles.filter((p) => p !== held2);
       return { piles, clean: poopClean(piles, this._now()) };
     }
     _pileKey(p) {
@@ -9137,7 +9771,7 @@
       if (m.lane) minX = Math.max(minX, this._laneRange(mw)[0]);
       const yW = m.lane ? yG - this._H * LANE_DY : yG;
       const topY = rock.top0 + 13.5 * rock.ku;
-      const face = (d) => (m.dir = d, el.classList.toggle("left", d < 0));
+      const face2 = (d) => (m.dir = d, el.classList.toggle("left", d < 0));
       const move = (x, y, ms = 0, ease = "ease-out") => {
         el.style.transition = ms ? `transform ${ms}ms ${ease}` : "none";
         el.style.transform = this._critXf(m, x, y);
@@ -9153,7 +9787,7 @@
         if (m.scared) throw FLEE;
       };
       const run = async (x, speed = 1, y = yG) => {
-        face(x >= m.x ? 1 : -1);
+        face2(x >= m.x ? 1 : -1);
         const ms = Math.hypot(x - m.x, y - m.y) / (this._H * 1.1 * speed * this._critPace(m, y)) * 1e3;
         pose("run", true);
         move(x, y, ms, "linear");
@@ -9181,7 +9815,7 @@
             await step(rnd(600, 1100));
             pose("look", false);
           } else {
-            face(-m.dir);
+            face2(-m.dir);
             await step(rnd(400, 800));
           }
         }
@@ -9190,7 +9824,7 @@
         try {
           if (kind === "top") {
             const x = rock.l + pk2.x * rock.ku;
-            face(this._x >= x ? 1 : -1);
+            face2(this._x >= x ? 1 : -1);
             move(x, topY + mh * 1.1);
             await step(60);
             move(x, topY + mh * 0.2, 450);
@@ -9201,7 +9835,7 @@
             move(x, topY + mh * 1.1, 260, "ease-in");
             await step(300);
           } else {
-            face(-1);
+            face2(-1);
             move(hideX, yG);
             await step(60);
             move(peekX, yG, 500);
@@ -9216,7 +9850,7 @@
               this._noticeCritter(m.x, false);
               await lookAround(2);
               if (Math.random() < 0.8) {
-                face(this._x >= m.x ? 1 : -1);
+                face2(this._x >= m.x ? 1 : -1);
                 pose("stand", true);
                 await step(rnd(1200, 2400));
                 pose("stand", false);
@@ -9233,7 +9867,7 @@
               await step(rnd(300, 900));
             }
             m.visible = false;
-            face(1);
+            face2(1);
             move(hideX, yG, 350);
             await step(400);
           }
@@ -9248,7 +9882,7 @@
           this._peep(x, m.y - mh * 1.2 * this._critS(m, m.y), "piep!");
           if (kind === "top") move(x, topY + mh * 1.1, 180, "ease-in");
           else {
-            face(1);
+            face2(1);
             pose("run", true);
             const dash = async (tx, ty = yG) => {
               const ms = Math.hypot(tx - m.x, ty - m.y) / (this._H * 2 * this._critPace(m, ty)) * 1e3;
@@ -9295,7 +9929,7 @@
         maxX = Math.max(minX, Math.min(maxX, r));
       }
       const yW = f2.lane ? yG - this._H * LANE_DY : yG;
-      const face = (d) => (f2.dir = d, el.classList.toggle("left", d < 0));
+      const face2 = (d) => (f2.dir = d, el.classList.toggle("left", d < 0));
       const move = (x, ms = 0, y = f2.y) => {
         el.style.transition = ms ? `transform ${ms}ms linear` : "none";
         el.style.transform = this._critXf(f2, x, y);
@@ -9314,7 +9948,7 @@
         while (Math.abs(x - f2.x) > 1) {
           const d = clamp(x - f2.x, -L, L);
           const k = Math.abs(d) / L;
-          face(d > 0 ? 1 : -1);
+          face2(d > 0 ? 1 : -1);
           const ms = (fast ? 240 : 320) + k * 90;
           el.style.setProperty("--hd", `${ms}ms`);
           el.style.setProperty("--fh", `${-Math.round(40 + 80 * k)}%`);
@@ -9353,7 +9987,7 @@
                 this._croak(f2);
                 await step(1050);
               }
-            } else if (act === "turn") face(-f2.dir);
+            } else if (act === "turn") face2(-f2.dir);
             else if (act === "zap") {
               el.classList.add("zap");
               await step(400);
@@ -9431,7 +10065,7 @@
       s.lane = this._critLane(pk2, minX, door, sw);
       if (s.lane) minX = Math.min(Math.max(minX, this._laneRange(sw)[0]), door);
       const yW = s.lane ? yG - this._H * LANE_DY : yG;
-      const face = (d) => (s.dir = d, el.classList.toggle("left", d < 0));
+      const face2 = (d) => (s.dir = d, el.classList.toggle("left", d < 0));
       const put = (x, ms = 0, y = s.y) => {
         el.style.transition = ms ? `transform ${ms}ms linear` : "none";
         el.style.transform = this._critXf(s, x, y);
@@ -9479,7 +10113,7 @@
       };
       const crawl = async (x, y = s.y) => {
         while (Math.abs(x - s.x) > 1 || Math.abs(y - s.y) > 0.5) {
-          if (Math.abs(x - s.x) > 1) face(x > s.x ? 1 : -1);
+          if (Math.abs(x - s.x) > 1) face2(x > s.x ? 1 : -1);
           const ms = Math.hypot(x - s.x, y - s.y) / (v * this._critPace(s, y)) * 1e3;
           el.classList.add("crawl");
           put(x, ms, y);
@@ -9964,6 +10598,7 @@
       if (this._jumpIn(S)) {
         this._inside = false;
         this._lift = 0;
+        this._lane = 0;
         this._pose("out", 0);
         this._setX(x, true);
         await this._wait(60);
@@ -10478,6 +11113,7 @@
       const p = this._el.pika;
       if (this._jumpIn(S)) {
         this._lift = 0;
+        this._lane = 0;
         this._setX(this._g.home, true);
         this._inside = true;
         this._pose("hidden", 0);
@@ -10713,11 +11349,17 @@
       }
       await this._wait(600);
     }
-    // Motiv aus festen Zahlen u, u2: Blume, Selbstbildnis, Bau, Regenbogen; Pino, wenn er da ist (sonst selten);
-    // Flieger, wenn einer fliegt
+    // Motiv aus festen Zahlen u, u2: Blume, Selbstbildnis, Bau, Regenbogen; der Freund, der gerade da ist (Pino, Kirby,
+    // Rufus oder Katzumi; ohne Besuch selten Pino); Flieger, wenn einer fliegt. Die Liste ist so lang und so geordnet wie
+    // bis 0.43 (dort stand an der Stelle des Gasts immer 'pino'): Dieselbe Zahl u trifft auf allen Geräten dieselbe
+    // Stelle, auch auf einem, das noch die alte Karte zeigt. _dbgMotif (Vorschau): einmal genau dieses Motiv.
     _paintMotif(u, u2) {
+      const dbg = this._dbgMotif;
+      this._dbgMotif = null;
+      if (dbg && hasKey(EASEL_MOTIF, dbg)) return dbg;
       const m = ["blume", "pika", "bau", "regenbogen"];
-      if (this._fr || u2 < 0.15) m.push("pino");
+      const gast = this._fr?.kind;
+      if (this._fr || u2 < 0.15) m.push(gast && hasKey(EASEL_MOTIF, gast) ? gast : "pino");
       if ([...this._planes.values()].some((pl) => pl.show && !pl.gone)) m.push("flieger", "flieger");
       return m[Math.floor(u * m.length)];
     }
@@ -11048,7 +11690,7 @@
 
   // src/karte/bausteine.js
   var Bausteine = class {
-    // lane (Prototyp Tiefe): 1 = hintere Spur. Alle anderen Wege führen auf die vordere Spur zurück.
+    // lane (Tiefe): 1 = hintere Spur. Alle anderen Wege führen auf die vordere Spur zurück.
     // back: rückwärts, er dreht sich nicht in Laufrichtung (ein paar Schritte vom Bild zurücktreten)
     async _walkTo(x, speed = 1, steady = false, lane = 0, back = false) {
       const { pW, xR } = this._g;
@@ -11153,7 +11795,7 @@
     _sy(f2) {
       return this._Hs - this._H + this._H * f2;
     }
-    // Prototyp Tiefe (depth: true): Höhe der hinteren Spur über der Bodenlinie, sonst 0
+    // Tiefe (depth, seit 0.44 Standard): Höhe der hinteren Spur über der Bodenlinie, sonst 0
     _laneDy() {
       return this._cfg.depth && this._lane && !(this._lift > 0) ? this._H * LANE_DY : 0;
     }
@@ -11435,6 +12077,7 @@
         return;
       }
       this._happy();
+      if (this._ritOn) return this._interrupt();
       if (p.classList.contains("tv")) p.classList.remove("tv");
       if (p.classList.contains("doze")) {
         p.classList.remove("doze");
@@ -11745,7 +12388,10 @@
       if (this._asleep) return this._sleepTouch("stroke");
       this._blush(2e3);
       if (this._petFree()) this._touchNext("stroke");
-      else this._cls("fluffy", 850, true);
+      else {
+        this._cls("fluffy", 850, true);
+        if (this._ritOn) this._interrupt();
+      }
     }
     async _stroke() {
       const p = this._el.pika;
@@ -11833,7 +12479,8 @@
       });
     }
     // ---------- Die Welt antwortet ----------
-    // Ein Tipp auf Blume, Wolke, Stern, Tür, Windrad oder Wollknäuel bekommt eine kleine Antwort. Alles bleibt auf diesem
+    // Ein Tipp auf Blume, Wolke, Stern, Tür, Windrad oder Wollknäuel bekommt eine kleine Antwort, seit 0.44 auch einer auf
+    // Aussichtsstein, Vorrat, Sonne, Mond, Schornstein und Saugroboter. Alles bleibt auf diesem
     // Gerät: Nichts davon steht im Zustand oder im Tagesplan, nichts wird in die Helfer geschrieben. Die Ziele bekommen
     // keine eigenen Tippflächen (sie lägen über Pika, Häufchen und Besuchern und stünden _tapBelow im Weg): Der Klick,
     // den sonst niemand wollte, kommt an der Szene an (_onLookAt) und wird hier nach Rechtecken gesucht. Was eine
@@ -11847,30 +12494,82 @@
       return stack.some((el) => el.matches?.(".mtns *")) ? 1 : 2;
     }
     // Flächen der antippbaren Dinge in px der Szene, in Rangfolge und mit Tipp-Rand (worldPick). sky: was die Stelle
-    // vom Himmel zeigt (_skyAt). Wolken zählen vor freiem Himmel und vor den Bergen, Sterne nur vor freiem Himmel.
+    // vom Himmel zeigt (_skyAt). Wolken zählen vor freiem Himmel und vor den Bergen, Sterne, Sonne und Mond nur vor
+    // freiem Himmel.
+    // Die Dinge seit 0.44 (Saugroboter, Vorrat, Aussichtsstein, Schornstein, Sonne, Mond) stehen zweimal in der Liste:
+    // mit ihrer gemalten Fläche (rect) an ihrem Platz in der Rangfolge, und ganz hinten noch einmal mit ihrem Hof
+    // (worldHalo: mindestens 40 px, auch wo die Zeichnung kleiner ist). So nimmt der Hof keinem anderen Ziel einen Tipp
+    // weg: Ein Stern neben dem Mond, eine Blume neben dem Stein behalten ihre Fläche.
     _worldZones(sky) {
       const sc = this._el.scene;
       const sr = sc.getBoundingClientRect();
       const Z = [];
+      const halo = [];
       const add = (k, el, pad) => {
         const r = el.getBoundingClientRect();
         if (!r.width && !r.height) return;
         Z.push({ k, el, l: r.left - sr.left - pad, t: r.top - sr.top - pad, r: r.right - sr.left + pad, b: r.bottom - sr.top + pad, pad });
       };
+      const thing = (k, l, t, r, b, el = null) => {
+        if (!(r > l && b > t)) return;
+        const rect = { l, t, r, b };
+        Z.push({ k, el, l, t, r, b, pad: 0, rect });
+        halo.push({ k, el, ...worldHalo(l, t, r, b, 4), pad: 0, rect });
+      };
+      const g = this._g;
+      const V = this._sigVac;
+      if (V?.el && !V.el.classList.contains("out")) {
+        const x = this._sigVacNow(V);
+        if (x + V.w > 0 && x < this._W) thing("vac", x, V.top, x + V.w, V.top + V.w * (18 / 44), V.el);
+      }
       const E = this._gtEls;
       if (E?.has(0)) add("yarn", E.get(0), 8);
       if (E?.has(1)) add("wheel", E.get(1), 4);
       if (!sc.classList.contains("snowcover")) {
         for (const f2 of this._flowers) if (!f2.el.classList.contains("picked")) add("flower", f2.el, 6);
       }
-      const { hole } = this._g;
+      const S = this._areal().stash;
+      if (S && g.bur) thing("hay", g.hayL, g.bur.base + S.top * g.bur.u, g.hayR, g.gy);
+      else {
+        const r = this._el.hay?.getBoundingClientRect?.();
+        if (r && (r.width || r.height)) thing("hay", r.left - sr.left, r.top - sr.top, r.right - sr.left, r.bottom - sr.top, this._el.hay);
+      }
+      const K2 = g.rock;
+      if (K2?.ku) thing("rock", K2.l + 6 * K2.ku, K2.top0 + 12.5 * K2.ku, K2.l + 95 * K2.ku, g.gy, this._el.rock);
+      const C2 = CHIMNEY[this._arealKey];
+      if (C2 && g.bur) thing("chimney", g.bur.l + C2.x1 * g.bur.u, g.bur.base + C2.top * g.bur.u, g.bur.l + C2.x2 * g.bur.u, g.bur.base + C2.bot * g.bur.u);
+      const { hole } = g;
       Z.push({ k: "door", l: hole.l, t: hole.top, r: hole.r, b: hole.lip, pad: 0 });
-      if (!sky) return Z;
+      if (!sky) return Z.concat(halo);
+      if (sky !== 1) {
+        for (const k of ["sun", "moon"]) {
+          const b = this._skyBody(k, sr);
+          if (b) thing(k, ...b, this._el[k]);
+        }
+      }
       if (sky !== 1 && (sc.classList.contains("night") || sc.classList.contains("dusk"))) {
         for (const el of this._el.starEls) if (!el._fell && Number(getComputedStyle(el).opacity) > 0.25) add("star", el, 13);
       }
       for (const el of this._el.clouds) if (el.classList.contains("on")) add("cloud", el, 5);
-      return Z;
+      return Z.concat(halo);
+    }
+    // Sonne ('sun') oder Mond ('moon'), wo sie gerade wirklich am Himmel stehen (auch mitten im Gleiten): [l, t, r, b]
+    // in px der Szene. null, wenn sie nicht zu sehen sind: ausgeblendet (dichte Wolken, Nebel, Gewitter, Neumond, unter
+    // dem Horizont), hinter Hügeln, Bau, Stein oder Bergen, oder mit der Mitte hinter einer Wolke. Nachgesehen wird in
+    // der Mitte der Scheibe, nicht an der Tippstelle: Ihr Hof reicht über den Hügelkamm, hinter dem sie steht.
+    _skyBody(k, sr) {
+      const el = this._el[k];
+      const r = el?.getBoundingClientRect?.();
+      if (!r?.width || !(Number(getComputedStyle(el).opacity) > 0.25)) return null;
+      const cx = r.left + r.width / 2;
+      const cy = r.top + r.height / 2;
+      if (this._skyAt({ clientX: cx, clientY: cy }) !== 2) return null;
+      for (const c of this._el.clouds) {
+        if (!c.classList.contains("on")) continue;
+        const q = c.getBoundingClientRect();
+        if (cx >= q.left && cx <= q.right && cy >= q.top && cy <= q.bottom) return null;
+      }
+      return [r.left - sr.left, r.top - sr.top, r.right - sr.left, r.bottom - sr.top];
     }
     // Hat er gerade nichts vor, das ein Blick oder ein „oh!“ stören könnte?
     _calm() {
@@ -11962,8 +12661,146 @@
         this._peep(cx, z.t + pad + 2, "surr!");
       } else if (z.k === "yarn") {
         if (!this._yarnTap(z.el, cx)) return;
+      } else if (z.k === "rock") {
+        const R2 = z.rect;
+        this._peep(cx, R2.t + (R2.b - R2.t) * 0.25, "tock, tock");
+        if (!this._rockPeek(calm)) this._pebble(R2, calm);
+      } else if (z.k === "hay") {
+        const R2 = z.rect;
+        if (!calm && z.el) this._wag(z.el, { scale: ["1 1", "1.06 .9", ".97 1.05", "1 1"] }, 420);
+        this._peep(cx, R2.t, "raschel!");
+        this._stalks(R2, calm);
+        this._bloomHop(calm);
+      } else if (z.k === "sun" || z.k === "moon") {
+        this._skyFace(z.k, z.el, calm);
+      } else if (z.k === "chimney") {
+        const R2 = z.rect;
+        if (!this._smokeRing(calm)) return;
+        this._peep(R2.r + (R2.r - R2.l), R2.t + (R2.b - R2.t) * 0.7, "paff!");
+      } else if (z.k === "vac") {
+        const el = z.el;
+        el.classList.remove("wbeep");
+        void el.offsetWidth;
+        el.classList.add("wbeep");
+        clearTimeout(this._wbeepT);
+        this._wbeepT = setTimeout(() => el.classList.remove("wbeep"), 700);
+        this._peep(cx, z.rect.t, "piep!");
       } else return;
       this._found(z.k);
+    }
+    // Die Maus linst hinter dem Aussichtsstein hervor: ein eigenes Bild der Maus für knapp zwei Sekunden, nicht der
+    // Besuch nach der Uhr. this._mouse bleibt frei (daran hängen der Plan der Besucher, _watchMouse und ihr Tippziel),
+    // das Bild fängt keine Tipps und ist kein Knopf (ein Flugzeug reichte ihm sonst seinen Tipp durch, _tapBelow).
+    // Sie kommt nur, wenn gerade kein Besucher da ist, es nicht regnet und der Pika nicht oben sitzt. → false: kommt nicht
+    _rockPeek(calm) {
+      const busy = () => CRIT_KINDS.some((k) => this[`_${k}`]);
+      if (this._wpeek) {
+        this._wpeek.classList.add("twitch");
+        setTimeout(() => this._wpeek?.classList.remove("twitch"), 450);
+        return true;
+      }
+      if (!this._g || this._lift > 0 || ["lookout", "hopDown"].includes(this._action)) return false;
+      if (busy() || !this._critterWeather("mouse")) return false;
+      const { rock, gy } = this._g;
+      const mw = this._H * 0.15;
+      const y = gy - this._H * 0.022;
+      const edge = rock.l + 7 * rock.ku;
+      const at = (k) => `translate(${(edge + mw * k).toFixed(1)}px, ${y.toFixed(1)}px)`;
+      const el = document.createElement("div");
+      el.className = `mouse left wpeek${calm ? " calm" : ""}`;
+      el.innerHTML = `<div class="mw"><div class="mf"><div class="mb">${MOUSE_SVG}</div></div></div>`;
+      el.style.zIndex = String(BZ.maus);
+      el.style.transform = at(calm ? 0.1 : 0.75);
+      this._el.mice.appendChild(el);
+      this._wpeek = el;
+      const T = [];
+      const end = () => {
+        T.forEach(clearTimeout);
+        el.remove();
+        if (this._wpeek === el) this._wpeek = null;
+      };
+      const step = (ms, fn) => T.push(setTimeout(() => busy() ? end() : fn(), ms));
+      if (!calm) {
+        step(30, () => {
+          el.style.transition = "transform .4s ease-out";
+          el.style.transform = at(0.1);
+        });
+        step(1500, () => {
+          el.style.transition = "transform .3s ease-in";
+          el.style.transform = at(0.75);
+        });
+      }
+      step(600, () => el.classList.add("sniff"));
+      step(1300, () => el.classList.remove("sniff"));
+      step(1900, end);
+      return true;
+    }
+    // Ein Kiesel hüpft vom Fuß des Steins ein Stück über die Wiese (Bewegung reduzieren: Er blinkt nur auf)
+    _pebble(R2, calm) {
+      const H = this._H;
+      const el = document.createElement("span");
+      el.className = `wpeb${calm ? " calm" : ""}`;
+      el.style.left = `${(R2.l + (R2.r - R2.l) * 0.1).toFixed(1)}px`;
+      el.style.top = `${(this._g.gy - H * 0.035).toFixed(1)}px`;
+      el.style.setProperty("--px", `${(-H * rnd(0.13, 0.2)).toFixed(1)}px`);
+      this._el.fx.appendChild(el);
+      setTimeout(() => el.remove(), 850);
+    }
+    // Halme fliegen aus dem Vorrat auf (R: seine Fläche). Bewegung reduzieren: Sie blinken an ihrer Stelle auf.
+    _stalks(R2, calm) {
+      const { pH } = this._g;
+      const w = R2.r - R2.l;
+      const h = R2.b - R2.t;
+      for (let i = 0; i < 5; i++) {
+        const el = document.createElement("span");
+        el.className = `wstalk${calm ? " calm" : ""}`;
+        el.style.left = `${(R2.l + w * rnd(0.2, 0.8)).toFixed(1)}px`;
+        el.style.top = `${(R2.t + h * rnd(0.35, 0.7)).toFixed(1)}px`;
+        el.style.setProperty("--px", `${(rnd(-0.16, 0.16) * pH).toFixed(1)}px`);
+        el.style.setProperty("--py", `${(rnd(-0.22, -0.09) * pH).toFixed(1)}px`);
+        el.style.setProperty("--rot", `${rnd(-200, 200).toFixed(0)}deg`);
+        el.style.setProperty("--r0", `${rnd(-40, 40).toFixed(0)}deg`);
+        el.style.animationDelay = `${i * 50}ms`;
+        this._el.fx.appendChild(el);
+        setTimeout(() => el.remove(), 950 + i * 50);
+      }
+    }
+    // Eine der Blüten im Vorrat hüpft kurz (Heuhaufen: zwei Kreise je Blüte in .hayb; Nische: ein <g> je Blüte in
+    // .stashb). Nur die Zeichnung bewegt sich, gezählt wird nichts. → false: Es liegt keine da.
+    _bloomHop(calm) {
+      const n = this._blooms?.length || 0;
+      if (!n) return false;
+      const i = Math.floor(Math.random() * n);
+      const S = this._areal().stash;
+      const els = S ? [this._el.burrow.querySelectorAll(".stashb g")[i]] : [...this._el.hay.querySelectorAll(".hayb circle")].slice(2 * i, 2 * i + 2);
+      const dy = S ? 2.6 : 5.5;
+      const frames = calm ? { opacity: [1, 0.25, 1] } : { translate: ["0 0", `0 ${-dy}px`, "0 0", `0 ${(-dy * 0.3).toFixed(1)}px`, "0 0"] };
+      for (const el of els) if (el) this._wag(el, frames, calm ? 600 : 520);
+      return true;
+    }
+    // Sonne: kneift die Augen zusammen und strahlt einmal. Mond: gähnt, ein kleines „z z“ steigt auf. Das Gesicht hängt
+    // für anderthalb Sekunden an der Scheibe selbst und steht so hinter Wolken, Hügeln und Bergen wie sie.
+    _skyFace(k, el, calm) {
+      el.querySelector(".wface")?.remove();
+      const f2 = document.createElement("i");
+      f2.className = `wface w${k}${calm ? " calm" : ""}`;
+      f2.innerHTML = k === "sun" ? SUN_FACE : MOON_FACE;
+      el.appendChild(f2);
+      setTimeout(() => f2.remove(), 1700);
+    }
+    // Rauchring über dem Schornstein, in der Ebene des Rauchs (hinter Leiste und Blasen) und in Einheiten der Bau-Grafik.
+    // Ein eigenes Element neben .smoke: Dessen Regeln (Dauerschleife bei Kälte, Stillstand mit „Bewegung reduzieren“)
+    // gelten für ihn nicht. → false: Dieser Bau hat keinen Schornstein.
+    _smokeRing(calm) {
+      const C2 = CHIMNEY[this._arealKey];
+      const svg = this._el.lights.querySelector("svg");
+      if (!C2 || !svg) return false;
+      const el = document.createElementNS("http://www.w3.org/2000/svg", "ellipse");
+      el.setAttribute("class", `wring${calm ? " calm" : ""}`);
+      for (const [a, v] of [["cx", C2.cx], ["cy", C2.cy], ["rx", 3.4], ["ry", 1.5]]) el.setAttribute(a, v);
+      svg.appendChild(el);
+      setTimeout(() => el.remove(), 1700);
+      return true;
     }
     // Kurzes Wackeln über die Einzel-Eigenschaften rotate bzw. scale: Sie legen sich über die laufende Animation des
     // Elements (Schaukeln, Ziehen), statt deren transform zu ersetzen. Kennt ein alter Browser sie nicht, bleibt es aus.
@@ -11999,7 +12836,7 @@
     // Auspacken). → true, wenn es gerollt ist
     _yarnTap(el, x) {
       const flying = (a) => !(typeof CSSAnimation !== "undefined" && a instanceof CSSAnimation) && !(typeof CSSTransition !== "undefined" && a instanceof CSSTransition);
-      if (["giftYarn", "giftHeader"].includes(this._action) || el.getAnimations?.().some(flying)) return false;
+      if (["giftYarn", "giftHeader", "pounceFriend"].includes(this._action) || el.getAnimations?.().some(flying)) return false;
       const { fMin, fMax } = this._g;
       const W = this._W;
       const from = this._giftX(0);
@@ -12014,7 +12851,7 @@
       el.style.left = `${to.toFixed(1)}px`;
       el.querySelector("svg").style.transform = `rotate(${this._yarnRot.toFixed(0)}deg)`;
       clearTimeout(this._yarnT);
-      this._yarnT = setTimeout(() => !["giftYarn", "giftHeader"].includes(this._action) && (el.style.transition = ""), 950);
+      this._yarnT = setTimeout(() => !["giftYarn", "giftHeader", "pounceFriend"].includes(this._action) && (el.style.transition = ""), 950);
       return true;
     }
     // Antwort des Pikas auf einen Tipp in die Welt, wo sie eine eigene Aktion braucht (nur, wenn er nichts vorhat)
@@ -12041,7 +12878,7 @@
       this._lookT = setTimeout(() => (p.classList.remove(c), this._lookC = null), ms);
     }
     // Klick in die Szene, den kein Tippziel abgefangen hat: Die Welt antwortet (Blume, Wolke, Stern, Tür, Windrad,
-    // Wollknäuel), und er schaut hin.
+    // Wollknäuel, Stein, Vorrat, Sonne, Mond, Schornstein, Saugroboter), und er schaut hin.
     _onLookAt(e) {
       if (!this._g) return;
       const p = this._el.pika;
@@ -12052,7 +12889,7 @@
       if (hit) this._worldTap(hit);
       if (this._fort) return;
       if (this._asleep || this._action === "eatFood" || this._inside || p.classList.contains("tv")) return;
-      const up = hit?.k === "cloud" || hit?.k === "star";
+      const up = ["cloud", "star", "sun", "moon"].includes(hit?.k);
       this._glance(up ? "look-up" : Math.sign(x - this._liveX()) === this._dir ? "look-f" : "look-b");
       if (hit) return;
       const meadow = y > this._g.gy - this._H * 0.3;
@@ -12528,7 +13365,7 @@
         h += `<div class="tre">${GIFT_ITEMS.slice(0, GIFT_TRE).map((it, t) => {
           const lv = I.lvs[t];
           const nm = it.key === "plush" ? `Plüsch-${fr}` : it.name;
-          const sub = !lv ? "noch ein Geheimnis" : lv >= 3 ? `golden · Trick: ${GIFT_TRICK[t]}` : lv === 2 ? `Trick: ${GIFT_TRICK[t]}` : DIARY_TXT.treasure[t];
+          const sub = !lv ? "noch ein Geheimnis" : lv >= 3 ? `golden: ${DIARY_TXT.gold[t]} · Trick: ${GIFT_TRICK[t]}` : lv === 2 ? `Trick: ${GIFT_TRICK[t]}` : DIARY_TXT.treasure[t];
           return `<div class="t ${["miss", "", "lv2", "lv2 gilt"][lv]}"><i>${it.svg}</i><div><b>${esc(lv ? nm : "???")}</b><span>${esc(sub)}</span></div></div>`;
         }).join("")}</div>`;
         const n = G.n + G.y;
@@ -12556,7 +13393,9 @@
         flight: !!this._cfg.flight_entity,
         bote: Array.isArray(this._cfg.appliances) && this._cfg.appliances.length > 0,
         wheel: lv[1] > 0,
-        yarn: lv[0] > 0
+        yarn: lv[0] > 0,
+        chimney: this._arealKey === "huegel",
+        vac: !!this._sigCfg().vacuum
       };
       const fr = this._frName();
       const list = FINDS.filter((f2) => !f2.need || have[f2.need]);
@@ -13063,6 +13902,130 @@
       this._happy(1400);
       if (!this._el.pika.classList.contains("walking")) this._jump("binky");
       this._say(pick(["♥", "hihi ♥", "gern!"]), 1300);
+    }
+    // ---------- Abendritual ----------
+    // Bevor er sich schlafen legt, streckt er sich lang, gähnt, setzt die Zipfelmütze auf und sagt Gute Nacht: Dem
+    // Plüsch-Pino liest er noch den letzten Satz einer Geschichte vor, ohne ihn schaut er zum Mond oder zu den ersten
+    // Sternen. Es läuft als Teil von goSleep (_goSleep ruft es; der Takt und alle, die auf die Schlafenszeit schauen,
+    // nehmen goSleep schon aus) und nur, wenn jemand zusieht: Die Schleife ruht, solange die Karte nicht zu sehen ist,
+    // und wer beim Laden oder nach einer langen Pause schon schläft, liegt ohne Übergang im Bett (_sleepNow).
+    // Je Gerät, wie die anderen kleinen Momente: Nichts davon steht im Zustand oder im Tagesplan.
+    // Schlafenszeit dieser Nacht (ms, Uhr von HA): das Ende des letzten Wachfensters. null: keins gefunden.
+    _bedOf(t = this._haNow()) {
+      if (!this._cfg) return null;
+      let bed = null;
+      for (const [, we] of this._wakeWins(t, t)) if (we <= t && (bed == null || we > bed)) bed = we;
+      return bed;
+    }
+    // Für diese Nacht ist das Ritual vorbei: Er liegt im Bett (_goSleep, _sleepNow) oder hat damit angefangen. Geht er
+    // in derselben Nacht noch einmal schlafen (unterbrochen, vom Kaffeeduft geweckt), dann ohne.
+    _bedMark() {
+      const bed = this._bedOf();
+      if (bed != null) this._ritNight = bed;
+    }
+    // Spielt er jetzt, auf dem Weg ins Bett, das Abendritual? Einmal je Nacht, kurz nach der Schlafenszeit
+    // (RITUAL.late), und nur draußen auf der Wiese: nicht, wenn er ohnehin im Bau sitzt (Gewitter, Starkregen,
+    // Fernsehen), und nicht, wenn er verreist ist.
+    _ritualDue() {
+      if (this._inside || this._lift > 0 || this._wx?.shelter || this._wx?.wet || this._urlaubFern()) return false;
+      if (this._dbgRitual) return true;
+      if (this._dbgSleep != null) return false;
+      const now = this._haNow();
+      const bed = this._bedOf(now);
+      return bed != null && this._ritNight !== bed && now - bed <= RITUAL.late;
+    }
+    // Das Ritual. Füttern (das Futter landet) und Streicheln (_pet) brechen es ab: Dann räumt es auf, und der nächste
+    // Schritt der Schleife bringt ihn wie sonst ins Bett (gähnen, in den Bau). Mit „Bewegung reduzieren“ ohne Strecken:
+    // Gähnen, Mütze, Gute Nacht.
+    async _bedRitual() {
+      const p = this._el.pika;
+      const calm = calmMotion();
+      const dbg = this._dbgRitual;
+      this._dbgRitual = null;
+      this._bedMark();
+      this._ritOn = true;
+      let done = false;
+      try {
+        if (this._lane) await this._walkTo(this._x, 1, true, 0);
+        if (!calm) {
+          this._say(pick(["streeeck…", "mmmh…", "uuuah…"]), RITUAL.stretch - 200);
+          p.classList.add("rstretch");
+          await this._wait(RITUAL.stretch);
+          p.classList.remove("rstretch");
+          await this._wait(RITUAL.gap);
+        }
+        this._say("*gähn*", 1600);
+        p.classList.add("yawning");
+        await this._wait(RITUAL.yawn);
+        p.classList.remove("yawning");
+        if (!calm) this._cls("mlem", 950, true);
+        p.classList.add("rcap");
+        await this._wait(RITUAL.cap);
+        if (dbg !== "star" && this._ritPlush(true)) await this._ritRead();
+        else await this._ritStar();
+        done = true;
+      } finally {
+        this._ritOn = false;
+        this._ritPlush(false);
+        p.classList.remove("rstretch", "yawning", "rread", "reading", "look-up", "content", ...done ? [] : ["rcap"]);
+      }
+    }
+    // Plüsch-Pino neben ihn auf die Wiese setzen (on) bzw. wieder wegnehmen. Ob er einen hat, entscheidet wie beim
+    // Kuscheln (_giftPlush) die Szene der Schätze: Liegt nach _giftScene keiner da, hat er keinen. → sitzt er da?
+    _ritPlush(on) {
+      if (!on) {
+        if (!this._ritPl) return false;
+        this._ritPl = false;
+        if (this._plushX != null && this._g) this._puff(this._plushX, this._g.gy, 2);
+        this._plushX = null;
+        this._giftScene();
+        return false;
+      }
+      const { pW, gy, fMin, fMax } = this._g;
+      let d = this._x < (fMin + fMax) / 2 * this._W ? 1 : -1;
+      if (this._x + d * pW * 0.8 > this._W || this._x + d * pW * 0.8 < 0) d = -d;
+      this._plushX = this._x + d * pW * 0.52;
+      this._giftScene();
+      const el = this._gtEls?.get(2);
+      if (!el) {
+        this._plushX = null;
+        return false;
+      }
+      this._ritPl = true;
+      this._face(d);
+      el.classList.add("new");
+      setTimeout(() => el.classList.remove("new"), 800);
+      this._puff(this._plushX, gy, 2);
+      return true;
+    }
+    // Dem Plüsch-Pino den letzten Satz der Gutenachtgeschichte vorlesen (aus einem kleinen Buch), dann Gute Nacht sagen
+    async _ritRead() {
+      const p = this._el.pika;
+      await this._wait(RITUAL.sit);
+      p.classList.add("reading", "rread");
+      this._say(pick(RITUAL_STORY), RITUAL.read - 200);
+      await this._wait(RITUAL.read);
+      p.classList.remove("reading", "rread");
+      p.classList.add("content");
+      this._blush(RITUAL.night);
+      this._say(`Gute Nacht, Plüsch-${this._frName()}.`, RITUAL.night - 100, true);
+      await this._wait(RITUAL.night);
+      p.classList.remove("content");
+    }
+    // Ohne Plüsch-Pino: zum Mond schauen, wenn er zu sehen ist, sonst hinauf zu den ersten Sternen, und Gute Nacht sagen
+    async _ritStar() {
+      const p = this._el.pika;
+      const sc = this._el.scene.classList;
+      const veiled = sc.contains("dense") || sc.contains("overcast");
+      const mx = (this._el.moon?._pos?.x ?? NaN) / 100 * this._W;
+      const moon = !!this._moonUp && !veiled && Number.isFinite(mx);
+      const stars = !moon && !veiled && (sc.contains("night") || sc.contains("dusk"));
+      if (moon && Math.abs(mx - this._x) > this._g.pW * 0.3) this._face(mx > this._x ? 1 : -1);
+      p.classList.add("look-up");
+      await this._wait(RITUAL.look);
+      this._say(moon ? "Gute Nacht, Mond!" : stars ? pick(["Gute Nacht, Sterne!", "Gute Nacht!"]) : "Gute Nacht!", RITUAL.star - 200, true);
+      await this._wait(RITUAL.star);
+      p.classList.remove("look-up");
     }
     // Langes Wiedersehen (über 3 Stunden nicht zu sehen): er hoppelt nach vorn und freut sich riesig
     async _reunite() {
@@ -14724,12 +15687,15 @@
       if (!fr.greeted) return [[80, "greetFriend"]];
       if (Date.now() >= fr.until - FRIEND_LAST) return [];
       const wet = ctx.wx.wet;
+      const game = FRIEND_GAME[fr.kind];
+      const gw = !game || fr.last === game ? 0 : fr.sig ? FRIEND_GAME_W.again : FRIEND_GAME_W.first;
       return [
         [wet ? 1 : 7, "chaseFriend"],
         [6, "sitWithFriend"],
         [wet ? 1 : 4, "rockWithFriend"],
         [ctx.hasFlowers ? ctx.s < 50 ? 5 : 3.5 : 0, "nibbleWithFriend"],
-        [3.5, "squeakDuet"]
+        [3.5, "squeakDuet"],
+        ...game ? [[wet ? Math.min(1, gw) : gw, game]] : []
       ];
     }
     // Der Pika wird gestreichelt: Pino kommt neugierig näher und schaut zu
@@ -14918,6 +15884,7 @@
       for (const t of ["sayT", "callT", "jumpT", "happyT", "lookT", "untilT", "laneZT"]) clearTimeout(fr[t]);
       fr.el.remove();
       fr.sw.remove();
+      this._frToysAway();
       if (FRIEND_ACTS.has(this._action)) this._interrupt();
     }
     // Pinos Ablauf: herein, eigene kleine Schleife (pausiert, solange ein gemeinsames Spiel läuft), hinaus
@@ -15106,6 +16073,8 @@
       }
       if (!fr || !fr.arrived || fr.leaving) return;
       fr.busy = true;
+      fr.last = this._action;
+      if (this._action === FRIEND_GAME[fr.kind]) fr.sig = true;
       this._frTake(fr);
       this._friendSettle(fr);
       const w = async (ms) => {
@@ -15118,6 +16087,7 @@
         await fn(fr, w);
       } finally {
         this._el.pika.classList.remove("nuzzle", "wiggle");
+        this._frToysAway();
         if (this._fr === fr) {
           fr.busy = false;
           this._friendSettle(fr);
@@ -15221,7 +16191,7 @@
       const lane = this._cfg.depth && !(lift > 0) && live.dy > this._H * LANE_DY / 2 ? 1 : 0;
       this._frSetX(fr, live.x, 0, "linear", lift, lane);
       fr.el.classList.remove(...FRIEND_CLS);
-      fr.mfood?.classList.remove("shrink");
+      fr.mfood?.classList.remove("shrink", "item");
     }
     _frFace(fr, dir) {
       fr.dir = dir;
@@ -15297,7 +16267,7 @@
       const m = fr.mfood;
       fr.el.style.setProperty("--mf", color);
       fr.el.style.setProperty("--eat", `${Math.round(ms)}ms`);
-      m.classList.remove("shrink");
+      m.classList.remove("shrink", "item");
       void m.getBoundingClientRect();
       m.classList.add("shrink");
       fr.el.classList.add("eating");
@@ -15334,9 +16304,9 @@
     }
     // ---------- Gemeinsame Spiele (Aktionen des Pikas) ----------
     // Der Pika hoppelt zu Pino, bis sie Nase an Nase stehen. Ist auf seiner Seite kein Platz, rückt Pino.
-    async _frMeet(fr, w, speed = 1) {
+    // gap: Abstand der beiden (für die eigenen Spiele etwas mehr, damit ein kleiner Gast nicht hinter dem Pika steht)
+    async _frMeet(fr, w, speed = 1, gap = this._g.pW * 0.5) {
       const { pW } = this._g;
-      const gap = pW * 0.5;
       const d = fr.x >= this._x ? 1 : -1;
       const min = pW * 0.45;
       const max = Math.max(min, d > 0 ? Math.min(this._g.xR, this._frRange()[1] - gap) : this._g.xR);
@@ -15690,6 +16660,563 @@
         this._frHappy(fr);
         await w(1300);
       });
+    }
+    // ---------- Eigene Spiele der Freunde (ab 0.44) ----------
+    // Rufus holt das Stöckchen (_fetchFriend), Katzumi jagt das Wollknäuel oder eine Feder am Halm (_pounceFriend),
+    // Kirby kullert (_rollFriend). Sie laufen wie die gemeinsamen Spiele in _withFriend: Geht der Gast (nach der Uhr),
+    // wird gefüttert, ist Schlafenszeit oder verschwindet die Karte, bricht die Wartestelle ab, an der sie gerade
+    // stehen, und das finally dort räumt Spielzeug und Haltungen ab. Gespielt wird vorn (_withFriend holt den Gast von
+    // der hinteren Spur, der Pika kommt mit seinem ersten _walkTo nach vorn). Jedes Gerät würfelt für sich wie bei
+    // den gemeinsamen Spielen (rnd, pick), im Tagesplan steht davon nichts. Mit „Bewegung reduzieren“ (calmMotion)
+    // und wo der Platz für Wurf oder Rolle fehlt (sehr schmale Karten), gibt es je eine ruhige Fassung.
+    // Spielzeug als eigenes Element in der Effekt-Ebene (das Stöckchen im Flug und am Boden), Mitte bei (x, y), so
+    // groß, wie es im Maul des Pikas aussieht. _frToysAway räumt es ab (im finally von _withFriend alle).
+    _frToy(svg, x, y, rot = 0) {
+      const size = this._g.pW * TOY_S.stick * 0.68 * 24 / 120;
+      const el = document.createElement("div");
+      el.className = "ftoy";
+      Object.assign(el.style, {
+        width: `${size.toFixed(1)}px`,
+        height: `${size.toFixed(1)}px`,
+        margin: `${(-size / 2).toFixed(1)}px 0 0 ${(-size / 2).toFixed(1)}px`
+      });
+      el.innerHTML = svg;
+      this._el.fx.appendChild(el);
+      (this._frToys ??= /* @__PURE__ */ new Set()).add(el);
+      this._frToyAt(el, x, y, rot);
+      return el;
+    }
+    _frToyAt(el, x, y, rot = 0) {
+      el.style.transform = `translate(${x.toFixed(1)}px, ${y.toFixed(1)}px) rotate(${rot.toFixed(0)}deg)`;
+    }
+    // Wurf: in ms im Bogen von (x0, y0) nach (x1, y1), Scheitel h über der geraden Linie, dabei turns Umdrehungen.
+    // Die Endlage steht gleich im Stil, die Flugbahn liegt als Animation darüber: Bricht sie ab, liegt es am Ziel.
+    _frToyFly(el, x0, y0, x1, y1, h, ms, turns) {
+      const frames = [];
+      for (let i = 0; i <= 10; i++) {
+        const t = i / 10;
+        const y = Math.max(this._g.pH * 0.08, y0 + (y1 - y0) * t - 4 * h * t * (1 - t));
+        frames.push({ transform: `translate(${(x0 + (x1 - x0) * t).toFixed(1)}px, ${y.toFixed(1)}px) rotate(${(turns * 360 * t).toFixed(0)}deg)` });
+      }
+      el._fly?.cancel();
+      el._fly = el.animate?.(frames, { duration: ms, easing: "linear" }) || null;
+      this._frToyAt(el, x1, y1, 0);
+    }
+    // Spielzeug weg: alles oder nur dieses (only), fade: erst ausblenden. Eine laufende Flugbahn endet mit.
+    _frToysAway(only = null, fade = false) {
+      for (const el of only ? [only] : [...this._frToys || []]) {
+        if (!this._frToys?.delete(el)) continue;
+        el._fly?.cancel();
+        if (fade) {
+          el.classList.add("off");
+          setTimeout(() => el.remove(), 450);
+        } else el.remove();
+      }
+    }
+    // Der Freund trägt etwas im Maul (svg wie für _mouth: 24 × 24 vor der Schnauze; null: nichts mehr). Es steckt wie
+    // ein Leckerli in .mf-item seiner Grafik, .carry zeigt es; _friendSettle nimmt beides wieder weg.
+    _frCarry(fr, svg) {
+      const m = fr.mfood;
+      const it = m?.querySelector(".mf-item");
+      if (!it) return;
+      it.innerHTML = svg ? svg.replace(/^\s*<svg[^>]*>|<\/svg>\s*$/g, "") : "";
+      m.classList.remove("shrink");
+      m.classList.toggle("item", !!svg);
+      fr.el.classList.toggle("carry", !!svg);
+    }
+    // Der Pika trägt etwas im Maul (Stöckchen, Angel mit Feder): über _mouth und .carry, beides räumt _cleanup ab
+    _frPikaCarry(svg) {
+      if (svg) this._mouth("#b98a55", svg);
+      this._el.pika.classList.toggle("carry", !!svg);
+    }
+    // Schwindlig: Sternchen über dem Kopf des Freunds bzw. (ohne fr) des Pikas
+    _frStars(fr = null) {
+      const { pW, pH, gy } = this._g;
+      if (!fr) {
+        const n = this._nosePos();
+        return this._sparkle(n.x - this._dir * pW * 0.1, n.y - pH * 0.34, 3);
+      }
+      const s = this._frSc(fr);
+      const live = this._frLive(fr);
+      this._sparkle(live.x + fr.dir * pW * s * 0.15, gy - pH * s * 0.82 - live.lift - live.dy, 3);
+    }
+    // Rufus holt das Stöckchen: Der Pika findet eins, wirft es im Bogen über die Wiese, Rufus saust mit fliegenden
+    // Ohren hinterher, bringt es im Maul zurück und legt es ihm vor die Füße (zwei- oder dreimal). Zum Schluss sitzen
+    // beide nebeneinander. Die Wurfweite richtet sich nach der Wiese (höchstens 2,4 Pika-Breiten).
+    // Ruhig (Bewegung reduzieren, oder die Wiese ist kürzer als ein Wurf): Der Pika trägt es ihm hin, Rufus trägt es
+    // eine kleine Runde und bringt es wieder. Kein Wurf, kein Rennen.
+    async _fetchFriend() {
+      await this._withFriend(async (fr, w) => {
+        if (fr.kind !== "rufus") return;
+        const { pW, pH, gy, xR } = this._g;
+        const P = this._el.pika.classList;
+        const F = fr.el.classList;
+        const [lo, hi] = this._frRange();
+        const fW = pW * this._frSc(fr);
+        const gap = pW * 0.48 + fW * 0.52;
+        const D = Math.min(pW * 2.4, hi - lo - pW * 0.3);
+        const calm = calmMotion() || D < pW * 0.7;
+        const ground = gy - pH * 0.035;
+        const duck = async (C2, ms) => {
+          C2.add("crouch");
+          await w(ms);
+          C2.remove("crouch");
+        };
+        const find = async () => {
+          P.add("sniff");
+          await w(650);
+          P.remove("sniff");
+          this._frPikaCarry(FRIEND_TOY.stickPika);
+          this._say(pick(["ein Stöckchen!", "oh, ein Stock!", "schau mal!"]), 1200);
+          await w(600);
+        };
+        let toy2 = null;
+        const drop = async () => {
+          await duck(F, 240);
+          this._frCarry(fr, null);
+          toy2 = this._frToy(FRIEND_TOY.stick, (this._x + fr.x) / 2 + (fr.x >= this._x ? 1 : -1) * pW * 0.08, ground, -4);
+        };
+        const take = async () => {
+          await duck(F, 260);
+          this._frToysAway(toy2);
+          this._frCarry(fr, FRIEND_TOY.stickRufus);
+          await w(250);
+        };
+        let dir;
+        if (calm) {
+          if (this._lane) await this._walkTo(this._x);
+          await find();
+          await this._frMeet(fr, w, 0.9, gap);
+          dir = fr.x >= this._x ? 1 : -1;
+          await duck(P, 260);
+          this._frPikaCarry(null);
+          toy2 = this._frToy(FRIEND_TOY.stick, (this._x + fr.x) / 2, ground, -4);
+          this._say("für dich!", 1100);
+          await w(900);
+          await take();
+          this._frSay(fr, "wuff!", 900);
+          await w(700);
+          const r0 = fr.x;
+          const far = dir > 0 ? hi - r0 : r0 - lo;
+          if (far > pW * 0.3) {
+            await this._friendWalkTo(fr, r0 + dir * Math.min(far, pW * 0.9), 0.9, w);
+            await w(400);
+            await this._friendWalkTo(fr, r0, 0.9, w);
+          }
+          this._frFace(fr, -dir);
+          await drop();
+          this._frSay(fr, "wuff!", 900);
+          await w(600);
+        } else {
+          dir = this._x <= (lo + hi) / 2 ? 1 : -1;
+          const px = dir > 0 ? clamp(this._x, Math.max(pW * 0.45, lo - gap), Math.max(pW * 0.45, hi - D - gap)) : clamp(this._x, Math.min(xR, lo + D + gap), Math.min(xR, hi + gap));
+          const r0 = clamp(px + dir * gap, lo, hi);
+          await Promise.all([this._walkTo(px, 1.1), this._friendWalkTo(fr, r0, 1.2, w)]);
+          this._face(dir);
+          this._frFace(fr, -dir);
+          await find();
+          this._frCall(fr, "wuff!");
+          await w(800);
+          const n = D > pW * 1.4 && Math.random() < 0.5 ? 3 : 2;
+          for (let i = 0; i < n; i++) {
+            const land = clamp(fr.x + dir * D * rnd(0.75, 1), lo, hi);
+            await duck(P, 240);
+            this._frPikaCarry(null);
+            this._jump("hop1");
+            this._say(pick(["hol!", "hol das Stöckchen!", "los, Rufus!"]), 1e3);
+            const m = this._nosePos();
+            const far = Math.abs(land - m.x) / (pW * 2.4);
+            const ms = 620 + 280 * far;
+            toy2 = this._frToy(FRIEND_TOY.stick, m.x, m.y);
+            this._frToyFly(toy2, m.x, m.y, land, ground, pH * (0.3 + 0.3 * far), ms, dir * 2);
+            this._frFace(fr, dir);
+            F.add("look-up");
+            await Promise.all([
+              (async () => {
+                await w(ms);
+                this._puff(land, gy, 1);
+              })(),
+              (async () => {
+                await w(ms * 0.4);
+                F.remove("look-up");
+                this._puff(fr.x, gy, 2);
+                F.add("fdash");
+                await this._friendWalkTo(fr, clamp(land - dir * fW * 0.32, lo, hi), 2.4, w);
+              })()
+            ]);
+            F.remove("fdash");
+            await take();
+            F.add("fdash");
+            await this._friendWalkTo(fr, r0, 2, w);
+            F.remove("fdash");
+            this._frFace(fr, -dir);
+            await drop();
+            this._frCall(fr, "wuff!");
+            F.add("wiggle");
+            await w(500);
+            this._say(i === n - 1 ? "guter Rufus!" : pick(["guter Rufus!", "fein gemacht!", "toll!"]), 1200);
+            P.add("happy");
+            this._frHearts(fr, 1);
+            await w(900);
+            P.remove("happy");
+            F.remove("wiggle");
+            if (i < n - 1) {
+              this._frSay(fr, "nochmal!", 1e3);
+              this._frJump(fr, "hop1");
+              await w(800);
+              P.add("sniff");
+              await w(450);
+              P.remove("sniff");
+              this._frToysAway(toy2);
+              this._frPikaCarry(FRIEND_TOY.stickPika);
+              await w(400);
+            }
+          }
+        }
+        if (calm) this._say("guter Rufus!", 1300);
+        this._face(dir);
+        this._frFace(fr, dir);
+        this._hearts(1);
+        this._frHearts(fr, 2);
+        await w(900);
+        P.add("wiggle");
+        F.add("wiggle");
+        await w(1400);
+        P.remove("wiggle");
+        F.remove("wiggle");
+        this._frToysAway(toy2, true);
+        await w(rnd(500, 900));
+      });
+    }
+    // Katzumi jagt. Liegt das Wollknäuel aus den Päckchen auf der Wiese und ist darum Platz (_frYarnPlan), stupst der
+    // Pika es an, und sie springt ihm nach und schlägt es zurück (_frYarnHunt). Sonst (und mit „Bewegung reduzieren“
+    // immer) hält der Pika einen Grashalm mit einer Feder am Faden, im Herbst mit einem Blatt (_frDangleHunt).
+    async _pounceFriend() {
+      await this._withFriend(async (fr, w) => {
+        if (fr.kind !== "katzumi") return;
+        const calm = calmMotion();
+        const yarn = calm ? null : this._frYarnPlan(fr);
+        if (yarn) await this._frYarnHunt(fr, w, yarn);
+        else await this._frDangleHunt(fr, w, calm);
+      });
+    }
+    // Taugt das echte Wollknäuel (Schatz 0, _gtEls) für die Jagd? Es muss auf der Wiese liegen, dort, wo Katzumi hin
+    // darf (_frRange: nicht am Bau), und in eine Richtung mindestens eine knappe halbe Pika-Breite weit rollen können,
+    // ohne die Wiese der Schätze (fMin … fMax) oder ihren Bereich zu verlassen; der Pika steht auf der anderen Seite.
+    // → { el, dir, d: Rollweite } oder null (dann die Feder).
+    _frYarnPlan(fr) {
+      const el = this._gtEls?.get(0);
+      if (!el?.isConnected) return null;
+      const { pW, fMin, fMax, xR } = this._g;
+      const W = this._W;
+      const [lo, hi] = this._frRange();
+      const fW = pW * this._frSc(fr);
+      const x = this._giftX(0);
+      const opt = [1, -1].map((dir) => {
+        const end = dir > 0 ? Math.min(hi - fW * 0.6, fMax * W) : Math.max(lo + fW * 0.6, fMin * W);
+        const px = x - dir * pW * 0.36;
+        return { dir, d: (end - x) * dir, ok: px >= pW * 0.45 - 1 && px <= xR + 1 && x >= lo - pW * 0.2 && x <= hi + pW * 0.2 };
+      }).filter((o) => o.ok && o.d >= pW * 0.45).sort((a, b) => b.d - a.d)[0];
+      return opt ? { el, dir: opt.dir, d: Math.min(opt.d, pW * 1.5) } : null;
+    }
+    // Jagd auf das Wollknäuel: Der Pika stupst es an, es kullert auf Katzumi zu. Sie duckt sich, wackelt, springt
+    // darauf und schlägt es zurück; beim letzten Mal hält sie es fest. Bewegt wird es genau wie in seinem eigenen
+    // Spiel (_giftYarn: left mit Überblendung, _yarnXf, _yarnRot), es bleibt am Ende liegen, wo es hingerollt ist.
+    // Tippt jemand es zwischendurch weg (_yarnTap), geht es von dort weiter; ist es weg (Plan geändert), ist Schluss.
+    async _frYarnHunt(fr, w, Y) {
+      const { pW, gy, fMin, fMax } = this._g;
+      const W = this._W;
+      const P = this._el.pika.classList;
+      const F = fr.el.classList;
+      const [lo, hi] = this._frRange();
+      const fW = pW * this._frSc(fr);
+      const { el, dir } = Y;
+      const home = this._giftX(0);
+      const edge = dir > 0 ? Math.min(hi - fW * 0.6, fMax * W) : Math.max(lo + fW * 0.6, fMin * W);
+      const roll = (to, ms) => {
+        const from = this._giftX(0);
+        this._yarnXf = to / W;
+        this._yarnRot = (this._yarnRot || 0) + (to - from) / (Math.PI * this._H * 0.075) * 360;
+        el.style.transition = `left ${ms}ms cubic-bezier(.2, .7, .4, 1)`;
+        el.style.left = `${to.toFixed(1)}px`;
+        const svg = el.querySelector("svg");
+        if (svg) svg.style.transform = `rotate(${this._yarnRot.toFixed(0)}deg)`;
+      };
+      const lurk = clamp(home + dir * (Y.d + fW * 0.5), lo, hi);
+      try {
+        await Promise.all([this._walkTo(home - dir * pW * 0.36, 1.2), this._friendWalkTo(fr, lurk, 1.2, w)]);
+        this._face(dir);
+        this._frFace(fr, -dir);
+        await w(350);
+        const n = Math.random() < 0.5 ? 3 : 2;
+        for (let i = 0; i < n; i++) {
+          if (!el.isConnected) return;
+          const from = this._giftX(0);
+          const to = clamp(from + dir * Y.d * rnd(0.7, 1), Math.min(from, edge), Math.max(from, edge));
+          P.add("crouch");
+          await w(260);
+          P.remove("crouch");
+          this._jump("hop1");
+          roll(to, 1e3);
+          if (i === 0) this._say(pick(["fang!", "kuller!", "hopp!"]), 900);
+          this._frFace(fr, to >= fr.x ? 1 : -1);
+          F.add("kwig");
+          await w(650);
+          F.remove("kwig");
+          await this._frHop(fr, clamp(to + dir * fW * 0.35, lo, hi), 0, w);
+          this._frFace(fr, -dir);
+          this._puff(fr.x, gy, 1);
+          this._frSay(fr, "mau!", 800);
+          await w(400);
+          if (!el.isConnected) return;
+          if (i === n - 1) break;
+          F.add("nuzzle");
+          await w(280);
+          roll(clamp(this._x + dir * pW * 0.36, fMin * W, fMax * W), 900);
+          await w(560);
+          F.remove("nuzzle");
+          this._jump("hop1");
+          if (Math.random() < 0.5) this._say(pick(["hihi!", "nochmal!"]), 900);
+          await this._friendWalkTo(fr, lurk, 1.3, w);
+          this._frFace(fr, -dir);
+          await w(rnd(300, 600));
+        }
+        this._frSay(fr, "hab es!", 1300);
+        this._frJump(fr, "hop1");
+        this._frHearts(fr, 2);
+        await w(500);
+        this._happy(1100);
+        this._say(pick(["gut gefangen!", "hihi!"]), 1100);
+        await w(1300);
+      } finally {
+        el.style.transition = "";
+      }
+    }
+    // Jagd auf die Feder am Halm: Der Pika findet sie, hält den Halm im Maul, die Feder pendelt vor seiner Nase.
+    // Katzumi duckt sich, wackelt, springt – daneben, denn der Pika tritt im letzten Augenblick einen Schritt zurück –,
+    // wackelt wieder, springt und hat sie. Stolz trägt sie die Beute ein paar Schritte.
+    // calm (Bewegung reduzieren): kein Sprung. Sie kommt heran und tippt die Feder zweimal an, dann bekommt sie sie.
+    async _frDangleHunt(fr, w, calm) {
+      const { pW, gy, xR } = this._g;
+      const P = this._el.pika.classList;
+      const F = fr.el.classList;
+      const [lo, hi] = this._frRange();
+      const fW = pW * this._frSc(fr);
+      const kind = this._seasonK === "autumn" ? "leaf" : "feather";
+      const reach = pW * TOY_S.reach;
+      const under = reach + pW * 0.12;
+      const wait = under + pW * 0.6;
+      const step = calm ? 0 : pW * 0.5;
+      const dir = this._x <= (lo + hi) / 2 ? 1 : -1;
+      const px = dir > 0 ? clamp(this._x, Math.max(pW * 0.45 + step, lo + step - under), Math.max(pW * 0.45 + step, hi - wait)) : clamp(this._x, Math.min(xR - step, lo + wait), Math.min(xR - step, hi - step + under));
+      await Promise.all([this._walkTo(px, 1), this._friendWalkTo(fr, clamp(px + dir * wait, lo, hi), 1.1, w)]);
+      this._face(dir);
+      this._frFace(fr, -dir);
+      P.add("sniff");
+      await w(600);
+      P.remove("sniff");
+      this._frPikaCarry(FRIEND_TOY.dangle[kind]);
+      this._say(kind === "leaf" ? "ein Blatt!" : "eine Feder!", 1200);
+      await w(700);
+      this._frSay(fr, "mau?", 900);
+      F.add("look-f");
+      await w(900);
+      F.remove("look-f");
+      const spot = () => clamp(this._x + dir * under, lo, hi);
+      if (calm) {
+        await this._friendWalkTo(fr, spot(), 0.8, w);
+        this._frFace(fr, -dir);
+        for (let i = 0; i < 2; i++) {
+          F.add("look-up");
+          await w(700);
+          F.add("crouch");
+          await w(260);
+          F.remove("crouch");
+          this._frSay(fr, "mau!", 800);
+          await w(900);
+          F.remove("look-up");
+        }
+      } else {
+        F.add("kwig");
+        await w(650);
+        F.remove("kwig");
+        await Promise.all([
+          this._frHop(fr, spot(), 0, w),
+          (async () => {
+            await w(220);
+            await this._walkTo(this._x - dir * step, 1.6, true, 0, true);
+          })()
+        ]);
+        this._frFace(fr, -dir);
+        this._puff(fr.x, gy, 1);
+        this._frSay(fr, "mau!", 800);
+        await w(350);
+        this._say(pick(["hihi!", "daneben!"]), 900);
+        await w(800);
+        F.add("kwig");
+        await w(550);
+        F.remove("kwig");
+        await this._frHop(fr, spot(), 0, w);
+        this._frFace(fr, -dir);
+        this._puff(fr.x, gy, 1);
+      }
+      this._frPikaCarry(null);
+      this._frCarry(fr, FRIEND_TOY.catch[kind]);
+      this._frSay(fr, "hab es!", 1300);
+      if (!calm) this._frJump(fr, "hop1");
+      this._frHearts(fr, 2);
+      await w(600);
+      P.add("happy");
+      this._say(pick(["gut gefangen!", "oh!", "hihi!"]), 1100);
+      await w(1200);
+      P.remove("happy");
+      await this._friendWalkTo(fr, fr.x + dir * pW * 0.6, 0.9, w);
+      this._frFace(fr, -dir);
+      await w(rnd(800, 1300));
+      this._frCarry(fr, null);
+    }
+    // Kirby kullert: Er rollt sich ein und kullert wie ein Ball über die Wiese, der Pika hoppelt hinterher. Zurück
+    // schlägt der Pika Purzelbäume voraus (wie in seiner kleinen Beschäftigung, _purzel), Kirby kullert hinterdrein.
+    // Am Ende sind beide schwindlig (Sternchen) und kichern. Die Strecke richtet sich nach der Wiese (höchstens drei
+    // Pika-Breiten); gedreht wird um so viele ganze Umdrehungen, wie sein Umfang in die Strecke passt.
+    // Ruhig (Bewegung reduzieren, oder weniger als gut eine Pika-Breite Platz): Sie sitzen nebeneinander und schunkeln.
+    async _rollFriend() {
+      await this._withFriend(async (fr, w) => {
+        if (fr.kind !== "kirby") return;
+        const { pW, gy, xR } = this._g;
+        const P = this._el.pika.classList;
+        const F = fr.el.classList;
+        const fW = pW * this._frSc(fr);
+        const [lo, hi0] = this._frRange();
+        const hi = Math.max(lo, hi0 - fW * 0.12);
+        const D = Math.min(hi - lo, pW * 3);
+        if (calmMotion() || D < pW * 1.1) return this._frSway(fr, w);
+        const round = fW * 0.62 * Math.PI;
+        const behind = pW * 0.95;
+        const dir = fr.x <= (lo + hi) / 2 ? 1 : -1;
+        const a = dir > 0 ? clamp(fr.x, lo, hi - D) : clamp(fr.x, lo + D, hi);
+        const pika = (x) => clamp(x, pW * 0.45, xR);
+        await Promise.all([this._friendWalkTo(fr, a, 1.2, w), this._walkTo(pika(a - dir * behind), 1.2)]);
+        this._face(fr.x >= this._x ? 1 : -1);
+        this._frFace(fr, dir);
+        this._frSay(fr, "kuller, kuller!", 1300);
+        this._frJump(fr, "hop1");
+        await w(1e3);
+        const kroll = async (to) => {
+          const dist = Math.abs(to - fr.x);
+          if (dist < 4) return;
+          const ms = Math.round(clamp(dist / (pW * 1.5) * 1e3, 700, 2400));
+          this._frFace(fr, to >= fr.x ? 1 : -1);
+          F.add("crouch");
+          await w(240);
+          F.remove("crouch");
+          fr.el.style.setProperty("--krd", `${ms}ms`);
+          fr.el.style.setProperty("--kra", `${Math.max(1, Math.round(dist / round)) * 360}deg`);
+          this._puff(fr.x, gy, 2);
+          this._frSetX(fr, to, ms, "linear");
+          F.add("kroll");
+          await w(ms);
+          F.remove("kroll");
+          this._puff(fr.x, gy, 2);
+        };
+        await Promise.all([
+          kroll(a + dir * D),
+          (async () => {
+            await w(500);
+            this._say(pick(["warte!", "huiii!", "hinterher!"]), 900);
+            await this._walkTo(pika(a + dir * D - dir * behind), 2);
+          })()
+        ]);
+        this._face(fr.x >= this._x ? 1 : -1);
+        F.add("crosseye");
+        this._frStars(fr);
+        await w(1100);
+        F.remove("crosseye");
+        this._frFace(fr, -dir);
+        this._say(pick(["ich auch!", "jetzt ich!"]), 1e3);
+        await w(800);
+        const PD = pW * 0.95;
+        const room = dir > 0 ? this._x - pW * 0.45 : xR - this._x;
+        const m = Math.min(2, Math.floor(room / PD));
+        const back = m ? m * PD : Math.max(0, Math.min(room, D * 0.7));
+        await Promise.all([
+          (async () => {
+            this._face(-dir);
+            if (!m) return this._walkTo(this._x - dir * back, 1.8);
+            const p = this._el.pika;
+            for (let i = 0; i < m; i++) {
+              P.add("crouch");
+              await w(300);
+              P.remove("crouch");
+              p.style.transition = `transform ${PURZEL_ROLL}ms cubic-bezier(.4, .1, .5, 1)`;
+              this._setX(pika(this._x - dir * PD));
+              P.add("purzel");
+              await w(PURZEL_ROLL);
+              P.remove("purzel");
+              this._cls("lnd", 600, true);
+              this._puff(this._x, gy, 2);
+              await w(150);
+            }
+          })(),
+          (async () => {
+            await w(900);
+            await kroll(clamp(fr.x - dir * back, lo, hi));
+          })()
+        ]);
+        this._face(fr.x >= this._x ? 1 : -1);
+        this._frFace(fr, this._x >= fr.x ? 1 : -1);
+        P.add("crosseye");
+        F.add("crosseye");
+        this._frStars();
+        this._frStars(fr);
+        await w(1200);
+        P.remove("crosseye");
+        F.remove("crosseye");
+        this._say(pick(["hihi!", "kuller, kuller!", "hui!"]), 1100);
+        await w(350);
+        this._frSay(fr, pick(["hihi!", "nochmal!"]), 1100);
+        this._happy(1200);
+        this._frHappy(fr);
+        await w(1400);
+      });
+    }
+    // Ruhige Fassung des Kullerns: nebeneinander sitzen, beide schauen zur Mitte, und abwechselnd sacht zur Seite
+    // neigen (.lean, eine kurze Überblendung, kein Dauerlauf)
+    async _frSway(fr, w) {
+      const { pW, xR } = this._g;
+      const P = this._el.pika.classList;
+      const F = fr.el.classList;
+      const D = fr.x < this._W / 2 ? 1 : -1;
+      let px = fr.x - D * pW * 0.8;
+      if (px < pW * 0.45 || px > xR) px = fr.x + D * pW * 0.8;
+      await this._walkTo(px, 0.9);
+      this._face(D);
+      this._frFace(fr, D);
+      await w(500);
+      this._frSay(fr, "schunkel, schunkel!", 1500);
+      await w(900);
+      for (let i = 0; i < 3; i++) {
+        P.add("lean");
+        await w(450);
+        F.add("lean");
+        await w(750);
+        P.remove("lean");
+        await w(450);
+        F.remove("lean");
+        await w(550);
+      }
+      this._say(pick(["hihi!", "schön!"]), 1100);
+      this._hearts(1);
+      this._frHearts(fr, 1);
+      await w(1300);
+    }
+    // Von wem er im Schlaf murmelt (_dream): von einem Freund, der an diesem Pika-Tag zu Besuch war (Tagesgedächtnis
+    // im Plan, dieselbe Frist wie bei den Träumen), sonst von Pino. Nicht _frGuest: Das ist der letzte Gast auf diesem
+    // Gerät, auch wenn der vor Tagen da war.
+    _frMumble() {
+      const c = this._plan?.cute;
+      const heute = c && c.d >= pikaDay(this._haNow()) - 1 ? FRIEND_KEYS.filter((k) => MEM_BITS.includes(k) && c.m & 1 << MEM_BITS.indexOf(k)) : [];
+      return FRIENDS[heute.length ? pick(heute) : "pino"].name || this._frName();
     }
     // Abschied: Pino nachschauen (dreht sich mit), "tschüss", kurz die Ohren hängen lassen
     async _byeFriend() {
@@ -17243,10 +18770,10 @@
       const xl = L - off;
       const xr = R2 + off;
       const cur = this._liveX();
-      let face = Math.abs(cur - xl) <= Math.abs(cur - xr) ? 1 : -1;
-      if (face > 0 && xl < lo) face = -1;
-      else if (face < 0 && xr > hi) face = 1;
-      return { x: face > 0 ? xl : xr, face };
+      let face2 = Math.abs(cur - xl) <= Math.abs(cur - xr) ? 1 : -1;
+      if (face2 > 0 && xl < lo) face2 = -1;
+      else if (face2 < 0 && xr > hi) face2 = 1;
+      return { x: face2 > 0 ? xl : xr, face: face2 };
     }
     _boteCls(...names) {
       this._boteC ??= /* @__PURE__ */ new Set();
@@ -18575,7 +20102,7 @@
         if (want.has(t)) continue;
         E.delete(t);
         if (t === 5 && el.isConnected && !el.classList.contains("fold")) {
-          el.classList.remove("build", "sway", "swing");
+          el.classList.remove("build", "sway", "swing", "gshim", "gglow");
           el.classList.add("fold");
           setTimeout(() => el.remove(), GIFT_HAM_MS.fold);
         } else el.remove();
@@ -18596,6 +20123,10 @@
       }
       const blow = this._haNow() < (this._blowUntil || 0);
       E.get(1)?.style.setProperty("--gws", `${blow ? 0.32 : clamp(9 - (this._wind || 0) / 4, 0.35, 9).toFixed(2)}s`);
+      if (blow && this._blowUntil !== this._goldBlow) {
+        this._goldBlow = this._blowUntil;
+        this._goldWheel();
+      }
       this._giftDress(lvs);
     }
     _giftPlace(t, el) {
@@ -18661,6 +20192,7 @@
       const r = el.getBoundingClientRect();
       const s = this._el.scene.getBoundingClientRect();
       this._peep(r.left - s.left + r.width, r.top - s.top, text);
+      this._goldBell();
     }
     _layoutGift(first) {
       const B = this._gb;
@@ -18683,6 +20215,7 @@
       clearTimeout(this._albumPT);
       clearTimeout(this._bellT);
       clearTimeout(this._giftArrT);
+      this._goldClear();
       this._albumHeld = false;
       this._gtEls?.get(7)?.classList.remove("ring");
       const B = this._gb;
@@ -18707,6 +20240,9 @@
       const cool = !!(giftOwned(G) & 8) && !this._wx.wet && !this._asleep && (sunny || this._haNow() < (this._coolUntil || 0));
       this._el.pika.classList.toggle("cool", cool);
       this._giftGlint();
+      if (cool && sunny) this._goldSheen();
+      if (!this._asleep && (this._wind || 0) >= GOLD.wheelWind.min) this._goldWheel("wheelWind");
+      if (this._asleep && this._plushX == null) this._goldHeart(null, true);
       const b = this._el.gbtn;
       if (G.n >= GIFT.max && !b.hidden && !this._urlaubOn() && Math.random() < 0.25) {
         b.classList.remove("wig");
@@ -18773,46 +20309,64 @@
       const el = this._gtEls?.get(0);
       if (!el) return;
       const p = this._el.pika;
-      const { pW, fMin, fMax } = this._g;
+      const { pW, fMin, fMax, gy } = this._g;
       const W = this._W;
       await this._approach(this._giftX(0), 1.2);
-      const n = Math.random() < 0.5 ? 2 : 1;
-      for (let i = 0; i < n; i++) {
-        p.classList.add("crouch");
-        await this._wait(260);
-        p.classList.remove("crouch");
-        this._jump("hop1");
-        const from = this._giftX(0);
-        const to = clamp(from + this._dir * W * rnd(0.12, 0.28), fMin * W, fMax * W);
-        this._yarnXf = to / W;
-        this._yarnRot = (this._yarnRot || 0) + (to - from) / (Math.PI * this._H * 0.075) * 360;
-        el.style.transition = "left 1.2s cubic-bezier(.2, .7, .4, 1)";
-        el.style.left = `${to.toFixed(1)}px`;
-        el.querySelector("svg").style.transform = `rotate(${this._yarnRot.toFixed(0)}deg)`;
-        this._say(pick(["hihi!", "kuller!", "fang!", "hopp!"]), 1e3);
-        await this._wait(450);
-        if (Math.abs(to - from) < 4) break;
-        await this._walkTo(to - this._dir * pW * 0.42, 1.9);
+      const once = !!this._dbgYarnBack;
+      this._dbgYarnBack = false;
+      const n = once ? 1 : Math.random() < 0.5 ? 2 : 1;
+      const gold = this._goldOk(0);
+      const F = [];
+      try {
+        for (let i = 0; i < n; i++) {
+          p.classList.add("crouch");
+          await this._wait(260);
+          p.classList.remove("crouch");
+          this._jump("hop1");
+          const from = this._giftX(0);
+          const to = clamp(from + this._dir * W * rnd(0.12, 0.28), fMin * W, fMax * W);
+          this._yarnXf = to / W;
+          this._yarnRot = (this._yarnRot || 0) + (to - from) / (Math.PI * this._H * 0.075) * 360;
+          el.style.transition = "left 1.2s cubic-bezier(.2, .7, .4, 1)";
+          el.style.left = `${to.toFixed(1)}px`;
+          el.querySelector("svg").style.transform = `rotate(${this._yarnRot.toFixed(0)}deg)`;
+          if (gold) this._goldTrail(F, [...Array(5).keys()].map((k) => [from + (to - from) * (k + 0.5) / 5, gy - this._H * 0.055, 100 + k * 120]));
+          this._say(pick(["hihi!", "kuller!", "fang!", "hopp!"]), 1e3);
+          await this._wait(450);
+          if (Math.abs(to - from) < 4) break;
+          if (i === n - 1 && gold && !calmMotion() && this._goldOk(0, "yarnBack")) {
+            await this._goldYarnBack(el, to, F);
+            break;
+          }
+          await this._walkTo(to - this._dir * pW * 0.42, 1.9);
+        }
+        el.style.transition = "";
+        if (giftLvs(this._plan?.gift)[0] >= 2 && Math.random() < 0.6) return await this._giftHeader();
+        this._happy(1e3);
+        await this._wait(800);
+      } catch (e) {
+        this._goldDrop(F);
+        throw e;
       }
-      el.style.transition = "";
-      if (giftLvs(this._plan?.gift)[0] >= 2 && Math.random() < 0.6) return this._giftHeader();
-      this._happy(1e3);
-      await this._wait(800);
     }
     // Trick des Wollknäuels: mit der Nase hochstupsen, Kopfball, es fliegt im Bogen weiter über die Wiese
     async _giftHeader() {
       const A = [];
+      const F = [];
+      let ok = false;
       try {
-        await this._giftHeaderRun(A);
+        await this._giftHeaderRun(A, F);
+        ok = true;
       } finally {
         A.forEach((a) => a.cancel());
+        if (!ok) this._goldDrop(F);
       }
     }
-    async _giftHeaderRun(A) {
+    async _giftHeaderRun(A, F) {
       const el = this._gtEls?.get(0);
       if (!el) return;
       const p = this._el.pika;
-      const { pW, pH, fMin, fMax } = this._g;
+      const { pW, pH, fMin, fMax, gy } = this._g;
       const W = this._W;
       await this._approach(this._giftX(0), 1.2);
       const x0 = this._giftX(0);
@@ -18844,6 +20398,12 @@
         { transform: `translate(${dx.toFixed(1)}px, 0)` }
       ], { duration: 1100, easing: "ease-in-out", fill: "forwards" });
       A.push(away);
+      if (this._goldOk(0)) {
+        this._goldTrail(F, [...Array(5).keys()].map((k) => {
+          const s = (k + 0.6) / 5;
+          return [x0 + hx + (dx - hx) * s, gy - this._H * 0.035 + hy * (1 + 3.535 * s - 4.535 * s * s), Math.round(935 * s) + 80];
+        }));
+      }
       up.cancel();
       this._yarnRot = (this._yarnRot || 0) + kd * 540;
       el.querySelector("svg").style.transform = `rotate(${this._yarnRot.toFixed(0)}deg)`;
@@ -18868,6 +20428,8 @@
       await this._approach(cx, 1);
       can.classList.add("away");
       p.classList.add("wcan");
+      const F = [];
+      let ok = false;
       try {
         this._say(pick(["gießen!", "Wasser marsch!", "plitsch!"]), 1200);
         await this._wait(500);
@@ -18899,16 +20461,22 @@
         p.classList.remove("pour");
         await this._wait(500);
         const nf = lvW >= 2 ? 3 : 2;
+        const neu = [];
         for (let i = 0; i < nf && this._flowers.length < 8; i++) {
+          const vor = this._flowers.length;
           this._addFlower(true, (sx + (nf === 2 ? (i ? 1 : -1) * rnd(8, 20) : (i - 1) * rnd(12, 20))) / W);
+          if (this._flowers.length > vor) neu.push(this._flowers[this._flowers.length - 1]);
         }
-        this._say(pick(["wachs!", "hübsch!", "♥"]), 1200);
+        const sun = this._goldOk(6) && this._goldBloom(neu, sx, F);
+        this._say(sun ? pick(["eine goldene!", "oh, wie die leuchtet!", "Sonnenblume!"]) : pick(["wachs!", "hübsch!", "♥"]), 1200);
         this._happy(1e3);
         await this._wait(1600);
         await this._approach(cx, 1);
+        ok = true;
       } finally {
         p.classList.remove("wcan", "pour");
         can.classList.remove("away");
+        if (!ok) this._goldDrop(F);
       }
     }
     // Nachmittags ein Nickerchen in der Hängematte: Er stellt sie erst auf (linkes Gestell, rechtes, dann das Netz)
@@ -18948,8 +20516,21 @@
       el.classList.add("sway");
       await this._wait(900);
       p.classList.add("doze");
-      await this._wait(rnd(18e3, 32e3));
-      await this._giftHamDown();
+      const F = [];
+      const bye = this._goldOk(5) ? this._goldHam(el, F) : null;
+      let ok = false;
+      try {
+        await this._wait(rnd(18e3, 32e3));
+        ok = true;
+      } finally {
+        bye?.(ok);
+      }
+      try {
+        await this._giftHamDown();
+      } catch (e) {
+        this._goldDrop(F);
+        throw e;
+      }
     }
     async _giftHamDown() {
       const p = this._el.pika;
@@ -18985,24 +20566,34 @@
       await this._wait(500);
       p.classList.add("spy");
       const stars = giftLvs(this._plan?.gift)[4] >= 2 && this._el.scene.classList.contains("dusk");
-      for (let i = 0; i < 3; i++) {
-        const pl = this._planeToWatch();
-        if (pl) this._face(pl.x >= this._x ? 1 : -1);
-        else if (i) this._face(-this._dir);
-        p.classList.toggle("look-up", !!pl || stars || Math.random() < 0.5);
-        if (pl) {
-          this._memo("plane");
-          this._say(pick(["Flugzeug!", "da oben!", "brumm!"]), 1300);
-        } else if (stars) {
-          const sx = clamp(this._x + this._dir * this._W * rnd(0.15, 0.35), 10, this._W - 10);
-          this._sparkle(sx, this._sy(rnd(0.08, 0.2)), 1);
-          this._say(pick(["ein Stern!", "Abendstern!", "noch einer!", "funkel!", "wünsch dir was!"]), 1400);
-        } else if (Math.random() < 0.5) this._say(pick(["Land in Sicht!", "ahoi!", "hmm…", "ich seh dich!"]), 1300);
-        await this._wait(rnd(1800, 3e3));
+      const gold = this._goldOk(4);
+      const F = [];
+      try {
+        for (let i = 0; i < 3; i++) {
+          const pl = this._planeToWatch();
+          const spot = !pl && gold && (i === 0 || this._goldOk(4, "spot"));
+          if (pl) this._face(pl.x >= this._x ? 1 : -1);
+          else if (i) this._face(-this._dir);
+          p.classList.toggle("look-up", !!pl || stars || spot || Math.random() < 0.5);
+          if (pl) {
+            this._memo("plane");
+            this._say(pick(["Flugzeug!", "da oben!", "brumm!"]), 1300);
+          } else if (spot) {
+            this._say(pick(this._goldSpot(F) ? ["da!", "da funkelt was!", "da, ein Stern!"] : ["da!", "da hinten!", "da fliegt was!"]), 1300);
+          } else if (stars) {
+            const sx = clamp(this._x + this._dir * this._W * rnd(0.15, 0.35), 10, this._W - 10);
+            this._sparkle(sx, this._sy(rnd(0.08, 0.2)), 1);
+            this._say(pick(["ein Stern!", "Abendstern!", "noch einer!", "funkel!", "wünsch dir was!"]), 1400);
+          } else if (Math.random() < 0.5) this._say(pick(["Land in Sicht!", "ahoi!", "hmm…", "ich seh dich!"]), 1300);
+          await this._wait(rnd(1800, 3e3));
+        }
+        p.classList.remove("spy", "look-up");
+        await this._wait(400);
+        await this._hopDown();
+      } catch (e) {
+        this._goldDrop(F);
+        throw e;
       }
-      p.classList.remove("spy", "look-up");
-      await this._wait(400);
-      await this._hopDown();
     }
     // ---------- Tricks (Stufe 2) und Gold (Stufe 3) ----------
     // Neuen Trick gleich nach dem Auspacken vorführen (kurz)
@@ -19092,6 +20683,8 @@
     async _giftPlush(ms = rnd(6e3, 1e4)) {
       const p = this._el.pika;
       const { hole, pW, gy } = this._g;
+      const F = [];
+      let ok = false;
       try {
         if (this._action !== "giftOpen") {
           await this._walkTo(hole.cx + pW * 0.15, 1);
@@ -19114,14 +20707,20 @@
         p.classList.add("content", "tilt");
         this._blush(2200);
         this._say("♥", 1300);
-        await this._wait(ms / 2);
+        await this._wait(ms / 4);
+        this._goldHeart(F);
+        await this._wait(ms / 4);
         p.classList.add("squint");
         this._happy(1500);
-        await this._wait(ms / 2);
+        await this._wait(ms / 4);
+        this._goldHeart(F);
+        await this._wait(ms / 4);
         p.classList.remove("squint", "tilt", "content");
         this._say(pick(["bis heut Abend!", "ab ins Bett mit dir!", "♥"]), 1200);
         await this._wait(900);
+        ok = true;
       } finally {
+        if (!ok) this._goldDrop(F);
         if (this._plushX != null) {
           this._puff(this._plushX, gy, 2);
           this._plushX = null;
@@ -19135,14 +20734,21 @@
       if (!p.classList.contains("cool")) return;
       this._face(1);
       p.classList.add("shup");
-      await this._wait(450);
-      p.classList.add("wink");
-      this._say(pick(["lässig!", "na?", "cool, oder?"]), 1300);
-      await this._wait(1100);
-      p.classList.remove("wink");
-      await this._wait(300);
-      p.classList.remove("shup");
-      await this._wait(800);
+      const F = [];
+      try {
+        await this._wait(450);
+        if (this._goldOk(3)) this._goldBling(F);
+        p.classList.add("wink");
+        this._say(pick(["lässig!", "na?", "cool, oder?"]), 1300);
+        await this._wait(1100);
+        p.classList.remove("wink");
+        await this._wait(300);
+        p.classList.remove("shup");
+        await this._wait(800);
+      } catch (e) {
+        this._goldDrop(F);
+        throw e;
+      }
     }
     // Trick der Hängematte: mit Schwung schaukeln, bevor er einnickt
     async _giftSwing(el) {
@@ -19190,10 +20796,256 @@
       this._say(pick(["♪♫", "Musik!", "tadaa!"]), 1200);
       await this._wait(1500);
     }
-    // Golden: ab und zu ein Funkeln
+    // ---------- Gold mit Wirkung (Stufe 3, seit 0.44) ----------
+    // Jeder goldene Schatz hat eine kleine Zugabe. Sie ist Zierde auf diesem Gerät: Nichts davon steht im Plan oder im
+    // Zustand, und wann eine zuletzt kam, merkt sich nur diese Karte bis zum Neuladen (_goldAt). Was an einer Aktion
+    // hängt, räumt deren Abbruch weg (_goldDrop); was von selbst kommt (Windrad, Glöckchen, Reflex, Herzchen nachts),
+    // dauert höchstens drei Sekunden und verschwindet mit seinem Zeitgeber oder mit _goldClear.
+    // Darf die Zugabe des Schatzes t jetzt? Nur golden und schon ausgepackt (giftLvs: wie .gilt in der Szene), nicht
+    // solange er verreist ist, nicht wenn keiner hinsieht. k: Eintrag in GOLD mit Abstand und Wahrscheinlichkeit (ohne:
+    // nur die Stufe). Die Vorschau (_dbgGold) überspringt Abstand und Würfel.
+    _goldOk(t, k = null) {
+      if (!this._g || !this._giftOn() || this._urlaubFern() || this._away()) return false;
+      if (!(giftLvs(this._plan?.gift, this._giftHide)[t] >= 3)) return false;
+      if (!k || this._dbgGold) return true;
+      const at = this._goldAt ??= {};
+      const now = Date.now();
+      if (!goldDue(GOLD[k], at[k], now, Math.random())) return false;
+      at[k] = now;
+      return true;
+    }
+    // Ein Gold-Teilchen in die Effekt-Ebene (Stil .gfx.<kind>, src/stil/paeckchen.js) an die Stelle x/y (px der Szene).
+    // Bei „Bewegung reduzieren“ steht es still (.still: blendet am Platz ein und aus). ms: Lebensdauer ab delay, danach
+    // räumt es sich selbst weg. vars: CSS-Variablen (Drift --dx/--dy). Jedes steht in _goldEls, bis es weg ist.
+    _goldFx(kind, x, y, { ms = 1200, html = GOLD_STAR, vars = null, delay = 0 } = {}) {
+      const el = document.createElement("span");
+      el.className = `gfx ${kind}${calmMotion() ? " still" : ""}`;
+      el.innerHTML = html;
+      el.style.left = `${x.toFixed(1)}px`;
+      el.style.top = `${y.toFixed(1)}px`;
+      for (const [n, v] of Object.entries(vars || {})) el.style.setProperty(n, v);
+      if (delay) el.style.animationDelay = `${delay}ms`;
+      this._el.fx.appendChild(el);
+      (this._goldEls ??= /* @__PURE__ */ new Set()).add(el);
+      setTimeout(() => this._goldDrop([el]), ms + delay);
+      return el;
+    }
+    // Diese Teilchen sofort wegnehmen (Abbruch der Aktion, Ende der Lebensdauer)
+    _goldDrop(F) {
+      for (const el of F.splice(0)) {
+        this._goldEls?.delete(el);
+        el.remove();
+      }
+    }
+    // Alles Goldene dieser Karte abräumen (Karte aus dem DOM): Teilchen, Zeitgeber der Vogel-Antwort, Reflex, Schimmer
+    _goldClear() {
+      clearTimeout(this._goldBellT);
+      this._goldDrop([...this._goldEls || []]);
+      this._el?.pika.classList.remove("gsheen", "gglow");
+      this._gtEls?.get(5)?.classList.remove("gshim", "gglow");
+    }
+    // Kasten eines Elements in Pixeln der Szene; null, wenn es nicht zu messen ist (nicht im Bild)
+    _goldBox(el) {
+      const r = el?.getBoundingClientRect?.();
+      if (!r || !r.width) return null;
+      const s = this._el.scene.getBoundingClientRect();
+      return { x: r.left - s.left, y: r.top - s.top, w: r.width, h: r.height };
+    }
+    // Funkenspur: pts = [[x, y, Verzögerung in ms], …] entlang des Wegs. Ruhig: ein einzelner stiller Funke am Ziel.
+    _goldTrail(F, pts) {
+      if (!pts.length || Math.abs(pts[pts.length - 1][0] - pts[0][0]) < 6) return;
+      if (calmMotion()) {
+        const [x, y] = pts[pts.length - 1];
+        F.push(this._goldFx("trail", x, y - this._H * 0.04, { ms: 1400 }));
+        return;
+      }
+      for (const [x, y, delay] of pts) F.push(this._goldFx("trail", x, y + rnd(-0.015, 0.015) * this._H, { ms: 900, delay }));
+    }
+    // Goldenes Wollknäuel: Es bleibt liegen, wo er es hingestupst hat (from), und kullert dann von selbst vor seine Pfoten
+    async _goldYarnBack(el, from, F) {
+      const p = this._el.pika;
+      const { pW, fMin, fMax, gy } = this._g;
+      const W = this._W;
+      await this._wait(800);
+      const to = clamp(this._x + this._dir * pW * 0.5, fMin * W, fMax * W);
+      if (Math.abs(to - from) < 8) return;
+      p.classList.add("look-f");
+      this._say(pick(["nanu?", "oh?"]), 900);
+      this._yarnXf = to / W;
+      this._yarnRot = (this._yarnRot || 0) + (to - from) / (Math.PI * this._H * 0.075) * 360;
+      el.style.transition = "left 1.4s cubic-bezier(.35, .1, .3, 1)";
+      el.style.left = `${to.toFixed(1)}px`;
+      el.querySelector("svg").style.transform = `rotate(${this._yarnRot.toFixed(0)}deg)`;
+      this._goldTrail(F, [...Array(5).keys()].map((k) => [from + (to - from) * (k + 0.5) / 5, gy - this._H * 0.055, 250 + k * 190]));
+      await this._wait(1500);
+      p.classList.remove("look-f");
+      this._mimik("awe", 1e3);
+      this._say(pick(["es kommt zurück!", "von ganz allein!", "Zauberknäuel!"]), 1300);
+      await this._wait(1e3);
+    }
+    // Goldenes Windrad: Dreht es sich schnell (angepustet, angetippt: k 'wheel'; echter Wind: 'wheelWind'), wirft es ein
+    // paar goldene Lichtfunken, die über die Wiese treiben (weg vom Bau, bei viel Wind weiter). Ruhig: ein stiller
+    // Funke an der Nabe.
+    _goldWheel(k = "wheel") {
+      const el = this._gtEls?.get(1);
+      if (!el?.isConnected || !this._goldOk(1, k)) return;
+      const B = this._goldBox(el);
+      const hx = B ? B.x + B.w / 2 : Math.min(this._g.hayR + this._H * 0.05, this._g.fMax * this._W);
+      const hy = B ? B.y + B.w / 2 : this._g.gy - this._H * 0.19;
+      const dir = hx <= this._W / 2 ? 1 : -1;
+      const far = clamp((this._wind || 0) / 40, 0, 1) * 0.1;
+      for (let i = 0, n = calmMotion() ? 1 : 3; i < n; i++) {
+        this._goldFx("glint", hx, hy + (n > 1 ? rnd(-0.02, 0.02) * this._H : 0), {
+          ms: 2500,
+          delay: i * 280,
+          vars: { "--dx": `${(dir * this._W * (far + rnd(0.14, 0.32))).toFixed(1)}px`, "--dy": `${(this._H * rnd(-0.04, 0.11)).toFixed(1)}px` }
+        });
+      }
+    }
+    // Goldener Plüsch-Pino: ein winziges goldenes Herz steigt auf. Am Tag beim Kuscheln auf der Wiese (F: Teilchen der
+    // Aktion), nachts über dem Bett im Bau (night, aus dem Takt).
+    _goldHeart(F, night = false) {
+      if (!this._gtEls?.has(2) || !this._goldOk(2, night ? "heartNight" : "heart")) return;
+      const { hole, gy } = this._g;
+      const out = this._plushX != null;
+      const x = out ? this._plushX : hole.l + (hole.r - hole.l) * 0.32;
+      const y = out ? gy - this._H * 0.13 : hole.lip - this._H * 0.08;
+      const el = this._goldFx("heart", x, y, { ms: 1800, html: GOLD_HEART, vars: { "--dx": `${(rnd(-0.03, 0.03) * this._H).toFixed(1)}px` } });
+      F?.push(el);
+    }
+    // Goldene Sonnenbrille, hochgeschoben: ein Stern blitzt am äußeren Rand auf (ruhig: Er blendet nur ein und aus)
+    _goldBling(F) {
+      const { pW, pH, gy } = this._g;
+      const B = this._goldBox(this._el.pika.querySelector(".shades"));
+      const x = B ? B.x + B.w * (this._dir > 0 ? 0.95 : 0.05) : this._x + this._dir * pW * 0.37;
+      const y = B ? B.y + B.h * 0.1 : gy - pH * 0.69 - (this._lift || 0) - this._laneDy();
+      F.push(this._goldFx("bling", x, y, { ms: 800 }));
+    }
+    // Goldene Sonnenbrille bei Sonne: Ab und zu wandert ein kleiner Lichtreflex über die Gläser (aus dem Takt). Ruhig
+    // glimmt er nur auf (.gglow). Beide Klassen stehen in GIFT_CLS, _cleanup nimmt sie mit.
+    _goldSheen() {
+      if (!this._goldOk(3, "sheen")) return;
+      this._cls(calmMotion() ? "gglow" : "gsheen", 1500, true);
+    }
+    // Goldenes Fernrohr: was er entdeckt, dort wo er hinschaut. Am Tag ein winziges Flugzeug in der Ferne, in Dämmerung
+    // und Nacht ein Stern, der aufblinkt. → true: Stern
+    _goldSpot(F) {
+      const sc = this._el.scene.classList;
+      const dark = sc.contains("dusk") || sc.contains("night");
+      const x = clamp(this._x + this._dir * this._W * rnd(0.15, 0.35), 14, this._W - 14);
+      F.push(this._goldFx(dark ? "star" : "plane", x, this._sy(rnd(0.08, 0.2)), {
+        ms: 2400,
+        html: dark ? GOLD_STAR : GOLD_PLANE,
+        vars: { "--dx": `${(this._dir * this._H * 0.1).toFixed(1)}px`, "--fl": String(this._dir) }
+      }));
+      return dark;
+    }
+    // Goldene Hängematte, solange er darin döst: Ein Schmetterling oder ein Glühwürmchen setzt sich auf ein Gestell,
+    // sonst läuft ein langsamer Schimmer übers Netz (wer kommt: goldHamGuest; die Vorschau wählt mit _dbgHam).
+    // F: nimmt das Teilchen des Besuchs auf. → Funktion fürs Ende des Nickerchens: (ok) ok = ausgeschlafen, der Besuch
+    // fliegt davon; sonst (Abbruch) ist er gleich weg
+    _goldHam(el, F) {
+      const sc = this._el.scene.classList;
+      const south = (this._hass?.config?.latitude ?? 50) < 0;
+      const kind = this._dbgHam || goldHamGuest({
+        mo: (new Date(this._dbgDate ?? Date.now()).getMonth() + (south ? 6 : 0)) % 12,
+        dark: sc.contains("dusk") || sc.contains("night"),
+        summer: this._skySummer(),
+        wet: !!(this._wx.wet || this._wx.snowcover),
+        cold: !!this._wx.cold,
+        wind: this._wind,
+        flies: this._cfg.fireflies
+      });
+      const calm = calmMotion();
+      if (kind === "shim") {
+        const c = calm ? "gglow" : "gshim";
+        el.classList.add(c);
+        return () => el.classList.remove(c);
+      }
+      const w = this._g.pW * GIFT_HAM_W;
+      const side = pick([-1, 1]);
+      const x = this._giftX(5) + side * w * (25 / 60);
+      const y = this._g.gy + 2 - w / 3 * 0.9;
+      const g = this._goldFx(kind === "bfly" ? "hbfly" : "hff", x, y, { ms: 9e4, html: kind === "bfly" ? BFLY_SVG(pick(BFLY_COLORS)) : GOLD_FIREFLY });
+      F.push(g);
+      const at = (dx2, dy2, o) => ({ transform: `translate(${dx2.toFixed(1)}px, ${dy2.toFixed(1)}px)`, opacity: o });
+      const dx = side * this._W * rnd(0.3, 0.5);
+      const dy = -this._H * rnd(0.3, 0.45);
+      const fly = kind === "bfly" && !calm ? g.animate?.(
+        [
+          at(dx, dy, 0),
+          { ...at(dx * 0.55, dy * 0.75, 1), offset: 0.3 },
+          { ...at(dx * 0.2, dy * 0.2, 1), offset: 0.7 },
+          { ...at(dx * 0.05, dy * 0.3, 1), offset: 0.88 },
+          at(0, 0, 1)
+        ],
+        { duration: 2800, delay: 2500, easing: "ease-out", fill: "backwards" }
+      ) : null;
+      return (ok) => {
+        if (!ok || calm || !g.isConnected) {
+          fly?.cancel();
+          this._goldDrop([g]);
+          return;
+        }
+        g.classList.add("off");
+        setTimeout(() => {
+          fly?.cancel();
+          this._goldDrop([g]);
+        }, 800);
+      };
+    }
+    // Goldene Gießkanne: Eine der neuen Blumen (neu, von _addFlower) wird eine goldgelbe Sonnenblume. Sie bleibt eine
+    // ganz normale Wiesenblume im selben Platz von _flowers: dieselben Felder (xf, color, el), color ist das Gelb der
+    // Wiesenpalette (an der Farbe hängen Sammeln, Knabbern, Blumengeschenk und der Wechsel der Jahreszeit), nur die
+    // Grafik ist eine andere (GOLD_FLOWER, dieselben Lichtvariablen wie FLOWER_SVG) und gold merkt, dass sie es ist.
+    // Wechselt die Jahreszeit, malt _light sie als gewöhnliche Blume neu. Höchstens eine zugleich. Ohne Gelb in der
+    // Palette (Winter: verblasste Samenstände) und solange schon eine steht: goldene Funken über den frisch Gegossenen.
+    // → true: eine goldene Blume ist gewachsen
+    _goldBloom(neu, sx, F) {
+      const gelb = this._flowerPal().find((c) => GOLD_BLOOM.includes(c));
+      const f2 = neu[Math.floor(neu.length / 2)];
+      const { gy } = this._g;
+      if (!f2 || !gelb || this._flowers.some((o) => this._goldIsBloom(o))) {
+        const n = calmMotion() ? 1 : 5;
+        for (let i = 0; i < n; i++) {
+          F.push(this._goldFx("trail", sx + (n > 1 ? rnd(-0.09, 0.09) * this._H : 0), gy - this._H * rnd(0.06, 0.16), { ms: 900, delay: i * 130 }));
+        }
+        return false;
+      }
+      f2.gold = true;
+      f2.color = gelb;
+      f2.el.classList.add("gbloom");
+      f2.el.innerHTML = GOLD_FLOWER(gelb, flowerMid(gelb));
+      this._flowerTint(f2);
+      F.push(this._goldFx("trail", f2.xf * this._W, gy - this._H * 0.13, { ms: 900, delay: 1e3 }));
+      return true;
+    }
+    // Ist f die goldene Blume, und sieht sie noch so aus? (Nach einem Wechsel der Jahreszeit ist sie eine gewöhnliche.)
+    _goldIsBloom(f2) {
+      return !!f2.gold && !f2.el.classList.contains("picked") && !!f2.el.querySelector(".gsun");
+    }
+    // Goldenes Glöckchen hat gebimmelt: Ein Vogel antwortet. Sitzt gerade einer da, zwitschert er zurück (_tweet), sonst
+    // kommt ein kurzes Zwitschern vom Bildrand gegenüber dem Bau. Besuche legt das nicht an und verschiebt sie nicht:
+    // Die folgen der Uhr und sind auf allen Geräten gleich. Das Glockenspiel bimmelt mehrmals: eine Antwort (GOLD.bell).
+    _goldBell() {
+      if (!this._goldOk(7, "bell")) return;
+      clearTimeout(this._goldBellT);
+      this._goldBellT = setTimeout(() => {
+        if (!this._goldOk(7)) return;
+        if (this._bird?.sitting) return this._tweet(this._bird);
+        const side = this._g.hole.cx < this._W / 2 ? 1 : -1;
+        const x = side > 0 ? this._W - this._H * 0.07 : this._H * 0.07;
+        const y = this._sy(rnd(0.3, 0.42));
+        for (let i = 0, n = calmMotion() ? 1 : 2; i < n; i++) {
+          this._goldFx("tweet", x, y + i * this._H * 0.05, { ms: 1500, delay: i * 260, html: i ? "♫" : "♪", vars: { "--dx": `${(-side * rnd(8, 18)).toFixed(1)}px` } });
+        }
+      }, 900);
+    }
+    // Golden: ab und zu ein Funkeln (auch an der goldenen Blume der Gießkanne)
     _giftGlint() {
       if (this._asleep || !this._gtEls || Math.random() > 0.2) return;
       const gl = [...this._gtEls.values()].filter((el2) => el2.classList.contains("gilt") && el2.isConnected);
+      for (const f2 of this._flowers || []) if (this._goldIsBloom(f2) && f2.el.isConnected) gl.push(f2.el);
       if (!gl.length) return;
       const el = pick(gl);
       const r = el.getBoundingClientRect();
@@ -19504,10 +21356,10 @@
           return;
         }
         const neu = v !== this._planSt && v !== this._planSent.at(-1)?.v;
-        const held = this._planHeld;
+        const held2 = this._planHeld;
         this._planHeld = neu && this._planBlind();
         if (this._planHeld) {
-          if (!held) this._planHeldAt = Date.now();
+          if (!held2) this._planHeldAt = Date.now();
           this._planBase = P;
           this._planOps = this._planOps.filter((o) => !(o.t === "gather" && o.m == null));
           if (!this._planOff && this.preview !== true) this._planRetry(this._planHoldMs());
@@ -19602,10 +21454,10 @@
   var BeschaeftigungenKlein = class {
     // ==================== Kleine Beschäftigungen ab 0.32 ====================
     // Hula-Hoop, Jo-Jo, Pusteblume, Purzelbaum, Steintürmchen, Jonglieren, Blumenkranz und Papierflieger bei trockenem
-    // Wetter, Pfützenspringen und Papierschiffchen bei Regen, Schnee-Pika, Schneeengel und Schneeball bei liegendem
-    // Schnee. Auswahl: miniChain (MINI_PROG, MINI_W, miniOk). Alle kommen aus dem Tagesplan (_miniAt) und stehen nicht
-    // im Helfer. Pfütze, Schiffchen, Schnee-Pika und Schneeball laufen nach der Planzeit: Ein Gerät, das später
-    // dazukommt, steigt mitten hinein ein.
+    // Wetter, Pfützenspringen, Papierschiffchen, Tropfen fangen und Blattschirm kreiseln bei Regen, Schnee-Pika,
+    // Schneeengel und Schneeball bei liegendem Schnee. Auswahl: miniChain (MINI_PROG, MINI_W, miniOk). Alle kommen aus
+    // dem Tagesplan (_miniAt) und stehen nicht im Helfer. Pfütze, Schiffchen, Tropfen fangen, Schnee-Pika und
+    // Schneeball laufen nach der Planzeit: Ein Gerät, das später dazukommt, steigt mitten hinein ein.
     // Lage für die Wahl der kleinen Beschäftigungen (miniProg, miniOk): Wetter, Wind und Kälte kommen von der
     // Wetter-Entität und sind auf allen Geräten gleich, die Jahreszeit hängt am Datum. Der Vorrat ist nur mit
     // plan_entity überall derselbe (ohne Helfer zählt jedes Gerät für sich). Was an der Konfiguration der einzelnen
@@ -19830,6 +21682,245 @@
       await this._propOff("boating");
       this._apropsAway(el);
       await this._wait(400);
+    }
+    // ---------- Regen: Tropfen fangen ----------
+    // Ein dicker Tropfen fällt in ms Millisekunden auf den Punkt (vx, vy) der Pika-Grafik, up px darüber (so hoch ist
+    // das Maul im Hüpfer). hit: Er verschwindet im Maul, sonst zerplatzt er (auf der Nase). Ein eigenes Element in
+    // .fx mit eigenem Zeitgeber, kein Tropfen der Regenebene. Bewegung reduzieren: Er fällt nicht, er blendet am
+    // Ziel ein und aus (Stil).
+    _bigDrop(vx, vy, up, hit, ms) {
+      const { pH } = this._g;
+      const o = this._svgPt(vx, vy);
+      const el = document.createElement("span");
+      el.className = hit ? "bigdrop hit" : "bigdrop";
+      el.innerHTML = DROP_SVG;
+      el.style.left = `${o.x.toFixed(1)}px`;
+      el.style.top = `${(o.y - up).toFixed(1)}px`;
+      el.style.setProperty("--fy", `${(-Math.min(o.y - up + pH * 0.25, pH * 1.7)).toFixed(1)}px`);
+      el.style.setProperty("--fd", `${Math.round(ms)}ms`);
+      this._el.fx.appendChild(el);
+      setTimeout(() => el.remove(), ms + 420);
+    }
+    // Der Tropfen ist auf der Nase zerplatzt: n Spritzer fliegen vom Punkt (vx, vy) der Pika-Grafik zur Seite. Wie
+    // _splash, aber mit den festen Zahlen u(0), u(1) … des Fensters statt gewürfelt. Bewegung reduzieren: keine.
+    _noseSplash(vx, vy, n, u) {
+      if (calmMotion()) return;
+      const { pW, pH } = this._g;
+      const o = this._svgPt(vx, vy);
+      for (let i = 0; i < n; i++) {
+        const side = i % 2 ? 1 : -1;
+        const el = document.createElement("span");
+        el.className = "splash sn";
+        el.innerHTML = DROP_SVG;
+        el.style.left = `${(o.x + side * pW * 0.03).toFixed(1)}px`;
+        el.style.top = `${o.y.toFixed(1)}px`;
+        el.style.setProperty("--dx", `${(side * (0.12 + u(2 * i) * 0.2) * pW).toFixed(1)}px`);
+        el.style.setProperty("--dy", `${(-(0.08 + u(2 * i + 1) * 0.12) * pH).toFixed(1)}px`);
+        this._el.fx.appendChild(el);
+        setTimeout(() => el.remove(), 800);
+      }
+    }
+    // Er legt das Blatt neben sich ins Gras, schaut zum Himmel, legt den Kopf zurück, streckt die Zunge heraus und
+    // fängt Regentropfen: drei bis fünf Versuche im festen Takt (DROPS_T.try ab der Planzeit: Alle Geräte fangen
+    // gleichzeitig, wer später einsteigt, im selben Takt). Zu jedem fällt ein dicker Tropfen (_bigDrop), dem er
+    // entgegenhüpft oder sich entgegenstreckt. Ein gefangener schmeckt („mmh!“, er wackelt vergnügt); springt er zu
+    // früh, landet der Tropfen auf seiner Nase („plitsch!“, er schüttelt den Kopf). Zahl und Ausgang der Versuche,
+    // Platz, Seite und Sprüche stehen mit dem Fenster fest (dropsPlan); am Ende zählt er stolz, was er erwischt hat
+    // (auch ein später eingestiegenes Gerät nennt dieselbe Zahl), und hebt das Blatt wieder auf.
+    // Bewegung reduzieren: kein Hüpfer, kein Strecken, kein Kopfschütteln; die Tropfen blenden an seinem Maul ein.
+    async _drops() {
+      const S = this._slotFor("drops");
+      const { pW, pH } = this._g;
+      const p = this._el.pika;
+      const calm = calmMotion();
+      const plan = dropsPlan(S.r);
+      const line = (i, list) => list[Math.floor(S.r(i) * list.length)];
+      const lw = pW * 0.5;
+      const U = this._besideSpot(S.r(2), S.r(3), lw);
+      const dir = -U.dir;
+      await this._goSpot(S, U.x, 0.9);
+      this._face(dir);
+      const T0 = S.start + ACT_WALK;
+      const t0 = T0 + DROPS_T.look;
+      const fresh = this._planNow() < T0 + 500;
+      if (fresh) {
+        await this._at(T0);
+        p.classList.add("sniff");
+        await this._wait(450);
+      }
+      const leaf = this._wx.wet ? this._aprop("leafp", LEAF_SVG, U.px, lw, lw * (22 / 64), false, pH * 0.02) : null;
+      if (leaf && dir < 0) leaf.classList.add("mir");
+      p.classList.add("drops");
+      p.classList.remove("sniff");
+      p.classList.add("look-up");
+      if (fresh) this._say(line(40, ["Regentropfen!", "Tropfen fangen!", "aaah …"]), 1100);
+      for (let i = Math.max(0, Math.ceil((this._planNow() - t0) / DROPS_T.try)); i < plan.length; i++) {
+        const tk = t0 + i * DROPS_T.try;
+        const { hit } = plan[i];
+        const hop = !calm && (plan[i].hop || !hit);
+        const reach = !calm && hit && !hop;
+        const up = hit ? hop ? pH * 0.27 : reach ? pH * 0.035 : 0 : 0;
+        await this._at(tk + DROPS_T.drop - 60);
+        p.classList.add("drops-up");
+        await this._at(tk + DROPS_T.drop);
+        if (hit) this._bigDrop(93.4, 55.6, up, true, DROPS_T.fall);
+        else this._bigDrop(92.4, 49.4, 0, false, DROPS_T.fall);
+        if (hop) {
+          const tj = tk + (hit ? DROPS_T.at - DROPS_T.jump : DROPS_T.early);
+          await this._at(tj - 150);
+          p.classList.add("crouch");
+          await this._at(tj);
+          p.classList.remove("crouch");
+          this._jump("hop1", true);
+        } else if (reach) {
+          await this._at(tk + DROPS_T.at - DROPS_T.reach);
+          p.classList.add("drops-st");
+        }
+        await this._at(tk + DROPS_T.at);
+        if (hit) {
+          await this._at(tk + DROPS_T.at + 120);
+          p.classList.remove("drops-up", "drops-st");
+          const tl = tk + DROPS_T.at + (hop ? DROPS_T.land : 120);
+          await this._at(tl);
+          this._say(line(50 + i, ["mmh!", "nass!", "lecker!", "mmh!"]), 800);
+          p.classList.add("drops-yum", "happy");
+          await this._at(tl + 660);
+          p.classList.remove("drops-yum", "happy");
+        } else {
+          this._noseSplash(92.4, 49.4, 4, (j) => S.r(60 + i * 8 + j));
+          this._say(line(50 + i, ["plitsch!", "plitsch!", "daneben!"]), 800);
+          p.classList.add("crosseye");
+          await this._at(tk + DROPS_T.at + 160);
+          p.classList.remove("drops-up");
+          p.classList.add("drops-no");
+          await this._at(tk + DROPS_T.at + 800);
+          p.classList.remove("drops-no", "crosseye");
+        }
+      }
+      await this._at(S.end);
+      p.classList.remove("look-up");
+      this._mimik("proud", 1800);
+      this._happy(1400);
+      this._say(DROPS_COUNT[plan.filter((v) => v.hit).length], 1600);
+      if (!calm) this._jump("hop1");
+      await this._wait(1800);
+      p.classList.add("sniff");
+      await this._wait(450);
+      if (leaf) this._apropsAway(leaf);
+      p.classList.remove("sniff", "drops");
+      await this._wait(400);
+    }
+    // ---------- Regen: Blattschirm kreiseln ----------
+    // Tropfen fliegen im Ring vom kreiselnden Blatt: n Stück vom Blattrand nach außen und ein Stück hinunter, far-mal
+    // so weit wie beim langsamen Kreiseln. Der Ring ist von der Seite gesehen ein flaches Oval; die Tropfen sitzen
+    // abwechselnd an seiner linken und rechten Hälfte (die vorn und hinten flögen auf den Betrachter zu, man sähe sie
+    // nur fallen). Verteilt mit den festen Zahlen u(0), u(1) … des Fensters. Bewegung reduzieren: Sie fliegen nicht,
+    // sie blenden am Rand ein und aus (Stil).
+    _twRing(n, far, u) {
+      const { pW, pH } = this._g;
+      const c = this._svgPt(89.5, 6);
+      const rx = pW * 0.3;
+      for (let i = 0; i < n; i++) {
+        const a = (i % 2 ? Math.PI : 0) + (u(i) - 0.5) * 1.7;
+        const el = document.createElement("span");
+        el.className = "twdrop";
+        el.innerHTML = DROP_SVG;
+        el.style.left = `${(c.x + Math.cos(a) * rx).toFixed(1)}px`;
+        el.style.top = `${(c.y + Math.sin(a) * rx * 0.3).toFixed(1)}px`;
+        el.style.setProperty("--dx", `${(Math.cos(a) * pW * (0.26 + u(n + i) * 0.26) * far).toFixed(1)}px`);
+        el.style.setProperty("--dy", `${(pH * (0.12 + 0.1 * Math.sin(a))).toFixed(1)}px`);
+        this._el.fx.appendChild(el);
+        setTimeout(() => el.remove(), 700);
+      }
+    }
+    // Er nimmt den Stiel des Blattschirms in beide Pfoten und kreiselt ihn: Das Blatt dreht sich um seinen Stiel, in
+    // drei Stufen immer schneller, und die Tropfen fliegen im Ring davon (_twRing, zu festen Planzeiten: twirlRings).
+    // Dann hält er es an, ihm ist kurz schwindlig, „Ta-da!“. Manchmal (twirlLifts: feste Zahl des Fensters, bei Wind
+    // ab TWIRL_WIND öfter; der Wind ist auf allen Geräten derselbe) fasst der Wind unter das Blatt: Es hebt ab und
+    // treibt ein Stück mit dem Wind, er hüpft hinterher und fängt es („hui!“ … „hab dich!“). Beide Schlüsse dauern
+    // gleich lang. Alle Geräte beginnen zur selben Planzeit; ein Gerät, das später dazukommt, steigt nicht ein
+    // (ACT_NOJOIN). Ohne Regen (aus der Vorschau) holt er das Blatt dafür hervor.
+    // Schmale Karten: Reicht der Platz in Windrichtung nicht für den Hüpfer, tritt er vorher zurück; reicht er auch
+    // dann nicht, steigt das Blatt gerade hoch, und er springt ihm auf der Stelle nach.
+    // Bewegung reduzieren: Das Blatt dreht sich nicht (es steht schräg), je Stufe blendet ein Ring Tropfen ein, und
+    // es hebt nie ab.
+    async _twirl() {
+      const S = this._slotFor("twirl");
+      const { pW, xR } = this._g;
+      const p = this._el.pika;
+      const calm = calmMotion();
+      const line = (i, list) => list[Math.floor(S.r(i) * list.length)];
+      const lift = !calm && twirlLifts(S.r, this._wind);
+      const dir = this._windDir || (S.r(3) < 0.5 ? -1 : 1);
+      let x = this._hobbySpot(S.r(2));
+      let to = x;
+      if (lift) {
+        const D = pW * 0.7;
+        const lim = (v) => clamp(v, pW * 0.45, xR);
+        to = lim(x + dir * D);
+        x = lim(to - dir * D);
+        if (Math.abs(to - x) < pW * 0.3) to = x;
+      }
+      await this._goSpot(S, x, 0.9);
+      this._face(dir);
+      p.classList.add("twirl");
+      const T0 = S.start + ACT_WALK;
+      const tEnd = T0 + TWIRL_T.grip + TWIRL_T.slow + TWIRL_T.mid + twirlFast(S.r);
+      await this._at(T0);
+      this._say(line(40, ["Kreisel!", "dreh dich!", "und rum!"]), 1e3);
+      await this._at(T0 + TWIRL_T.grip);
+      p.classList.add("tw-go");
+      let st = 0;
+      for (const [i, R2] of twirlRings(S.r).entries()) {
+        await this._at(T0 + R2.t);
+        const now = this._planNow() < T0 + R2.t + 300;
+        const first = R2.st !== st || i === 0;
+        if (R2.st !== st) {
+          st = R2.st;
+          p.classList.add(st === 1 ? "tw-2" : "tw-3");
+          if (now) this._say(st === 1 ? line(41, ["schneller!", "und schneller!", "hui!"]) : line(42, ["huiii!", "noch schneller!", "wusch!"]), 900);
+        }
+        if (now && (!calm || first)) this._twRing(4 + R2.st, 1 + R2.st * 0.3, (j) => S.r(100 + i * 16 + j));
+      }
+      await this._at(tEnd);
+      p.classList.remove("tw-go", "tw-2", "tw-3");
+      if (lift) {
+        p.style.setProperty("--twx", `${(Math.abs(to - x) / pW * 120).toFixed(1)}px`);
+        p.classList.add("tw-off", "look-up");
+        this._mimik("awe", 1400);
+        this._say(line(45, ["hui!", "oh!", "mein Blatt!"]), 900);
+        await this._at(tEnd + TWIRL_T.lift);
+        p.classList.add("crouch");
+        await this._wait(TWIRL_T.crouch);
+        p.classList.remove("crouch");
+        p.classList.add("tw-back");
+        if (to !== x) await this._hopTo(to, 0, false);
+        else {
+          this._jump("hop1", true);
+          await this._wait(TWIRL_T.hop);
+        }
+        this._face(dir);
+        p.classList.remove("tw-off", "tw-back", "look-up");
+        p.classList.add("happy");
+        this._say(line(46, ["hab dich!", "gefangen!", "hiergeblieben!"]), 1100);
+        await this._at(S.end);
+        p.classList.remove("happy");
+      } else {
+        if (!calm) this._twRing(8, 1.5, (j) => S.r(80 + j));
+        p.classList.add("tw-end", "crosseye");
+        this._say(line(43, ["huch …", "alles dreht sich!", "puh!"]), 1e3);
+        await this._at(tEnd + 1100);
+        p.classList.remove("tw-end", "crosseye");
+        p.classList.add("tilt");
+        this._mimik("proud", 1600);
+        this._say(line(44, ["Ta-da!", "Kreisel! ♥", "trocken!"]), 1300);
+        await this._at(S.end);
+        p.classList.remove("tilt");
+      }
+      this._happy(1200);
+      await this._wait(1200);
+      p.classList.remove("twirl");
+      await this._wait(100);
     }
     // ---------- Schnee: Schnee-Pika ----------
     // Bei liegendem Schnee baut er sich einen Zwilling: Bauch, Kopf, Ohren, Gesicht. Jede Schicht hat ihr festes

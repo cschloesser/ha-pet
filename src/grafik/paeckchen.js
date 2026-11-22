@@ -1,9 +1,9 @@
 // Päckchen: Hinweise, Inhalte mit Bild, Name und Trick, Papier- und Ballonfarben, Päckchen, Ballon, Hängematte,
-// Windrad, Goldfilter
+// Windrad, Goldfilter, Teilchen der goldenen Zugaben
 
 import { GIFT_TRE } from '../logik/paeckchen.js';
 import { OUT } from './pika.js';
-import { ICON_LEAF, ICON_HEART, ICON_SPARK } from './szene.js';
+import { ICON_LEAF, ICON_HEART, ICON_SPARK, STAR } from './szene.js';
 
 // Was die Serie gerade gefährdet (unter GIFT.min): Hinweis im Album und Zeichen am Knopf
 // Was für die Serie fehlt: Wort im Album (ruhig, seit 0.35 ohne Ausrufezeichen) und Zeichen am Knopf
@@ -147,6 +147,7 @@ const GIFT_BALLOON = `<svg viewBox="0 0 40 80" aria-hidden="true">
     </svg>`;
 // Hängematte auf der Wiese: viewBox 60 × 20, tiefste Stelle des Netzes bei y 14 (darauf liegt er, GIFT_HAM_LIFT × Breite).
 // Gestelle (.gpost) und Netz (.gnet) getrennt: Er stellt sie fürs Nickerchen nacheinander auf (.build) und baut sie ab (.fold).
+// .gshm: Schimmer der goldenen Hängematte (seit 0.44), von Seil zu Seil übers Netz; unsichtbar, bis .gshim ihn laufen lässt.
 const GIFT_HAMMOCK = `<svg viewBox="0 0 60 20" aria-hidden="true">
       <g class="gpost gpl"><path d="M1.8 20 L5 2 L8.2 20" stroke="#9a6a3c" stroke-width="1.5" fill="none" stroke-linejoin="round"/>
         <path d="M3 13 H7" stroke="#9a6a3c" stroke-width="1.1"/></g>
@@ -157,6 +158,7 @@ const GIFT_HAMMOCK = `<svg viewBox="0 0 60 20" aria-hidden="true">
         <path d="M10 5 Q30 23 50 5" stroke="${OUT}" stroke-width="4.4" fill="none" stroke-linecap="round"/>
         <path d="M10 5 Q30 23 50 5" stroke="#f6efe0" stroke-width="3.2" fill="none" stroke-linecap="round"/>
         <path d="M10 5 Q30 23 50 5" stroke="#e8584e" stroke-width="3.2" fill="none" stroke-dasharray="2.4 3"/>
+        <path class="gshm" d="M5 3.4 L10 5 Q30 23 50 5 L55 3.4" pathLength="100" stroke="#fffbe0" stroke-width="3" fill="none" stroke-linecap="round"/>
       </g></svg>`;
 const GIFT_HAM_W = 1.25; // Breite in Pika-Breiten
 const GIFT_HAM_LIFT = 0.1; // Höhe der Liegefläche in Breiten der Hängematte
@@ -165,10 +167,36 @@ const GIFT_HAM_MS = { build: 1900, fold: 1100 }; // Aufstellen und Abbauen (ms, 
 const GIFT_WHEEL = `<svg viewBox="0 0 24 44" aria-hidden="true">
       <path d="M12 12 V44" stroke="#b5793e" stroke-width="1.6" stroke-linecap="round"/>
       ${GIFT_ITEMS[1].svg.replace(/^<svg[^>]*>|<\/svg>$/g, '').replace(/<path d="M12 12 V23"[^>]*\/>/, '')}</svg>`;
+// ---- Gold mit Wirkung (seit 0.44): die Teilchen der Zugaben, siehe _goldFx in src/karte/schaetze.js ----
+// Funke: vierzackiger Stern (Spur des Wollknäuels, Lichtfunken des Windrads, „bling“ an der Brille, Stern im Fernrohr)
+const GOLD_STAR = `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="${STAR}"/></svg>`;
+// Herzchen des Plüsch-Pinos
+const GOLD_HEART = `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21.4l-1.5-1.3C5.4 15.4 2 12.3 2 8.5 2 5.4 4.4 3 7.5 3c1.7 0 3.4.8 4.5 2.1C13.1 3.8 14.8 3 16.5 3 19.6 3 22 5.4 22 8.5c0 3.8-3.4 6.9-8.5 11.5z"/>
+      <path class="gl" d="M6.4 7.6 q.6 -2 2.6 -2.2"/></svg>`;
+// Winzige Flugzeug-Silhouette von der Seite, Nase rechts (viewBox 24 × 11): was er durchs goldene Fernrohr entdeckt
+const GOLD_PLANE = `<svg viewBox="0 0 24 11" aria-hidden="true">
+      <path d="M2 5.4 L3.2 1.2 H5.2 L6.8 4.6 H18.4 Q22.2 4.8 22.2 6.1 Q22.2 7.4 18.4 7.4 H13.2 L9.6 10.4 H7.6 L9.4 7.4 H4.2 Q2 7.2 2 5.4Z"/></svg>`;
+// Glühwürmchen auf dem Gestell der Hängematte: ein Lichtpunkt mit Hof
+const GOLD_FIREFLY = '<i></i>';
+// Goldene Blume der Gießkanne: wie FLOWER_SVG (src/grafik/szene.js; viewBox 20 × 30, dieselben Variablen --fc Blüte,
+// --fm Mitte, --fst Stiel, --flf Blatt, die _flowerTint fertig beleuchtet setzt), aber mit einem Kranz aus zwölf
+// schmalen Blütenblättern, großer Mitte und zweitem Blatt: eine kleine Sonnenblume. c, m: Tagesfarben als Rückfall.
+const GOLD_FLOWER = (c, m) => `
+  <svg class="gsun" viewBox="0 0 20 30" aria-hidden="true">
+    <path d="M10 30 Q9 20 10 11" stroke="var(--fst, #4f8a3a)" stroke-width="1.8" fill="none"/>
+    <ellipse cx="6.5" cy="22" rx="3.6" ry="1.5" fill="var(--flf, #6bab4c)" transform="rotate(-30 6.5 22)"/>
+    <ellipse cx="13.4" cy="18.4" rx="3.2" ry="1.4" fill="var(--flf, #6bab4c)" transform="rotate(28 13.4 18.4)"/>
+    <g fill="var(--fc, ${c})" stroke="rgba(0,0,0,.16)" stroke-width=".45">
+      ${[...Array(12).keys()].map((n) => `<ellipse cx="10" cy="3.3" rx="1.7" ry="3.4" transform="rotate(${n * 30} 10 8.6)"/>`).join('')}
+    </g>
+    <circle cx="10" cy="8.6" r="3.5" fill="var(--fm, ${m})" stroke="rgba(0,0,0,.2)" stroke-width=".45"/>
+    <path d="M8.4 7.6 h.1 M10.2 7 h.1 M11.6 8.2 h.1 M9.2 9.4 h.1 M10.8 10 h.1 M8.2 9 h.1" stroke="rgba(60,30,5,.45)" stroke-width=".8" stroke-linecap="round"/>
+  </svg>`;
 // Umfärben nach Gold (Stufe 3 der Schätze)
 const GILT_F = 'sepia(1) saturate(2.6) hue-rotate(8deg) brightness(1.12)';
 
 export {
   GIFT_LOW, GIFT_ITEMS, giftItem, GIFT_PAPER, GIFT_BALLOONS, GIFT_GOLD, GIFT_TRICK, GIFT_GILT, GIFT_PARCEL, GIFT_BALLOON,
-  GIFT_HAMMOCK, GIFT_HAM_W, GIFT_HAM_LIFT, GIFT_HAM_MS, GIFT_WHEEL, GILT_F,
+  GIFT_HAMMOCK, GIFT_HAM_W, GIFT_HAM_LIFT, GIFT_HAM_MS, GIFT_WHEEL, GILT_F, GOLD_STAR, GOLD_HEART, GOLD_PLANE, GOLD_FIREFLY,
+  GOLD_FLOWER,
 };

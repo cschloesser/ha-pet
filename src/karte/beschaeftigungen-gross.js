@@ -212,6 +212,7 @@ export class BeschaeftigungenGross {
     const p = this._el.pika;
     if (this._jumpIn(S)) {
       this._lift = 0;
+      this._lane = 0; // im Eingang sitzt er immer vorn
       this._setX(this._g.home, true);
       this._inside = true;
       this._pose('hidden', 0);
@@ -461,11 +462,17 @@ export class BeschaeftigungenGross {
     await this._wait(600);
   }
 
-  // Motiv aus festen Zahlen u, u2: Blume, Selbstbildnis, Bau, Regenbogen; Pino, wenn er da ist (sonst selten);
-  // Flieger, wenn einer fliegt
+  // Motiv aus festen Zahlen u, u2: Blume, Selbstbildnis, Bau, Regenbogen; der Freund, der gerade da ist (Pino, Kirby,
+  // Rufus oder Katzumi; ohne Besuch selten Pino); Flieger, wenn einer fliegt. Die Liste ist so lang und so geordnet wie
+  // bis 0.43 (dort stand an der Stelle des Gasts immer 'pino'): Dieselbe Zahl u trifft auf allen Geräten dieselbe
+  // Stelle, auch auf einem, das noch die alte Karte zeigt. _dbgMotif (Vorschau): einmal genau dieses Motiv.
   _paintMotif(u, u2) {
+    const dbg = this._dbgMotif;
+    this._dbgMotif = null;
+    if (dbg && hasKey(EASEL_MOTIF, dbg)) return dbg;
     const m = ['blume', 'pika', 'bau', 'regenbogen'];
-    if (this._fr || u2 < 0.15) m.push('pino');
+    const gast = this._fr?.kind;
+    if (this._fr || u2 < 0.15) m.push(gast && hasKey(EASEL_MOTIF, gast) ? gast : 'pino');
     if ([...this._planes.values()].some((pl) => pl.show && !pl.gone)) m.push('flieger', 'flieger');
     return m[Math.floor(u * m.length)];
   }

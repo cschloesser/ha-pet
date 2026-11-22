@@ -19,6 +19,7 @@ const DIARY = { keep: 3 * 864e5, max: 400, close: 60000, gap: 100 * 6e4, acts: 2
 // (bleibt fest, sie steht im Browser-Speicher), g: Abschnitt, t: Titel, h: wie es geht, need: nur zeigen, wenn es das
 // hier gibt (gift: Päckchen an, friend: Freund an, flight und bote: eingerichtet, wheel und yarn: Schatz ausgepackt).
 // {n} = Name des Freunds. Nichts davon läuft ab oder wird belohnt: Es ist ein Nachschlagen, keine Aufgabenliste.
+// Schornstein ('chimney': nur am Erdhügel) und Saugroboter ('vac': nur, wenn eingerichtet) haben seit 0.44 eine Zeile.
 const FIND_GROUPS = ['Streicheln', 'Kümmern', 'Meine Welt'];
 const FINDS = [
   { k: 'head', g: 0, t: 'Kopf', h: 'Tipp mir auf den Kopf. Ich lehne mich in deine Hand.' },
@@ -42,6 +43,12 @@ const FINDS = [
   { k: 'cloud', g: 2, t: 'Wolke', h: 'Tipp eine Wolke an. Sie tröpfelt.' },
   { k: 'star', g: 2, t: 'Stern', h: 'Tipp abends oder nachts einen Stern an. Er fällt vom Himmel.' },
   { k: 'door', g: 2, t: 'Tür', h: 'Klopf an meine Tür. Bin ich im Bau, linse ich heraus.' },
+  { k: 'rock', g: 2, t: 'Aussichtsstein', h: 'Klopf an meinen Stein. Tock, tock: Manchmal linst die Maus dahinter hervor.' },
+  { k: 'hay', g: 2, t: 'Vorrat', h: 'Tipp auf meinen Vorrat. Es raschelt, und die Halme fliegen.' },
+  { k: 'sun', g: 2, t: 'Sonne', h: 'Tipp die Sonne an. Sie blinzelt und strahlt.' },
+  { k: 'moon', g: 2, t: 'Mond', h: 'Tipp den Mond an. Er gähnt.' },
+  { k: 'chimney', g: 2, t: 'Schornstein', h: 'Tipp auf meinen Schornstein. Er pafft einen Rauchring.', need: 'chimney' },
+  { k: 'vac', g: 2, t: 'Saugroboter', h: 'Tipp den Saugroboter an, wenn er über die Wiese fährt. Er piept.', need: 'vac' },
   { k: 'wheel', g: 2, t: 'Windrad', h: 'Stups mein Windrad an. Es dreht sich ganz schnell.', need: 'wheel' },
   { k: 'yarn', g: 2, t: 'Wollknäuel', h: 'Stups mein Wollknäuel an. Es kullert davon.', need: 'yarn' },
   { k: 'visitor', g: 2, t: 'Besuch', h: 'Tipp Vögelchen, Maus, Frosch oder Schnecke an.' },
@@ -77,7 +84,9 @@ const DIARY_TXT = {
   actShort: { read: 'gelesen', game: 'Gameboy gespielt', tablet: 'am Tablet gewischt', kite: 'Drachen steigen lassen', tv: 'ferngesehen',
     music: 'Musik gemacht', paint: 'gemalt', bubbles: 'Seifenblasen gepustet', sport: 'geturnt' },
   actNoun: { read: 'Lesen', game: 'Gameboy', tablet: 'Tablet', music: 'Musik', paint: 'Malen', bubbles: 'Seifenblasen' },
-  motif: { blume: 'eine Blume', pika: 'mich selbst', pino: '{n}', bau: 'meinen Bau', flieger: 'ein Flugzeug', regenbogen: 'einen Regenbogen' },
+  // (kirby, rufus, katzumi ab 0.44: der Freund, der beim Malen zu Besuch war; ihre Namen sind fest, nur Pinos kommt aus friend_name)
+  motif: { blume: 'eine Blume', pika: 'mich selbst', pino: '{n}', bau: 'meinen Bau', flieger: 'ein Flugzeug', regenbogen: 'einen Regenbogen',
+    kirby: 'Kirby', rufus: 'Rufus', katzumi: 'Katzumi' },
   pino: ['{n} war zu Besuch! Wir haben uns mit den Nasen angestupst.', '{n} kam vorbei. Zusammen ist alles schöner.',
     'Mit {n} gespielt. Beim Abschied hingen meine Ohren kurz.'],
   coffee: ['Es roch nach Kaffee. Ich hab mir auch einen geholt.', 'Kaffeeduft! Ich hab mitgetrunken, Schluck für Schluck.'],
@@ -116,6 +125,9 @@ const DIARY_TXT = {
     ostern: 'Ostern! Im Gras liegen bunte Eier.', maibaum: 'Hinter meinem Bau steht ein Maibaum.', sommer: 'Sommerfest! Die Wimpel flattern.' },
   treasure: ['Stups ich an und flitze hinterher.', 'Dreht sich im echten Wind.', 'Mit dem kuschle ich nachts.', 'Für sonnige Tage ab 24 Grad.',
     'Damit schau ich Flugzeugen nach.', 'Für mein Nickerchen.', 'Damit gieße ich die Blumen.', 'Bimmelt, wenn ich rauskomme.'],
+  // Was der goldene Schatz zusätzlich kann (Stufe 3, seit 0.44), Reihenfolge wie GIFT_ITEMS: steht im Album hinter „golden“
+  gold: ['zieht eine Funkenspur', 'wirft Lichtfunken', 'Herzchen beim Kuscheln', 'blitzt in der Sonne',
+    'entdeckt jedes Mal etwas', 'lockt Besuch an', 'eine Sonnenblume wächst', 'ein Vogel antwortet'],
   wx: { sunny: 'sonnig', clear: 'klar', 'clear-night': 'klar', partlycloudy: 'heiter', cloudy: 'bewölkt', rainy: 'Regen', pouring: 'Starkregen',
     snowy: 'Schnee', 'snowy-rainy': 'Schneeregen', fog: 'Nebel', lightning: 'Gewitter', 'lightning-rainy': 'Gewitter', hail: 'Hagel',
     windy: 'windig', 'windy-variant': 'windig' },

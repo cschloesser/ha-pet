@@ -98,7 +98,7 @@ class PikaPetCard extends HTMLElement {
     this._diarySync();
     if (this._W) this._btnFit();
     this._el.scene.style.minHeight = `${Number(this._cfg.height) || DEFAULTS.height}px`;
-    // Prototyp Tiefe an/aus: ausgeschaltet zurück auf die vordere Spur, Kulisse in die Mitte
+    // Tiefe an/aus (seit 0.44 Standard): ausgeschaltet zurück auf die vordere Spur, Kulisse in die Mitte
     this._el.scene.classList.toggle('tiefe', !!this._cfg.depth);
     if (!this._cfg.depth) {
       this._el.scene.style.removeProperty('--plx');

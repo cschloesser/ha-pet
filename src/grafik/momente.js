@@ -45,7 +45,83 @@ const GIFT_SVG = (c) => `<svg viewBox="0 0 34 16" aria-hidden="true">
       <path d="M15 11 L10.8 7.6 L11.4 12.6Z"/><path d="M15 11 L19.4 8.4 L18.6 13.2Z"/>
       <path d="M15 11 L13.2 15.4 M15 11 L16.6 15.2" fill="none" stroke-linecap="round"/>
       <circle cx="15" cy="11" r="1.2"/></g></svg>`;
-// Traummotive (Denkblase im Schlaf). Was er am Tag erlebt hat, träumt er öfter (_memo).
+// Rand aus n Büscheln um eine Ellipse, t hoch: spitz und schräg wie Kirbys Zotteln, sonst rund wie Rufus' Locken
+const tuft = (cx, cy, rx, ry, n, t, spitz) => {
+  const P = (a, k) => `${(cx + (rx + k) * Math.cos(a)).toFixed(1)} ${(cy + (ry + k) * Math.sin(a)).toFixed(1)}`;
+  const st = (2 * Math.PI) / n;
+  let d = `M${P(-Math.PI / 2, 0)}`;
+  for (let i = 0; i < n; i++) {
+    const a = -Math.PI / 2 + i * st;
+    d += spitz ? ` Q${P(a + st * 0.2, t * 0.9)} ${P(a + st * 0.62, t)} Q${P(a + st * 0.9, t * 0.2)} ${P(a + st, 0)}`
+      : ` Q${P(a + st * 0.5, t * 2)} ${P(a + st, 0)}`;
+  }
+  return `${d}Z`;
+};
+// Köpfe der Freunde, die seit 0.41 statt Pino kommen (24 × 24, ohne <svg>): für die Traumblase und, verkleinert, für
+// das Bild auf der Staffelei (EASEL_MOTIF). Woran man sie im Kleinen erkennt: Kirby an Zottelrand, hellen Bärenohren
+// und dunkler Nase auf heller Schnauze, Rufus an Locken und Schlappohren mit dunklem Innern, Katzumi an Spitzohren,
+// Stirnstreifen und den Augen mit gelbgrünem Rand. Ohne ids (die Bilder stehen mehrfach in der Karte).
+const eyes = (xl, xr, y, r, mehr = '') => [xl, xr].map((x) => `<circle cx="${x}" cy="${y}" r="${r}" fill="#2a1a12" ${mehr || 'stroke="none"'}/>`).join('');
+const FRIEND_FACE = {
+  kirby: `<g stroke="#5a4030" stroke-width=".9" stroke-linejoin="round">
+      <circle cx="6.3" cy="6.6" r="3.1" fill="#e4bf85"/><circle cx="17.7" cy="6.6" r="3.1" fill="#e4bf85"/>
+      <circle cx="6.4" cy="6.8" r="1.5" fill="#f2dcb4" stroke="none"/><circle cx="17.6" cy="6.8" r="1.5" fill="#f2dcb4" stroke="none"/>
+      <path d="${tuft(12, 13.4, 8.5, 7.5, 13, 1.4, true)}" fill="#d9a55a"/>
+      <path d="M9.6 7.6 q.5 1 .1 1.9 M12 7.2 q.4 1 0 2 M14.4 7.6 q.3 1 -.2 1.9" fill="none" stroke="#93602b" stroke-width=".6" stroke-linecap="round"/>
+      <ellipse cx="12" cy="15.9" rx="3.7" ry="2.7" fill="#e9d3ad" stroke="#b8925e" stroke-width=".4"/>
+      <path d="M10.5 14.6 q1.5 -.8 3 0 q-.3 1.4 -1.5 1.7 q-1.2 -.3 -1.5 -1.7z" fill="#3b2218" stroke="none"/>
+      ${eyes(8.3, 15.7, 12.4, 1.25)}</g>`,
+  rufus: `<g stroke="#5a4030" stroke-width=".9" stroke-linejoin="round">
+      <path d="${tuft(12, 12.4, 7.4, 7, 11, 0.9, false)}" fill="#fbf4e4"/>
+      <path d="M5.6 7.4 Q1.6 8.4 2 14 Q2.4 17.4 4.6 17 Q6.6 16.4 6.4 12.4Z" fill="#f1e5cd"/>
+      <path d="M4.9 10 Q3.2 11.4 3.4 14 Q3.7 15.8 4.6 15.6 Q5.6 15 5.4 12.6Z" fill="#2b1c15" stroke="none"/>
+      <path d="M18.4 7.4 Q22.4 8.4 22 14 Q21.6 17.4 19.4 17 Q17.4 16.4 17.6 12.4Z" fill="#f1e5cd"/>
+      <path d="M19.1 10 Q20.8 11.4 20.6 14 Q20.3 15.8 19.4 15.6 Q18.4 15 18.6 12.6Z" fill="#2b1c15" stroke="none"/>
+      <path d="M7.7 9.7 q.5 -1.3 1.2 -.4 q.6 -1.1 1.3 .1 M13.8 9.4 q.7 -1.2 1.3 -.1 q.7 -.9 1.2 .4" fill="none" stroke="#c4a27a" stroke-width=".7" stroke-linecap="round"/>
+      ${eyes(9, 15, 11.7, 1.2)}
+      <ellipse cx="12" cy="15.4" rx="4.3" ry="3.1" fill="#fffaf0" stroke="#cfb994" stroke-width=".5"/>
+      <path d="M10.2 13.9 q1.8 -1 3.6 0 q-.2 1.5 -1.8 1.7 q-1.6 -.2 -1.8 -1.7z" fill="#b38f74" stroke="#8f6e57" stroke-width=".3"/>
+      <path d="M10.6 16.8 q.7 .7 1.4 0 q.7 .7 1.4 0" fill="none" stroke="#8f6e57" stroke-width=".5" stroke-linecap="round"/></g>`,
+  katzumi: `<g stroke="#5a4030" stroke-width=".9" stroke-linejoin="round">
+      <path d="M3.9 11 L5.4 3.4 Q6 2.4 6.9 3.2 L11.2 8Z" fill="#f6c08a"/><path d="M5.6 9 L6.3 5 L8.9 8Z" fill="#f2a6b4" stroke="none"/>
+      <path d="M20.1 11 L18.6 3.4 Q18 2.4 17.1 3.2 L12.8 8Z" fill="#f6c08a"/><path d="M18.4 9 L17.7 5 L15.1 8Z" fill="#f2a6b4" stroke="none"/>
+      <ellipse cx="12" cy="14" rx="9.2" ry="7.2" fill="#ffd9a6"/>
+      <path d="M11.1 7 Q12 6.7 12.9 7 L12.3 11 Q12 11.5 11.7 11Z M8 8.4 Q9.3 7.7 10.5 7.9 L10.4 8.9 Q9.2 8.8 8.2 9.3Z M13.5 7.9 Q14.7 7.7 16 8.4 L15.8 9.3 Q14.8 8.8 13.6 8.9Z"
+        fill="#a9592b" stroke="none"/>
+      ${eyes(8, 16, 13.4, 1.3, 'stroke="#c9d46c" stroke-width=".7"')}
+      <path d="M11.3 15.2 q.7 -.4 1.4 0 q-.2 .7 -.7 .9 q-.5 -.2 -.7 -.9z" fill="#e9919c" stroke="none"/>
+      <path d="M10.8 17 q.6 .6 1.2 0 q.6 .6 1.2 0" fill="none" stroke-width=".5" stroke-linecap="round"/>
+      <path d="M4.6 14.4 l-2.4 -.6 M4.6 15.8 l-2.4 .5 M19.4 14.4 l2.4 -.6 M19.4 15.8 l2.4 .5" fill="none" stroke="#3a2a22" stroke-width=".5" stroke-linecap="round"/></g>`,
+};
+const face = (k) => `<svg viewBox="0 0 24 24">${FRIEND_FACE[k]}</svg>`;
+// Die Welt antwortet (seit 0.44): Gesichter für Sonne und Mond, für anderthalb Sekunden über ihre Scheibe gelegt
+// (viewBox 100 × 100 = die Scheibe). Sonne: Strahlenkranz außen herum (.wrays), zusammengekniffene Augen, Lächeln.
+const SUN_FACE = `<svg viewBox="0 0 100 100" aria-hidden="true">
+    <g class="wrays" stroke-width="7" stroke-linecap="round">
+      ${Array.from({ length: 12 }, (_, i) => {
+      const a = (i * Math.PI) / 6;
+      const p = (r) => `${(50 + Math.sin(a) * r).toFixed(1)} ${(50 - Math.cos(a) * r).toFixed(1)}`;
+      return `<path d="M${p(64)} L${p(i % 2 ? 76 : 84)}"/>`;
+    }).join('')}
+    </g>
+    <g fill="none" stroke="#b46a12" stroke-width="5" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M25 42 l13 6 l-13 6"/><path d="M75 42 l-13 6 l13 6"/><path d="M37 66 q13 11 26 0"/>
+    </g>
+    <ellipse cx="22" cy="63" rx="7" ry="4.5" fill="#ff9a6a" opacity=".55"/><ellipse cx="78" cy="63" rx="7" ry="4.5" fill="#ff9a6a" opacity=".55"/>
+  </svg>`;
+// Mond: Augen zu, der Mund geht zum Gähnen auf (.wyawn), daneben steigt ein kleines „z z“ auf (.wz, HTML). Jeder
+// Strich liegt auf einem hellen Rand: Auf der beleuchteten Seite sieht man den dunklen Strich, auf der dunklen den Rand.
+const MOON_FACE = `<svg viewBox="0 0 100 100" aria-hidden="true">
+    <g fill="none" stroke-linecap="round">
+      <path d="M26 44 q9 8 18 0 M56 44 q9 8 18 0" stroke="#fffbe6" stroke-opacity=".8" stroke-width="10"/>
+      <path d="M26 44 q9 8 18 0 M56 44 q9 8 18 0" stroke="#5f5a80" stroke-width="5"/>
+    </g>
+    <ellipse class="wyawn" cx="50" cy="68" rx="11" ry="13.5" fill="#fffbe6" opacity=".8"/>
+    <ellipse class="wyawn" cx="50" cy="68.5" rx="8" ry="10.5" fill="#5f5a80"/>
+  </svg><b class="wz">z</b><b class="wz">z</b>`;
+export { SUN_FACE, MOON_FACE };
+// Traummotive (Denkblase im Schlaf). Was er am Tag erlebt hat, träumt er öfter (_memo). Die Schlüssel sind die aus
+// MEM_BITS: Für jeden, der hier ein Bild hat, träumt er davon (_dreamSvg), also auch von Kirby, Rufus und Katzumi.
 const DREAM = {
   lz: FOOD.lz.svg,
   klee: FOOD.klee.svg,
@@ -71,6 +147,9 @@ const DREAM = {
   note: `<svg viewBox="0 0 24 24"><path d="M9 18 V6.2 L19 4 V15.6" stroke="#5a4030" stroke-width="1.7" fill="none" stroke-linejoin="round"/>
       <ellipse cx="6.8" cy="18" rx="2.8" ry="2.1" fill="#5a4030"/><ellipse cx="16.8" cy="15.8" rx="2.8" ry="2.1" fill="#5a4030"/></svg>`,
   bfly: BFLY_SVG(BFLY_COLORS[0]),
+  kirby: face('kirby'),
+  rufus: face('rufus'),
+  katzumi: face('katzumi'),
 };
 
-export { COFFEE_THINK, EMOTE, BFLY_COLORS, BFLY_SVG, GIFT_SVG, DREAM };
+export { COFFEE_THINK, EMOTE, BFLY_COLORS, BFLY_SVG, GIFT_SVG, DREAM, FRIEND_FACE };

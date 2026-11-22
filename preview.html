@@ -151,6 +151,14 @@
   <button data-fr="rockWithFriend">Pika: auf den Stein</button>
   <button data-fr="nibbleWithFriend">Pika: zusammen knabbern</button>
   <button data-fr="squeakDuet">Pika: Piep-Duett</button>
+  <i style="flex-basis:100%"></i><b></b>
+  <button data-frg="fetchFriend" data-frgk="rufus">Rufus: Stöckchen holen</button>
+  <button data-frg="pounceFriend" data-frgk="katzumi">Katzumi: Jagd (Wollknäuel oder Feder)</button>
+  <button data-frg="rollFriend" data-frgk="kirby">Kirby: Kullern</button>
+  <button data-frm="pino">Pino malen</button>
+  <button data-frm="kirby">Kirby malen</button>
+  <button data-frm="rufus">Rufus malen</button>
+  <button data-frm="katzumi">Katzumi malen</button>
 </div>
 <!-- ==================== Ende Freund-Pika ==================== -->
 
@@ -269,6 +277,8 @@
   <button data-act="glider">Papierflieger</button>
   <button data-act="puddle">Pfützenspringen (Regen)</button>
   <button data-act="boat">Papierschiffchen (Regen)</button>
+  <button data-act="drops">Tropfen fangen (Regen)</button>
+  <button data-act="twirl">Blattschirm kreiseln (Regen)</button>
   <button data-act="snowpika">Schnee-Pika (Schnee)</button>
   <button data-act="angel">Schneeengel (Schnee)</button>
   <button data-act="snowball">Schneeball (Schnee)</button>
@@ -305,6 +315,19 @@
   <button id="cute-cling">heute oft gestreichelt</button>
   <button id="cute-reunion">Wiedersehen nach 4 Std.</button>
   <button id="cute-dream">Traum jetzt (nachts)</button>
+  <button data-dream="pino">Traum: Pino</button>
+  <button data-dream="kirby">Traum: Kirby</button>
+  <button data-dream="rufus">Traum: Rufus</button>
+  <button data-dream="katzumi">Traum: Katzumi</button>
+  <i style="flex-basis:100%"></i><b>Welt</b>
+  <button data-world="rock">Stein (tock, tock)</button>
+  <button data-world="hay">Vorrat</button>
+  <button data-world="sun">Sonne</button>
+  <button data-world="moon">Mond</button>
+  <button data-world="chimney">Schornstein</button>
+  <button data-world="vac">Saugroboter (wenn er putzt)</button>
+  <button id="cute-ritual">Abendritual jetzt</button>
+  <button id="cute-ritual-plush">… mit Plüsch-Pino</button>
 </div>
 <!-- ==================== Ende Süßes ==================== -->
 
@@ -340,6 +363,20 @@
   <button id="gift-swing">Schaukeln</button>
   <button id="gift-rbow">Regenbogen (Gießen)</button>
   <button data-gift="giftTune">Glockenspiel</button>
+  <i style="flex-basis:100%"></i><b>Gold</b>
+  <button data-gold="yarn">Knäuel: Funkenspur, rollt zurück</button>
+  <button data-gold="header">Kopfball mit Funken</button>
+  <button data-gold="wheel">Windrad: Lichtfunken</button>
+  <button data-gold="plush">Plüsch: Herzchen</button>
+  <button data-gold="bling">Brille: Bling</button>
+  <button data-gold="sheen">Brille: Lichtreflex</button>
+  <button data-gold="scope">Fernrohr: entdeckt etwas</button>
+  <button data-gold="scope-dusk">… abends (Stern)</button>
+  <button data-gold="ham-bfly">Hängematte: Schmetterling</button>
+  <button data-gold="ham-ff">… Glühwürmchen (Dämmerung)</button>
+  <button data-gold="ham-shim">… Schimmer</button>
+  <button data-gold="can">Gießkanne: Sonnenblume</button>
+  <button data-gold="bell">Glöckchen: Vogel antwortet</button>
   <i style="flex-basis:100%"></i><b>Leckerli</b>
   <button data-treat="12">Haselnüsse</button>
   <button data-treat="13">Bratapfel</button>
@@ -584,9 +621,11 @@
     + (buehneUeberstand(c).filter((o) => o.l > 1 || o.r > 1 || o.t > 1 || o.b > 3)
       .map((o) => `${o.wer} links ${o.l}, rechts ${o.r}, oben ${o.t}, unten ${o.b} px`).join(' · ') || 'alles im Rahmen')).join('\n')));
 
-  // Prototyp Tiefe: Schalter (setConfig wie in HA), Spur erzwingen, Areal wechseln
+  // Tiefe (seit 0.44 Standard, die Karten oben laufen damit): Schalter (setConfig wie in HA), Spur erzwingen, Areal
+  // wechseln. Der grüne Rand zeigt „an“, auch gleich nach dem Laden.
   const tiefeBtn = document.getElementById('tiefe');
   const tiefeMark = () => (tiefeBtn.style.borderColor = cards[0]._cfg.depth ? '#6bb152' : '');
+  tiefeMark();
   tiefeBtn.addEventListener('click', () => {
     cards.forEach((c) => c.setConfig({ ...c._cfg, depth: !c._cfg.depth }));
     tiefeMark();
@@ -972,6 +1011,30 @@
       if (c._fr?.arrived && !c._fr.leaving) { c._next = b.dataset.fr; c._interrupt(); }
     }))
   );
+  // Der passende Freund kommt zuerst (ein anderer verschwindet ohne Abschied), dann das Spiel bzw. das Malen
+  const frHol = (c, kind) => {
+    if (c._fr && (c._fr.kind !== kind || c._fr.leaving)) c._friendGone(c._fr);
+    if (!c._fr) c._friendCome(undefined, undefined, true, kind);
+  };
+  // Eigene Spiele (ab 0.44): Die Aktion wartet selbst, bis er hereingehoppelt ist (_withFriend, bis 8 s). Die Jagd
+  // nimmt das Wollknäuel, wenn es auf der Wiese liegt (Zeile Päckchen: „Album voll“), sonst die Feder am Halm.
+  document.querySelectorAll('[data-frg]').forEach((b) =>
+    b.addEventListener('click', () => cards.forEach((c) => {
+      frHol(c, b.dataset.frgk);
+      c._next = b.dataset.frg;
+      c._interrupt();
+    }))
+  );
+  // Malen mit Besuch: Er malt den Freund, der da ist (_dbgMotif legt das Motiv für dieses eine Bild fest, sonst
+  // wäre es nur eins von fünf)
+  document.querySelectorAll('[data-frm]').forEach((b) =>
+    b.addEventListener('click', () => cards.forEach((c) => {
+      frHol(c, b.dataset.frm);
+      c._dbgMotif = b.dataset.frm;
+      c._next = 'paint';
+      c._interrupt();
+    }))
+  );
   // ==================== Ende Vorschau Freund-Pika ====================
 
   // ==================== Vorschau Haus-Bote ====================
@@ -1322,6 +1385,44 @@
     c._dbgDream = true;
     c._interrupt();
   }));
+  // … von genau diesem Freund (ab 0.44 hat jeder sein Bild in der Traumblase)
+  document.querySelectorAll('[data-dream]').forEach((b) => b.addEventListener('click', () => cards.forEach((c) => {
+    if (!c._asleep) return log('erst „Nacht (schläft)“ wählen');
+    c._dbgDream = b.dataset.dream;
+    c._interrupt();
+  })));
+  // Die Welt antwortet (seit 0.44): die Antwort eines Ziels auslösen, ohne zu zielen, wie ein Tipp mitten darauf
+  document.querySelectorAll('[data-world]').forEach((b) => b.addEventListener('click', () => {
+    const k = b.dataset.world;
+    const fehlt = cards.filter((c) => {
+      const z = c._worldZones(2).find((o) => o.k === k);
+      if (!z) return true;
+      c._worldTap(z);
+      if (['sun', 'moon'].includes(k) && !c._asleep && !c._inside) c._glance('look-up');
+      return false;
+    });
+    log(fehlt.length ? `${b.textContent}: gibt es ${fehlt.length < cards.length ? 'auf einer Karte' : 'hier'} gerade nicht (Areal, Tageszeit, Wolken, Sauger?)` : '');
+  }));
+  // Abendritual: „Schlafenszeit“ stellen und das Ritual einmal erzwingen (sonst nur kurz nach der echten Schlafenszeit).
+  // Mit Plüsch-Pino: den Schatz dafür ins Album legen (links, rechts kommt er über den Helfer an).
+  const ritual = (plush) => {
+    if (cards.some((c) => c._asleep)) return log('erst eine Tageszeit wählen, zu der er wach ist');
+    if (plush) giftSet({ u: gift().u | 4 });
+    cards.forEach((c) => {
+      const go = () => {
+        c._dbgRitual = plush ? 'plush' : 'star';
+        c._dbgSleep = true;
+        c._tick();
+      };
+      // Im Bau gibt es kein Ritual (wie bei Gewitter): erst herauskommen lassen
+      if (!c._inside) return go();
+      c._next = 'idle';
+      c._interrupt();
+      setTimeout(go, 3000);
+    });
+  };
+  document.getElementById('cute-ritual').addEventListener('click', () => ritual(false));
+  document.getElementById('cute-ritual-plush').addEventListener('click', () => ritual(true));
   // ==================== Ende Süßes ====================
 
   // ==================== Päckchen ====================
@@ -1393,6 +1494,41 @@
     cards.forEach((c) => { c._dbgSwing = true; cuteGo(c, 'giftHammock'); });
   });
   document.getElementById('gift-rbow').addEventListener('click', () => cards.forEach((c) => cuteGo(c, 'giftWater')));
+  // Gold mit Wirkung (0.44): jede Zugabe sofort, ohne Abstand und Würfel (_dbgGold bleibt danach an). Der Schatz wird
+  // dafür links golden; rechts kommt das über den Helfer an, darum startet die Aktion erst nach einer Sekunde.
+  const GOLD_GO = {
+    // Das Knäuel vorher in die Mitte der Wiese: Am Rand kullert es kaum (und dann auch nicht zurück). _dbgYarnBack:
+    // nur ein Stups, danach kommt es von selbst zurück (sonst nur nach dem letzten Stups, wenn es dabei noch rollte)
+    yarn: [0, (c) => { c._yarnXf = (c._g.fMin + c._g.fMax) / 2; c._giftScene(); c._dbgYarnBack = true; cuteGo(c, 'giftYarn'); }],
+    header: [0, (c) => { c._yarnXf = (c._g.fMin + c._g.fMax) / 2; c._giftScene(); cuteGo(c, 'giftHeader'); }],
+    // wie ein Tipp aufs Windrad (src/karte/interaktion.js): kurz ganz schnell
+    wheel: [1, (c) => {
+      const el = c._gtEls?.get(1);
+      if (!el) return;
+      c._blowUntil = c._haNow() + 2600;
+      el.classList.add('tapspin');
+      c._giftScene();
+      setTimeout(() => { el.classList.remove('tapspin'); c._giftScene(); }, 2700);
+    }],
+    plush: [2, (c) => cuteGo(c, 'giftPlush')],
+    // Die Brille trägt er sonst erst ab 24 °C in der Sonne: eine Minute lang aufsetzen wie nach dem Auspacken
+    bling: [3, (c) => { c._coolUntil = c._haNow() + 60000; c._tickGift(); cuteGo(c, 'giftShades'); }],
+    sheen: [3, (c) => { c._coolUntil = c._haNow() + 60000; c._tickGift(); c._goldSheen(); }],
+    scope: [4, (c) => cuteGo(c, 'giftScope')],
+    'scope-dusk': [4, (c) => { c._dbgElev = 0; c._dbgSleep = false; c._updateSky(); cuteGo(c, 'giftScope'); }],
+    // Wer kommt, hängt sonst an Monat und Tageszeit (goldHamGuest): hier ausgesucht
+    'ham-bfly': [5, (c) => { c._dbgHam = 'bfly'; cuteGo(c, 'giftHammock'); }],
+    'ham-ff': [5, (c) => { c._dbgHam = 'ff'; c._dbgElev = 1; c._dbgAz = 250; c._dbgSleep = false; c._tick(); cuteGo(c, 'giftHammock'); }],
+    'ham-shim': [5, (c) => { c._dbgHam = 'shim'; cuteGo(c, 'giftHammock'); }],
+    can: [6, (c) => cuteGo(c, 'giftWater')],
+    // Sitzt gerade ein Vögelchen da („Vögelchen kommt“), zwitschert es selbst zurück
+    bell: [7, (c) => c._giftBell()],
+  };
+  document.querySelectorAll('[data-gold]').forEach((b) => b.addEventListener('click', () => {
+    const [t, go] = GOLD_GO[b.dataset.gold];
+    giftSet({ u: gift().u | (1 << t), v: gift().v | (1 << t) | (1 << (8 + t)) });
+    setTimeout(() => cards.forEach((c) => { c._dbgGold = true; go(c); }), 1000);
+  }));
   // Leckerli: ein Päckchen mit genau diesem verschenken, gleich welcher Monat ist (_dbgTreat gilt statt des Würfelns).
   // Wie giftSetGive unten: gdbg erst aus den eigenen Änderungen nehmen, dann verschenken. Rechts kommt es über den
   // Helfer an wie auf einem zweiten Gerät.

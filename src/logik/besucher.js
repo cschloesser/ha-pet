@@ -45,13 +45,22 @@ const FRIEND_WIN = { win: 30 * 6e4, p: 1, spread: 20 * 6e4, stay: [3, 6] };
 // So lange vor dem Ende des Besuchs beginnen die beiden kein neues Spiel mehr (ms). Die meisten Spiele sind dann
 // vorbei, wenn Pino geht; ein längeres (Zusammensitzen, Fangen auf breiten Karten) bricht der Abschied ab.
 const FRIEND_LAST = 25000;
+// Ab 0.44 hat jeder der drei neuen Freunde ein eigenes Spiel, das es nur gibt, solange er zu Besuch ist: Rufus holt
+// das Stöckchen, Katzumi jagt (das Wollknäuel oder eine Feder am Halm), Kirby kullert. Pino spielt die gemeinsamen.
+const FRIEND_GAME = { kirby: 'rollFriend', rufus: 'fetchFriend', katzumi: 'pounceFriend' };
+// Gewicht des eigenen Spiels in _friendActs: beim ersten Mal im Besuch mehr als jedes gemeinsame (Fangen 7), damit
+// es in den meisten Besuchen zu sehen ist; danach so viel wie ein gemeinsames. Nie zweimal hintereinander (fr.last).
+const FRIEND_GAME_W = { first: 12, again: 4.5 };
 // Gemeinsame Spiele (Aktionen des Pikas). Solange eine läuft, steuert sie auch Pino.
-const FRIEND_ACTS = new Set(['greetFriend', 'chaseFriend', 'sitWithFriend', 'rockWithFriend', 'nibbleWithFriend', 'squeakDuet']);
+const FRIEND_ACTS = new Set(['greetFriend', 'chaseFriend', 'sitWithFriend', 'rockWithFriend', 'nibbleWithFriend', 'squeakDuet',
+  ...Object.values(FRIEND_GAME)]);
 // Pinos eigener Ablauf gibt die Kontrolle ab (gemeinsames Spiel, Streicheln, Abschied)
 const FRIEND_YIELD = { friendYield: true };
 // Zustandsklassen an Pino, die beim Übergeben der Kontrolle zurückgesetzt werden
-const FRIEND_CLS = ['walking', 'groom', 'eating', 'look-f', 'look-b', 'look-up', 'calling', 'crouch', 'happy', 'nuzzle', 'wiggle'];
+// (ab 0.44 dazu die Haltungen der eigenen Spiele: carry trägt etwas im Maul, fdash rennt mit fliegenden Ohren, kwig
+// wackelt vor dem Sprung, kroll kullert, crosseye ist schwindlig, lean schunkelt)
+const FRIEND_CLS = ['walking', 'groom', 'eating', 'look-f', 'look-b', 'look-up', 'calling', 'crouch', 'happy', 'nuzzle', 'wiggle', 'carry', 'fdash', 'kwig', 'kroll', 'crosseye', 'lean'];
 
 export {
-  CRIT, CRIT_KINDS, CRIT_BACK, critJoin, FRIEND_SCALE, FRIENDS, FRIEND_KEYS, friendKind, FRIEND_WIN, FRIEND_LAST, FRIEND_ACTS, FRIEND_YIELD, FRIEND_CLS,
+  CRIT, CRIT_KINDS, CRIT_BACK, critJoin, FRIEND_SCALE, FRIENDS, FRIEND_KEYS, friendKind, FRIEND_WIN, FRIEND_LAST, FRIEND_GAME, FRIEND_GAME_W, FRIEND_ACTS, FRIEND_YIELD, FRIEND_CLS,
 };

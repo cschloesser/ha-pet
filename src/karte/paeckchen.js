@@ -3,7 +3,7 @@
 import { rnd, pick, clamp, seeded, seedRnd } from '../logik/hilfen.js';
 import { RATE, sec } from '../logik/zustand.js';
 import { PLAN_MIN, MEM_GUT, pikaDay, planParse } from '../logik/tagesplan.js';
-import { GIFT, GIFT_TRE, giftLv, giftLvs, giftOwned, giftTre, giftTreat, giftMile, giftAllGold } from '../logik/paeckchen.js';
+import { GIFT, GIFT_TRE, GOLD, giftLv, giftLvs, giftOwned, giftTre, giftTreat, giftMile, giftAllGold } from '../logik/paeckchen.js';
 import {
   GIFT_LOW, GIFT_ITEMS, giftItem, GIFT_PAPER, GIFT_BALLOONS, GIFT_GOLD, GIFT_TRICK, GIFT_GILT, GIFT_PARCEL, GIFT_BALLOON,
   GIFT_HAMMOCK, GIFT_HAM_W, GIFT_HAM_MS, GIFT_WHEEL,
@@ -698,7 +698,7 @@ export class Paeckchen {
       E.delete(t);
       // Die Hängematte baut er ab: erst das Netz, dann die Gestelle (auch nach einem Abbruch, _cleanup)
       if (t === 5 && el.isConnected && !el.classList.contains('fold')) {
-        el.classList.remove('build', 'sway', 'swing');
+        el.classList.remove('build', 'sway', 'swing', 'gshim', 'gglow');
         el.classList.add('fold');
         setTimeout(() => el.remove(), GIFT_HAM_MS.fold);
       } else el.remove();
@@ -722,6 +722,12 @@ export class Paeckchen {
     // Windrad: dreht sich mit dem Wind, bei Flaute ganz langsam (angepustet kurz schnell)
     const blow = this._haNow() < (this._blowUntil || 0);
     E.get(1)?.style.setProperty('--gws', `${blow ? 0.32 : clamp(9 - (this._wind || 0) / 4, 0.35, 9).toFixed(2)}s`);
+    // Golden: Ein neuer Schwung (angepustet oder angetippt, beides setzt _blowUntil) wirft Lichtfunken. Nur beim
+    // Wechsel: _giftScene läuft bei jedem Takt und jeder Planänderung.
+    if (blow && this._blowUntil !== this._goldBlow) {
+      this._goldBlow = this._blowUntil;
+      this._goldWheel();
+    }
     this._giftDress(lvs);
   }
 
@@ -793,6 +799,7 @@ export class Paeckchen {
     const r = el.getBoundingClientRect();
     const s = this._el.scene.getBoundingClientRect();
     this._peep(r.left - s.left + r.width, r.top - s.top, text);
+    this._goldBell(); // golden: Ein Vogel antwortet
   }
 
   _layoutGift(first) {
@@ -818,6 +825,7 @@ export class Paeckchen {
     clearTimeout(this._albumPT);
     clearTimeout(this._bellT);
     clearTimeout(this._giftArrT);
+    this._goldClear();
     this._albumHeld = false;
     this._gtEls?.get(7)?.classList.remove('ring');
     const B = this._gb;
@@ -845,6 +853,11 @@ export class Paeckchen {
     const cool = !!(giftOwned(G) & 8) && !this._wx.wet && !this._asleep && (sunny || this._haNow() < (this._coolUntil || 0));
     this._el.pika.classList.toggle('cool', cool);
     this._giftGlint();
+    // Gold mit Wirkung, was von selbst kommt (je mit eigenem Abstand, siehe GOLD): Lichtreflex auf der Brille bei
+    // Sonne, Lichtfunken des Windrads im echten Wind, nachts ein Herzchen über dem Plüsch-Pino im Bett
+    if (cool && sunny) this._goldSheen();
+    if (!this._asleep && (this._wind || 0) >= GOLD.wheelWind.min) this._goldWheel('wheelWind');
+    if (this._asleep && this._plushX == null) this._goldHeart(null, true);
     // Voller Vorrat: der Knopf wackelt ab und zu
     const b = this._el.gbtn;
     if (G.n >= GIFT.max && !b.hidden && !this._urlaubOn() && Math.random() < 0.25) {

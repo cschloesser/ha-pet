@@ -3,7 +3,11 @@
 import { rnd, pick, clamp } from '../logik/hilfen.js';
 import { calmMotion } from '../logik/bewegung-reduzieren.js';
 import { PET_CLING, PET_CAP, pikaDay } from '../logik/tagesplan.js';
-import { PET_FREE, TOUCH_NEXT, petGain, KRAUL, PRESS_SLOP, worldPick } from '../logik/interaktion.js';
+import { PET_FREE, TOUCH_NEXT, petGain, KRAUL, PRESS_SLOP, worldPick, worldHalo, CHIMNEY } from '../logik/interaktion.js';
+import { CRIT_KINDS } from '../logik/besucher.js';
+import { BZ } from '../logik/buehne.js';
+import { MOUSE_SVG } from '../grafik/besucher.js';
+import { SUN_FACE, MOON_FACE } from '../grafik/momente.js';
 
 export class Interaktion {
   // Klick auf den Pika. Den Tipp mit Finger oder Maus löst schon das Loslassen aus (_pressEnd), der Klick des Browsers
@@ -53,6 +57,8 @@ export class Interaktion {
       return;
     }
     this._happy();
+    // Mitten im Abendritual (_bedRitual): Die Herzchen bekommt er, den Rest lässt er aus und geht wie sonst ins Bett
+    if (this._ritOn) return this._interrupt();
     // Beim Fernsehen dreht er sich um, beim Lesen eingenickt wacht er auf
     if (p.classList.contains('tv')) p.classList.remove('tv');
     if (p.classList.contains('doze')) {
@@ -410,7 +416,10 @@ export class Interaktion {
     if (this._asleep) return this._sleepTouch('stroke');
     this._blush(2000);
     if (this._petFree()) this._touchNext('stroke');
-    else this._cls('fluffy', 850, true);
+    else {
+      this._cls('fluffy', 850, true);
+      if (this._ritOn) this._interrupt(); // Abendritual: wie beim Antippen
+    }
   }
 
   async _stroke() {
@@ -509,7 +518,8 @@ export class Interaktion {
   }
 
   // ---------- Die Welt antwortet ----------
-  // Ein Tipp auf Blume, Wolke, Stern, Tür, Windrad oder Wollknäuel bekommt eine kleine Antwort. Alles bleibt auf diesem
+  // Ein Tipp auf Blume, Wolke, Stern, Tür, Windrad oder Wollknäuel bekommt eine kleine Antwort, seit 0.44 auch einer auf
+  // Aussichtsstein, Vorrat, Sonne, Mond, Schornstein und Saugroboter. Alles bleibt auf diesem
   // Gerät: Nichts davon steht im Zustand oder im Tagesplan, nichts wird in die Helfer geschrieben. Die Ziele bekommen
   // keine eigenen Tippflächen (sie lägen über Pika, Häufchen und Besuchern und stünden _tapBelow im Weg): Der Klick,
   // den sonst niemand wollte, kommt an der Szene an (_onLookAt) und wird hier nach Rechtecken gesucht. Was eine
@@ -525,30 +535,88 @@ export class Interaktion {
   }
 
   // Flächen der antippbaren Dinge in px der Szene, in Rangfolge und mit Tipp-Rand (worldPick). sky: was die Stelle
-  // vom Himmel zeigt (_skyAt). Wolken zählen vor freiem Himmel und vor den Bergen, Sterne nur vor freiem Himmel.
+  // vom Himmel zeigt (_skyAt). Wolken zählen vor freiem Himmel und vor den Bergen, Sterne, Sonne und Mond nur vor
+  // freiem Himmel.
+  // Die Dinge seit 0.44 (Saugroboter, Vorrat, Aussichtsstein, Schornstein, Sonne, Mond) stehen zweimal in der Liste:
+  // mit ihrer gemalten Fläche (rect) an ihrem Platz in der Rangfolge, und ganz hinten noch einmal mit ihrem Hof
+  // (worldHalo: mindestens 40 px, auch wo die Zeichnung kleiner ist). So nimmt der Hof keinem anderen Ziel einen Tipp
+  // weg: Ein Stern neben dem Mond, eine Blume neben dem Stein behalten ihre Fläche.
   _worldZones(sky) {
     const sc = this._el.scene;
     const sr = sc.getBoundingClientRect();
     const Z = [];
+    const halo = [];
     const add = (k, el, pad) => {
       const r = el.getBoundingClientRect();
       if (!r.width && !r.height) return;
       Z.push({ k, el, l: r.left - sr.left - pad, t: r.top - sr.top - pad, r: r.right - sr.left + pad, b: r.bottom - sr.top + pad, pad });
     };
+    const thing = (k, l, t, r, b, el = null) => {
+      if (!(r > l && b > t)) return;
+      const rect = { l, t, r, b };
+      Z.push({ k, el, l, t, r, b, pad: 0, rect });
+      halo.push({ k, el, ...worldHalo(l, t, r, b, 4), pad: 0, rect });
+    };
+    const g = this._g;
+    // Saugroboter (Haus-Signale): fährt ganz vorn, vor allem anderen auf der Wiese. Nur, solange er im Bild ist.
+    const V = this._sigVac;
+    if (V?.el && !V.el.classList.contains('out')) {
+      const x = this._sigVacNow(V);
+      if (x + V.w > 0 && x < this._W) thing('vac', x, V.top, x + V.w, V.top + V.w * (18 / 44), V.el);
+    }
     const E = this._gtEls;
     if (E?.has(0)) add('yarn', E.get(0), 8);
     if (E?.has(1)) add('wheel', E.get(1), 4);
     if (!sc.classList.contains('snowcover')) {
       for (const f of this._flowers) if (!f.el.classList.contains('picked')) add('flower', f.el, 6);
     }
-    const { hole } = this._g;
+    // Vorrat: die Nische im Hügel bzw. der Heuhaufen, so groß er gerade ist (.hay ist mit Nische ausgeblendet)
+    const S = this._areal().stash;
+    if (S && g.bur) thing('hay', g.hayL, g.bur.base + S.top * g.bur.u, g.hayR, g.gy);
+    else {
+      const r = this._el.hay?.getBoundingClientRect?.();
+      if (r && (r.width || r.height)) thing('hay', r.left - sr.left, r.top - sr.top, r.right - sr.left, r.bottom - sr.top, this._el.hay);
+    }
+    // Aussichtsstein: der große Stein der Grafik (100 × 50, Kuppe bei y 12,5), ohne das Geröll daneben
+    const K = g.rock;
+    if (K?.ku) thing('rock', K.l + 6 * K.ku, K.top0 + 12.5 * K.ku, K.l + 95 * K.ku, g.gy, this._el.rock);
+    // Schornstein (nur, wo der Bau einen hat)
+    const C = CHIMNEY[this._arealKey];
+    if (C && g.bur) thing('chimney', g.bur.l + C.x1 * g.bur.u, g.bur.base + C.top * g.bur.u, g.bur.l + C.x2 * g.bur.u, g.bur.base + C.bot * g.bur.u);
+    const { hole } = g;
     Z.push({ k: 'door', l: hole.l, t: hole.top, r: hole.r, b: hole.lip, pad: 0 });
-    if (!sky) return Z;
+    if (!sky) return Z.concat(halo);
+    if (sky !== 1) {
+      // Sonne und Mond vor den Sternen: Ein Stern knapp neben der Scheibe nähme ihr mit seinem Tipp-Rand sonst die halbe Fläche
+      for (const k of ['sun', 'moon']) {
+        const b = this._skyBody(k, sr);
+        if (b) thing(k, ...b, this._el[k]);
+      }
+    }
     if (sky !== 1 && (sc.classList.contains('night') || sc.classList.contains('dusk'))) {
       for (const el of this._el.starEls) if (!el._fell && Number(getComputedStyle(el).opacity) > 0.25) add('star', el, 13);
     }
     for (const el of this._el.clouds) if (el.classList.contains('on')) add('cloud', el, 5);
-    return Z;
+    return Z.concat(halo);
+  }
+
+  // Sonne ('sun') oder Mond ('moon'), wo sie gerade wirklich am Himmel stehen (auch mitten im Gleiten): [l, t, r, b]
+  // in px der Szene. null, wenn sie nicht zu sehen sind: ausgeblendet (dichte Wolken, Nebel, Gewitter, Neumond, unter
+  // dem Horizont), hinter Hügeln, Bau, Stein oder Bergen, oder mit der Mitte hinter einer Wolke. Nachgesehen wird in
+  // der Mitte der Scheibe, nicht an der Tippstelle: Ihr Hof reicht über den Hügelkamm, hinter dem sie steht.
+  _skyBody(k, sr) {
+    const el = this._el[k];
+    const r = el?.getBoundingClientRect?.();
+    if (!r?.width || !(Number(getComputedStyle(el).opacity) > 0.25)) return null;
+    const cx = r.left + r.width / 2;
+    const cy = r.top + r.height / 2;
+    if (this._skyAt({ clientX: cx, clientY: cy }) !== 2) return null;
+    for (const c of this._el.clouds) {
+      if (!c.classList.contains('on')) continue;
+      const q = c.getBoundingClientRect();
+      if (cx >= q.left && cx <= q.right && cy >= q.top && cy <= q.bottom) return null;
+    }
+    return [r.left - sr.left, r.top - sr.top, r.right - sr.left, r.bottom - sr.top];
   }
 
   // Hat er gerade nichts vor, das ein Blick oder ein „oh!“ stören könnte?
@@ -649,8 +717,161 @@ export class Interaktion {
       this._peep(cx, z.t + pad + 2, 'surr!');
     } else if (z.k === 'yarn') {
       if (!this._yarnTap(z.el, cx)) return;
+    } else if (z.k === 'rock') {
+      // Tock, tock. Die Maus linst kurz hinter dem Stein hervor; kann sie gerade nicht, hüpft ein Kiesel davon.
+      const R = z.rect;
+      this._peep(cx, R.t + (R.b - R.t) * 0.25, 'tock, tock');
+      if (!this._rockPeek(calm)) this._pebble(R, calm);
+    } else if (z.k === 'hay') {
+      // Es raschelt, ein paar Halme fliegen auf, und liegt eine Blüte im Vorrat, hüpft eine. Der Vorrat bleibt, wie er ist.
+      const R = z.rect;
+      if (!calm && z.el) this._wag(z.el, { scale: ['1 1', '1.06 .9', '.97 1.05', '1 1'] }, 420);
+      this._peep(cx, R.t, 'raschel!');
+      this._stalks(R, calm); // nach dem Schriftzug: Die Halme fliegen vor ihm auf
+      this._bloomHop(calm);
+    } else if (z.k === 'sun' || z.k === 'moon') {
+      // Die Sonne kneift die Augen zusammen und strahlt einmal, der Mond gähnt (der Pika schaut hoch: _onLookAt)
+      this._skyFace(z.k, z.el, calm);
+    } else if (z.k === 'chimney') {
+      // Ein Rauchring pafft heraus, auch wenn es warm ist und der Schornstein sonst nicht raucht
+      const R = z.rect;
+      if (!this._smokeRing(calm)) return;
+      this._peep(R.r + (R.r - R.l), R.t + (R.b - R.t) * 0.7, 'paff!');
+    } else if (z.k === 'vac') {
+      // Der Saugroboter piept und blinkt einmal. Nur eine Klasse an seinem Bild: An seiner Fahrt ändert sich nichts.
+      const el = z.el;
+      el.classList.remove('wbeep');
+      void el.offsetWidth;
+      el.classList.add('wbeep');
+      clearTimeout(this._wbeepT);
+      this._wbeepT = setTimeout(() => el.classList.remove('wbeep'), 700);
+      this._peep(cx, z.rect.t, 'piep!');
     } else return;
     this._found(z.k);
+  }
+
+  // Die Maus linst hinter dem Aussichtsstein hervor: ein eigenes Bild der Maus für knapp zwei Sekunden, nicht der
+  // Besuch nach der Uhr. this._mouse bleibt frei (daran hängen der Plan der Besucher, _watchMouse und ihr Tippziel),
+  // das Bild fängt keine Tipps und ist kein Knopf (ein Flugzeug reichte ihm sonst seinen Tipp durch, _tapBelow).
+  // Sie kommt nur, wenn gerade kein Besucher da ist, es nicht regnet und der Pika nicht oben sitzt. → false: kommt nicht
+  _rockPeek(calm) {
+    const busy = () => CRIT_KINDS.some((k) => this[`_${k}`]);
+    // Sie schaut schon heraus: noch ein Tock lässt nur ihre Ohren zucken (kein Kiesel an ihrer Stelle)
+    if (this._wpeek) {
+      this._wpeek.classList.add('twitch');
+      setTimeout(() => this._wpeek?.classList.remove('twitch'), 450);
+      return true;
+    }
+    if (!this._g || this._lift > 0 || ['lookout', 'hopDown'].includes(this._action)) return false;
+    if (busy() || !this._critterWeather('mouse')) return false;
+    const { rock, gy } = this._g;
+    const mw = this._H * 0.15;
+    const y = gy - this._H * 0.022; // ihr Laufweg hinter dem Stein (_mouseVisit)
+    const edge = rock.l + 7 * rock.ku; // linke Steinkante
+    const at = (k) => `translate(${(edge + mw * k).toFixed(1)}px, ${y.toFixed(1)}px)`;
+    const el = document.createElement('div');
+    el.className = `mouse left wpeek${calm ? ' calm' : ''}`;
+    el.innerHTML = `<div class="mw"><div class="mf"><div class="mb">${MOUSE_SVG}</div></div></div>`;
+    el.style.zIndex = String(BZ.maus); // hinter dem Stein
+    // Bewegung reduzieren: Sie blendet an ihrem Platz ein und aus, statt hervorzuhuschen
+    el.style.transform = at(calm ? 0.1 : 0.75);
+    this._el.mice.appendChild(el);
+    this._wpeek = el;
+    const T = [];
+    const end = () => {
+      T.forEach(clearTimeout);
+      el.remove();
+      if (this._wpeek === el) this._wpeek = null;
+    };
+    // Kommt inzwischen ein echter Besuch, macht ihr Bild sofort Platz
+    const step = (ms, fn) => T.push(setTimeout(() => (busy() ? end() : fn()), ms));
+    if (!calm) {
+      step(30, () => {
+        el.style.transition = 'transform .4s ease-out';
+        el.style.transform = at(0.1);
+      });
+      step(1500, () => {
+        el.style.transition = 'transform .3s ease-in';
+        el.style.transform = at(0.75);
+      });
+    }
+    step(600, () => el.classList.add('sniff'));
+    step(1300, () => el.classList.remove('sniff'));
+    step(1900, end);
+    return true;
+  }
+
+  // Ein Kiesel hüpft vom Fuß des Steins ein Stück über die Wiese (Bewegung reduzieren: Er blinkt nur auf)
+  _pebble(R, calm) {
+    const H = this._H;
+    const el = document.createElement('span');
+    el.className = `wpeb${calm ? ' calm' : ''}`;
+    el.style.left = `${(R.l + (R.r - R.l) * 0.1).toFixed(1)}px`;
+    el.style.top = `${(this._g.gy - H * 0.035).toFixed(1)}px`;
+    el.style.setProperty('--px', `${(-H * rnd(0.13, 0.2)).toFixed(1)}px`);
+    this._el.fx.appendChild(el);
+    setTimeout(() => el.remove(), 850);
+  }
+
+  // Halme fliegen aus dem Vorrat auf (R: seine Fläche). Bewegung reduzieren: Sie blinken an ihrer Stelle auf.
+  _stalks(R, calm) {
+    const { pH } = this._g;
+    const w = R.r - R.l;
+    const h = R.b - R.t;
+    for (let i = 0; i < 5; i++) {
+      const el = document.createElement('span');
+      el.className = `wstalk${calm ? ' calm' : ''}`;
+      el.style.left = `${(R.l + w * rnd(0.2, 0.8)).toFixed(1)}px`;
+      el.style.top = `${(R.t + h * rnd(0.35, 0.7)).toFixed(1)}px`;
+      el.style.setProperty('--px', `${(rnd(-0.16, 0.16) * pH).toFixed(1)}px`);
+      el.style.setProperty('--py', `${(rnd(-0.22, -0.09) * pH).toFixed(1)}px`);
+      el.style.setProperty('--rot', `${rnd(-200, 200).toFixed(0)}deg`);
+      el.style.setProperty('--r0', `${rnd(-40, 40).toFixed(0)}deg`);
+      el.style.animationDelay = `${i * 50}ms`;
+      this._el.fx.appendChild(el);
+      setTimeout(() => el.remove(), 950 + i * 50);
+    }
+  }
+
+  // Eine der Blüten im Vorrat hüpft kurz (Heuhaufen: zwei Kreise je Blüte in .hayb; Nische: ein <g> je Blüte in
+  // .stashb). Nur die Zeichnung bewegt sich, gezählt wird nichts. → false: Es liegt keine da.
+  _bloomHop(calm) {
+    const n = this._blooms?.length || 0;
+    if (!n) return false;
+    const i = Math.floor(Math.random() * n);
+    const S = this._areal().stash;
+    const els = S ? [this._el.burrow.querySelectorAll('.stashb g')[i]]
+      : [...this._el.hay.querySelectorAll('.hayb circle')].slice(2 * i, 2 * i + 2);
+    const dy = S ? 2.6 : 5.5; // Einheiten der jeweiligen Grafik
+    const frames = calm ? { opacity: [1, 0.25, 1] } : { translate: ['0 0', `0 ${-dy}px`, '0 0', `0 ${(-dy * 0.3).toFixed(1)}px`, '0 0'] };
+    for (const el of els) if (el) this._wag(el, frames, calm ? 600 : 520);
+    return true;
+  }
+
+  // Sonne: kneift die Augen zusammen und strahlt einmal. Mond: gähnt, ein kleines „z z“ steigt auf. Das Gesicht hängt
+  // für anderthalb Sekunden an der Scheibe selbst und steht so hinter Wolken, Hügeln und Bergen wie sie.
+  _skyFace(k, el, calm) {
+    el.querySelector('.wface')?.remove();
+    const f = document.createElement('i');
+    f.className = `wface w${k}${calm ? ' calm' : ''}`;
+    f.innerHTML = k === 'sun' ? SUN_FACE : MOON_FACE;
+    el.appendChild(f);
+    setTimeout(() => f.remove(), 1700);
+  }
+
+  // Rauchring über dem Schornstein, in der Ebene des Rauchs (hinter Leiste und Blasen) und in Einheiten der Bau-Grafik.
+  // Ein eigenes Element neben .smoke: Dessen Regeln (Dauerschleife bei Kälte, Stillstand mit „Bewegung reduzieren“)
+  // gelten für ihn nicht. → false: Dieser Bau hat keinen Schornstein.
+  _smokeRing(calm) {
+    const C = CHIMNEY[this._arealKey];
+    const svg = this._el.lights.querySelector('svg');
+    if (!C || !svg) return false;
+    const el = document.createElementNS('http://www.w3.org/2000/svg', 'ellipse');
+    el.setAttribute('class', `wring${calm ? ' calm' : ''}`);
+    for (const [a, v] of [['cx', C.cx], ['cy', C.cy], ['rx', 3.4], ['ry', 1.5]]) el.setAttribute(a, v);
+    svg.appendChild(el);
+    setTimeout(() => el.remove(), 1700);
+    return true;
   }
 
   // Kurzes Wackeln über die Einzel-Eigenschaften rotate bzw. scale: Sie legen sich über die laufende Animation des
@@ -690,7 +911,7 @@ export class Interaktion {
   _yarnTap(el, x) {
     const flying = (a) => !(typeof CSSAnimation !== 'undefined' && a instanceof CSSAnimation)
       && !(typeof CSSTransition !== 'undefined' && a instanceof CSSTransition);
-    if (['giftYarn', 'giftHeader'].includes(this._action) || el.getAnimations?.().some(flying)) return false;
+    if (['giftYarn', 'giftHeader', 'pounceFriend'].includes(this._action) || el.getAnimations?.().some(flying)) return false;
     const { fMin, fMax } = this._g;
     const W = this._W;
     const from = this._giftX(0);
@@ -705,7 +926,7 @@ export class Interaktion {
     el.style.left = `${to.toFixed(1)}px`;
     el.querySelector('svg').style.transform = `rotate(${this._yarnRot.toFixed(0)}deg)`;
     clearTimeout(this._yarnT);
-    this._yarnT = setTimeout(() => !['giftYarn', 'giftHeader'].includes(this._action) && (el.style.transition = ''), 950);
+    this._yarnT = setTimeout(() => !['giftYarn', 'giftHeader', 'pounceFriend'].includes(this._action) && (el.style.transition = ''), 950);
     return true;
   }
 
@@ -736,7 +957,7 @@ export class Interaktion {
   }
 
   // Klick in die Szene, den kein Tippziel abgefangen hat: Die Welt antwortet (Blume, Wolke, Stern, Tür, Windrad,
-  // Wollknäuel), und er schaut hin.
+  // Wollknäuel, Stein, Vorrat, Sonne, Mond, Schornstein, Saugroboter), und er schaut hin.
   _onLookAt(e) {
     if (!this._g) return;
     const p = this._el.pika;
@@ -749,7 +970,7 @@ export class Interaktion {
     if (this._fort) return; // verreist: niemand, der hinschaut
     // Im Bau (auch beim Fernsehen, Rückansicht) schaut er nicht herum
     if (this._asleep || this._action === 'eatFood' || this._inside || p.classList.contains('tv')) return;
-    const up = hit?.k === 'cloud' || hit?.k === 'star';
+    const up = ['cloud', 'star', 'sun', 'moon'].includes(hit?.k);
     this._glance(up ? 'look-up' : Math.sign(x - this._liveX()) === this._dir ? 'look-f' : 'look-b');
     if (hit) return; // die Antwort der Welt ersetzt Herhoppeln und Kopf-schief
     // Heute oft gestreichelt: auf die Wiese getippt, hoppelt er gern hin. Sonst legt er manchmal den Kopf schief.

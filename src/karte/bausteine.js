@@ -11,7 +11,7 @@ import { ICON_HEART, STAR } from '../grafik/szene.js';
 import { EMOTE } from '../grafik/momente.js';
 
 export class Bausteine {
-  // lane (Prototyp Tiefe): 1 = hintere Spur. Alle anderen Wege führen auf die vordere Spur zurück.
+  // lane (Tiefe): 1 = hintere Spur. Alle anderen Wege führen auf die vordere Spur zurück.
   // back: rückwärts, er dreht sich nicht in Laufrichtung (ein paar Schritte vom Bild zurücktreten)
   async _walkTo(x, speed = 1, steady = false, lane = 0, back = false) {
     const { pW, xR } = this._g;
@@ -88,7 +88,7 @@ export class Bausteine {
     const p = this._el.pika;
     this._x = x;
     if (instant) p.style.transition = 'none';
-    // Auf dem Stein (weiter hinten) etwas kleiner, Ursprung sind die Füße. Prototyp Tiefe: auf der
+    // Auf dem Stein (weiter hinten) etwas kleiner, Ursprung sind die Füße. Tiefe: auf der
     // hinteren Spur höher und kleiner
     const ly = this._laneDy();
     // Beim Mitfahren mit depth steht er vorn auf dem Roboter (_reiter): nicht weiter hinten, also nicht kleiner
@@ -135,7 +135,7 @@ export class Bausteine {
     return this._Hs - this._H + this._H * f;
   }
 
-  // Prototyp Tiefe (depth: true): Höhe der hinteren Spur über der Bodenlinie, sonst 0
+  // Tiefe (depth, seit 0.44 Standard): Höhe der hinteren Spur über der Bodenlinie, sonst 0
   _laneDy() {
     return this._cfg.depth && this._lane && !(this._lift > 0) ? this._H * LANE_DY : 0;
   }

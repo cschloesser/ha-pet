@@ -164,7 +164,7 @@ const buehne = (W = 600, Hs = 248) => {
   Object.assign(scene, { clientWidth: W, clientHeight: Hs });
   const leer = () => {};
   Object.assign(c, {
-    _el: new Proxy({ scene }, { get: (t, k) => (t[k] ??= new Att()) }), _g: { pW: 1 }, _W: 0, _Hs: 0, _inside: true, _cfg: {}, _arealKey: 'huegel',
+    _el: new Proxy({ scene }, { get: (t, k) => (t[k] ??= new Att()) }), _g: { pW: 1 }, _W: 0, _Hs: 0, _inside: true, _cfg: { depth: true }, _arealKey: 'huegel',
     _planes: new Map(), _lift: 0, _poseName: 'out', _dir: 1, abbr: 0, eingefroren: 0, log: [], hopser: 0,
     _btnFit: leer, _pose: leer, _layoutSky: leer, _layoutFest: leer, _layoutFriend: leer, _layoutBote: leer, _layoutGift: leer, _layoutSig: leer,
     _planeSnap: leer, _placePiles: leer, _restartCritters: leer, _flowerGiftPlace: leer,
@@ -242,10 +242,10 @@ test('Schnee: Schneeengel und Schneeball stehen hinten in der Tabelle und nur im
   // Die Reihenfolge von MINI_W ist Teil der Wahl: Neues kommt ans Ende, davor ändert sich nichts
   assert.deepEqual(plain(NEU), ['angel', 'snowball']);
   assert.deepEqual(plain(T.MINI_ACTS), ['rope', 'weights', 'gather', 'hula', 'yoyo', 'puste', 'purzel', 'stones', 'juggle', 'crown', 'glider', 'puddle',
-    'boat', 'snowpika', 'angel', 'snowball']);
-  // trocken und bei Regen bleibt das Programm, wie es war
+    'boat', 'snowpika', 'angel', 'snowball', 'drops', 'twirl']);
+  // trocken bleibt das Programm, wie es war; bei Regen kamen mit 0.44 zwei dazu
   assert.deepEqual(plain(T.MINI_PROG.dry), ['rope', 'weights', 'gather', 'hula', 'yoyo', 'puste', 'purzel', 'stones', 'juggle', 'crown', 'glider']);
-  assert.deepEqual(plain(T.MINI_PROG.rain), ['puddle', 'boat']);
+  assert.deepEqual(plain(T.MINI_PROG.rain), ['puddle', 'boat', 'drops', 'twirl']);
   for (const a of NEU) {
     assert.ok(T.MINI_W[a] > 0 && T.MINI_W[a] < T.MINI_W.snowpika, `${a}: Gewicht unter dem des Schnee-Pikas`);
     assert.equal(T.MINI_PROG.snow.includes(a), true, `${a} im Schneeprogramm`);

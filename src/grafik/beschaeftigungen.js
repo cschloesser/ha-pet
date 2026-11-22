@@ -1,7 +1,8 @@
 // Beschäftigungen: Fernsehfarben, Drachen, Staffelei, Schirmchen, Tropfen, Pfütze, Schiffchen, Schnee-Pika, Steine,
-// Papierflieger, Schneeengel, Schneeball
+// Papierflieger, Schneeengel, Schneeball, das weggelegte Blatt
 
 import { OUT, BOAT_ART } from './pika.js';
+import { FRIEND_FACE } from './momente.js';
 
 // Fernsehbild: wechselt alle paar Sekunden die Farbe (Schnitt), daraus Licht im Eingang und Lichtsaum
 const TV_COLORS = ['#9fd0ff', '#e8f4ff', '#a8f0c6', '#ffd59e', '#c8b6ff', '#ff9fb2', '#9fe7ff'];
@@ -77,6 +78,7 @@ const KITE_SVG = (kx, ky, K) => {
 
 // Staffelei (viewBox 60 × 80): Leinwand x 9–51, y 7–51. Das Bild entsteht in fünf Schichten (Himmel, Sonne oder
 // Mond, Hügel, Motiv, Kleinkram); der Himmel folgt der Tageszeit der Szene. Motiv: [Pinselfarbe, Grafik]
+const FRIEND_PIC = (k) => `<g transform="translate(19.2 34.8) scale(.6)">${FRIEND_FACE[k]}</g>`;
 const EASEL_MOTIF = {
   blume: ['#f28fb1', `<path d="M24 47 V37" stroke="#4f8a3a" stroke-width="1.2"/>
       <ellipse cx="26.6" cy="42.2" rx="2.6" ry="1" fill="#5fae4a" transform="rotate(-30 26.6 42.2)"/>
@@ -102,6 +104,12 @@ const EASEL_MOTIF = {
     const r = 17 - i * 1.6;
     return `<path d="M${30 - r} 41 A${r} ${r} 0 0 1 ${30 + r} 41" stroke="${c}" stroke-width="1.7" fill="none"/>`;
   }).join('')],
+  // Ab 0.44: Ist Kirby, Rufus oder Katzumi zu Besuch, malt er den Gast (_paintMotif), an der Stelle von Pinos Kopf.
+  // Die Köpfe sind die aus der Traumblase (FRIEND_FACE, 24 × 24), auf 0,6 verkleinert. Die Namen stehen als Variante
+  // im Tagesplan ("…:paint:katzumi") und dürfen höchstens 7 Zeichen haben: Der Helfer fasst 255 Zeichen.
+  kirby: ['#d9a55a', FRIEND_PIC('kirby')],
+  rufus: ['#f1e5cd', FRIEND_PIC('rufus')],
+  katzumi: ['#f6c08a', FRIEND_PIC('katzumi')],
 };
 const EASEL_SVG = (motif) => `
     <svg viewBox="0 0 60 80" aria-hidden="true">
@@ -201,8 +209,17 @@ const SNOWBALL_SVG = `<svg viewBox="0 0 60 60" aria-hidden="true">
         <circle cx="42" cy="19" r="1.3" fill="#c6d2df" stroke="none"/><circle cx="30" cy="30" r="1.2" fill="#c6d2df" stroke="none"/>
       </g>
     </svg>`;
+// Das Blatt, das er beim Tropfenfangen neben sich ins Gras legt (64 × 22, Stiel links): der Blattschirm aus der
+// Pika-Grafik (.brolly) in denselben Farben, flach am Boden liegend, darauf zwei Regentropfen.
+const LEAF_SVG = `<svg viewBox="0 0 64 22" aria-hidden="true">
+      <path d="M2 17.4 Q10 14.2 21 15.4" stroke="#4f8a3a" stroke-width="2.2" fill="none" stroke-linecap="round"/>
+      <path d="M17 15.6 Q22 4.4 40 3.2 Q57 2.6 62 11.6 Q58.6 15.6 52.4 15 Q48.6 19.6 41.6 17.4 Q35.4 20.8 29 17.6 Q22.4 19.4 17 15.6Z"
+            fill="#5fae4a" stroke="#3f7f31" stroke-width="1.4" stroke-linejoin="round"/>
+      <path d="M20 14.6 Q39 6.4 59 11" stroke="#8fd16f" stroke-width="1.1" fill="none" stroke-linecap="round"/>
+      <ellipse cx="33" cy="12" rx="2" ry="1.1" fill="#dff1ff" opacity=".85"/><ellipse cx="47.6" cy="9.4" rx="1.6" ry=".9" fill="#dff1ff" opacity=".8"/>
+    </svg>`;
 
 export {
   TV_COLORS, KITE_SVG, EASEL_MOTIF, EASEL_SVG, SEED_SVG, DROP_SVG, PUDDLE_SVG, BOAT_SVG, SNOWPIKA_SVG, STONES_SVG,
-  GLIDER_SVG, ANGEL_SVG, SNOWBALL_SVG,
+  GLIDER_SVG, ANGEL_SVG, SNOWBALL_SVG, LEAF_SVG,
 };

@@ -464,7 +464,7 @@ export class Tagebuch {
       h += `<div class="tre">${GIFT_ITEMS.slice(0, GIFT_TRE).map((it, t) => {
         const lv = I.lvs[t];
         const nm = it.key === 'plush' ? `Plüsch-${fr}` : it.name;
-        const sub = !lv ? 'noch ein Geheimnis' : lv >= 3 ? `golden · Trick: ${GIFT_TRICK[t]}` : lv === 2 ? `Trick: ${GIFT_TRICK[t]}` : DIARY_TXT.treasure[t];
+        const sub = !lv ? 'noch ein Geheimnis' : lv >= 3 ? `golden: ${DIARY_TXT.gold[t]} · Trick: ${GIFT_TRICK[t]}` : lv === 2 ? `Trick: ${GIFT_TRICK[t]}` : DIARY_TXT.treasure[t];
         return `<div class="t ${['miss', '', 'lv2', 'lv2 gilt'][lv]}"><i>${it.svg}</i><div><b>${esc(lv ? nm : '???')}</b><span>${esc(sub)}</span></div></div>`;
       }).join('')}</div>`;
       const n = G.n + G.y;
@@ -492,6 +492,7 @@ export class Tagebuch {
     const have = {
       gift: this._giftOn(), friend: !!this._cfg.friend, flight: !!this._cfg.flight_entity,
       bote: Array.isArray(this._cfg.appliances) && this._cfg.appliances.length > 0, wheel: lv[1] > 0, yarn: lv[0] > 0,
+      chimney: this._arealKey === 'huegel', vac: !!this._sigCfg().vacuum,
     };
     const fr = this._frName();
     const list = FINDS.filter((f) => !f.need || have[f.need]);

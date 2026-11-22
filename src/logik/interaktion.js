@@ -44,8 +44,10 @@ const MIMIK_CLS = Object.keys(MIMIK).map((k) => `mi-${k}`);
 const MIMIK_ON = '.mi:not(.sleeping):not(.eating):not(.yawning):not(.calling):not(.sip):not(.sneezing)';
 // Zustandsklassen der neuen Momente, die _cleanup zurücksetzt (zeitgesteuerte wie blush, mlem, lnd gehen von selbst)
 const CUTE_CLS = ['tilt', 'tilt-b', 'content', 'squint', 'flat', 'crosseye', 'lean', 'tickle', 'roll', 'melt', 'thump',
-  'yawning', 'presneeze', 'sneezing', 'earwash', 'scratching', 'nodding', 'stumble', 'pant', 'trip', 'bighop'];
-// Die Welt antwortet auf einen Tipp (Blume, Wolke, Stern, Tür, Windrad, Wollknäuel). Was liegt an der Stelle (x, y)?
+  'yawning', 'presneeze', 'sneezing', 'earwash', 'scratching', 'nodding', 'stumble', 'pant', 'trip', 'bighop',
+  'rstretch', 'rcap', 'rread'];
+// Die Welt antwortet auf einen Tipp (Blume, Wolke, Stern, Tür, Windrad, Wollknäuel; seit 0.44 auch Aussichtsstein,
+// Vorrat, Sonne, Mond, Schornstein und Saugroboter). Was liegt an der Stelle (x, y)?
 // zones: Flächen { k, l, t, r, b } in Rangfolge der Arten (die Art des ersten Treffers gewinnt), schon um ihren
 // Tipp-Rand vergrößert. Liegen mehrere derselben Art dort (zwei Sterne), gewinnt die mit der nächsten Mitte.
 const worldPick = (x, y, zones) => {
@@ -62,8 +64,26 @@ const worldPick = (x, y, zones) => {
   }
   return best;
 };
+// Kleine Ziele (Sonne, Mond, Schornstein, Saugroboter, ein fast leerer Heuhaufen) bekommen einen Hof, der ihre
+// Tippfläche auf mindestens WORLD_MIN px bringt. l, t, r, b: die gemalte Fläche, pad: Tipp-Rand, den sie ohnehin hat.
+const WORLD_MIN = 40;
+const worldHalo = (l, t, r, b, pad = 0, min = WORLD_MIN) => {
+  const px = Math.max(pad, (min - (r - l)) / 2);
+  const py = Math.max(pad, (min - (b - t)) / 2);
+  return { l: l - px, t: t - py, r: r + px, b: b + py };
+};
+// Schornstein je Areal in Einheiten der Bau-Grafik (src/grafik/areale.js; heute hat nur der Erdhügel einen):
+// x1 … x2 und top … bot die gemauerte Fläche samt Kranz, cx/cy die Öffnung, aus der der Rauch kommt (wie .smoke).
+const CHIMNEY = { huegel: { x1: 60.5, x2: 69.5, top: 0.4, bot: 16, cx: 65, cy: -1 } };
+// Abendritual vor dem Schlafengehen (_bedRitual): Dauer der Schritte in ms, und wie lange nach der Schlafenszeit es
+// noch gespielt wird (late; später, etwa vom Kaffee geweckt, geht er ohne ins Bett). Zusammen 6–10 s, auch mit dem
+// Schritt von der hinteren Spur nach vorn (depth, gut 0,7 s).
+const RITUAL = { late: 10 * 6e4, stretch: 1700, gap: 200, yawn: 2300, cap: 700, sit: 400, read: 2200, night: 1500, look: 500, star: 2100 };
+// Der letzte Satz der Gutenachtgeschichte, die er dem Plüsch-Pino vorliest
+const RITUAL_STORY = ['…und dann schliefen alle ein.', '…und alle Sterne gingen an.', '…und der kleine Pika fand nach Hause.'];
 
 export {
+  WORLD_MIN, worldHalo, CHIMNEY, RITUAL, RITUAL_STORY,
   CUTE_SMALL, PET_FREE, TOUCH_NEXT, TOUCH_TTL, PET_NEXT, PET_HOLD, PET_CALM, petGain, KRAUL, PRESS_SLOP, kraulGain,
   MIMIK, MIMIK_CLS, MIMIK_ON, CUTE_CLS, worldPick,
 };

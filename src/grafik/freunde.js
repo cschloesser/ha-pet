@@ -262,4 +262,57 @@ const KATZUMI_SVG = body(derive(5, C), 5, C_BODY, '2.3')
 const cut = (svg, vb) => svg.replace('class="pk" viewBox="0 0 120 100"', `class="pk fri" viewBox="${vb}"`);
 const FRIEND_ICON = { kirby: cut(KIRBY_SVG, '33 8 88 88'), rufus: cut(RUFUS_SVG, '14 3 109 109'), katzumi: cut(KATZUMI_SVG, '37 16 82 82') };
 
-export { KIRBY_SVG, RUFUS_SVG, KATZUMI_SVG, FRIEND_ICON };
+// ---------- Spielzeug für die eigenen Spiele der Freunde (ab 0.44) ----------
+// Nichts davon steht in den Figuren: Ein dort verstecktes Requisit erschiene im Tagebuch (FRIEND_ICON schneidet
+// dieselbe Grafik zu) und läge wie Rufus' Ohren in 0.42.1 in einer ausgeblendeten Gruppe. Was jemand im Maul trägt,
+// kommt zur Laufzeit in .mf-item (wie ein Leckerli, _mouth beim Pika, _frCarry beim Freund), was fliegt oder liegt,
+// ist ein eigenes Element (.ftoy).
+// Alle Teile sind um die Mitte (12, 12) eines Felds von 24 × 24 gezeichnet. Stöckchen: Rinde, ein Aststummel, helle
+// Schnittflächen an beiden Enden
+const STICK = `<path d="M2.8 13.3 L21.2 10.7 M14.2 11.5 l2.9 -4.3" stroke="${OUT}" stroke-width="3.9" stroke-linecap="round" fill="none"/>
+    <path d="M14.2 11.5 l2.9 -4.3" stroke="#a5743f" stroke-width="2" stroke-linecap="round" fill="none"/>
+    <path d="M2.8 13.3 L21.2 10.7" stroke="#b98a55" stroke-width="2.6" stroke-linecap="round" fill="none"/>
+    <path d="M5.4 12.3 l4.6 -.65 M11.6 12.9 l5 -.7" stroke="#dbb382" stroke-width=".7" stroke-linecap="round" fill="none"/>
+    <path d="M8 13.4 l2.4 -.3" stroke="#8a5c30" stroke-width=".7" stroke-linecap="round" fill="none"/>
+    <ellipse cx="21.3" cy="10.7" rx=".7" ry="1.1" fill="#ecd3a6" transform="rotate(-8 21.3 10.7)"/>
+    <ellipse cx="17.2" cy="7.1" rx=".6" ry=".8" fill="#ecd3a6" transform="rotate(34 17.2 7.1)"/>`;
+// Feder (Spitze oben bei 12, 3) und Herbstblatt (Stiel oben): hängen an einem Faden bzw. liegen quer im Maul
+const FEATHER = `<path d="M12 3 Q7.2 8.6 9.2 16.4 Q10.6 20.6 12 21 Q13.4 20.6 14.8 16.4 Q16.8 8.6 12 3Z" fill="#f6f9ff" stroke="${OUT}" stroke-width="1"
+      stroke-linejoin="round"/>
+    <path d="M12 3 Q14.9 8 14.8 16.4 Q13.4 20.6 12 21Z" fill="#bcd9f4"/>
+    <path d="M12 4.6 V21 M12 9 l-2.2 2 M12 12.4 l-2.6 2.2 M12 9.6 l2.4 2 M12 13.2 l2.6 2.2" stroke="#7d9fc4" stroke-width=".7" fill="none" stroke-linecap="round"/>`;
+const LEAF = `<path d="M12 5.4 Q6 8.4 6.6 14.6 Q7.4 19.6 12 21.2 Q16.6 19.6 17.4 14.6 Q18 8.4 12 5.4Z" fill="#e98a35" stroke="${OUT}" stroke-width="1"
+      stroke-linejoin="round"/>
+    <path d="M12 5.4 Q18 8.4 17.4 14.6 Q16.6 19.6 12 21.2Z" fill="#d36a24"/>
+    <path d="M12 2.6 V20 M12 10 l-3 2 M12 13.6 l-3.2 2 M12 10.6 l3 2 M12 14.2 l3.2 2" stroke="#8a4318" stroke-width=".7" fill="none" stroke-linecap="round"/>`;
+// (reach: so weit vor der Mitte des Pikas hängt die Feder, in Pika-Breiten: Halmspitze bei 94,8 + 47,6 · 0,68 = 127,2
+// von 120, also 0,56 vor der Mitte. So weit, damit die halb so große Katze darunter nicht hinter seinem Kopf steht.)
+const TOY_S = { stick: 1.9, dangle: 1.6, reach: 0.56 };
+// als eigenes Bild (liegt auf der Wiese, fliegt)
+const toy =(inner) => `<svg viewBox="0 0 24 24" aria-hidden="true">${inner}</svg>`;
+// im Maul: .mf-item ist ein Feld von 24 × 24 vor der Schnauze (pika.js), das Maul liegt darin bei (−5,6 | 7,8).
+// dy: tiefer (Rufus' Maul sitzt zwei Einheiten tiefer), s: größer (ein kleiner Freund trägt dasselbe Stöckchen,
+// nicht ein auf seine Größe geschrumpftes), rot: gedreht
+const held = (inner, { dy = 0, s = 1, rot = 0, dx = 0 } = {}) => toy(`<g transform="translate(${(-5.6 + dx).toFixed(1)} ${(7.8 + dy).toFixed(1)}) scale(${s.toFixed(2)})`
+  + ` rotate(${rot}) translate(-12 -12)">${inner}</g>`);
+// Angel des Pikas: ein Grashalm im Maul, der vor ihm aufragt, daran an einem Faden die Feder (oder das Blatt). Faden
+// und Feder pendeln (.fdangle, STYLE_FRIEND), aufgehängt an der Halmspitze. Die Feder hängt etwa auf Brusthöhe einer
+// kleinen Katze vor seiner Nase.
+const DANGLE_X = 47.6; // Halmspitze im Feld des Mauls; daraus die Lage der Feder vor seiner Mitte (TOY_S.reach)
+const dangle = (inner) => toy(`<path d="M-6 8.2 Q14 7.4 30 -3.6 Q40 -11 ${DANGLE_X} -14" stroke="${OUT}" stroke-width="2.8" fill="none" stroke-linecap="round"/>
+    <path d="M-6 8.2 Q14 7.4 30 -3.6 Q40 -11 ${DANGLE_X} -14" stroke="#7fbf5a" stroke-width="1.5" fill="none" stroke-linecap="round"/>
+    <g class="fdangle"><path d="M${DANGLE_X} -14 V-4" stroke="#f3ead2" stroke-width=".9" fill="none"/>
+      <g transform="translate(${DANGLE_X} -5.6) scale(${TOY_S.dangle}) translate(-12 -3)">${inner}</g></g>`);
+// Größen: TOY_S.stick-mal so groß wie das Feld im Maul ist das Stöckchen (im Maul wie am Boden, _frToy rechnet mit
+// derselben Zahl), TOY_S.dangle die Feder am Faden. Ein kleinerer Freund trägt dasselbe Ding: geteilt durch seine Größe.
+const FRIEND_TOY = {
+  stick: toy(STICK),
+  stickPika: held(STICK, { s: TOY_S.stick }),
+  // Rufus ist 0,7-mal so groß wie der Pika, sein Maul sitzt tiefer
+  stickRufus: held(STICK, { dy: 3.4, s: TOY_S.stick / 0.7 }),
+  dangle: { feather: dangle(FEATHER), leaf: dangle(LEAF) },
+  // Katzumi (halb so groß) hat die Beute quer im Maul
+  catch: { feather: held(FEATHER, { dy: 2, s: TOY_S.dangle / 0.6, rot: 76, dx: 5 }), leaf: held(LEAF, { dy: 2, s: TOY_S.dangle / 0.6, rot: 76, dx: 5 }) },
+};
+
+export { KIRBY_SVG, RUFUS_SVG, KATZUMI_SVG, FRIEND_ICON, FRIEND_TOY, TOY_S };

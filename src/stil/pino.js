@@ -41,6 +41,36 @@ const STYLE_FRIEND = `
   .pika.wiggle .ear-l, .friend.wiggle .ear-l { animation: fwiggle .3s ease-in-out 4 alternate; }
   .pika.wiggle .ear-r, .friend.wiggle .ear-r { animation: fwiggle .3s .12s ease-in-out 4 alternate-reverse; }
   @keyframes fwiggle { from { transform: rotate(-13deg); } to { transform: rotate(9deg); } }
+
+  /* ---------- Eigene Spiele der Freunde (ab 0.44): Stöckchen, Jagd, Kullern ---------- */
+  /* Spielzeug als eigenes Element in .fx (das Stöckchen im Flug und am Boden): Mitte bei left/top 0, Größe und Lage
+     setzt das Skript (_frToy, _frToyAt). Was jemand im Maul trägt, steckt in .mf-item, .carry zeigt es (STYLE). */
+  .ftoy { position: absolute; left: 0; top: 0; pointer-events: none; transition: opacity .4s; }
+  .ftoy svg { display: block; width: 100%; height: 100%; overflow: visible; }
+  .ftoy.off { opacity: 0; }
+  /* Die Feder (das Blatt) pendelt am Faden, aufgehängt an der Spitze des Halms im Maul des Pikas */
+  .carry .fdangle { transform-box: fill-box; transform-origin: 50% 0%; animation: fdangle 1.3s ease-in-out infinite alternate; }
+  @keyframes fdangle { from { transform: rotate(-11deg); } to { transform: rotate(11deg); } }
+  /* Rufus rennt dem Stöckchen nach, die Schlappohren fliegen nach hinten (Angelpunkt oben, nicht unten wie bei
+     Stehohren). In .flip gespiegelt zeigen sie auch nach links nach hinten. */
+  .friend.fdash .ear { transform-origin: 50% 12%; }
+  .friend.fdash .ear-l { animation: fflap .2s ease-in-out infinite alternate; }
+  .friend.fdash .ear-r { animation: fflap .2s .1s ease-in-out infinite alternate; }
+  @keyframes fflap { from { transform: rotate(14deg); } to { transform: rotate(46deg); } }
+  /* Katzumi duckt sich und wackelt mit dem Hinterteil, bevor sie springt */
+  .friend.kwig .hop { animation: kwig .17s ease-in-out infinite alternate; }
+  @keyframes kwig { from { transform: scale(1.12, .82) rotate(-3.5deg); } to { transform: scale(1.12, .82) rotate(3.5deg); } }
+  /* Kirby kullert: eingerollt (Füße und Ärmchen weg) dreht er sich um die Mitte seiner Kugel, um --kra (ganze
+     Umdrehungen, auf die Länge des Wegs gerundet, mindestens eine: Er kommt aufrecht an) in --krd (so lange wie die
+     Überblendung des Wegs, _frSetX). In .flip gespiegelt dreht er nach links andersherum, also immer vorwärts. */
+  .friend.kroll .hop { transform-origin: 64.2% 56%; animation: kroll var(--krd, 1.6s) linear both; }
+  @keyframes kroll { from { transform: rotate(0deg); } to { transform: rotate(var(--kra, 360deg)); } }
+  .friend.kroll .feet, .friend.kroll .karm { display: none; }
+  /* „Bewegung reduzieren“: Das Skript spielt dann die ruhigen Fassungen (calmMotion), hier ruht zur Sicherheit auch,
+     was sich von selbst bewegt */
+  @media (prefers-reduced-motion: reduce) {
+    .carry .fdangle, .friend.fdash .ear-l, .friend.fdash .ear-r, .friend.kwig .hop, .friend.kroll .hop { animation: none; }
+  }
   `;
 
 export { STYLE_FRIEND };

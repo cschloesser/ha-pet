@@ -20,6 +20,8 @@ export class Beschaeftigungen {
     if (this._jumpIn(S)) {
       this._inside = false;
       this._lift = 0;
+      // von der hinteren Spur nach vorn: Dort stand er sonst angehoben und kleiner neben seinem Requisit
+      this._lane = 0;
       this._pose('out', 0);
       this._setX(x, true);
       await this._wait(60);

@@ -1,22 +1,23 @@
 // Kleine Beschäftigungen: Auswahl nach Wetter, Takt, Pfütze, Schiffchen, Jo-Jo, Purzelbaum, Papierflieger,
-// Schneeengel, Schneeball, Platz am Boden
+// Schneeengel, Schneeball, Tropfen fangen, Blattschirm kreiseln, Platz am Boden
 
 import { clamp, weightedR, clearSpot } from './hilfen.js';
 
 // Grundgewichte. Bis 0.31 wechselten sich Seil und Hantel rund 40-mal am Tag ab; jetzt teilen sich elf den Tag,
 // und Regen und Schnee haben ihr eigenes Programm (Pfützenspringen, Papierschiffchen; Schnee-Pika, ab 0.43 auch
-// Schneeengel und Schneeball). Die Reihenfolge ist Teil der Wahl (weightedR): nicht umsortieren und Neues hinten
-// anhängen, sonst wählen Geräte mit altem und neuem Stand Verschiedenes.
+// Schneeengel und Schneeball, ab 0.44 bei Regen auch Tropfen fangen und Blattschirm kreiseln). Die Reihenfolge ist
+// Teil der Wahl (weightedR): nicht umsortieren und Neues hinten anhängen, sonst wählen Geräte mit altem und neuem
+// Stand Verschiedenes.
 const MINI_W = {
   rope: 0.7, weights: 0.6, gather: 1, hula: 0.9, yoyo: 0.9, puste: 0.9, purzel: 0.8, stones: 0.8, juggle: 0.8, crown: 0.6,
-  glider: 0.8, puddle: 1.5, boat: 1.2, snowpika: 1.3, angel: 0.9, snowball: 0.9,
+  glider: 0.8, puddle: 1.5, boat: 1.2, snowpika: 1.3, angel: 0.9, snowball: 0.9, drops: 0.7, twirl: 0.6,
 };
 const MINI_ACTS = Object.keys(MINI_W);
 // Bei liegendem Schnee geht nur, was keinen freien Boden und keine Blumen braucht
 const MINI_SNOW = new Set(['weights', 'hula', 'yoyo', 'purzel', 'juggle', 'glider']);
 // Nur bei Regen bzw. nur bei liegendem Schnee: Das Schneeprogramm ist MINI_SNOW und dazu Schnee-Pika, Schneeengel
 // und Schneeball
-const MINI_RAIN = ['puddle', 'boat'];
+const MINI_RAIN = ['puddle', 'boat', 'drops', 'twirl'];
 const MINI_SNOWONLY = new Set(['snowpika', 'angel', 'snowball']);
 // Jedes Wetter hat sein Programm: trocken (dry), Regen (rain), Schnee liegt (snow). Gewählt wird aus der ganzen
 // Liste des Programms, mit den Gewichten aus MINI_W (miniChain).
@@ -25,14 +26,19 @@ const MINI_PROG = {
   rain: MINI_RAIN,
   snow: MINI_ACTS.filter((a) => MINI_SNOW.has(a) || MINI_SNOWONLY.has(a)),
 };
-// Bei Regen bleibt gut die Hälfte der Fenster leer (Gewicht für „nichts“): Pfütze und Schiffchen wechselten sich
-// an einem Regentag sonst so oft ab wie früher Seil und Hantel
-const MINI_REST = 3;
+// Bei Regen bleibt ein gutes Drittel der Fenster leer (Gewicht für „nichts“). Bis 0.43 war es gut die Hälfte
+// (Gewicht 3 neben Pfütze und Schiffchen). Tropfen fangen und Blattschirm kreiseln haben ihr Gewicht von dort
+// genommen: Die Summe für Regen ist dieselbe geblieben (5,7), Pfütze und Schiffchen liegen in der Liste vorn. Ein
+// Fenster, in dem ein Gerät mit 0.43 Pfütze oder Schiffchen zeigt, zeigt deshalb auf einem mit 0.44 dasselbe; die
+// beiden neuen kommen in Fenstern, die dort leer bleiben. (Bis auf seltene Ketten, rund 2 von 1000 Fenstern mit
+// Pfütze oder Schiffchen: Zieht 0.44 ein Fenster neu, weil sonst zweimal dieselbe Neue käme, und es wird Pfütze
+// oder Schiffchen daraus, kann auch das Fenster danach anders ausfallen.)
+const MINI_REST = 1.7;
 // Welches Programm gilt bei der Lage L? null: keines (Starkregen und Gewitter: er bleibt im Bau; Regen auf Schnee)
 const miniProg = (L) => (L.shelter ? null : L.rain > 0 && !L.snowcover ? 'rain' : L.wet || L.storm ? null : L.snowcover ? 'snow' : 'dry');
 // Geht die kleine Beschäftigung act bei dieser Lage? L: { wet, rain, storm, shelter, snowcover, cold, wind, hayFull,
 // winter } (_lage). Bei Starkregen und Gewitter (shelter) bleibt er im Bau; bei Regen hält eine Pfote das Blatt,
-// da gehen nur Pfütze und Schiffchen. Innerhalb eines Programms sperren nur drei Schalter etwas: voller Vorrat
+// da geht nur das Regenprogramm (MINI_RAIN). Innerhalb eines Programms sperren nur drei Schalter etwas: voller Vorrat
 // (Blüte sammeln), Kälte und Winter (Blumenkranz), Wind ab 40 km/h (Papierflieger, auch im Schnee). Der
 // Festtagshut gehört nicht dazu: Er hängt an der Konfiguration der einzelnen Karte (_actOk).
 const miniOk = (act, L) => {
@@ -208,6 +214,50 @@ const snowballPos = (t, run) => {
   const k = bezAt(...SNOWBALL_EASE, (t - t4) / T.away);
   return { f: fb + (1 - fb) * k, s: 3 + (SNOWBALL_BIG - 3) * k };
 };
+// Tropfen fangen (ms): Blatt weglegen und zum Himmel schauen (look), dann je Versuch try ms im festen Takt ab der
+// Planzeit (wie die Sprünge in die Pfütze: Wer später einsteigt, fängt im selben Takt mit). In einem Versuch: Der
+// dicke Tropfen erscheint bei drop und fällt fall ms lang; bei at ist er am Maul (gefangen) oder auf der Nase
+// (daneben). Für einen gefangenen springt er bei at − jump ab (der Hüpfer ist dann oben, land ms später steht er
+// wieder) oder streckt sich ab at − reach; daneben geht es, weil er schon bei early abspringt und wieder unten ist,
+// wenn der Tropfen kommt.
+const DROPS_T = { look: 1500, try: 2400, drop: 300, fall: 1100, at: 1400, jump: 270, land: 330, reach: 450, early: 640 };
+const dropsTries = (r) => 3 + Math.floor(r(1) * 3);
+// Wie gehen die Versuche aus? Je Versuch { hit: gefangen, hop: mit Hüpfer (sonst gestreckt) }, aus den festen
+// Zahlen des Fensters. Geht alles daneben, fängt er den letzten doch: Am Ende zählt er stolz mindestens einen.
+const dropsPlan = (r) => {
+  const P = Array.from({ length: dropsTries(r) }, (_, i) => ({ hit: r(10 + i) < 0.62, hop: r(20 + i) < 0.6 }));
+  if (!P.some((v) => v.hit)) P[P.length - 1].hit = true;
+  return P;
+};
+const dropsLen = (r) => DROPS_T.look + dropsTries(r) * DROPS_T.try;
+const DROPS_COUNT = ['', 'Einen erwischt!', 'Zwei Stück!', 'Drei Stück!', 'Vier Stück!', 'Fünf Stück!'];
+// Blattschirm kreiseln (ms ab Beginn des Hauptteils): den Stiel in beide Pfoten nehmen (grip), drei Stufen kreiseln
+// (slow, mid, dann fast bis fast + fastMore), Schluss (end). Der Schluss dauert immer gleich lang, ob er das Blatt
+// anhält oder der Wind es ihm aus den Pfoten hebt (twirlLifts): Die Länge des Fensters hängt nur an seinen festen
+// Zahlen. Wenn es abhebt: lift ms steigt es, dann duckt er sich (crouch), hüpft hinterher (hop, wie _hopTo) und hat
+// es wieder. ring: Abstand der Tropfenringe je Stufe, turn: Dauer einer Umdrehung je Stufe (--tw im Stil).
+const TWIRL_T = {
+  grip: 700, slow: 1500, mid: 1500, fast: 1800, fastMore: 1500, end: 2800, lift: 850, crouch: 180, hop: 620,
+  ring: [750, 500, 330], turn: [900, 560, 320],
+};
+const twirlFast = (r) => TWIRL_T.fast + r(1) * TWIRL_T.fastMore;
+const twirlLen = (r) => TWIRL_T.grip + TWIRL_T.slow + TWIRL_T.mid + twirlFast(r) + TWIRL_T.end;
+// Hebt das Blatt ab? Mit einer festen Zahl des Fensters; ab TWIRL_WIND km/h öfter. Der Wind kommt von der
+// Wetter-Entität und ist auf allen Geräten derselbe (wie beim Papierflieger, miniOk): Alle entscheiden gleich.
+const TWIRL_WIND = 20;
+const TWIRL_P = [0.25, 0.6];
+const twirlLifts = (r, wind) => r(6) < TWIRL_P[(wind || 0) >= TWIRL_WIND ? 1 : 0];
+// Die Tropfenringe: Planzeiten (ms ab Beginn des Hauptteils) und Stufe (0 langsam, 1 mittel, 2 schnell), der erste
+// mit dem Anfang jeder Stufe
+const twirlRings = (r) => {
+  const out = [];
+  let t = TWIRL_T.grip;
+  for (const [st, len] of [TWIRL_T.slow, TWIRL_T.mid, twirlFast(r)].entries()) {
+    for (let d = 0; d < len - 120; d += TWIRL_T.ring[st]) out.push({ t: t + d, st });
+    t += len;
+  }
+  return out;
+};
 // Platz eines Requisits am Boden (Pfütze, Schnee-Pika, Steintürmchen): Mitte aus der festen Zahl u so zwischen a
 // und b, dass es mit seiner Breite w ganz dazwischen liegt. Ist dort zu wenig Platz (schmale Karte), wird es
 // schmaler (bis kMin · w) und liegt notfalls mittig. Sperren [l, r] (Geräte des Haus-Boten, Festdeko, Schätze,
@@ -225,4 +275,5 @@ export {
   BOAT_T, BOAT_EASE, boatPuffs, bezAt, boatPos, YOYO_MS, YOYO_DEAD, yoyoThrows, yoyoDead, PUSTE_MS, PURZEL_MS,
   PURZEL_ROLL, purzelRolls, STONE_MS, GLIDER_FLY, GLIDER_WALK, GLIDER_STEP, gliderThrows, groundSpot,
   ANGEL_T, angelSweeps, angelLen, SNOWBALL_T, SNOWBALL_EASE, SNOWBALL_BIG, snowballRuns, snowballLen, snowballR, snowballPos,
+  DROPS_T, dropsTries, dropsPlan, dropsLen, DROPS_COUNT, TWIRL_T, twirlFast, twirlLen, TWIRL_WIND, twirlLifts, twirlRings,
 };

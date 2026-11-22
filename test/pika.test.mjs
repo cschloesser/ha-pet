@@ -447,7 +447,7 @@ test('Entdeckungen: Kennungen eindeutig, jede mit Titel, Hinweis und gültigem A
     assert.match(f.k, /^[a-z]+$/, f.k); // steht mit Kommas getrennt im Browser-Speicher
     assert.ok(f.t && f.h, f.k);
     assert.ok(f.g >= 0 && f.g < T.FIND_GROUPS.length, f.k);
-    assert.ok(f.need === undefined || ['gift', 'friend', 'flight', 'bote', 'wheel', 'yarn'].includes(f.need), f.k);
+    assert.ok(f.need === undefined || ['gift', 'friend', 'flight', 'bote', 'wheel', 'yarn', 'chimney', 'vac'].includes(f.need), f.k);
   }
   // was die Welt beantwortet, steht auch auf der Seite
   for (const k of ['flower', 'cloud', 'star', 'door', 'wheel', 'yarn']) assert.ok(ids.includes(k), k);
@@ -1625,14 +1625,16 @@ class Att {
   animate() { return { cancel() {} }; }
 }
 DOK.createElement = () => new Att();
-// Eine Karte mit der Geometrie von _layout (W × Hs, Areal), ohne Schleife: _interrupt zählt nur mit (c.abbr)
-const buehne = (W, Hs, areal = 'huegel') => {
+// Eine Karte mit der Geometrie von _layout (W × Hs, Areal), ohne Schleife: _interrupt zählt nur mit (c.abbr).
+// depth steht ausdrücklich da (seit 0.44 ist die Tiefe Standard, bis dahin galt hier stillschweigend „aus“): Wer die
+// Karte ohne hintere Spur meint, übergibt false.
+const buehne = (W, Hs, areal = 'huegel', depth = true) => {
   const c = Object.create(T.PikaPetCard.prototype);
   const scene = new Att();
   Object.assign(scene, { clientWidth: W, clientHeight: Hs });
   const leer = () => {};
   Object.assign(c, {
-    _el: new Proxy({ scene }, { get: (t, k) => (t[k] ??= new Att()) }), _g: { pW: 1 }, _W: 0, _Hs: 0, _inside: true, _cfg: {}, _arealKey: areal,
+    _el: new Proxy({ scene }, { get: (t, k) => (t[k] ??= new Att()) }), _g: { pW: 1 }, _W: 0, _Hs: 0, _inside: true, _cfg: { depth }, _arealKey: areal,
     _planes: new Map(), _lift: 0, _poseName: 'out', _dir: 1, abbr: 0,
     _btnFit: leer, _setX(x) { this._x = x; }, _pose: leer, _layoutSky: leer, _layoutFest: leer, _layoutFriend: leer, _layoutBote: leer,
     _layoutGift: leer, _planeSnap: leer, _placePiles: leer, _restartCritters: leer, _flowerGiftPlace: leer, _interrupt() { this.abbr++; },
@@ -1646,7 +1648,7 @@ const buehne = (W, Hs, areal = 'huegel') => {
 const GROESSEN = [[600, 248], [380, 184], [340, 248], [320, 400], [1000, 200]];
 
 test('Kleine Beschäftigungen: jede wählbare hat Methode, Länge, Wetter-Abbruch und räumt ihre Klassen ab', () => {
-  assert.equal(T.MINI_ACTS.length, 16);
+  assert.equal(T.MINI_ACTS.length, 18);
   const raeumt = quell.match(/const all = \['walking'([\s\S]*?)\];/)[1] + quell.match(/const ACT_CLS = \[([\s\S]*?)\];/)[1]
     + quell.match(/const CUTE_CLS = \[([\s\S]*?)\];/)[1];
   let geprueft = 0;
@@ -1679,7 +1681,7 @@ test('Kleine Beschäftigungen: jede wählbare hat Methode, Länge, Wetter-Abbruc
 test('Kleine Beschäftigungen: Auswahl nach Wetter, bei Regen und Schnee das eigene Programm', () => {
   const geht = (L) => T.MINI_ACTS.filter((a) => T.miniOk(a, { ...LAGE, ...L }));
   assert.deepEqual(plain(geht({})), TROCKEN);
-  assert.deepEqual(plain(geht({ wet: true, rain: 40 })), ['puddle', 'boat']);
+  assert.deepEqual(plain(geht({ wet: true, rain: 40 })), ['puddle', 'boat', 'drops', 'twirl']);
   assert.deepEqual(plain(geht({ wet: true, rain: 95, storm: true, shelter: true })), []); // Starkregen: er bleibt im Bau
   assert.deepEqual(plain(geht({ wet: true, storm: true, shelter: true })), []); // Gewitter ohne Regen
   assert.deepEqual(plain(geht({ snowcover: true, cold: true })), SCHNEE);
@@ -1695,7 +1697,7 @@ test('Kleine Beschäftigungen: Auswahl nach Wetter, bei Regen und Schnee das eig
   assert.equal(T.miniOk('rope', { ...LAGE, snowcover: true }), false);
   assert.equal(T.miniOk('weights', { ...LAGE, snowcover: true }), true);
   // Jedes Wetter hat sein Programm; was bei einer Lage geht, steht immer in ihrem Programm
-  assert.deepEqual(plain(T.MINI_PROG), { dry: TROCKEN, rain: ['puddle', 'boat'], snow: SCHNEE });
+  assert.deepEqual(plain(T.MINI_PROG), { dry: TROCKEN, rain: ['puddle', 'boat', 'drops', 'twirl'], snow: SCHNEE });
   const lagen = [{}, { wet: true, rain: 40 }, { snowcover: true }, { snowcover: true, wet: true, rain: 25 }, { wet: true, rain: 95, storm: true, shelter: true },
     { wet: true, storm: true, shelter: true }, { hayFull: true, cold: true, winter: true, wind: 50 }, { snowcover: true, wind: 50, hayFull: true }];
   assert.deepEqual(lagen.map((L) => T.miniProg({ ...LAGE, ...L })), ['dry', 'rain', 'snow', null, null, null, 'dry', 'snow']);
@@ -1712,7 +1714,7 @@ test('Kleine Beschäftigungen: Auswahl nach Wetter, bei Regen und Schnee das eig
     // ein anderer Vorgänger ändert die Wahl nicht: Sie hängt nur am Fenster
     assert.equal(T.miniBase('dry', TROCKEN.find((x) => x !== a), u, 0.3), a);
     assert.ok(SCHNEE.includes(T.miniBase('snow', null, u)));
-    assert.ok(['puddle', 'boat', null].includes(T.miniBase('rain', null, u)));
+    assert.ok(['puddle', 'boat', 'drops', 'twirl', null].includes(T.miniBase('rain', null, u)));
   }
   // Ersatz: nur was geht und weder davor noch danach dran ist; bleibt nichts übrig, keine
   const voll = { ...LAGE, hayFull: true, cold: true, wind: 50 };
@@ -1813,11 +1815,11 @@ test('Kleine Beschäftigungen: über den Tag beherrscht keine das Bild, Seil und
   for (const a of TROCKEN) assert.ok(trocken[a] / 3000 > 0.04 && trocken[a] / 3000 < 0.14, `${a}: ${trocken[a]}`);
   assert.ok((trocken.rope + trocken.weights) / 3000 < 0.18, `Seil und Hantel: ${trocken.rope + trocken.weights} von 3000`);
   assert.equal(Object.keys(trocken).length, TROCKEN.length);
-  // Regen: nur Pfütze und Schiffchen, gut die Hälfte der Fenster bleibt leer
+  // Regen: Pfütze, Schiffchen, Tropfen fangen und Blattschirm kreiseln, ein gutes Drittel der Fenster bleibt leer
   const regen = zaehl({ wet: true, rain: 40 });
-  assert.deepEqual(Object.keys(regen).sort(), ['boat', 'null', 'puddle']);
-  assert.ok(regen.null / 3000 > 0.45 && regen.null / 3000 < 0.65, `leer ${regen.null}`);
-  assert.ok(regen.puddle > 500 && regen.boat > 400);
+  assert.deepEqual(Object.keys(regen).sort(), ['boat', 'drops', 'null', 'puddle', 'twirl']);
+  assert.ok(regen.null / 3000 > 0.28 && regen.null / 3000 < 0.4, `leer ${regen.null}`);
+  assert.ok(regen.puddle > 500 && regen.boat > 400 && regen.drops > 250 && regen.twirl > 250);
   // Schnee: der Schnee-Pika am häufigsten, aber nicht jedes zweite Mal
   const schnee = zaehl({ snowcover: true, cold: true, winter: true });
   assert.ok(schnee.snowpika / 3000 > 0.15 && schnee.snowpika / 3000 < 0.3, `Schnee-Pika ${schnee.snowpika}`);
@@ -2173,7 +2175,10 @@ test('Aufräumen: Requisiten am Boden verschwinden, mitten im Purzelbaum bleibt 
 });
 
 test('Größe der Karte ändert sich: was mit festen Pixeln rechnet, wird abgebrochen, alles andere läuft weiter', () => {
-  const c = buehne(600, 248);
+  // mit der Tiefe (seit 0.44 Standard) und ausdrücklich ohne: _layout liest depth für den Bereich der hinteren Spur
+  for (const depth of [true, false]) groesseAendern(buehne(600, 248, 'huegel', depth));
+});
+function groesseAendern(c) {
   const neu = (W, Hs, tut, requisit = false) => {
     c.abbr = 0;
     c._action = tut;
@@ -2194,12 +2199,12 @@ test('Größe der Karte ändert sich: was mit festen Pixeln rechnet, wird abgebr
   assert.equal(neu(600, 248, 'puddle', true), 0);
   // was auf der Stelle steht und zur Grafik des Pikas gehört, läuft weiter
   for (const act of ['hula', 'yoyo', 'juggle', 'crown', 'puste', 'rope', 'weights', 'read', null]) assert.equal(neu(c._W === 600 ? 500 : 600, 248, act), 0, `${act}`);
-  assert.deepEqual([...T.ACT_PX].sort(), ['glider', 'purzel']);
+  assert.deepEqual([...T.ACT_PX].sort(), ['drops', 'glider', 'purzel', 'twirl']);
   // die Geometrie ist danach die der neuen Größe
   assert.equal(neu(340, 248, 'glider'), 1);
   assert.equal(c._W, 340);
   assert.ok(c._g.rock.l + c._g.rock.w <= 340);
-});
+}
 
 test('Späteinstieg nach einem Wetterumschwung: ein Fenster, das trocken begann, bekommt nachträglich keine Pfütze', () => {
   const log = [{ t: NOW - 36e5, c: 'cloudy', T: 10 }, { t: NOW - 20000, c: 'rainy', T: 10 }];

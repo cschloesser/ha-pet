@@ -1,5 +1,5 @@
-// Kleine Beschäftigungen: Pfütze, Schiffchen, Schnee-Pika, Schneeengel, Schneeball, Hula-Hoop, Jo-Jo, Pusteblume,
-// Purzelbaum, Steintürmchen, Jonglieren, Blumenkranz, Papierflieger
+// Kleine Beschäftigungen: Pfütze, Schiffchen, Tropfen fangen, Blattschirm kreiseln, Schnee-Pika, Schneeengel,
+// Schneeball, Hula-Hoop, Jo-Jo, Pusteblume, Purzelbaum, Steintürmchen, Jonglieren, Blumenkranz, Papierflieger
 
 import { rnd, pick, clamp } from '../logik/hilfen.js';
 import { calmMotion } from '../logik/bewegung-reduzieren.js';
@@ -10,19 +10,20 @@ import {
   PUDDLE_MS, puddleJumps, BOAT_T, BOAT_EASE, boatPuffs, boatPos, YOYO_MS, YOYO_DEAD, yoyoThrows, yoyoDead, PUSTE_MS,
   PURZEL_MS, PURZEL_ROLL, purzelRolls, STONE_MS, GLIDER_FLY, GLIDER_WALK, GLIDER_STEP, gliderThrows, groundSpot,
   ANGEL_T, angelSweeps, SNOWBALL_T, SNOWBALL_EASE, SNOWBALL_BIG, snowballRuns, snowballR, snowballPos,
+  DROPS_T, dropsPlan, DROPS_COUNT, TWIRL_T, twirlFast, twirlLifts, twirlRings,
 } from '../logik/beschaeftigungen-klein.js';
 import {
-  DROP_SVG, PUDDLE_SVG, BOAT_SVG, SNOWPIKA_SVG, STONES_SVG, GLIDER_SVG, ANGEL_SVG, SNOWBALL_SVG,
+  DROP_SVG, PUDDLE_SVG, BOAT_SVG, SNOWPIKA_SVG, STONES_SVG, GLIDER_SVG, ANGEL_SVG, SNOWBALL_SVG, LEAF_SVG,
 } from '../grafik/beschaeftigungen.js';
 import { GIFT_ITEMS } from '../grafik/paeckchen.js';
 
 export class BeschaeftigungenKlein {
   // ==================== Kleine Beschäftigungen ab 0.32 ====================
   // Hula-Hoop, Jo-Jo, Pusteblume, Purzelbaum, Steintürmchen, Jonglieren, Blumenkranz und Papierflieger bei trockenem
-  // Wetter, Pfützenspringen und Papierschiffchen bei Regen, Schnee-Pika, Schneeengel und Schneeball bei liegendem
-  // Schnee. Auswahl: miniChain (MINI_PROG, MINI_W, miniOk). Alle kommen aus dem Tagesplan (_miniAt) und stehen nicht
-  // im Helfer. Pfütze, Schiffchen, Schnee-Pika und Schneeball laufen nach der Planzeit: Ein Gerät, das später
-  // dazukommt, steigt mitten hinein ein.
+  // Wetter, Pfützenspringen, Papierschiffchen, Tropfen fangen und Blattschirm kreiseln bei Regen, Schnee-Pika,
+  // Schneeengel und Schneeball bei liegendem Schnee. Auswahl: miniChain (MINI_PROG, MINI_W, miniOk). Alle kommen aus
+  // dem Tagesplan (_miniAt) und stehen nicht im Helfer. Pfütze, Schiffchen, Tropfen fangen, Schnee-Pika und
+  // Schneeball laufen nach der Planzeit: Ein Gerät, das später dazukommt, steigt mitten hinein ein.
 
   // Lage für die Wahl der kleinen Beschäftigungen (miniProg, miniOk): Wetter, Wind und Kälte kommen von der
   // Wetter-Entität und sind auf allen Geräten gleich, die Jahreszeit hängt am Datum. Der Vorrat ist nur mit
@@ -260,6 +261,269 @@ export class BeschaeftigungenKlein {
     await this._propOff('boating');
     this._apropsAway(el);
     await this._wait(400);
+  }
+
+  // ---------- Regen: Tropfen fangen ----------
+
+  // Ein dicker Tropfen fällt in ms Millisekunden auf den Punkt (vx, vy) der Pika-Grafik, up px darüber (so hoch ist
+  // das Maul im Hüpfer). hit: Er verschwindet im Maul, sonst zerplatzt er (auf der Nase). Ein eigenes Element in
+  // .fx mit eigenem Zeitgeber, kein Tropfen der Regenebene. Bewegung reduzieren: Er fällt nicht, er blendet am
+  // Ziel ein und aus (Stil).
+  _bigDrop(vx, vy, up, hit, ms) {
+    const { pH } = this._g;
+    const o = this._svgPt(vx, vy);
+    const el = document.createElement('span');
+    el.className = hit ? 'bigdrop hit' : 'bigdrop';
+    el.innerHTML = DROP_SVG;
+    el.style.left = `${o.x.toFixed(1)}px`;
+    el.style.top = `${(o.y - up).toFixed(1)}px`;
+    // von oberhalb des Bildrands, höchstens aber aus 1,7 Pika-Höhen (hohe Karten: Er fiele sonst zu schnell)
+    el.style.setProperty('--fy', `${(-Math.min(o.y - up + pH * 0.25, pH * 1.7)).toFixed(1)}px`);
+    el.style.setProperty('--fd', `${Math.round(ms)}ms`);
+    this._el.fx.appendChild(el);
+    setTimeout(() => el.remove(), ms + 420);
+  }
+
+  // Der Tropfen ist auf der Nase zerplatzt: n Spritzer fliegen vom Punkt (vx, vy) der Pika-Grafik zur Seite. Wie
+  // _splash, aber mit den festen Zahlen u(0), u(1) … des Fensters statt gewürfelt. Bewegung reduzieren: keine.
+  _noseSplash(vx, vy, n, u) {
+    if (calmMotion()) return;
+    const { pW, pH } = this._g;
+    const o = this._svgPt(vx, vy);
+    for (let i = 0; i < n; i++) {
+      const side = i % 2 ? 1 : -1;
+      const el = document.createElement('span');
+      el.className = 'splash sn';
+      el.innerHTML = DROP_SVG;
+      el.style.left = `${(o.x + side * pW * 0.03).toFixed(1)}px`;
+      el.style.top = `${o.y.toFixed(1)}px`;
+      el.style.setProperty('--dx', `${(side * (0.12 + u(2 * i) * 0.2) * pW).toFixed(1)}px`);
+      el.style.setProperty('--dy', `${(-(0.08 + u(2 * i + 1) * 0.12) * pH).toFixed(1)}px`);
+      this._el.fx.appendChild(el);
+      setTimeout(() => el.remove(), 800);
+    }
+  }
+
+  // Er legt das Blatt neben sich ins Gras, schaut zum Himmel, legt den Kopf zurück, streckt die Zunge heraus und
+  // fängt Regentropfen: drei bis fünf Versuche im festen Takt (DROPS_T.try ab der Planzeit: Alle Geräte fangen
+  // gleichzeitig, wer später einsteigt, im selben Takt). Zu jedem fällt ein dicker Tropfen (_bigDrop), dem er
+  // entgegenhüpft oder sich entgegenstreckt. Ein gefangener schmeckt („mmh!“, er wackelt vergnügt); springt er zu
+  // früh, landet der Tropfen auf seiner Nase („plitsch!“, er schüttelt den Kopf). Zahl und Ausgang der Versuche,
+  // Platz, Seite und Sprüche stehen mit dem Fenster fest (dropsPlan); am Ende zählt er stolz, was er erwischt hat
+  // (auch ein später eingestiegenes Gerät nennt dieselbe Zahl), und hebt das Blatt wieder auf.
+  // Bewegung reduzieren: kein Hüpfer, kein Strecken, kein Kopfschütteln; die Tropfen blenden an seinem Maul ein.
+  async _drops() {
+    const S = this._slotFor('drops');
+    const { pW, pH } = this._g;
+    const p = this._el.pika;
+    const calm = calmMotion();
+    const plan = dropsPlan(S.r);
+    const line = (i, list) => list[Math.floor(S.r(i) * list.length)];
+    // Das Blatt (eine halbe Pika-Breite) liegt hinter ihm im Gras. Platz für beide wie bei Schnee-Pika und
+    // Steintürmchen (_besideSpot): zwischen Vorrat und Stein, neben dem, was dort schon steht; auf welcher Seite, steht
+    // mit dem Fenster fest.
+    const lw = pW * 0.5;
+    const U = this._besideSpot(S.r(2), S.r(3), lw);
+    const dir = -U.dir;
+    await this._goSpot(S, U.x, 0.9);
+    this._face(dir);
+    const T0 = S.start + ACT_WALK;
+    const t0 = T0 + DROPS_T.look;
+    // Blatt weglegen (nur bei Regen hat er eins): bücken, es liegt im Gras, die Pfote ist frei
+    const fresh = this._planNow() < T0 + 500;
+    if (fresh) {
+      await this._at(T0);
+      p.classList.add('sniff');
+      await this._wait(450);
+    }
+    const leaf = this._wx.wet ? this._aprop('leafp', LEAF_SVG, U.px, lw, lw * (22 / 64), false, pH * 0.02) : null;
+    if (leaf && dir < 0) leaf.classList.add('mir');
+    p.classList.add('drops');
+    p.classList.remove('sniff');
+    p.classList.add('look-up');
+    if (fresh) this._say(line(40, ['Regentropfen!', 'Tropfen fangen!', 'aaah …']), 1100);
+    // Die Versuche: jeder Schritt zu seiner Planzeit
+    for (let i = Math.max(0, Math.ceil((this._planNow() - t0) / DROPS_T.try)); i < plan.length; i++) {
+      const tk = t0 + i * DROPS_T.try;
+      const { hit } = plan[i];
+      const hop = !calm && (plan[i].hop || !hit);
+      const reach = !calm && hit && !hop;
+      // so hoch ist das Maul, wenn der Tropfen ankommt: oben im Hüpfer, gestreckt, oder am Boden
+      const up = hit ? (hop ? pH * 0.27 : reach ? pH * 0.035 : 0) : 0;
+      await this._at(tk + DROPS_T.drop - 60);
+      p.classList.add('drops-up');
+      await this._at(tk + DROPS_T.drop);
+      if (hit) this._bigDrop(93.4, 55.6, up, true, DROPS_T.fall);
+      else this._bigDrop(92.4, 49.4, 0, false, DROPS_T.fall);
+      if (hop) {
+        // Absprung so, dass er oben ist, wenn der Tropfen kommt; daneben: zu früh, er ist schon wieder unten
+        const tj = tk + (hit ? DROPS_T.at - DROPS_T.jump : DROPS_T.early);
+        await this._at(tj - 150);
+        p.classList.add('crouch');
+        await this._at(tj);
+        p.classList.remove('crouch');
+        this._jump('hop1', true);
+      } else if (reach) {
+        await this._at(tk + DROPS_T.at - DROPS_T.reach);
+        p.classList.add('drops-st');
+      }
+      await this._at(tk + DROPS_T.at);
+      if (hit) {
+        // im Maul: Zunge herein; wieder am Boden (nach dem Hüpfer) schmeckt es
+        await this._at(tk + DROPS_T.at + 120);
+        p.classList.remove('drops-up', 'drops-st');
+        const tl = tk + DROPS_T.at + (hop ? DROPS_T.land : 120);
+        await this._at(tl);
+        this._say(line(50 + i, ['mmh!', 'nass!', 'lecker!', 'mmh!']), 800);
+        p.classList.add('drops-yum', 'happy');
+        await this._at(tl + 660);
+        p.classList.remove('drops-yum', 'happy');
+      } else {
+        this._noseSplash(92.4, 49.4, 4, (j) => S.r(60 + i * 8 + j));
+        this._say(line(50 + i, ['plitsch!', 'plitsch!', 'daneben!']), 800);
+        p.classList.add('crosseye');
+        await this._at(tk + DROPS_T.at + 160);
+        p.classList.remove('drops-up');
+        p.classList.add('drops-no');
+        await this._at(tk + DROPS_T.at + 800);
+        p.classList.remove('drops-no', 'crosseye');
+      }
+    }
+    await this._at(S.end);
+    // stolz zählen
+    p.classList.remove('look-up');
+    this._mimik('proud', 1800);
+    this._happy(1400);
+    this._say(DROPS_COUNT[plan.filter((v) => v.hit).length], 1600);
+    if (!calm) this._jump('hop1');
+    await this._wait(1800);
+    // das Blatt wieder aufheben
+    p.classList.add('sniff');
+    await this._wait(450);
+    if (leaf) this._apropsAway(leaf);
+    p.classList.remove('sniff', 'drops');
+    await this._wait(400);
+  }
+
+  // ---------- Regen: Blattschirm kreiseln ----------
+
+  // Tropfen fliegen im Ring vom kreiselnden Blatt: n Stück vom Blattrand nach außen und ein Stück hinunter, far-mal
+  // so weit wie beim langsamen Kreiseln. Der Ring ist von der Seite gesehen ein flaches Oval; die Tropfen sitzen
+  // abwechselnd an seiner linken und rechten Hälfte (die vorn und hinten flögen auf den Betrachter zu, man sähe sie
+  // nur fallen). Verteilt mit den festen Zahlen u(0), u(1) … des Fensters. Bewegung reduzieren: Sie fliegen nicht,
+  // sie blenden am Rand ein und aus (Stil).
+  _twRing(n, far, u) {
+    const { pW, pH } = this._g;
+    const c = this._svgPt(89.5, 6);
+    const rx = pW * 0.3;
+    for (let i = 0; i < n; i++) {
+      const a = (i % 2 ? Math.PI : 0) + (u(i) - 0.5) * 1.7;
+      const el = document.createElement('span');
+      el.className = 'twdrop';
+      el.innerHTML = DROP_SVG;
+      el.style.left = `${(c.x + Math.cos(a) * rx).toFixed(1)}px`;
+      el.style.top = `${(c.y + Math.sin(a) * rx * 0.3).toFixed(1)}px`;
+      el.style.setProperty('--dx', `${(Math.cos(a) * pW * (0.26 + u(n + i) * 0.26) * far).toFixed(1)}px`);
+      el.style.setProperty('--dy', `${(pH * (0.12 + 0.1 * Math.sin(a))).toFixed(1)}px`);
+      this._el.fx.appendChild(el);
+      setTimeout(() => el.remove(), 700);
+    }
+  }
+
+  // Er nimmt den Stiel des Blattschirms in beide Pfoten und kreiselt ihn: Das Blatt dreht sich um seinen Stiel, in
+  // drei Stufen immer schneller, und die Tropfen fliegen im Ring davon (_twRing, zu festen Planzeiten: twirlRings).
+  // Dann hält er es an, ihm ist kurz schwindlig, „Ta-da!“. Manchmal (twirlLifts: feste Zahl des Fensters, bei Wind
+  // ab TWIRL_WIND öfter; der Wind ist auf allen Geräten derselbe) fasst der Wind unter das Blatt: Es hebt ab und
+  // treibt ein Stück mit dem Wind, er hüpft hinterher und fängt es („hui!“ … „hab dich!“). Beide Schlüsse dauern
+  // gleich lang. Alle Geräte beginnen zur selben Planzeit; ein Gerät, das später dazukommt, steigt nicht ein
+  // (ACT_NOJOIN). Ohne Regen (aus der Vorschau) holt er das Blatt dafür hervor.
+  // Schmale Karten: Reicht der Platz in Windrichtung nicht für den Hüpfer, tritt er vorher zurück; reicht er auch
+  // dann nicht, steigt das Blatt gerade hoch, und er springt ihm auf der Stelle nach.
+  // Bewegung reduzieren: Das Blatt dreht sich nicht (es steht schräg), je Stufe blendet ein Ring Tropfen ein, und
+  // es hebt nie ab.
+  async _twirl() {
+    const S = this._slotFor('twirl');
+    const { pW, xR } = this._g;
+    const p = this._el.pika;
+    const calm = calmMotion();
+    const line = (i, list) => list[Math.floor(S.r(i) * list.length)];
+    // einmal zu Beginn entschieden: Dreht der Wind mittendrin, bleibt es dabei
+    const lift = !calm && twirlLifts(S.r, this._wind);
+    const dir = this._windDir || (S.r(3) < 0.5 ? -1 : 1);
+    let x = this._hobbySpot(S.r(2));
+    let to = x;
+    if (lift) {
+      const D = pW * 0.7;
+      const lim = (v) => clamp(v, pW * 0.45, xR);
+      to = lim(x + dir * D);
+      x = lim(to - dir * D);
+      if (Math.abs(to - x) < pW * 0.3) to = x;
+    }
+    await this._goSpot(S, x, 0.9);
+    this._face(dir);
+    p.classList.add('twirl');
+    // Alle Geräte beginnen zur selben Planzeit (wie beim Seil): Wer früh am Platz ist, hält das Blatt so lange bereit
+    const T0 = S.start + ACT_WALK;
+    const tEnd = T0 + TWIRL_T.grip + TWIRL_T.slow + TWIRL_T.mid + twirlFast(S.r);
+    await this._at(T0);
+    this._say(line(40, ['Kreisel!', 'dreh dich!', 'und rum!']), 1000);
+    await this._at(T0 + TWIRL_T.grip);
+    p.classList.add('tw-go');
+    let st = 0;
+    for (const [i, R] of twirlRings(S.r).entries()) {
+      await this._at(T0 + R.t);
+      // Kam er zu spät an seinen Platz, holt er die Stufen nach, aber nicht alle versäumten Ringe auf einmal
+      const now = this._planNow() < T0 + R.t + 300;
+      const first = R.st !== st || i === 0;
+      if (R.st !== st) {
+        st = R.st;
+        p.classList.add(st === 1 ? 'tw-2' : 'tw-3');
+        if (now) this._say(st === 1 ? line(41, ['schneller!', 'und schneller!', 'hui!']) : line(42, ['huiii!', 'noch schneller!', 'wusch!']), 900);
+      }
+      if (now && (!calm || first)) this._twRing(4 + R.st, 1 + R.st * 0.3, (j) => S.r(100 + i * 16 + j));
+    }
+    await this._at(tEnd);
+    p.classList.remove('tw-go', 'tw-2', 'tw-3');
+    if (lift) {
+      // Der Wind fasst unter das Blatt: Es steigt und treibt bis über die Stelle, an der er es gleich fängt
+      p.style.setProperty('--twx', `${((Math.abs(to - x) / pW) * 120).toFixed(1)}px`);
+      p.classList.add('tw-off', 'look-up');
+      this._mimik('awe', 1400);
+      this._say(line(45, ['hui!', 'oh!', 'mein Blatt!']), 900);
+      await this._at(tEnd + TWIRL_T.lift);
+      p.classList.add('crouch');
+      await this._wait(TWIRL_T.crouch);
+      p.classList.remove('crouch');
+      // Es sinkt ihm entgegen, während er springt (im Stil dieselbe Dauer und Kurve wie der Hüpfer)
+      p.classList.add('tw-back');
+      if (to !== x) await this._hopTo(to, 0, false);
+      else {
+        this._jump('hop1', true);
+        await this._wait(TWIRL_T.hop);
+      }
+      this._face(dir);
+      p.classList.remove('tw-off', 'tw-back', 'look-up');
+      p.classList.add('happy');
+      this._say(line(46, ['hab dich!', 'gefangen!', 'hiergeblieben!']), 1100);
+      await this._at(S.end);
+      p.classList.remove('happy');
+    } else {
+      // anhalten: Das Blatt dreht noch eine halbe Runde aus (.tw-end), ein letzter Schwung Tropfen, ihm ist kurz schwindlig
+      if (!calm) this._twRing(8, 1.5, (j) => S.r(80 + j));
+      p.classList.add('tw-end', 'crosseye');
+      this._say(line(43, ['huch …', 'alles dreht sich!', 'puh!']), 1000);
+      await this._at(tEnd + 1100);
+      p.classList.remove('tw-end', 'crosseye');
+      p.classList.add('tilt');
+      this._mimik('proud', 1600);
+      this._say(line(44, ['Ta-da!', 'Kreisel! ♥', 'trocken!']), 1300);
+      await this._at(S.end);
+      p.classList.remove('tilt');
+    }
+    this._happy(1200);
+    await this._wait(1200);
+    p.classList.remove('twirl');
+    await this._wait(100);
   }
 
   // ---------- Schnee: Schnee-Pika ----------

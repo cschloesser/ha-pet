@@ -6,7 +6,7 @@ import { POOP } from './zustand.js';
 import { CUTE_SMALL } from './interaktion.js';
 import {
   MINI_ACTS, PUDDLE_MS, puddleJumps, BOAT_T, boatPuffs, YOYO_MS, YOYO_DEAD, yoyoThrows, yoyoDead, PUSTE_MS, PURZEL_MS,
-  purzelRolls, STONE_MS, GLIDER_STEP, angelLen, snowballLen,
+  purzelRolls, STONE_MS, GLIDER_STEP, angelLen, snowballLen, dropsLen, twirlLen,
 } from './beschaeftigungen-klein.js';
 
 // Tagesplan: Beschäftigungen kommen aus der Uhrzeit (seedRnd), damit alle Geräte zur selben Zeit dasselbe zeigen
@@ -14,9 +14,9 @@ import {
 // - Groß (Lesen, Gameboy, Tablet, Drachen, TV, Musik, Malen, Seifenblasen, Frühsport; 1–2,5 Min): die Uhr ist in
 //   Fenster von ACT_WIN.big geteilt, in jedem beginnt eine in den ersten ACT_WIN.spread. Abstand also 9–19 Min.
 // - Klein (Seilspringen, Gewichtheben, Blüte für den Vorrat sammeln, Hula-Hoop, Jo-Jo, Pusteblume, Purzelbaum,
-//   Steintürmchen, Jonglieren, Blumenkranz, Papierflieger; bei Regen Pfützenspringen und Papierschiffchen, bei
-//   Schnee Schnee-Pika, Schneeengel und Schneeball; 10–30 s): Fenster ACT_WIN.mini, mit Wahrscheinlichkeit ACT_WIN.miniP, nie dicht an
-//   einer großen. Auswahl und Gewichte: MINI_W, MINI_PROG, miniOk, miniChain.
+//   Steintürmchen, Jonglieren, Blumenkranz, Papierflieger; bei Regen Pfützenspringen, Papierschiffchen, Tropfen
+//   fangen und Blattschirm kreiseln, bei Schnee Schnee-Pika, Schneeengel und Schneeball; 10–30 s): Fenster
+//   ACT_WIN.mini, mit Wahrscheinlichkeit ACT_WIN.miniP, nie dicht an einer großen. Auswahl und Gewichte: MINI_W, MINI_PROG, miniOk, miniChain.
 // - Welche es wird, hängt am Wetter (auf allen Geräten dasselbe), an der Tagesform und am Verlauf: Die letzten
 //   ACT_RECENT großen kommen nicht gleich wieder dran. Der Verlauf liegt im Helfer plan_entity; wer ein Fenster
 //   zuerst beginnt, trägt es dort ein, die anderen übernehmen die Wahl (auch wenn sich das Wetter inzwischen änderte).
@@ -54,13 +54,17 @@ const ACT_LEN = {
   snowpika: (r) => 20000 + r(1) * 6000,
   angel: angelLen,
   snowball: snowballLen,
+  drops: dropsLen,
+  twirl: twirlLen,
 };
 const ropeJumps = (r) => 12 + Math.floor(r(5) * 18);
 // Einsteigen nach Neuladen oder Bildschirm an: bis so viele ms vor dem Ende des Hauptteils. Die kleinen nur gleich
-// zu Beginn (sie sind schnell vorbei); Pfütze, Schiffchen, Schnee-Pika und Schneeball laufen nach der Planzeit und
-// lassen sich mittendrin aufnehmen. Der Schneeengel nicht: Dabei liegt er auf dem Rücken (wie beim Purzelbaum).
+// zu Beginn (sie sind schnell vorbei); Pfütze, Schiffchen, Schnee-Pika, Schneeball und Tropfen fangen laufen nach
+// der Planzeit und lassen sich mittendrin aufnehmen. Der Schneeengel nicht: Dabei liegt er auf dem Rücken (wie beim
+// Purzelbaum). Der Blattschirm auch nicht: Er kreiselt wie der Reifen ab dem gemeinsamen Beginn.
 const ACT_JOIN_END = 4000;
-const ACT_NOJOIN = new Set(['gather', 'rope', 'weights', 'hula', 'yoyo', 'puste', 'purzel', 'stones', 'juggle', 'crown', 'glider', 'angel']);
+const ACT_NOJOIN = new Set(['gather', 'rope', 'weights', 'hula', 'yoyo', 'puste', 'purzel', 'stones', 'juggle', 'crown', 'glider', 'angel',
+  'twirl']);
 // Beginn der großen im Fenster k bzw. der kleinen im Fenster m (Planzeit, ms)
 const bigStart = (k) => k * ACT_WIN.big + Math.floor(seedRnd('big', k, 0) * ACT_WIN.spread);
 const miniStart = (m) => m * ACT_WIN.mini + Math.floor(seedRnd('mini', m, 1) * (ACT_WIN.mini - ACT_WIN.miniRoom));
@@ -131,12 +135,14 @@ const chaseFar = (rx, cx, lo, hi, pW) => {
 };
 // Beschäftigungen, die mit Wegen in Pixeln rechnen, ohne dass ein Requisit am Boden steht: Ändert sich die Größe
 // der Karte, werden sie abgebrochen (_layout). Schneeengel und Schneeball stellen ihr Requisit am Boden (Abdruck,
-// Kugel mit Spur) hin, bevor er den ersten Schritt nach Pixeln tut: Sie brauchen den Eintrag nicht.
-const ACT_PX = new Set(['glider', 'purzel']);
+// Kugel mit Spur) hin, bevor er den ersten Schritt nach Pixeln tut: Sie brauchen den Eintrag nicht. Tropfen fangen
+// (die dicken Tropfen zielen auf sein Maul; das weggelegte Blatt liegt nur bei Regen da) und Blattschirm kreiseln
+// (Tropfenringe, der Hüpfer hinter dem Blatt her) stehen drin.
+const ACT_PX = new Set(['glider', 'purzel', 'drops', 'twirl']);
 
 // Beschäftigungen, die ein Wetterwechsel abbricht, wenn sie beim neuen Wetter nicht gehen (_actOk): Regen oder
-// Schnee beginnt (Seil, Tablet …), der Regen hört auf (Pfütze, Schiffchen), der Schnee ist getaut (Schnee-Pika,
-// Schneeengel, Schneeball)
+// Schnee beginnt (Seil, Tablet …), der Regen hört auf (Pfütze, Schiffchen, Tropfen fangen, Blattschirm kreiseln),
+// der Schnee ist getaut (Schnee-Pika, Schneeengel, Schneeball)
 const WX_STOP = [...ACT_BIG, ...MINI_ACTS];
 const ACT_RECENT = 3;
 // Wird die Karte sichtbar (Bildschirm an, App geöffnet, Ansicht gewechselt), winkt er; höchstens alle 5 Minuten.
@@ -147,7 +153,8 @@ const ACT_CLS = ['waving', 'music', 'sing', 'painting', 'dab', 'mix', 'blowing',
   'kram', 'stow', 'ktug', 'tvturn',
   'hula', 'hula-go', 'hula-x', 'hula-dn', 'yoyo', 'yo-go', 'yo-dead', 'puste', 'pu-in', 'pu-2', 'pu-1', 'pu-0', 'purzel',
   'pebble', 'juggle', 'jug-go', 'plait', 'crowned', 'gliding', 'boating', 'spat',
-  'angel-dn', 'angel-go', 'angel-up', 'sb-pat', 'sb-push', 'sb-lean'];
+  'angel-dn', 'angel-go', 'angel-up', 'sb-pat', 'sb-push', 'sb-lean',
+  'drops', 'drops-up', 'drops-st', 'drops-yum', 'drops-no', 'twirl', 'tw-go', 'tw-2', 'tw-3', 'tw-end', 'tw-off', 'tw-back'];
 // Frühsport nur morgens: 10–180 Minuten nach dem Aufwachen, einmal am Tag (im Helfer plan_entity vermerkt)
 const SPORT_WIN = [10, 180];
 const SPORT_INTRO = 1700;

@@ -121,7 +121,7 @@ const STYLE = `
      gerechnet aus _light (--m1, --mcap): Dämmerung, Wolkendecke und Gewitter gleiten mit Himmel und Land. */
   .snowcover .flower { opacity: 0; } /* je Blume: Deckkraft an der Schicht machte sie zu einem eigenen Stapel */
 
-  /* ---- Prototyp Tiefe (depth: true) ----
+  /* ---- Tiefe (depth, seit 0.44 Standard) ----
      Kulisse in Ebenen: Je weiter weg, desto mehr wandert sie mit dem Pika mit (--plx -1 … 1, die Wiese
      mit Bau, Stein und Heu bleibt stehen). Ferne Hügelkette im Dunst nur hier, deckend im Dunstton (--h0),
      sonst schiene die tiefstehende Sonne durch. Einheiten der viewBox (100 breit), scaleX deckt die Ränder
@@ -712,6 +712,30 @@ const STYLE = `
   .calm:not(.excited):not(.sleeping) .br { animation: breathe-calm 4.8s ease-in-out infinite; }
   @keyframes breathe-calm { 50% { transform: scale(1.016, 1.03); } }
   .sleeping .br { animation: breathe-deep 4.6s ease-in-out infinite; }
+  /* ---- Abendritual (_bedRitual) ----
+     Lang strecken wie eine Katze: Brust tief, Po hoch, Vorderpfoten weit nach vorn, Augen zu, Ohren angelegt */
+  .rstretch .hop { animation: rstretch 1.7s ease-in-out both; }
+  /* (gedreht wird um die Mitte unten: translateY hebt ihn so weit an, dass die Vorderpfoten am Boden bleiben) */
+  @keyframes rstretch {
+    0%, 100% { transform: none; }
+    28%, 72% { transform: translateY(-4.5%) rotate(9deg) scale(1.16, .82); }
+    50% { transform: translateY(-5.5%) rotate(11deg) scale(1.2, .79); }
+  }
+  .rstretch .ffoot { animation: rstretch-f 1.7s ease-in-out both; }
+  @keyframes rstretch-f { 0%, 100% { transform: none; } 28%, 72% { transform: translate(14px, -6px); } 50% { transform: translate(16px, -7px); } }
+  .rstretch .eye { display: none; }
+  .rstretch .seye { display: inline; }
+  .rstretch .ear-l { transform: rotate(-30deg); }
+  .rstretch .ear-r { transform: rotate(26deg); }
+  /* Die Zipfelmütze setzt er schon draußen auf, sie plumpst von oben. Hexenhut, Partyhut und Sonnenbrille legt er
+     dafür ab wie zum Schlafen, die Weihnachtsmütze behält er auf (sie ersetzt die Zipfelmütze, STYLE_FEST). */
+  .rcap .cap { display: inline; transform-box: fill-box; transform-origin: 60% 100%; animation: rcap .45s cubic-bezier(.3, 1.5, .5, 1) both; }
+  @keyframes rcap { from { transform: translateY(-9px) rotate(-14deg); opacity: 0; } }
+  .pika.rcap.fest-xmas .cap, .pika.rcap .hat-witch, .pika.rcap .hat-party, .pika.rcap .shades { display: none; }
+  /* Die Sprechblase rückt über die Mütze: Sie läge sonst auf ihr, während er Gute Nacht sagt */
+  .pika.rcap ~ .psay .say { bottom: calc(4px + var(--ph) * .17); }
+  /* Das Buch zur Gutenachtgeschichte ist ein kleines (das Buch vom Lesen, .reading, verkleinert) */
+  .rread .book { transform-box: fill-box; transform-origin: 50% 100%; transform: scale(.72); }
 
   /* Kleine Zeichen über dem Kopf: ?, !, Schweißtropfen, Funkeln, Grummelwolke */
   .emo {
@@ -1073,6 +1097,84 @@ const STYLE = `
   }
   @keyframes squeak { 0% { opacity: 0; scale: .4; } 15% { opacity: 1; scale: 1; } 75% { opacity: 1; } 100% { opacity: 0; translate: 0 -6px; } }
 
+  /* ---- Die Welt antwortet (seit 0.44): Aussichtsstein, Vorrat, Sonne, Mond, Schornstein, Saugroboter ----
+     Jede Antwort läuft einmal ab und räumt sich selbst weg. Mit „Bewegung reduzieren“ setzt das Skript .calm: Dann
+     blendet sie an ihrem Platz auf und ab (wfade), statt zu fliegen, zu hüpfen oder hervorzuhuschen. */
+  @keyframes wfade { 0%, 100% { opacity: 0; } 25%, 70% { opacity: 1; } }
+  /* Die Maus linst hinter dem Stein hervor (_rockPeek): nur ein Bild, kein Tippziel wie die Maus zu Besuch */
+  .mouse.wpeek .mw { pointer-events: none; cursor: auto; }
+  .mouse.wpeek.calm { animation: wfade 1.9s ease-in-out both; }
+  /* Kiesel: zwei flache Hüpfer vom Fuß des Steins weg (--px) */
+  .wpeb {
+    position: absolute; width: calc(var(--H) * .036); height: calc(var(--H) * .026);
+    margin: calc(var(--H) * -.013) 0 0 calc(var(--H) * -.018); border-radius: 50%;
+    background: #a3a9ae; box-shadow: inset 0 0 0 1px #5c6166; pointer-events: none; animation: wpeb .8s linear both;
+  }
+  .night .wpeb { filter: brightness(.7); }
+  @keyframes wpeb {
+    0% { transform: translate(0, 0); animation-timing-function: ease-out; }
+    22% { transform: translate(calc(var(--px) * .3), calc(var(--H) * -.07)); animation-timing-function: ease-in; }
+    45% { transform: translate(calc(var(--px) * .6), 0); animation-timing-function: ease-out; }
+    62% { transform: translate(calc(var(--px) * .8), calc(var(--H) * -.03)); animation-timing-function: ease-in; }
+    80% { transform: translate(var(--px), 0); opacity: 1; }
+    100% { transform: translate(var(--px), 0); opacity: 0; }
+  }
+  .wpeb.calm { animation: wfade .8s ease-in-out both; }
+  /* Halme fliegen aus dem Vorrat auf und trudeln ein Stück zurück */
+  .wstalk {
+    position: absolute; width: calc(var(--H) * .055); height: 2px; margin: -1px 0 0 calc(var(--H) * -.0275); border-radius: 1px;
+    background: #c9a548; box-shadow: 0 0 0 .5px rgba(120, 90, 30, .5); pointer-events: none; opacity: 0;
+    animation: wstalk .9s ease-out both;
+  }
+  .night .wstalk { filter: brightness(.7); }
+  @keyframes wstalk {
+    0% { transform: rotate(var(--r0)); opacity: 0; }
+    15% { opacity: 1; }
+    60% { transform: translate(calc(var(--px) * .75), var(--py)) rotate(calc(var(--rot) * .7)); opacity: 1; }
+    100% { transform: translate(var(--px), calc(var(--py) * .55)) rotate(var(--rot)); opacity: 0; }
+  }
+  .wstalk.calm { transform: rotate(var(--r0)); animation: wfade .8s ease-in-out both; }
+  /* Gesicht auf Sonne und Mond (_skyFace), ein Kind der Scheibe: Es steht hinter Wolken und Hügeln wie sie */
+  .wface { position: absolute; inset: 0; pointer-events: none; animation: wface 1.6s ease-in-out both; }
+  .wface svg { display: block; width: 100%; height: 100%; overflow: visible; }
+  @keyframes wface { 0% { opacity: 0; } 14%, 78% { opacity: 1; } 100% { opacity: 0; } }
+  .wrays { stroke: #ffe27a; transform-box: view-box; transform-origin: 50px 50px; animation: wrays 1.6s ease-in-out both; }
+  .sun-low .wrays { stroke: #ffc48a; }
+  @keyframes wrays {
+    0% { transform: scale(.72); } 30% { transform: scale(1.14) rotate(10deg); } 50% { transform: scale(.96) rotate(10deg); }
+    72% { transform: scale(1.1) rotate(20deg); } 100% { transform: scale(.8) rotate(20deg); }
+  }
+  .wyawn { transform-box: fill-box; transform-origin: 50% 15%; animation: wyawn 1.6s ease-in-out both; }
+  @keyframes wyawn { 0%, 100% { transform: scale(.45, .12); } 35%, 68% { transform: scale(1); } }
+  .wz {
+    position: absolute; left: 88%; top: 4%; font-size: max(9px, calc(var(--H) * .055)); font-weight: 800; line-height: 1;
+    color: #fff; text-shadow: 0 1px 3px rgba(0, 0, 0, .45); opacity: 0; animation: wz 1.5s ease-out both;
+  }
+  .wz:last-child { left: 108%; top: -24%; font-size: max(8px, calc(var(--H) * .042)); animation-delay: .3s; }
+  @keyframes wz {
+    0% { transform: translate(-40%, 60%) scale(.5); opacity: 0; } 25% { opacity: 1; } 70% { opacity: 1; }
+    100% { transform: translate(30%, -60%) scale(1.1); opacity: 0; }
+  }
+  .wface.calm .wrays, .wface.calm .wyawn { animation: none; }
+  .wface.calm .wz { animation-name: wfade; }
+  /* Rauchring über dem Schornstein (in der Bau-Grafik, neben .smoke; zieht wie der Rauch mit dem Wind, --smx) */
+  .wring {
+    fill: none; stroke: #f4f6f8; stroke-width: 1.3; opacity: 0; transform-box: fill-box; transform-origin: center;
+    animation: wring 1.6s ease-out both;
+  }
+  .night .wring { stroke: #8f99ad; }
+  @keyframes wring {
+    0% { transform: scale(.35); opacity: 0; }
+    15% { opacity: .95; }
+    65% { opacity: .8; }
+    100% { transform: translate(calc(var(--smx, -6px) * .5), -15px) scale(1.9); opacity: 0; }
+  }
+  .wring.calm { transform: translateY(-5px) scale(1.3); animation: wfade 1.5s ease-in-out both; }
+  /* Der Saugroboter piept: Sein Licht blinkt einmal weiß auf (stärker als die Farben und das Blinken von .stop und .stuck) */
+  .sig-vac .sig-led { transform-box: fill-box; transform-origin: center; }
+  .scene .sig-vac.wbeep .sig-led { animation: wbeep .6s ease-in-out; }
+  @keyframes wbeep { 25%, 65% { fill: #fff; transform: scale(2.2); } 45% { fill: #fff; transform: scale(1.5); } }
+
   /* Häufchen liegen vorn auf dem Boden (vor dem Gras). Die Tippfläche ist größer als die Köttelchen. */
   .poops { position: absolute; inset: 0; pointer-events: none; }
   .poo {
@@ -1262,6 +1364,9 @@ const STYLE = `
     .lnd:not(.walking) .ear-l, .lnd:not(.walking) .ear-r { animation: none; }
     /* Finger setzt auf: Bäckchen und Blick reichen als Antwort, er wird nicht gestaucht */
     .pressed .jump { transform: none; }
+    /* Abendritual: Die Mütze sitzt einfach auf, beim Vorlesen wandert der Blick nicht (das Strecken lässt das Skript weg) */
+    .rcap .cap { animation: none; }
+    .rread .face { animation: none; transform: translate(0, 2px); }
     /* Blitz: nur ein sanftes, einmaliges Aufhellen statt Flackern über die ganze Karte */
     .flash.go { animation: flash-soft 1.2s ease-out; }
     @keyframes flash-soft { 15% { opacity: .18; } }

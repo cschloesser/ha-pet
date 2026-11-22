@@ -6,7 +6,7 @@ const screenElsewhere = () => typeof window.fully === 'undefined'
   && !!window.matchMedia?.('(pointer: fine) and (hover: hover)').matches;
 const WAKE_EVENTS = ['pointerdown', 'keydown', 'wheel', 'touchstart'];
 
-// Prototyp Tiefe (depth: true): hintere Spur liegt LANE_DY × Kartenhöhe über der Bodenlinie, Pika dort um LANE_S kleiner
+// Tiefe (depth, seit 0.44 Standard): hintere Spur liegt LANE_DY × Kartenhöhe über der Bodenlinie, Pika dort um LANE_S kleiner
 const LANE_DY = 0.075;
 const LANE_S = 0.8;
 
@@ -46,8 +46,9 @@ const DEFAULTS = {
   fireflies: true,
   // Päckchen: für gute Pflege verdient, am Ballon verschenkt (siehe src/karte/paeckchen.js)
   gifts: true,
-  // Prototyp: Kulisse mit Parallax, hintere Spur zum Herumhoppeln (nur YAML, nicht im Editor)
-  depth: false,
+  // Tiefe: Kulisse mit Parallax, hintere Spur zum Herumhoppeln für Pika, Freunde und Besuch. Seit 0.44 Standard und
+  // im Editor (bis 0.43 nur im YAML und aus); depth: false stellt die eine Spur von vorher wieder her.
+  depth: true,
   // Tagebuch: Antippen der Statusleiste zeigt, was er heute und gestern erlebt hat, und seine Schätze.
   // diary_house: false lässt Kaffee und Haushaltsgeräte darin weg.
   diary: true,
@@ -73,7 +74,7 @@ const EDITOR_LABEL = {
   birthdays: 'Geburtstage', appliances: 'Haushaltsgeräte (Haus-Bote)', coffee: 'Kaffeevollautomat',
   diary: 'Tagebuch', diary_house: 'Haushalt im Tagebuch', vacation: 'Urlaubsschalter', appliance_labels: 'Anzeige an den Geräten',
   waste: 'Müllabfuhr (Kalender)', wardrobe: 'Garderobe aus der Vorhersage', vacuum: 'Saugroboter', door: 'Haustür (Kontakt)',
-  window: 'Fenster und Türen (Kontakte)',
+  window: 'Fenster und Türen (Kontakte)', depth: 'Tiefe (Pika und Besuch laufen auch auf einer hinteren Spur)',
 };
 const EDITOR_HELP = {
   entity: 'Damit alle Geräte denselben Pika sehen. Leer: nur in diesem Browser.',
@@ -87,6 +88,7 @@ const EDITOR_HELP = {
   vacuum: 'Läuft der Sauger, fährt ein kleiner Roboter über die Wiese, und er fährt manchmal mit.',
   door: 'Geht die Haustür auf, spitzt er die Ohren.',
   window: 'Ist eins mindestens 30 s offen, öffnet er das runde Fenster am Erdhügel (nur Bau „Erdhügel“). Antippen zeigt, welche offen sind.',
+  depth: 'Die Hügel stehen in Ebenen und wandern ein wenig mit. Aus: alles auf einer Spur wie bis 0.43.',
   vacation: 'Im Tagebuch: „Ferien bei Pino“. Solange er verreist ist, ruhen Hunger, Glück, Häufchen und Päckchen-Serie.',
   sleep_start: 'z. B. sunset, sunset+01:00 oder 21:00',
   sleep_end: 'z. B. sunrise, sunrise-30 oder 07:00',

@@ -1,9 +1,11 @@
-// Kleine Momente: neugierig, gähnen, niesen, kratzen, Schluckauf, Schmetterling, Flitzen, Blumengeschenk, Wiedersehen
+// Kleine Momente: neugierig, gähnen, niesen, kratzen, Schluckauf, Schmetterling, Flitzen, Blumengeschenk, Wiedersehen,
+// Abendritual
 
 import { rnd, pick, clamp } from '../logik/hilfen.js';
 import { calmMotion } from '../logik/bewegung-reduzieren.js';
 import { GAIN } from '../logik/zustand.js';
 import { FLGIFT } from '../logik/tagesplan.js';
+import { RITUAL, RITUAL_STORY } from '../logik/interaktion.js';
 import { ICON_HEART } from '../grafik/szene.js';
 import { BFLY_COLORS, BFLY_SVG, GIFT_SVG } from '../grafik/momente.js';
 
@@ -391,6 +393,145 @@ export class Momente {
     this._happy(1400);
     if (!this._el.pika.classList.contains('walking')) this._jump('binky');
     this._say(pick(['♥', 'hihi ♥', 'gern!']), 1300);
+  }
+
+  // ---------- Abendritual ----------
+  // Bevor er sich schlafen legt, streckt er sich lang, gähnt, setzt die Zipfelmütze auf und sagt Gute Nacht: Dem
+  // Plüsch-Pino liest er noch den letzten Satz einer Geschichte vor, ohne ihn schaut er zum Mond oder zu den ersten
+  // Sternen. Es läuft als Teil von goSleep (_goSleep ruft es; der Takt und alle, die auf die Schlafenszeit schauen,
+  // nehmen goSleep schon aus) und nur, wenn jemand zusieht: Die Schleife ruht, solange die Karte nicht zu sehen ist,
+  // und wer beim Laden oder nach einer langen Pause schon schläft, liegt ohne Übergang im Bett (_sleepNow).
+  // Je Gerät, wie die anderen kleinen Momente: Nichts davon steht im Zustand oder im Tagesplan.
+
+  // Schlafenszeit dieser Nacht (ms, Uhr von HA): das Ende des letzten Wachfensters. null: keins gefunden.
+  _bedOf(t = this._haNow()) {
+    if (!this._cfg) return null;
+    let bed = null;
+    for (const [, we] of this._wakeWins(t, t)) if (we <= t && (bed == null || we > bed)) bed = we;
+    return bed;
+  }
+
+  // Für diese Nacht ist das Ritual vorbei: Er liegt im Bett (_goSleep, _sleepNow) oder hat damit angefangen. Geht er
+  // in derselben Nacht noch einmal schlafen (unterbrochen, vom Kaffeeduft geweckt), dann ohne.
+  _bedMark() {
+    const bed = this._bedOf();
+    if (bed != null) this._ritNight = bed;
+  }
+
+  // Spielt er jetzt, auf dem Weg ins Bett, das Abendritual? Einmal je Nacht, kurz nach der Schlafenszeit
+  // (RITUAL.late), und nur draußen auf der Wiese: nicht, wenn er ohnehin im Bau sitzt (Gewitter, Starkregen,
+  // Fernsehen), und nicht, wenn er verreist ist.
+  _ritualDue() {
+    if (this._inside || this._lift > 0 || this._wx?.shelter || this._wx?.wet || this._urlaubFern()) return false;
+    if (this._dbgRitual) return true; // Vorschau: „Abendritual jetzt“
+    if (this._dbgSleep != null) return false; // Vorschau stellt die Schlafenszeit von Hand: ohne
+    const now = this._haNow();
+    const bed = this._bedOf(now);
+    return bed != null && this._ritNight !== bed && now - bed <= RITUAL.late;
+  }
+
+  // Das Ritual. Füttern (das Futter landet) und Streicheln (_pet) brechen es ab: Dann räumt es auf, und der nächste
+  // Schritt der Schleife bringt ihn wie sonst ins Bett (gähnen, in den Bau). Mit „Bewegung reduzieren“ ohne Strecken:
+  // Gähnen, Mütze, Gute Nacht.
+  async _bedRitual() {
+    const p = this._el.pika;
+    const calm = calmMotion();
+    const dbg = this._dbgRitual; // Vorschau: 'star' zeigt die Fassung ohne Plüsch-Pino, auch wenn er einen hat
+    this._dbgRitual = null;
+    // Vor dem ersten Warten: Bricht es ab, kommt es in dieser Nacht nicht noch einmal
+    this._bedMark();
+    this._ritOn = true; // solange bricht Streicheln es ab (_pet, _onStroke)
+    let done = false;
+    try {
+      // Von der hinteren Spur (depth) nach vorn: Dort liegt gleich der Plüsch-Pino
+      if (this._lane) await this._walkTo(this._x, 1, true, 0);
+      if (!calm) {
+        this._say(pick(['streeeck…', 'mmmh…', 'uuuah…']), RITUAL.stretch - 200);
+        p.classList.add('rstretch');
+        await this._wait(RITUAL.stretch);
+        p.classList.remove('rstretch');
+        await this._wait(RITUAL.gap);
+      }
+      this._say('*gähn*', 1600);
+      p.classList.add('yawning');
+      await this._wait(RITUAL.yawn);
+      p.classList.remove('yawning');
+      if (!calm) this._cls('mlem', 950, true); // schmatzen
+      p.classList.add('rcap');
+      await this._wait(RITUAL.cap);
+      if (dbg !== 'star' && this._ritPlush(true)) await this._ritRead();
+      else await this._ritStar();
+      done = true;
+    } finally {
+      this._ritOn = false;
+      this._ritPlush(false);
+      // Die Mütze behält er auf dem Weg ins Bett auf (im Schlaf trägt er sie ohnehin, die Klasse nimmt danach
+      // _cleanup). Abgebrochen legt er sie wieder ab und geht wie sonst schlafen.
+      p.classList.remove('rstretch', 'yawning', 'rread', 'reading', 'look-up', 'content', ...(done ? [] : ['rcap']));
+    }
+  }
+
+  // Plüsch-Pino neben ihn auf die Wiese setzen (on) bzw. wieder wegnehmen. Ob er einen hat, entscheidet wie beim
+  // Kuscheln (_giftPlush) die Szene der Schätze: Liegt nach _giftScene keiner da, hat er keinen. → sitzt er da?
+  _ritPlush(on) {
+    if (!on) {
+      if (!this._ritPl) return false;
+      this._ritPl = false;
+      // (ohne Maße, mitten im Wechsel des Areals: nur wegnehmen)
+      if (this._plushX != null && this._g) this._puff(this._plushX, this._g.gy, 2);
+      this._plushX = null;
+      this._giftScene(); // schläft er inzwischen, liegt der Plüsch-Pino jetzt im Bett
+      return false;
+    }
+    const { pW, gy, fMin, fMax } = this._g;
+    // Auf der Seite zur freien Wiese hin (zwischen Vorrat und Stein), nicht vor Heu oder Stein; am Kartenrand nach innen
+    let d = this._x < ((fMin + fMax) / 2) * this._W ? 1 : -1;
+    if (this._x + d * pW * 0.8 > this._W || this._x + d * pW * 0.8 < 0) d = -d;
+    this._plushX = this._x + d * pW * 0.52;
+    this._giftScene();
+    const el = this._gtEls?.get(2);
+    if (!el) {
+      this._plushX = null;
+      return false;
+    }
+    this._ritPl = true;
+    this._face(d);
+    el.classList.add('new');
+    setTimeout(() => el.classList.remove('new'), 800);
+    this._puff(this._plushX, gy, 2);
+    return true;
+  }
+
+  // Dem Plüsch-Pino den letzten Satz der Gutenachtgeschichte vorlesen (aus einem kleinen Buch), dann Gute Nacht sagen
+  async _ritRead() {
+    const p = this._el.pika;
+    await this._wait(RITUAL.sit);
+    p.classList.add('reading', 'rread');
+    this._say(pick(RITUAL_STORY), RITUAL.read - 200);
+    await this._wait(RITUAL.read);
+    p.classList.remove('reading', 'rread');
+    p.classList.add('content');
+    this._blush(RITUAL.night);
+    // Der Plüsch-Pino heißt wie Pino (friend_name)
+    this._say(`Gute Nacht, Plüsch-${this._frName()}.`, RITUAL.night - 100, true);
+    await this._wait(RITUAL.night);
+    p.classList.remove('content');
+  }
+
+  // Ohne Plüsch-Pino: zum Mond schauen, wenn er zu sehen ist, sonst hinauf zu den ersten Sternen, und Gute Nacht sagen
+  async _ritStar() {
+    const p = this._el.pika;
+    const sc = this._el.scene.classList;
+    const veiled = sc.contains('dense') || sc.contains('overcast');
+    const mx = ((this._el.moon?._pos?.x ?? NaN) / 100) * this._W;
+    const moon = !!this._moonUp && !veiled && Number.isFinite(mx);
+    const stars = !moon && !veiled && (sc.contains('night') || sc.contains('dusk'));
+    if (moon && Math.abs(mx - this._x) > this._g.pW * 0.3) this._face(mx > this._x ? 1 : -1);
+    p.classList.add('look-up');
+    await this._wait(RITUAL.look);
+    this._say(moon ? 'Gute Nacht, Mond!' : stars ? pick(['Gute Nacht, Sterne!', 'Gute Nacht!']) : 'Gute Nacht!', RITUAL.star - 200, true);
+    await this._wait(RITUAL.star);
+    p.classList.remove('look-up');
   }
 
   // Langes Wiedersehen (über 3 Stunden nicht zu sehen): er hoppelt nach vorn und freut sich riesig

@@ -1,7 +1,7 @@
 // Stil der Beschäftigungen (groß und klein)
 
 import { PROPS, KRAM } from '../logik/beschaeftigungen.js';
-import { PURZEL_ROLL, ANGEL_T } from '../logik/beschaeftigungen-klein.js';
+import { PURZEL_ROLL, ANGEL_T, TWIRL_T } from '../logik/beschaeftigungen-klein.js';
 import { BZ, LICHT_P } from '../logik/buehne.js';
 
 const STYLE_ACT = `
@@ -213,7 +213,7 @@ const STYLE_ACT = `
 
   /* ---- Kleine Beschäftigungen ab 0.32: Hula-Hoop, Jo-Jo, Pusteblume, Purzelbaum, Steintürmchen, Jonglieren,
      Blumenkranz, Papierflieger; bei Regen Pfützenspringen und Papierschiffchen, bei Schnee der Schnee-Pika und
-     (ab 0.43) Schneeengel und Schneeball ---- */
+     (ab 0.43) Schneeengel und Schneeball, bei Regen (ab 0.44) Tropfen fangen und Blattschirm kreiseln ---- */
   .hoop, .yo, .pbl, .jug, .dchain, .dcrown, .pgl, .peb, .sboat { display: none; }
   .hula .hoop, .hula .arms, .yoyo .yo, .puste .pbl, .juggle .jug, .juggle .arms, .plait .dchain, .crowned .dcrown,
   .gliding .pgl, .pebble .peb, .boating .sboat { display: inline; }
@@ -425,6 +425,93 @@ const STYLE_ACT = `
   .sbp.off { transition: opacity .6s, filter 2.5s; }
   .sbp.off .sb-sink { transform: scaleY(.3); transition: transform .6s ease-in; }
 
+  /* Tropfen fangen: Das Blatt liegt neben ihm im Gras (.leafp, _aprop), die Pfote ist frei (.drops). Für einen
+     Tropfen legt er den Kopf zurück, das Maul steht offen, die Zunge hängt heraus (.drops-up); die Zunge ist dafür
+     größer als beim Schlecken und ragt unter dem offenen Maul hervor (das Maul liegt in der Grafik über ihr). */
+  .pika.drops .brolly { display: none; }
+  .leafp.mir > svg { transform: scaleX(-1); }
+  .drops-up .hd { transform: rotate(-13deg); }
+  .drops-up .face { transform: translate(1px, -2.5px); }
+  .drops-up .ear { transform: translateY(1px) rotate(-7deg); }
+  .drops-up .mth { display: none; }
+  .drops-up .omouth { display: inline; transform-box: fill-box; transform-origin: 50% 30%; transform: scale(1.7, 1.45); }
+  .drops-up .tongue { display: inline; transform: translateY(2.6px) scale(1.75, 2.1); }
+  .drops-up:not(.blink):not(.crosseye) .eye { transform: translateY(-1.1px); }
+  /* sich dem Tropfen entgegenstrecken (statt des Hüpfers) */
+  .drops-st .hop { transform: scale(.95, 1.09); transition: transform .3s cubic-bezier(.3, 1.5, .5, 1); }
+  /* gefangen: Er wackelt vergnügt und schleckt nach */
+  .drops-yum .hop { animation: dyum .64s ease-in-out; }
+  @keyframes dyum { 20% { transform: rotate(-5deg); } 45% { transform: rotate(5deg); } 70% { transform: rotate(-3.5deg); } 90% { transform: rotate(2deg); } }
+  .drops-yum .mth { display: none; }
+  .drops-yum .wmouth { display: inline; }
+  .drops-yum .tongue { display: inline; animation: mlem .64s ease-in-out forwards; }
+  /* daneben: Der Tropfen ist auf der Nase zerplatzt, er schüttelt den Kopf */
+  .drops-no .hd { animation: dno .62s ease-in-out; }
+  @keyframes dno { 15% { transform: rotate(-9deg); } 35% { transform: rotate(8deg); } 55% { transform: rotate(-7deg); } 75% { transform: rotate(5deg); } 90% { transform: rotate(-2deg); } }
+  /* Der dicke Tropfen (_bigDrop): Seine Spitze unten sitzt am Ziel (left, top). Er fällt über --fd aus --fy herab;
+     danach verschwindet er im Maul (.hit) oder zerplatzt. */
+  .bigdrop {
+    position: absolute; width: calc(var(--ph) * .16); margin: calc(var(--ph) * -.224) 0 0 calc(var(--ph) * -.08); pointer-events: none;
+    transform-origin: 50% 100%; opacity: 0;
+    animation: bdfall var(--fd, 1.1s) cubic-bezier(.35, 0, .8, .55) forwards, bdsplat .24s ease-out var(--fd, 1.1s) forwards;
+  }
+  .bigdrop.hit { animation-name: bdfall, bdgulp; animation-duration: var(--fd, 1.1s), .16s; }
+  .bigdrop svg { display: block; width: 100%; height: auto; }
+  @keyframes bdfall {
+    0% { transform: translateY(var(--fy)) scale(.9, 1.08); opacity: 0; }
+    12% { opacity: 1; }
+    100% { transform: translateY(0) scale(.94, 1.08); opacity: 1; }
+  }
+  @keyframes bdgulp { from { transform: scale(.9, 1); opacity: 1; } to { transform: scale(.25, .2); opacity: 0; } }
+  @keyframes bdsplat { from { transform: scale(1, 1); opacity: 1; } to { transform: scale(2.1, .22); opacity: 0; } }
+  /* die Spritzer von der Nase (_noseSplash): kleiner als die aus der Pfütze */
+  .splash.sn { width: calc(var(--ph) * .05); margin-left: calc(var(--ph) * -.025); }
+
+  /* Blattschirm kreiseln: beide Pfoten am Stiel (.twirl; die zweite ist die Pfote vom Drachen, .kpaw), das Blatt
+     pendelt nicht mehr. Ohne Regen (Vorschau) holt er es dafür hervor. Es dreht sich um seinen Stiel (.tw-go):
+     Blatt und Ader (die Pfade nach dem Stiel) klappen um die Stielspitze von links nach rechts und zurück; weil das
+     Blatt links weiter übersteht als rechts, liest sich das als Drehung. --tw: Dauer einer Umdrehung je Stufe. */
+  .pika.twirl .brolly { display: inline; }
+  .pika.wet.twirl:not(.inside) .brolly { animation: none; transform: none; }
+  .twirl .kpaw { display: inline; transform: translate(3.4px, -2.5px); }
+  .twirl .face { transform: translate(.8px, -1.4px); }
+  .brolly > path + path { transform-box: view-box; transform-origin: 99px 6px; }
+  .tw-go { --tw: ${TWIRL_T.turn[0]}ms; }
+  .tw-go.tw-2 { --tw: ${TWIRL_T.turn[1]}ms; }
+  .tw-go.tw-3 { --tw: ${TWIRL_T.turn[2]}ms; }
+  .tw-go .brolly > path + path { animation: twspin var(--tw) linear infinite; }
+  @keyframes twspin {
+    0%, 100% { transform: scaleX(1); animation-timing-function: cubic-bezier(.36, 0, .64, 1); }
+    50% { transform: scaleX(-1); animation-timing-function: cubic-bezier(.36, 0, .64, 1); }
+  }
+  /* anhalten (.tw-end): noch eine halbe Runde, immer langsamer, bis es wieder steht wie zuvor. (Aus welcher Lage
+     das Kreiseln endet, ist offen; der Sprung an den Anfang dieser halben Runde geht im schnellen Kreiseln unter.) */
+  .tw-end .brolly > path + path { animation: twend .5s cubic-bezier(.2, .7, .3, 1); }
+  @keyframes twend { 0% { transform: scaleX(-1); } 100% { transform: scaleX(1); } }
+  /* die Pfoten reiben den Stiel gegeneinander */
+  .tw-go .kpaw { animation: twpaw var(--tw) ease-in-out infinite; }
+  @keyframes twpaw { 0%, 100% { transform: translate(2.2px, -2.5px); } 50% { transform: translate(4.6px, -2.5px); } }
+  .tw-go .brolly > ellipse { transform-box: fill-box; animation: twpaw2 var(--tw) ease-in-out infinite; }
+  @keyframes twpaw2 { 0%, 100% { transform: translateX(1.2px); } 50% { transform: translateX(-1.2px); } }
+  .tw-go .face { transform: translate(1px, -2.4px); }
+  /* Tropfen, die vom Blatt fliegen (_twRing): nach außen (--dx) und im Bogen hinunter (--dy) */
+  .twdrop { position: absolute; width: calc(var(--ph) * .075); margin: calc(var(--ph) * -.05) 0 0 calc(var(--ph) * -.037); pointer-events: none; animation: twdrop .62s linear forwards; }
+  .twdrop svg { display: block; width: 100%; height: auto; }
+  @keyframes twdrop {
+    0% { transform: translate(0, 0) scale(.5); opacity: 0; animation-timing-function: cubic-bezier(.2, .6, .5, 1); }
+    14% { opacity: 1; }
+    55% { transform: translate(calc(var(--dx) * .7), calc(var(--dy) * .12)) scale(1); opacity: 1; animation-timing-function: cubic-bezier(.5, 0, .9, .5); }
+    100% { transform: translate(var(--dx), var(--dy)) scale(.8); opacity: 0; }
+  }
+  /* Der Wind hebt das Blatt aus den Pfoten (.tw-off): Stiel, Blatt und Ader steigen und treiben --twx nach vorn
+     (dorthin hüpft er gleich), die Pfoten bleiben. Beim Hüpfer (.tw-back) kommt es zurück in die Pfote, in
+     derselben Zeit und mit derselben Kurve, mit der er vorwärts springt (_hopTo): Im Bild bleibt es dabei über
+     derselben Stelle und sinkt nur. */
+  .tw-off .brolly > path { transform-box: view-box; transform-origin: 99px 6px; transform: translate(var(--twx, 0px), -30px) rotate(13deg); transition: transform ${TWIRL_T.lift}ms cubic-bezier(.2, .7, .4, 1); }
+  .tw-off.tw-back .brolly > path { transform: none; transition: transform .55s cubic-bezier(.3, .6, .4, 1); }
+  .tw-off .kpaw { transform: translate(3.4px, -7px); transition: transform .3s ease-out; }
+  .tw-off .brolly > ellipse { transform-box: fill-box; transform: translateY(-5px); transition: transform .3s ease-out; }
+
   /* Bewegung reduzieren: Nichts kreist, pendelt oder schaukelt von selbst; man sieht trotzdem, was er tut (Reifen
      schräg um den Bauch, Jo-Jo an halber Schnur, drei Beeren im Bogen). Steine und Schnee erscheinen ohne Federn. */
   @media (prefers-reduced-motion: reduce) {
@@ -442,6 +529,18 @@ const STYLE_ACT = `
     .ap-w, .ap-s { transform: none; }
     .sb-lean .jump, .sb-push .jump { transition: none; }
     .sb-pat .paws { animation: none; transform: translate(13px, 14px); }
+    /* Tropfen fangen und Blattschirm kreiseln: Er hüpft und streckt sich nicht (calmMotion). Der dicke Tropfen
+       fällt nicht, er blendet am Maul ein und aus; kein Wackeln, kein Kopfschütteln. Das Blatt dreht sich nicht:
+       Es steht schräg zwischen den Pfoten, und die Tropfen an seinem Rand blenden nur ein und aus. */
+    .bigdrop, .bigdrop.hit { animation: bdfade calc(var(--fd, 1.1s) + .3s) ease-in-out forwards; }
+    @keyframes bdfade { 0%, 100% { opacity: 0; } 35%, 75% { opacity: 1; } }
+    .drops-yum .hop, .drops-no .hd, .drops-yum .tongue { animation: none; }
+    .drops-st .hop { transition: none; }
+    .tw-go .brolly > path + path { animation: none; transform: scaleX(.62); }
+    .tw-end .brolly > path + path { animation: none; }
+    .tw-go .kpaw, .tw-go .brolly > ellipse { animation: none; }
+    .twdrop { animation: twfade .62s ease-in-out forwards; }
+    @keyframes twfade { 0%, 100% { opacity: 0; } 40%, 70% { opacity: 1; } }
     /* Seifenblasen wabern nicht (sie schweben weiter, platzen wie sonst); die Regenringe in der Pfütze stehen still
        da (ohne Animation ruhten sie bei opacity 0 und wären weg) */
     .bub:not(.pop) i { animation: none; }

@@ -112,6 +112,120 @@ const STYLE_GIFT = `
   /* Angetippt dreht es sich kurz, auch wo es sonst ruht (nachts ohne Wind, Pika schläft); nicht, wenn keiner hinsieht */
   .scene:not(.paused) .gifts .gt-wheel.tapspin .gwhl { animation-play-state: running; }
   @media (prefers-reduced-motion: reduce) { .gwhl, .gbob, .gdrift, .gt-ham .gnet { animation: none !important; } }
+
+  /* ---- Gold mit Wirkung (Stufe 3, seit 0.44): Teilchen der Zugaben in der Effekt-Ebene (_goldFx). Ohne filter (Safari
+     schneidet dessen Überstand ab): Der Lichthof ist ein eigener Verlauf hinter dem Stern. Jedes Teilchen hat eine
+     ruhige Fassung (.still, „Bewegung reduzieren“): Es blendet am Platz ein und aus, nichts treibt, dreht oder wächst. */
+  .gfx { position: absolute; width: calc(var(--H) * .058); margin: calc(var(--H) * -.029); pointer-events: none; opacity: 0;
+    font-style: normal; animation: gfx-still 1.2s ease-in-out both; }
+  .gfx::before { content: ''; position: absolute; inset: -40%; border-radius: 50%;
+    background: radial-gradient(circle, rgba(255, 232, 130, .8), rgba(255, 226, 120, 0) 68%); }
+  .gfx svg { position: relative; display: block; width: 100%; height: auto; overflow: visible; }
+  .gfx:not(.hbfly) path { fill: #ffe066; stroke: #d6920f; stroke-width: 1.5; stroke-linejoin: round; }
+  @keyframes gfx-still { 0%, 100% { opacity: 0; } 30%, 70% { opacity: 1; } }
+  /* Funkenspur des Wollknäuels, Funken über den gegossenen Blumen: ploppt auf, sinkt ein wenig und verglimmt */
+  .gfx.trail { animation: gfx-trail .9s ease-out both; }
+  @keyframes gfx-trail {
+    0% { transform: scale(0) rotate(-30deg); opacity: 0; }
+    30% { transform: scale(1.15) rotate(10deg); opacity: 1; }
+    100% { transform: translateY(calc(var(--H) * .025)) scale(.35) rotate(60deg); opacity: 0; }
+  }
+  /* Lichtfunken des Windrads: treiben mit dem Wind über die Wiese und blinken dabei */
+  .gfx.glint { width: calc(var(--H) * .064); margin: calc(var(--H) * -.032); animation: gfx-drift 2.4s ease-out both; }
+  @keyframes gfx-drift {
+    0% { transform: scale(0); opacity: 0; }
+    12% { transform: translate(calc(var(--dx) * .1), calc(var(--dy) * .1)) scale(1.2); opacity: 1; }
+    40% { transform: translate(calc(var(--dx) * .45), calc(var(--dy) * .45)) scale(.7); opacity: .9; }
+    62% { transform: translate(calc(var(--dx) * .68), calc(var(--dy) * .68)) scale(1.1); opacity: 1; }
+    100% { transform: translate(var(--dx), var(--dy)) scale(.4); opacity: 0; }
+  }
+  /* Herzchen des Plüsch-Pinos: winzig, steigt auf */
+  .gfx.heart { width: calc(var(--H) * .054); margin: calc(var(--H) * -.027); animation: gfx-heart 1.7s ease-out both; }
+  .gfx.heart path { fill: #ffcf3a; stroke-width: 1.8; }
+  .gfx.heart .gl { fill: none; stroke: #fffbe0; stroke-width: 1.6; stroke-linecap: round; }
+  @keyframes gfx-heart {
+    0% { transform: scale(.3); opacity: 0; }
+    18% { transform: translateY(calc(var(--H) * -.02)) scale(1.1); opacity: 1; }
+    100% { transform: translate(var(--dx, 0px), calc(var(--H) * -.15)) scale(.85); opacity: 0; }
+  }
+  /* „bling“ am Rand der Sonnenbrille: ein heller Stern blitzt auf */
+  .gfx.bling { width: calc(var(--H) * .075); margin: calc(var(--H) * -.0375); animation: gfx-bling .75s ease-out both; }
+  .gfx.bling path { fill: #fffbe0; stroke: #f2c230; }
+  @keyframes gfx-bling {
+    0% { transform: scale(0) rotate(0deg); opacity: 0; }
+    35% { transform: scale(1.25) rotate(40deg); opacity: 1; }
+    100% { transform: scale(.2) rotate(90deg); opacity: 0; }
+  }
+  /* Fernrohr: Stern, der dreimal aufblinkt, bzw. ein winziges Flugzeug in der Ferne, das ein Stück weiterzieht */
+  .gfx.star { width: calc(var(--H) * .05); margin: calc(var(--H) * -.025); animation: gfx-twinkle 2.3s ease-in-out both; }
+  .gfx.star path { fill: #fffbe0; stroke: #f2c230; }
+  @keyframes gfx-twinkle {
+    0%, 100% { transform: scale(.2); opacity: 0; }
+    15%, 50%, 85% { transform: scale(1.15); opacity: 1; }
+    33%, 68% { transform: scale(.55); opacity: .6; }
+  }
+  .gfx.plane { width: calc(var(--H) * .09); margin: calc(var(--H) * -.0206) calc(var(--H) * -.045); animation: gfx-plane 2.3s linear both; }
+  .gfx.plane::before { inset: -10% -5%; background: radial-gradient(ellipse, rgba(255, 236, 150, .7), rgba(255, 236, 150, 0) 70%); }
+  .gfx.plane svg { transform: scaleX(var(--fl, 1)); }
+  .gfx.plane path { fill: #5d6f88; stroke: none; }
+  .night .gfx.plane path, .dusk .gfx.plane path { fill: #c9d3e6; }
+  @keyframes gfx-plane {
+    0% { opacity: 0; }
+    20%, 75% { opacity: .85; }
+    100% { transform: translateX(var(--dx, 0px)); opacity: 0; }
+  }
+  /* Antwort des Vogels auf das Glöckchen, vom Bildrand: eine Note wie beim Zwitschern (.note) */
+  .gfx.tweet { width: auto; margin: 0; font-size: calc(var(--H) * .075); font-weight: 800; line-height: 1; color: #fff3b8;
+    text-shadow: 0 1px 2px rgba(60, 40, 30, .75), 0 0 1px rgba(60, 40, 30, .9); transform: translate(-50%, -50%); animation: gfx-tweet 1.4s ease-out both; }
+  .gfx.tweet::before { display: none; }
+  @keyframes gfx-tweet {
+    0% { transform: translate(-50%, -50%) scale(.4) rotate(-10deg); opacity: 0; }
+    20% { opacity: 1; }
+    100% { transform: translate(calc(-50% + var(--dx, 8px)), calc(-50% - var(--H) * .12)) scale(1) rotate(12deg); opacity: 0; }
+  }
+  /* Ruhig: nach den Arten, damit es deren Animation ersetzt (gleiche Spezifität, die spätere Regel gewinnt) */
+  .gfx.still { animation: gfx-still 1.4s ease-in-out both; }
+  /* Besuch auf dem Gestell der Hängematte: Schmetterling (BFLY_SVG, Füße unten in der Mitte) und Glühwürmchen. Sie
+     bleiben, solange er döst; .off: Er ist aufgewacht, sie fliegen davon. */
+  .gfx.hbfly { width: calc(var(--ph) * .13); margin: calc(var(--ph) * -.1) 0 0 calc(var(--ph) * -.065); opacity: 1; animation: none; }
+  .gfx.hbfly::before, .gfx.hff::before { display: none; }
+  .gfx.hbfly .bwl, .gfx.hbfly .bwr { transform-box: view-box; transform-origin: 10px 8px;
+    animation: bfw .16s ease-in-out 34 alternate, bfw 1.4s ease-in-out 5.5s infinite alternate; }
+  .gfx.hff { width: calc(var(--H) * .024); height: calc(var(--H) * .024); margin: calc(var(--H) * -.024) 0 0 calc(var(--H) * -.012);
+    border-radius: 50%; background: radial-gradient(circle, #fffde0 30%, #e6f56a 75%); opacity: 1;
+    box-shadow: 0 0 calc(var(--H) * .03) calc(var(--H) * .012) rgba(226, 250, 120, .75);
+    animation: gfx-ffin 2.4s 2.5s ease-out backwards, gfx-ffglow 1.9s 4.9s ease-in-out infinite alternate; }
+  @keyframes gfx-ffin {
+    0% { transform: translate(calc(var(--H) * .12), calc(var(--H) * -.2)); opacity: 0; }
+    50% { transform: translate(calc(var(--H) * -.03), calc(var(--H) * -.07)); opacity: 1; }
+    100% { transform: none; opacity: 1; }
+  }
+  @keyframes gfx-ffglow { to { opacity: .45; box-shadow: 0 0 calc(var(--H) * .015) calc(var(--H) * .004) rgba(226, 250, 120, .5); } }
+  .gfx.hbfly.still, .gfx.hff.still { animation: gfx-in .9s 2.5s ease-out both; }
+  @keyframes gfx-in { from { opacity: 0; } to { opacity: 1; } }
+  .gfx.hbfly.off, .gfx.hff.off { transition: transform .75s ease-in, opacity .75s ease-in; opacity: 0;
+    transform: translate(calc(var(--H) * .14), calc(var(--H) * -.32)); }
+  /* Goldene Hängematte ohne Besuch: Ein Schimmer läuft langsam von Seil zu Seil übers Netz (.gshim), ruhig liegt er
+     still darauf (.gglow). Wo er darin liegt, verdeckt er das Netz: Zu sehen ist der Schimmer an den Seilen und am
+     unteren Rand. */
+  .gt-ham .gshm { opacity: 0; stroke-dasharray: 16 200; stroke-dashoffset: 16; }
+  .gt-ham.gshim .gshm { animation: gshm 5.5s ease-in-out infinite; }
+  @keyframes gshm {
+    0% { stroke-dashoffset: 16; opacity: 0; }
+    8% { opacity: 1; }
+    42% { stroke-dashoffset: -100; opacity: 1; }
+    50%, 100% { stroke-dashoffset: -100; opacity: 0; }
+  }
+  .gt-ham.gglow .gshm { opacity: .55; stroke-dasharray: none; transition: opacity 1.2s; }
+  /* Goldene Blume der Gießkanne (GOLD_FLOWER): etwas größer als die Wiesenblumen, vom Boden aus. Am Bild in der
+     Blume, nicht an einer Klasse: Malt ein Wechsel der Jahreszeit sie neu, ist sie eine gewöhnliche. */
+  .flower svg.gsun { scale: 1.22; transform-origin: 50% 100%; }
+  @media (prefers-reduced-motion: reduce) {
+    .gfx:not(.hbfly):not(.hff) { animation-name: gfx-still !important; }
+    .gfx.hbfly, .gfx.hff { animation: gfx-in .9s 2.5s ease-out both !important; }
+    .gfx.hbfly .bwl, .gfx.hbfly .bwr, .gt-ham .gshm { animation: none !important; }
+    .gfx.off { transition: opacity .5s !important; transform: none !important; }
+  }
   /* Bewegung reduzieren: Aufstellen und Abbauen nur ein- und ausblenden */
   @media (prefers-reduced-motion: reduce) {
     .gt-ham .gpost { animation: none !important; }
@@ -146,6 +260,13 @@ const STYLE_GIFT = `
   .g-can .gcan [fill="#5fae4a"] { fill: #f2c230; }
   .g-can .gcan [stroke="#8fd16f"] { stroke: #fff2b0; }
   .pour .gcr { transform: rotate(32deg); }
+  /* Goldene Sonnenbrille bei Sonne: Der Lichtreflex auf den Gläsern (dritter Pfad der Brille) wandert einmal hinüber
+     und zurück (.gsheen); ruhig glimmt er nur auf (.gglow, _goldSheen) */
+  .gsheen .shades path:nth-child(3) { animation: gsheen 1.4s ease-in-out; }
+  @keyframes gsheen { 50% { transform: translateX(5.4px); opacity: 1; stroke: #fff6c2; stroke-width: 1.5; } }
+  .gglow .shades path:nth-child(3) { animation: gglow 1.4s ease-in-out; }
+  @keyframes gglow { 50% { opacity: 1; stroke: #fff6c2; stroke-width: 1.5; } }
+  @media (prefers-reduced-motion: reduce) { .gsheen .shades path:nth-child(3) { animation-name: gglow !important; } }
 
   /* Knopf (links neben dem Futterknopf, oben rechts) mit Fortschrittsring, Album */
   .gbtn {

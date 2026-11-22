@@ -42,6 +42,35 @@ const giftTreat = (items, z, mo) => {
 const giftMile = (o) => o === 10 || o === 25 || o === 50 || (o >= 100 && o % 100 === 0);
 // Alle acht Schätze golden (Stufe 3)
 const giftAllGold = (G) => !!G && (G.u & 255) === 255 && ((G.v || 0) & 0xffff) === 0xffff;
-const GIFT_CLS = ['sling', 'aim', 'snap', 'spy', 'wcan', 'pour', 'shup', 'wink', 'hswing', 'puffy'];
+// Gold mit Wirkung (seit 0.44): Jeder goldene Schatz (Stufe 3) hat eine kleine Zugabe. Sie ist Zierde je Gerät, nichts
+// davon steht im Plan oder im Zustand. cd: frühestens so viele ms nach dem letzten Mal (Uhr des Geräts, gemerkt bis
+// zum Neuladen), p: Wahrscheinlichkeit je Gelegenheit (ohne p: immer). Was kein cd hat, hängt an einer Aktion, die
+// selbst selten genug ist (Anstupsen, Brille lupfen, Gießen, Nickerchen).
+const GOLD = {
+  yarnBack: { cd: 4 * 6e4, p: 0.35 }, // Wollknäuel: kullert von selbst zu ihm zurück
+  wheel: { cd: 6000 }, // Windrad: Lichtfunken, wenn es angepustet oder angetippt wird
+  wheelWind: { cd: 90000, p: 0.35, min: 30 }, // … und im echten Wind ab min km/h (je Takt; ab da gilt die Szene als windig)
+  heart: { cd: 2500, p: 0.7 }, // Plüsch-Pino: Herzchen beim Kuscheln am Tag (zwei Gelegenheiten je Kuscheln)
+  heartNight: { cd: 4 * 6e4, p: 0.2 }, // … und nachts im Bau (je Takt)
+  sheen: { cd: 2 * 6e4, p: 0.3 }, // Sonnenbrille: Lichtreflex bei Sonne (je Takt)
+  spot: { p: 0.45 }, // Fernrohr: Der erste Blick findet immer etwas, jeder weitere mit p
+  bell: { cd: 45000 }, // Glöckchen: Ein Vogel antwortet (das Glockenspiel bimmelt mehrmals: eine Antwort)
+};
+// Ist eine Zugabe mit Abstand und Wahrscheinlichkeit R (Eintrag aus GOLD) jetzt dran? last: wann zuletzt (ms, sonst
+// nie), u: Zufallszahl 0–1. Eine zurückgestellte Geräteuhr sperrt nicht länger als cd.
+const goldDue = (R, last, now, u = 0) => (last == null || Math.abs(now - last) >= (R?.cd || 0)) && u < (R?.p ?? 1);
+// Gelb der Wiesenpalette (Frühling/Sommer und Herbst, auch im Areal alpin): die Farbe der goldenen Blume der Gießkanne.
+// Im Winter gibt es kein Gelb (verblasste Samenstände), dann wächst keine.
+const GOLD_BLOOM = ['#f6c945', '#e3b23c'];
+// Wer zum Nickerchen in der goldenen Hängematte kommt: Schmetterling (April bis September bei Tag, trocken, nicht kalt,
+// kaum Wind), Glühwürmchen (Sommerabend, Option fireflies), sonst läuft ein Schimmer übers Netz.
+// L: { mo (Monat 0–11, Südhalbkugel schon versetzt), dark (Dämmerung oder Nacht), summer, wet, cold, wind, flies }
+const goldHamGuest = (L) => (!L.dark && L.mo >= 3 && L.mo <= 8 && !L.wet && !L.cold && (L.wind || 0) < 30 ? 'bfly'
+  : L.dark && L.summer && !L.wet && L.flies !== false ? 'ff' : 'shim');
+// (gsheen, gglow: Lichtreflex auf der goldenen Sonnenbrille, bewegt bzw. ruhig)
+const GIFT_CLS = ['sling', 'aim', 'snap', 'spy', 'wcan', 'pour', 'shup', 'wink', 'hswing', 'puffy', 'gsheen', 'gglow'];
 
-export { GIFT, GIFT_TRE, giftLv, giftLvs, giftOwned, giftTre, giftTreat, giftMile, giftAllGold, GIFT_CLS };
+export {
+  GIFT, GIFT_TRE, giftLv, giftLvs, giftOwned, giftTre, giftTreat, giftMile, giftAllGold, GIFT_CLS, GOLD, goldDue, GOLD_BLOOM,
+  goldHamGuest,
+};

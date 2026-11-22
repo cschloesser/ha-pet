@@ -13,9 +13,10 @@ import { clamp } from './hilfen.js';
 import { LANE_DY } from './einstellungen.js';
 import { BOTE_FRONT_DY } from './haus-bote.js';
 
-// Reihen (Fußpunkt in H ab gy). bau: Bau und was an ihm hängt, ganz hinten. hinten: hintere Spur (depth). stein:
-// Aussichtsstein (vor der hinteren Spur, hinter der vorderen). vorn: Bodenlinie, die vordere Spur. rand: der vordere
-// Wiesenstreifen der Haushaltsgeräte, der Tonne und des Saugroboters.
+// Reihen (Fußpunkt in H ab gy). bau: Bau und was an ihm hängt, ganz hinten. hinten: hintere Spur (depth, seit 0.44
+// Standard; mit depth: false bleibt sie leer). stein: Aussichtsstein (vor der hinteren Spur, hinter der vorderen).
+// vorn: Bodenlinie, die vordere Spur. rand: der vordere Wiesenstreifen der Haushaltsgeräte, der Tonne und des
+// Saugroboters.
 const REIHE = { bau: -0.12, hinten: -LANE_DY, stein: -0.04, vorn: 0, rand: BOTE_FRONT_DY };
 
 // Rangfolge bei gleichem Fußpunkt, hinten zuerst: die Mal-Reihenfolge der Schichten bis 0.37 (erst alles ohne

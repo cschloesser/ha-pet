@@ -5,11 +5,15 @@ import { calmMotion } from '../logik/bewegung-reduzieren.js';
 import { SELF } from '../logik/zustand.js';
 import { LANE_DY, LANE_S } from '../logik/einstellungen.js';
 import { buehneZ } from '../logik/buehne.js';
-import { FRIEND_SCALE, FRIENDS, friendKind, FRIEND_WIN, FRIEND_LAST, FRIEND_ACTS, FRIEND_YIELD, FRIEND_CLS } from '../logik/besucher.js';
+import {
+  FRIEND_SCALE, FRIENDS, FRIEND_KEYS, friendKind, FRIEND_WIN, FRIEND_LAST, FRIEND_GAME, FRIEND_GAME_W, FRIEND_ACTS, FRIEND_YIELD, FRIEND_CLS,
+} from '../logik/besucher.js';
 import { HOP_MS, hopRound, jumpBusy, chaseFar } from '../logik/beschaeftigungen.js';
+import { PURZEL_ROLL } from '../logik/beschaeftigungen-klein.js';
+import { MEM_BITS, pikaDay } from '../logik/tagesplan.js';
 import { ICON_HEART } from '../grafik/szene.js';
 import { FRIEND_SVG } from '../grafik/besucher.js';
-import { KIRBY_SVG, RUFUS_SVG, KATZUMI_SVG } from '../grafik/freunde.js';
+import { KIRBY_SVG, RUFUS_SVG, KATZUMI_SVG, FRIEND_TOY, TOY_S } from '../grafik/freunde.js';
 
 const FRIEND_ART = { pino: FRIEND_SVG, kirby: KIRBY_SVG, rufus: RUFUS_SVG, katzumi: KATZUMI_SVG };
 
@@ -93,12 +97,18 @@ export class Pino {
     // Zusammen zählen sie etwas mehr als alles andere, und die Spiele dauern länger: so verbringt
     // der Pika die meiste Zeit mit Pino, macht aber auch mal Eigenes
     const wet = ctx.wx.wet;
+    // Das eigene Spiel des Gasts (FRIEND_GAME: Rufus holt das Stöckchen, Katzumi jagt, Kirby kullert) gibt es nur,
+    // solange genau er da ist. Beim ersten Mal im Besuch wiegt es am meisten, danach wie ein gemeinsames; direkt
+    // nach sich selbst kommt es nie (fr.last: das letzte Spiel der beiden, _withFriend).
+    const game = FRIEND_GAME[fr.kind];
+    const gw = !game || fr.last === game ? 0 : fr.sig ? FRIEND_GAME_W.again : FRIEND_GAME_W.first;
     return [
       [wet ? 1 : 7, 'chaseFriend'],
       [6, 'sitWithFriend'],
       [wet ? 1 : 4, 'rockWithFriend'],
       [ctx.hasFlowers ? (ctx.s < 50 ? 5 : 3.5) : 0, 'nibbleWithFriend'],
       [3.5, 'squeakDuet'],
+      ...(game ? [[wet ? Math.min(1, gw) : gw, game]] : []),
     ];
   }
 
@@ -302,6 +312,7 @@ export class Pino {
     for (const t of ['sayT', 'callT', 'jumpT', 'happyT', 'lookT', 'untilT', 'laneZT']) clearTimeout(fr[t]);
     fr.el.remove();
     fr.sw.remove();
+    this._frToysAway(); // Stöckchen am Boden oder in der Luft: ohne ihn liegt nichts mehr herum
     if (FRIEND_ACTS.has(this._action)) this._interrupt();
   }
 
@@ -507,6 +518,9 @@ export class Pino {
     }
     if (!fr || !fr.arrived || fr.leaving) return;
     fr.busy = true;
+    // Für die Wahl des nächsten Spiels (_friendActs): das letzte, und ob das eigene Spiel des Gasts schon dran war
+    fr.last = this._action;
+    if (this._action === FRIEND_GAME[fr.kind]) fr.sig = true;
     this._frTake(fr);
     this._friendSettle(fr);
     const w = async (ms) => {
@@ -521,6 +535,10 @@ export class Pino {
       await fn(fr, w);
     } finally {
       this._el.pika.classList.remove('nuzzle', 'wiggle');
+      // Spielzeug der eigenen Spiele (Stöckchen in der Luft oder am Boden) ist mit dem Spiel weg, auch bei Abbruch an
+      // irgendeiner Wartestelle. Was der Pika im Maul trägt (carry) und seine Haltungen (crouch, sniff, purzel,
+      // crosseye, lean) nimmt _cleanup; walking und purzel bleiben bis dahin stehen, daran friert es ihn ein.
+      this._frToysAway();
       if (this._fr === fr) {
         fr.busy = false;
         this._friendSettle(fr);
@@ -641,7 +659,8 @@ export class Pino {
     const lane = this._cfg.depth && !(lift > 0) && live.dy > this._H * LANE_DY / 2 ? 1 : 0;
     this._frSetX(fr, live.x, 0, 'linear', lift, lane);
     fr.el.classList.remove(...FRIEND_CLS);
-    fr.mfood?.classList.remove('shrink');
+    // (item: was er im Maul trug, _frCarry; ohne .carry ist es ohnehin nicht zu sehen)
+    fr.mfood?.classList.remove('shrink', 'item');
   }
 
   _frFace(fr, dir) {
@@ -726,7 +745,7 @@ export class Pino {
     const m = fr.mfood;
     fr.el.style.setProperty('--mf', color);
     fr.el.style.setProperty('--eat', `${Math.round(ms)}ms`);
-    m.classList.remove('shrink');
+    m.classList.remove('shrink', 'item');
     void m.getBoundingClientRect();
     m.classList.add('shrink');
     fr.el.classList.add('eating');
@@ -769,9 +788,9 @@ export class Pino {
   // ---------- Gemeinsame Spiele (Aktionen des Pikas) ----------
 
   // Der Pika hoppelt zu Pino, bis sie Nase an Nase stehen. Ist auf seiner Seite kein Platz, rückt Pino.
-  async _frMeet(fr, w, speed = 1) {
+  // gap: Abstand der beiden (für die eigenen Spiele etwas mehr, damit ein kleiner Gast nicht hinter dem Pika steht)
+  async _frMeet(fr, w, speed = 1, gap = this._g.pW * 0.5) {
     const { pW } = this._g;
-    const gap = pW * 0.5;
     const d = fr.x >= this._x ? 1 : -1; // Pino liegt in Richtung d
     const min = pW * 0.45;
     // Der Pika kommt nur bis xR (_walkTo klemmt dort), und Pino soll auch beim Stupsen nicht hinter den Knöpfen stehen
@@ -1154,6 +1173,614 @@ export class Pino {
       this._frHappy(fr);
       await w(1300);
     });
+  }
+
+  // ---------- Eigene Spiele der Freunde (ab 0.44) ----------
+  // Rufus holt das Stöckchen (_fetchFriend), Katzumi jagt das Wollknäuel oder eine Feder am Halm (_pounceFriend),
+  // Kirby kullert (_rollFriend). Sie laufen wie die gemeinsamen Spiele in _withFriend: Geht der Gast (nach der Uhr),
+  // wird gefüttert, ist Schlafenszeit oder verschwindet die Karte, bricht die Wartestelle ab, an der sie gerade
+  // stehen, und das finally dort räumt Spielzeug und Haltungen ab. Gespielt wird vorn (_withFriend holt den Gast von
+  // der hinteren Spur, der Pika kommt mit seinem ersten _walkTo nach vorn). Jedes Gerät würfelt für sich wie bei
+  // den gemeinsamen Spielen (rnd, pick), im Tagesplan steht davon nichts. Mit „Bewegung reduzieren“ (calmMotion)
+  // und wo der Platz für Wurf oder Rolle fehlt (sehr schmale Karten), gibt es je eine ruhige Fassung.
+
+  // Spielzeug als eigenes Element in der Effekt-Ebene (das Stöckchen im Flug und am Boden), Mitte bei (x, y), so
+  // groß, wie es im Maul des Pikas aussieht. _frToysAway räumt es ab (im finally von _withFriend alle).
+  _frToy(svg, x, y, rot = 0) {
+    const size = (this._g.pW * TOY_S.stick * 0.68 * 24) / 120;
+    const el = document.createElement('div');
+    el.className = 'ftoy';
+    Object.assign(el.style, {
+      width: `${size.toFixed(1)}px`, height: `${size.toFixed(1)}px`, margin: `${(-size / 2).toFixed(1)}px 0 0 ${(-size / 2).toFixed(1)}px`,
+    });
+    el.innerHTML = svg;
+    this._el.fx.appendChild(el);
+    (this._frToys ??= new Set()).add(el);
+    this._frToyAt(el, x, y, rot);
+    return el;
+  }
+
+  _frToyAt(el, x, y, rot = 0) {
+    el.style.transform = `translate(${x.toFixed(1)}px, ${y.toFixed(1)}px) rotate(${rot.toFixed(0)}deg)`;
+  }
+
+  // Wurf: in ms im Bogen von (x0, y0) nach (x1, y1), Scheitel h über der geraden Linie, dabei turns Umdrehungen.
+  // Die Endlage steht gleich im Stil, die Flugbahn liegt als Animation darüber: Bricht sie ab, liegt es am Ziel.
+  _frToyFly(el, x0, y0, x1, y1, h, ms, turns) {
+    const frames = [];
+    for (let i = 0; i <= 10; i++) {
+      const t = i / 10;
+      const y = Math.max(this._g.pH * 0.08, y0 + (y1 - y0) * t - 4 * h * t * (1 - t));
+      frames.push({ transform: `translate(${(x0 + (x1 - x0) * t).toFixed(1)}px, ${y.toFixed(1)}px) rotate(${(turns * 360 * t).toFixed(0)}deg)` });
+    }
+    el._fly?.cancel();
+    el._fly = el.animate?.(frames, { duration: ms, easing: 'linear' }) || null;
+    this._frToyAt(el, x1, y1, 0);
+  }
+
+  // Spielzeug weg: alles oder nur dieses (only), fade: erst ausblenden. Eine laufende Flugbahn endet mit.
+  _frToysAway(only = null, fade = false) {
+    for (const el of only ? [only] : [...(this._frToys || [])]) {
+      if (!this._frToys?.delete(el)) continue;
+      el._fly?.cancel();
+      if (fade) {
+        el.classList.add('off');
+        setTimeout(() => el.remove(), 450);
+      } else el.remove();
+    }
+  }
+
+  // Der Freund trägt etwas im Maul (svg wie für _mouth: 24 × 24 vor der Schnauze; null: nichts mehr). Es steckt wie
+  // ein Leckerli in .mf-item seiner Grafik, .carry zeigt es; _friendSettle nimmt beides wieder weg.
+  _frCarry(fr, svg) {
+    const m = fr.mfood;
+    const it = m?.querySelector('.mf-item');
+    if (!it) return;
+    it.innerHTML = svg ? svg.replace(/^\s*<svg[^>]*>|<\/svg>\s*$/g, '') : '';
+    m.classList.remove('shrink');
+    m.classList.toggle('item', !!svg);
+    fr.el.classList.toggle('carry', !!svg);
+  }
+
+  // Der Pika trägt etwas im Maul (Stöckchen, Angel mit Feder): über _mouth und .carry, beides räumt _cleanup ab
+  _frPikaCarry(svg) {
+    if (svg) this._mouth('#b98a55', svg);
+    this._el.pika.classList.toggle('carry', !!svg);
+  }
+
+  // Schwindlig: Sternchen über dem Kopf des Freunds bzw. (ohne fr) des Pikas
+  _frStars(fr = null) {
+    const { pW, pH, gy } = this._g;
+    if (!fr) {
+      const n = this._nosePos();
+      return this._sparkle(n.x - this._dir * pW * 0.1, n.y - pH * 0.34, 3);
+    }
+    const s = this._frSc(fr);
+    const live = this._frLive(fr);
+    this._sparkle(live.x + fr.dir * pW * s * 0.15, gy - pH * s * 0.82 - live.lift - live.dy, 3);
+  }
+
+  // Rufus holt das Stöckchen: Der Pika findet eins, wirft es im Bogen über die Wiese, Rufus saust mit fliegenden
+  // Ohren hinterher, bringt es im Maul zurück und legt es ihm vor die Füße (zwei- oder dreimal). Zum Schluss sitzen
+  // beide nebeneinander. Die Wurfweite richtet sich nach der Wiese (höchstens 2,4 Pika-Breiten).
+  // Ruhig (Bewegung reduzieren, oder die Wiese ist kürzer als ein Wurf): Der Pika trägt es ihm hin, Rufus trägt es
+  // eine kleine Runde und bringt es wieder. Kein Wurf, kein Rennen.
+  async _fetchFriend() {
+    await this._withFriend(async (fr, w) => {
+      if (fr.kind !== 'rufus') return;
+      const { pW, pH, gy, xR } = this._g;
+      const P = this._el.pika.classList;
+      const F = fr.el.classList;
+      const [lo, hi] = this._frRange();
+      const fW = pW * this._frSc(fr);
+      // So weit steht Rufus vor dem Pika: Er ist kleiner und steht in der Ebene hinter ihm, näher verschwände er
+      // hinter dessen Kopf (anders als beim Nasenstupsen soll man hier sehen, was er im Maul hat)
+      const gap = pW * 0.48 + fW * 0.52;
+      const D = Math.min(pW * 2.4, hi - lo - pW * 0.3);
+      const calm = calmMotion() || D < pW * 0.7;
+      const ground = gy - pH * 0.035;
+      // Aufheben und Ablegen: kurz ducken
+      const duck = async (C, ms) => {
+        C.add('crouch');
+        await w(ms);
+        C.remove('crouch');
+      };
+      const find = async () => {
+        P.add('sniff');
+        await w(650);
+        P.remove('sniff');
+        this._frPikaCarry(FRIEND_TOY.stickPika);
+        this._say(pick(['ein Stöckchen!', 'oh, ein Stock!', 'schau mal!']), 1200);
+        await w(600);
+      };
+      let toy = null;
+      // Rufus legt das Stöckchen zwischen sich und den Pika
+      const drop = async () => {
+        await duck(F, 240);
+        this._frCarry(fr, null);
+        toy = this._frToy(FRIEND_TOY.stick, (this._x + fr.x) / 2 + (fr.x >= this._x ? 1 : -1) * pW * 0.08, ground, -4);
+      };
+      const take = async () => {
+        await duck(F, 260);
+        this._frToysAway(toy);
+        this._frCarry(fr, FRIEND_TOY.stickRufus);
+        await w(250);
+      };
+      let dir;
+      if (calm) {
+        // hintragen statt werfen
+        if (this._lane) await this._walkTo(this._x);
+        await find();
+        await this._frMeet(fr, w, 0.9, gap);
+        dir = fr.x >= this._x ? 1 : -1;
+        await duck(P, 260);
+        this._frPikaCarry(null);
+        toy = this._frToy(FRIEND_TOY.stick, (this._x + fr.x) / 2, ground, -4);
+        this._say('für dich!', 1100);
+        await w(900);
+        await take();
+        this._frSay(fr, 'wuff!', 900);
+        await w(700);
+        // eine kleine Runde mit dem Stöckchen im Maul, und wieder her
+        const r0 = fr.x;
+        const far = dir > 0 ? hi - r0 : r0 - lo;
+        if (far > pW * 0.3) {
+          await this._friendWalkTo(fr, r0 + dir * Math.min(far, pW * 0.9), 0.9, w);
+          await w(400);
+          await this._friendWalkTo(fr, r0, 0.9, w);
+        }
+        this._frFace(fr, -dir);
+        await drop();
+        this._frSay(fr, 'wuff!', 900);
+        await w(600);
+      } else {
+        // Der Pika wirft zur Seite mit mehr Platz und steht am anderen Ende, Rufus wartet vor ihm
+        dir = this._x <= (lo + hi) / 2 ? 1 : -1;
+        const px = dir > 0 ? clamp(this._x, Math.max(pW * 0.45, lo - gap), Math.max(pW * 0.45, hi - D - gap))
+          : clamp(this._x, Math.min(xR, lo + D + gap), Math.min(xR, hi + gap));
+        const r0 = clamp(px + dir * gap, lo, hi);
+        await Promise.all([this._walkTo(px, 1.1), this._friendWalkTo(fr, r0, 1.2, w)]);
+        this._face(dir);
+        this._frFace(fr, -dir);
+        await find();
+        this._frCall(fr, 'wuff!');
+        await w(800);
+        const n = D > pW * 1.4 && Math.random() < 0.5 ? 3 : 2;
+        for (let i = 0; i < n; i++) {
+          const land = clamp(fr.x + dir * D * rnd(0.75, 1), lo, hi);
+          // ausholen, werfen
+          await duck(P, 240);
+          this._frPikaCarry(null);
+          this._jump('hop1');
+          this._say(pick(['hol!', 'hol das Stöckchen!', 'los, Rufus!']), 1000);
+          const m = this._nosePos();
+          const far = Math.abs(land - m.x) / (pW * 2.4);
+          const ms = 620 + 280 * far;
+          toy = this._frToy(FRIEND_TOY.stick, m.x, m.y);
+          this._frToyFly(toy, m.x, m.y, land, ground, pH * (0.3 + 0.3 * far), ms, dir * 2);
+          // Rufus schaut ihm kurz nach und saust hinterher, die Schlappohren fliegen. Er kommt an, wenn es gelandet ist
+          // (ohne den Augenblick des Nachschauens überholte er auf schmalen Karten das Stöckchen).
+          this._frFace(fr, dir);
+          F.add('look-up');
+          await Promise.all([
+            (async () => {
+              await w(ms);
+              this._puff(land, gy, 1);
+            })(),
+            (async () => {
+              await w(ms * 0.4);
+              F.remove('look-up');
+              this._puff(fr.x, gy, 2);
+              F.add('fdash');
+              await this._friendWalkTo(fr, clamp(land - dir * fW * 0.32, lo, hi), 2.4, w);
+            })(),
+          ]);
+          F.remove('fdash');
+          await take();
+          // zurück zum Pika
+          F.add('fdash');
+          await this._friendWalkTo(fr, r0, 2, w);
+          F.remove('fdash');
+          this._frFace(fr, -dir);
+          await drop();
+          this._frCall(fr, 'wuff!');
+          F.add('wiggle');
+          await w(500);
+          this._say(i === n - 1 ? 'guter Rufus!' : pick(['guter Rufus!', 'fein gemacht!', 'toll!']), 1200);
+          P.add('happy');
+          this._frHearts(fr, 1);
+          await w(900);
+          P.remove('happy');
+          F.remove('wiggle');
+          if (i < n - 1) {
+            this._frSay(fr, 'nochmal!', 1000);
+            this._frJump(fr, 'hop1');
+            await w(800);
+            // der Pika hebt es wieder auf
+            P.add('sniff');
+            await w(450);
+            P.remove('sniff');
+            this._frToysAway(toy);
+            this._frPikaCarry(FRIEND_TOY.stickPika);
+            await w(400);
+          }
+        }
+      }
+      // Zum Schluss sitzen beide nebeneinander, das Stöckchen vor sich
+      if (calm) this._say('guter Rufus!', 1300);
+      this._face(dir);
+      this._frFace(fr, dir);
+      this._hearts(1);
+      this._frHearts(fr, 2);
+      await w(900);
+      P.add('wiggle');
+      F.add('wiggle');
+      await w(1400);
+      P.remove('wiggle');
+      F.remove('wiggle');
+      this._frToysAway(toy, true);
+      await w(rnd(500, 900));
+    });
+  }
+
+  // Katzumi jagt. Liegt das Wollknäuel aus den Päckchen auf der Wiese und ist darum Platz (_frYarnPlan), stupst der
+  // Pika es an, und sie springt ihm nach und schlägt es zurück (_frYarnHunt). Sonst (und mit „Bewegung reduzieren“
+  // immer) hält der Pika einen Grashalm mit einer Feder am Faden, im Herbst mit einem Blatt (_frDangleHunt).
+  async _pounceFriend() {
+    await this._withFriend(async (fr, w) => {
+      if (fr.kind !== 'katzumi') return;
+      const calm = calmMotion();
+      const yarn = calm ? null : this._frYarnPlan(fr);
+      if (yarn) await this._frYarnHunt(fr, w, yarn);
+      else await this._frDangleHunt(fr, w, calm);
+    });
+  }
+
+  // Taugt das echte Wollknäuel (Schatz 0, _gtEls) für die Jagd? Es muss auf der Wiese liegen, dort, wo Katzumi hin
+  // darf (_frRange: nicht am Bau), und in eine Richtung mindestens eine knappe halbe Pika-Breite weit rollen können,
+  // ohne die Wiese der Schätze (fMin … fMax) oder ihren Bereich zu verlassen; der Pika steht auf der anderen Seite.
+  // → { el, dir, d: Rollweite } oder null (dann die Feder).
+  _frYarnPlan(fr) {
+    const el = this._gtEls?.get(0);
+    if (!el?.isConnected) return null;
+    const { pW, fMin, fMax, xR } = this._g;
+    const W = this._W;
+    const [lo, hi] = this._frRange();
+    const fW = pW * this._frSc(fr);
+    const x = this._giftX(0);
+    const opt = [1, -1].map((dir) => {
+      const end = dir > 0 ? Math.min(hi - fW * 0.6, fMax * W) : Math.max(lo + fW * 0.6, fMin * W);
+      const px = x - dir * pW * 0.36;
+      return { dir, d: (end - x) * dir, ok: px >= pW * 0.45 - 1 && px <= xR + 1 && x >= lo - pW * 0.2 && x <= hi + pW * 0.2 };
+    }).filter((o) => o.ok && o.d >= pW * 0.45).sort((a, b) => b.d - a.d)[0];
+    return opt ? { el, dir: opt.dir, d: Math.min(opt.d, pW * 1.5) } : null;
+  }
+
+  // Jagd auf das Wollknäuel: Der Pika stupst es an, es kullert auf Katzumi zu. Sie duckt sich, wackelt, springt
+  // darauf und schlägt es zurück; beim letzten Mal hält sie es fest. Bewegt wird es genau wie in seinem eigenen
+  // Spiel (_giftYarn: left mit Überblendung, _yarnXf, _yarnRot), es bleibt am Ende liegen, wo es hingerollt ist.
+  // Tippt jemand es zwischendurch weg (_yarnTap), geht es von dort weiter; ist es weg (Plan geändert), ist Schluss.
+  async _frYarnHunt(fr, w, Y) {
+    const { pW, gy, fMin, fMax } = this._g;
+    const W = this._W;
+    const P = this._el.pika.classList;
+    const F = fr.el.classList;
+    const [lo, hi] = this._frRange();
+    const fW = pW * this._frSc(fr);
+    const { el, dir } = Y;
+    const home = this._giftX(0);
+    // äußerste Stelle, bis zu der es auf ihrer Seite rollen darf
+    const edge = dir > 0 ? Math.min(hi - fW * 0.6, fMax * W) : Math.max(lo + fW * 0.6, fMin * W);
+    const roll = (to, ms) => {
+      const from = this._giftX(0);
+      this._yarnXf = to / W;
+      this._yarnRot = (this._yarnRot || 0) + ((to - from) / (Math.PI * this._H * 0.075)) * 360;
+      el.style.transition = `left ${ms}ms cubic-bezier(.2, .7, .4, 1)`;
+      el.style.left = `${to.toFixed(1)}px`;
+      const svg = el.querySelector('svg');
+      if (svg) svg.style.transform = `rotate(${this._yarnRot.toFixed(0)}deg)`;
+    };
+    const lurk = clamp(home + dir * (Y.d + fW * 0.5), lo, hi);
+    try {
+      // der Pika hinter das Knäuel, Katzumi gegenüber auf die Lauer
+      await Promise.all([this._walkTo(home - dir * pW * 0.36, 1.2), this._friendWalkTo(fr, lurk, 1.2, w)]);
+      this._face(dir);
+      this._frFace(fr, -dir);
+      await w(350);
+      const n = Math.random() < 0.5 ? 3 : 2;
+      for (let i = 0; i < n; i++) {
+        if (!el.isConnected) return;
+        const from = this._giftX(0);
+        const to = clamp(from + dir * Y.d * rnd(0.7, 1), Math.min(from, edge), Math.max(from, edge));
+        // anstupsen
+        P.add('crouch');
+        await w(260);
+        P.remove('crouch');
+        this._jump('hop1');
+        roll(to, 1000);
+        if (i === 0) this._say(pick(['fang!', 'kuller!', 'hopp!']), 900);
+        // ducken, wackeln, Sprung auf das Knäuel
+        this._frFace(fr, to >= fr.x ? 1 : -1);
+        F.add('kwig');
+        await w(650);
+        F.remove('kwig');
+        await this._frHop(fr, clamp(to + dir * fW * 0.35, lo, hi), 0, w);
+        this._frFace(fr, -dir);
+        this._puff(fr.x, gy, 1);
+        this._frSay(fr, 'mau!', 800);
+        await w(400);
+        if (!el.isConnected) return;
+        if (i === n - 1) break;
+        // mit Schwung zurück zum Pika
+        F.add('nuzzle');
+        await w(280);
+        roll(clamp(this._x + dir * pW * 0.36, fMin * W, fMax * W), 900);
+        await w(560);
+        F.remove('nuzzle');
+        this._jump('hop1');
+        if (Math.random() < 0.5) this._say(pick(['hihi!', 'nochmal!']), 900);
+        await this._friendWalkTo(fr, lurk, 1.3, w);
+        this._frFace(fr, -dir);
+        await w(rnd(300, 600));
+      }
+      // erwischt
+      this._frSay(fr, 'hab es!', 1300);
+      this._frJump(fr, 'hop1');
+      this._frHearts(fr, 2);
+      await w(500);
+      this._happy(1100);
+      this._say(pick(['gut gefangen!', 'hihi!']), 1100);
+      await w(1300);
+    } finally {
+      el.style.transition = '';
+    }
+  }
+
+  // Jagd auf die Feder am Halm: Der Pika findet sie, hält den Halm im Maul, die Feder pendelt vor seiner Nase.
+  // Katzumi duckt sich, wackelt, springt – daneben, denn der Pika tritt im letzten Augenblick einen Schritt zurück –,
+  // wackelt wieder, springt und hat sie. Stolz trägt sie die Beute ein paar Schritte.
+  // calm (Bewegung reduzieren): kein Sprung. Sie kommt heran und tippt die Feder zweimal an, dann bekommt sie sie.
+  async _frDangleHunt(fr, w, calm) {
+    const { pW, gy, xR } = this._g;
+    const P = this._el.pika.classList;
+    const F = fr.el.classList;
+    const [lo, hi] = this._frRange();
+    const fW = pW * this._frSc(fr);
+    const kind = this._seasonK === 'autumn' ? 'leaf' : 'feather';
+    const reach = pW * TOY_S.reach; // so weit vor seiner Mitte hängt die Feder (FRIEND_TOY.dangle)
+    // Dort landet Katzumi: mit dem Gesicht unter der Feder, aber nicht hinter dem Kopf des Pikas (sie steht in der
+    // Ebene hinter ihm)
+    const under = reach + pW * 0.12;
+    const wait = under + pW * 0.6; // … und dort lauert sie
+    const step = calm ? 0 : pW * 0.5; // Schritt zurück beim ersten Sprung
+    // Der Pika schaut zur Seite mit mehr Platz; hinter sich braucht er den Schritt, Katzumi landet in ihrem Bereich
+    const dir = this._x <= (lo + hi) / 2 ? 1 : -1;
+    const px = dir > 0 ? clamp(this._x, Math.max(pW * 0.45 + step, lo + step - under), Math.max(pW * 0.45 + step, hi - wait))
+      : clamp(this._x, Math.min(xR - step, lo + wait), Math.min(xR - step, hi - step + under));
+    await Promise.all([this._walkTo(px, 1), this._friendWalkTo(fr, clamp(px + dir * wait, lo, hi), 1.1, w)]);
+    this._face(dir);
+    this._frFace(fr, -dir);
+    P.add('sniff');
+    await w(600);
+    P.remove('sniff');
+    this._frPikaCarry(FRIEND_TOY.dangle[kind]);
+    this._say(kind === 'leaf' ? 'ein Blatt!' : 'eine Feder!', 1200);
+    await w(700);
+    this._frSay(fr, 'mau?', 900);
+    F.add('look-f');
+    await w(900);
+    F.remove('look-f');
+    const spot = () => clamp(this._x + dir * under, lo, hi);
+    if (calm) {
+      await this._friendWalkTo(fr, spot(), 0.8, w);
+      this._frFace(fr, -dir);
+      for (let i = 0; i < 2; i++) {
+        F.add('look-up');
+        await w(700);
+        F.add('crouch');
+        await w(260);
+        F.remove('crouch');
+        this._frSay(fr, 'mau!', 800);
+        await w(900);
+        F.remove('look-up');
+      }
+    } else {
+      // erster Sprung: daneben
+      F.add('kwig');
+      await w(650);
+      F.remove('kwig');
+      await Promise.all([
+        this._frHop(fr, spot(), 0, w),
+        (async () => {
+          await w(220);
+          await this._walkTo(this._x - dir * step, 1.6, true, 0, true);
+        })(),
+      ]);
+      this._frFace(fr, -dir);
+      this._puff(fr.x, gy, 1);
+      this._frSay(fr, 'mau!', 800);
+      await w(350);
+      this._say(pick(['hihi!', 'daneben!']), 900);
+      await w(800);
+      // zweiter Sprung: erwischt
+      F.add('kwig');
+      await w(550);
+      F.remove('kwig');
+      await this._frHop(fr, spot(), 0, w);
+      this._frFace(fr, -dir);
+      this._puff(fr.x, gy, 1);
+    }
+    // gefangen: Die Feder wechselt vom Halm ins Maul der Katze
+    this._frPikaCarry(null);
+    this._frCarry(fr, FRIEND_TOY.catch[kind]);
+    this._frSay(fr, 'hab es!', 1300);
+    if (!calm) this._frJump(fr, 'hop1');
+    this._frHearts(fr, 2);
+    await w(600);
+    P.add('happy');
+    this._say(pick(['gut gefangen!', 'oh!', 'hihi!']), 1100);
+    await w(1200);
+    P.remove('happy');
+    // stolz mit der Beute ein paar Schritte
+    await this._friendWalkTo(fr, fr.x + dir * pW * 0.6, 0.9, w);
+    this._frFace(fr, -dir);
+    await w(rnd(800, 1300));
+    this._frCarry(fr, null);
+  }
+
+  // Kirby kullert: Er rollt sich ein und kullert wie ein Ball über die Wiese, der Pika hoppelt hinterher. Zurück
+  // schlägt der Pika Purzelbäume voraus (wie in seiner kleinen Beschäftigung, _purzel), Kirby kullert hinterdrein.
+  // Am Ende sind beide schwindlig (Sternchen) und kichern. Die Strecke richtet sich nach der Wiese (höchstens drei
+  // Pika-Breiten); gedreht wird um so viele ganze Umdrehungen, wie sein Umfang in die Strecke passt.
+  // Ruhig (Bewegung reduzieren, oder weniger als gut eine Pika-Breite Platz): Sie sitzen nebeneinander und schunkeln.
+  async _rollFriend() {
+    await this._withFriend(async (fr, w) => {
+      if (fr.kind !== 'kirby') return;
+      const { pW, gy, xR } = this._g;
+      const P = this._el.pika.classList;
+      const F = fr.el.classList;
+      const fW = pW * this._frSc(fr);
+      // ein wenig Rand zum Kartenrand: Dort bleibt er schwindlig stehen, mit Sternchen über dem Kopf
+      const [lo, hi0] = this._frRange();
+      const hi = Math.max(lo, hi0 - fW * 0.12);
+      const D = Math.min(hi - lo, pW * 3);
+      if (calmMotion() || D < pW * 1.1) return this._frSway(fr, w);
+      const round = fW * 0.62 * Math.PI; // Umfang der Kugel
+      const behind = pW * 0.95; // Abstand des Pikas
+      // Kirby kullert von seinem Ende der Wiese zum anderen
+      const dir = fr.x <= (lo + hi) / 2 ? 1 : -1;
+      const a = dir > 0 ? clamp(fr.x, lo, hi - D) : clamp(fr.x, lo + D, hi);
+      const pika = (x) => clamp(x, pW * 0.45, xR);
+      await Promise.all([this._friendWalkTo(fr, a, 1.2, w), this._walkTo(pika(a - dir * behind), 1.2)]);
+      this._face(fr.x >= this._x ? 1 : -1);
+      this._frFace(fr, dir);
+      this._frSay(fr, 'kuller, kuller!', 1300);
+      this._frJump(fr, 'hop1');
+      await w(1000);
+      // einrollen und los: Weg und Drehung laufen gleich lang und gleichmäßig
+      const kroll = async (to) => {
+        const dist = Math.abs(to - fr.x);
+        if (dist < 4) return;
+        const ms = Math.round(clamp((dist / (pW * 1.5)) * 1000, 700, 2400));
+        this._frFace(fr, to >= fr.x ? 1 : -1);
+        F.add('crouch');
+        await w(240);
+        F.remove('crouch');
+        fr.el.style.setProperty('--krd', `${ms}ms`);
+        fr.el.style.setProperty('--kra', `${Math.max(1, Math.round(dist / round)) * 360}deg`);
+        this._puff(fr.x, gy, 2);
+        this._frSetX(fr, to, ms, 'linear');
+        F.add('kroll');
+        await w(ms);
+        F.remove('kroll');
+        this._puff(fr.x, gy, 2);
+      };
+      await Promise.all([
+        kroll(a + dir * D),
+        (async () => {
+          await w(500);
+          this._say(pick(['warte!', 'huiii!', 'hinterher!']), 900);
+          await this._walkTo(pika(a + dir * D - dir * behind), 2);
+        })(),
+      ]);
+      // Kirby ist schwindlig
+      this._face(fr.x >= this._x ? 1 : -1);
+      F.add('crosseye');
+      this._frStars(fr);
+      await w(1100);
+      F.remove('crosseye');
+      // zurück: Der Pika purzelt voraus (höchstens zwei Purzelbäume, sonst hoppelt er), Kirby kullert hinterher
+      this._frFace(fr, -dir);
+      this._say(pick(['ich auch!', 'jetzt ich!']), 1000);
+      await w(800);
+      const PD = pW * 0.95;
+      const room = dir > 0 ? this._x - pW * 0.45 : xR - this._x;
+      const m = Math.min(2, Math.floor(room / PD));
+      const back = m ? m * PD : Math.max(0, Math.min(room, D * 0.7));
+      await Promise.all([
+        (async () => {
+          this._face(-dir);
+          if (!m) return this._walkTo(this._x - dir * back, 1.8);
+          const p = this._el.pika;
+          for (let i = 0; i < m; i++) {
+            P.add('crouch');
+            await w(300);
+            P.remove('crouch');
+            p.style.transition = `transform ${PURZEL_ROLL}ms cubic-bezier(.4, .1, .5, 1)`;
+            this._setX(pika(this._x - dir * PD));
+            P.add('purzel');
+            await w(PURZEL_ROLL);
+            P.remove('purzel');
+            this._cls('lnd', 600, true);
+            this._puff(this._x, gy, 2);
+            await w(150);
+          }
+        })(),
+        (async () => {
+          // mit Abstand hinterher: Er kommt an, wenn der Pika seinen letzten Purzelbaum hinter sich hat (sonst
+          // rollte er ihm von hinten in die Beine)
+          await w(900);
+          await kroll(clamp(fr.x - dir * back, lo, hi));
+        })(),
+      ]);
+      // beide schwindlig, dann kichern
+      this._face(fr.x >= this._x ? 1 : -1);
+      this._frFace(fr, this._x >= fr.x ? 1 : -1);
+      P.add('crosseye');
+      F.add('crosseye');
+      this._frStars();
+      this._frStars(fr);
+      await w(1200);
+      P.remove('crosseye');
+      F.remove('crosseye');
+      this._say(pick(['hihi!', 'kuller, kuller!', 'hui!']), 1100);
+      await w(350);
+      this._frSay(fr, pick(['hihi!', 'nochmal!']), 1100);
+      this._happy(1200);
+      this._frHappy(fr);
+      await w(1400);
+    });
+  }
+
+  // Ruhige Fassung des Kullerns: nebeneinander sitzen, beide schauen zur Mitte, und abwechselnd sacht zur Seite
+  // neigen (.lean, eine kurze Überblendung, kein Dauerlauf)
+  async _frSway(fr, w) {
+    const { pW, xR } = this._g;
+    const P = this._el.pika.classList;
+    const F = fr.el.classList;
+    const D = fr.x < this._W / 2 ? 1 : -1;
+    let px = fr.x - D * pW * 0.8;
+    if (px < pW * 0.45 || px > xR) px = fr.x + D * pW * 0.8;
+    await this._walkTo(px, 0.9);
+    this._face(D);
+    this._frFace(fr, D);
+    await w(500);
+    this._frSay(fr, 'schunkel, schunkel!', 1500);
+    await w(900);
+    for (let i = 0; i < 3; i++) {
+      P.add('lean');
+      await w(450);
+      F.add('lean');
+      await w(750);
+      P.remove('lean');
+      await w(450);
+      F.remove('lean');
+      await w(550);
+    }
+    this._say(pick(['hihi!', 'schön!']), 1100);
+    this._hearts(1);
+    this._frHearts(fr, 1);
+    await w(1300);
+  }
+
+  // Von wem er im Schlaf murmelt (_dream): von einem Freund, der an diesem Pika-Tag zu Besuch war (Tagesgedächtnis
+  // im Plan, dieselbe Frist wie bei den Träumen), sonst von Pino. Nicht _frGuest: Das ist der letzte Gast auf diesem
+  // Gerät, auch wenn der vor Tagen da war.
+  _frMumble() {
+    const c = this._plan?.cute;
+    const heute = c && c.d >= pikaDay(this._haNow()) - 1
+      ? FRIEND_KEYS.filter((k) => MEM_BITS.includes(k) && c.m & (1 << MEM_BITS.indexOf(k))) : [];
+    return FRIENDS[heute.length ? pick(heute) : 'pino'].name || this._frName();
   }
 
   // Abschied: Pino nachschauen (dreht sich mit), "tschüss", kurz die Ohren hängen lassen
