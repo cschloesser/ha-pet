@@ -24,6 +24,7 @@
  *                         ist es voll, Tricks und Gold für die Schätze.
  *   Tagebuch            → Tipp auf die Statusleiste: was er heute und gestern erlebt hat (aus dem Verlauf der Helfer
  *                         in HA abgeleitet), dazu seine Schätze und die Entdeckungen (was man alles tun kann)
+ *                         und mit chronicle_entity der Rückblick
  *   Besuche (Vögelchen, Maus, Frosch, Schnecke, Pino) werden aus der Uhrzeit berechnet und sind auf allen Geräten gleich.
  *
  * Konfiguration:
@@ -109,6 +110,9 @@ import {
   CHRONIK, chronikDatum, chronikTag, chronikStart, chronikVersatz, chronikZoneOk, chronikKod, chronikLies, chronikMisch, chronikBilanz,
   chronikTage, chronikFehlt, chronikPlan, chronikUrlaub,
 } from './logik/chronik.js';
+import {
+  RUECK, RUECK_TXT, rueckDatum, rueckTage, rueckMonat, rueckJm, rueckJmPlus, rueckJmVgl, rueckSerien, rueckSummen, rueckGast, rueckSatz, rueckFazit,
+} from './logik/rueckblick.js';
 import { AREALE, randStil } from './grafik/areale.js';
 import { LOOKOUT_SVG, LOOKOUT_RAND } from './grafik/szene.js';
 import { KIRBY_SVG, RUFUS_SVG, KATZUMI_SVG, FRIEND_ICON } from './grafik/freunde.js';
@@ -148,6 +152,7 @@ if (typeof globalThis !== 'undefined' && typeof globalThis.__pikaTest === 'funct
     miniStart, bigStart, ACT_WIN, ACT_GAP, BOAT_T, boatPos, boatPuffs, bezAt, gliderThrows, GLIDER_STEP, ACT_PX, wxProgThen,
     CHRONIK, chronikDatum, chronikTag, chronikStart, chronikVersatz, chronikZoneOk, chronikKod, chronikLies, chronikMisch, chronikBilanz,
     chronikTage, chronikFehlt, chronikPlan, diaryDerive,
+    RUECK, RUECK_TXT, rueckDatum, rueckTage, rueckMonat, rueckJm, rueckJmPlus, rueckJmVgl, rueckSerien, rueckSummen, rueckGast, rueckSatz, rueckFazit,
     AREALE, randStil, LOOKOUT_SVG, LOOKOUT_RAND,
     FRIENDS, FRIEND_KEYS, friendKind, FRIEND_SVG, KIRBY_SVG, RUFUS_SVG, KATZUMI_SVG, FRIEND_ICON, MEM_BITS,
   });

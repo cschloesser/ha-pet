@@ -125,6 +125,50 @@ const STYLE_DIARY = `
   .fd i svg { display: block; width: 100%; height: 100%; }
   .fd b { display: block; font-size: 14px; font-weight: 800; line-height: 1.25; }
   .fd span { display: block; margin-top: 1px; font-size: 13px; line-height: 1.4; color: var(--soft); }
+  /* Fünf Reiter (mit chronicle_entity kommt „Rückblick“ dazu): enger gesetzt, auf schmalen Bildschirmen in zwei
+     Reihen (oben die drei Seiten über die Zeit, unten Schätze und Entdeckungen). Eigene Regeln, damit sich ohne
+     Rückblick nichts ändert. */
+  .tabs.t5 { gap: 4px; }
+  .tabs.t5 button { padding: 0 4px; }
+  /* Rückblick: Monatskalender (Montag zuerst), darunter der gewählte Tag und die Summen */
+  .kn { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 2px 0 6px; }
+  .kn b { font-size: 15px; font-weight: 800; }
+  .kn button { flex: none; width: 40px; height: 40px; padding: 11px; box-sizing: border-box; border-radius: 50%; color: var(--soft); background: var(--tab); }
+  .kn svg { display: block; width: 100%; height: 100%; }
+  .kn button:disabled { opacity: .35; cursor: default; }
+  .kw, .kt { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 4px; }
+  .kw span { padding-bottom: 3px; text-align: center; font-size: 12px; font-weight: 700; color: var(--soft); }
+  /* Ein Tag: Zahl oben, darunter das Zeichen. Ohne Eintrag nur die Zahl (kein Knopf), mit Eintrag ein Knopf. */
+  .tg { display: flex; flex-direction: column; align-items: center; height: 40px; box-sizing: border-box; padding-top: 2px; border: 2px solid transparent;
+    border-radius: 11px; font-size: 12px; font-weight: 700; line-height: 14px; color: var(--soft); }
+  .tg i { display: block; width: 17px; height: 17px; margin-top: 1px; color: var(--soft); }
+  .tg svg, .kl svg, .rt .bdg svg { display: block; width: 100%; height: 100%; }
+  button.tg { background: var(--tab); color: var(--ink); }
+  /* guter Tag: gefüllte Pfote in der Akzentfarbe auf goldenem Grund */
+  .tg.gut { background: rgba(242, 182, 50, .3); }
+  .tg.gut i { color: var(--acc); }
+  .night .tg.gut { background: rgba(242, 197, 107, .22); }
+  /* heute (läuft noch, steht noch nicht in der Liste): gestrichelter Rand; der gewählte Tag: fester Rand in Tinte */
+  .tg.heute { border: 2px dashed var(--soft); }
+  .tg.sel { border: 2px solid var(--ink); }
+  .kl { display: flex; flex-wrap: wrap; gap: 4px 14px; margin: 8px 2px 0; font-size: 12px; color: var(--soft); }
+  .kl span { display: inline-flex; align-items: center; gap: 5px; }
+  .kl i { display: block; width: 14px; height: 14px; }
+  .kl i.g { color: var(--acc); }
+  /* der gewählte Tag aus seiner Sicht, mit den Bildern des Besuchs */
+  .rt { margin: 12px 0 2px; padding: 11px 12px 12px; border-radius: 14px; background: var(--tab); }
+  .rt .rk { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 4px 10px; }
+  .rt b { font-size: 14px; font-weight: 800; }
+  .rt .bdg { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; font-weight: 700; color: var(--soft); }
+  .rt .bdg i { display: block; width: 14px; height: 14px; color: var(--acc); }
+  .rt p { margin: 4px 0 0; font-size: 15px; line-height: 1.45; }
+  .rt .gs { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 9px; }
+  .rt .gs .ic:nth-child(even) { transform: rotate(3deg); }
+  .rt .sg { display: block; width: 66px; transform: rotate(-3deg); }
+  .rt .sg svg { display: block; width: 100%; height: auto; }
+  /* Summen: Zähler wie auf den Tagesseiten; beim Besuch etwas größere Bilder */
+  .chips.sum { margin-top: 6px; }
+  .chips.gst i { width: 20px; height: 20px; margin: -2px 0; }
   @keyframes tbin { from { opacity: 0; } }
   @keyframes tbup { from { transform: translateY(24px) scale(.96); opacity: 0; } }
   @media (max-width: 520px) {
@@ -140,6 +184,13 @@ const STYLE_DIARY = `
   @media (max-width: 340px) {
     .tabs { gap: 4px; padding-left: 10px; padding-right: 10px; }
     .tabs button { padding: 0 4px; font-size: 13px; }
+  }
+  /* Fünf Reiter passen auf Handys nicht ausgeschrieben in eine Reihe (gemessen mit Segoe UI: 298 px Text, bei 401 px
+     Breite blieben je Reiter 5 px Rand): bis 420 px zwei Reihen, drei und zwei */
+  @media (max-width: 420px) {
+    .tabs.t5 { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 5px; }
+    .tabs.t5 button { grid-column: span 2; font-size: 14px; }
+    .tabs.t5 button:nth-child(n+4) { grid-column: span 3; }
   }
   @media (prefers-reduced-motion: reduce) { .bd, .sheet { animation: none; } }
   `;

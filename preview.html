@@ -419,6 +419,8 @@
   <button id="chr-human">Mensch schreibt</button>
   <button id="chr-check">beide prüfen</button>
   <button id="chr-clear">Liste leeren</button>
+  <button id="chr-rueck">Rückblick: sechs Wochen füllen</button>
+  <button id="chr-rueck-auf">Rückblick öffnen (links)</button>
 </div>
 <!-- ==================== Ende Chronik ==================== -->
 
@@ -1769,6 +1771,78 @@
     if (todoEntity()) push();
     chrShow();
     log('Chronik: Liste geleert');
+    rueckNeu();
+  });
+  // Rückblick (Reiter im Tagebuch, nur mit Chronik): 45 Tage direkt in die Liste legen, so wie die Karte sie über
+  // sechs Wochen geschrieben hätte (Titel aus chronikKod, sonst schriebe die Chronik sie beim nächsten Lauf um).
+  // Dabei: gute Tage, vier Tage Urlaub (Abreise und Rückkehr mit Bilanz, dazwischen still), alle vier Freunde,
+  // Vögelchen und Schmetterling, zwei Tage ganz ohne Eintrag, ein Tag mit streicheln=99 und ein Tag, den ein Mensch
+  // umgeschrieben hat (liest die Karte nicht, im Kalender bleibt er leer). Lücke und Menschen-Eintrag liegen länger
+  // als sieben Tage zurück: Dort trägt die Chronik nichts mehr nach. Immer dieselben Zahlen (fester Zufall).
+  const RUECK_TAGE = 45;
+  const rueckGen = new Set(); // uids, die dieser Knopf angelegt hat (beim nächsten Mal ersetzt)
+  // Die Karten haben die Liste vielleicht eben erst gelesen und merken sich das fünf Minuten: vergessen lassen, und
+  // ein offener Rückblick liest gleich neu
+  function rueckNeu() {
+    cards.forEach((c) => {
+      c._rueckStand = null;
+      if (c._dia?.tab === 'rueck') c._diaryTab('rueck');
+    });
+  }
+  document.getElementById('chr-rueck').addEventListener('click', () => {
+    const T = PIKA;
+    const z = (vor, k) => T.seedRnd('rueck', vor, k);
+    const neu = [];
+    for (let vor = RUECK_TAGE; vor >= 1; vor--) {
+      const d = chrDay(vor);
+      if (vor === 30 || vor === 29) continue; // die Lücke
+      if (vor === 24) {
+        neu.push(`Pika-Tag ${d}: war schön, wir waren im Zoo`);
+        continue;
+      }
+      const urlaub = vor <= 19 && vor >= 16;
+      const still = vor === 18 || vor === 17; // mitten im Urlaub tat sich nichts
+      const gut = !still && (vor === 19 || (!urlaub && vor !== 12 && vor !== 5 && z(vor, 'gut') < 0.78));
+      const besuch = [];
+      if (!urlaub) {
+        const wer = z(vor, 'wer');
+        if (vor === 39 || vor === 21 || vor === 6) besuch.push('kirby');
+        else if (vor === 33 || vor === 11) besuch.push('rufus');
+        else if (vor === 27 || vor === 2) besuch.push('katzumi');
+        else if (vor % 7 === 3 || wer < 0.22) besuch.push('pino');
+        if (z(vor, 'vogel') < 0.4) besuch.push('vogel');
+        if (z(vor, 'falter') < 0.15) besuch.push('falter');
+      }
+      neu.push(T.chronikKod({
+        d,
+        futter: still ? 0 : (gut ? 2 : 1) + Math.floor(z(vor, 'f') * 3),
+        streicheln: still ? 0 : vor === 9 ? 99 : (gut ? 6 : 1) + Math.floor(z(vor, 's') * (gut ? 22 : 5)),
+        putzen: still ? 0 : Math.floor(z(vor, 'p') * 4),
+        paeckchen: !still && z(vor, 'pk') < 0.2 ? 1 : 0,
+        besuch,
+        x: { ...(gut ? { gut: '1' } : {}), ...(urlaub ? { urlaub: '1' } : {}) },
+      }));
+    }
+    // was der Knopf zuvor angelegt hat, und Tage, die schon dastehen (etwa von „beide prüfen“), weichen
+    const daten = new Set(neu.map((s) => s.slice(9, 19)));
+    todo.items = todo.items.filter((x) => !rueckGen.has(x.uid) && !(x.summary.startsWith('Pika-Tag ') && daten.has(x.summary.slice(9, 19))));
+    rueckGen.clear();
+    for (const summary of neu) {
+      const it = { summary, uid: todoUid(), status: 'needs_action' };
+      rueckGen.add(it.uid);
+      todo.items.push(it);
+    }
+    if (todoEntity()) push();
+    chrShow();
+    rueckNeu();
+    log(`Rückblick: ${neu.length} Tage in der Liste, ${chrDay(RUECK_TAGE)} bis ${chrDay(1)}${chrOn() ? '' : ' (die Chronik ist noch aus: „Rückblick öffnen“ schaltet sie ein)'}`);
+  });
+  // Tagebuch der linken Karte gleich auf dem Reiter „Rückblick“ aufschlagen. Den Reiter gibt es nur mit Chronik: Ist
+  // sie aus, wird sie eingeschaltet.
+  document.getElementById('chr-rueck-auf').addEventListener('click', () => {
+    if (!chrOn()) chrBtn.click();
+    cards[0]._diaryClose();
+    cards[0]._diaryOpen('rueck');
   });
   // ==================== Ende Chronik ====================
 </script>

@@ -9,8 +9,8 @@ import {
 export class Chronik {
   // Mit chronicle_entity (einer To-do-Liste von HA) trägt die Karte einmal am Tag nach, was an den vergangenen
   // Pika-Tagen geschah: je Tag ein Eintrag (Format und Regeln in src/logik/chronik.js). Abgeleitet wird die Bilanz wie
-  // das Tagebuch aus dem Verlauf der beiden Helfer. Gezeigt wird sie noch nirgends. Ohne die Option passiert hier
-  // nichts: kein Aufruf an HA, kein Zeitgeber.
+  // das Tagebuch aus dem Verlauf der beiden Helfer. Gezeigt wird sie im Tagebuch auf der Seite „Rückblick“
+  // (src/karte/tagebuch.js, liest nur). Ohne die Option passiert hier nichts: kein Aufruf an HA, kein Zeitgeber.
 
   // Andere Liste (oder keine mehr): von vorn. Ein laufender Lauf gehört zur alten Liste und endet.
   _chronikReset() {
@@ -230,10 +230,31 @@ export class Chronik {
   async _chronikItems() {
     if (!this._chronikOn()) return null;
     const id = this._cfg.chronicle_entity;
+    const items = await this._chronikHol(id);
+    if (!items || id !== this._cfg?.chronicle_entity) return null;
+    this._chronikStand = { t: this._haNow(), tage: chronikTage(items) };
+    return items;
+  }
+
+  // Der eine Aufruf, mit dem die Liste gelesen wird (Chronik und Rückblick im Tagebuch teilen ihn). → Einträge;
+  // null, wenn die Antwort keine Liste enthält. Lehnt HA ab, wirft der Aufruf. Merkt sich nichts.
+  async _chronikHol(id) {
     const r = await this._hass.callWS({ type: 'todo/item/list', entity_id: id });
-    if (!Array.isArray(r?.items) || id !== this._cfg?.chronicle_entity) return null;
-    this._chronikStand = { t: this._haNow(), tage: chronikTage(r.items) };
-    return r.items;
+    return Array.isArray(r?.items) ? r.items : null;
+  }
+
+  // Lässt sich die Liste gerade lesen? → null (ja) oder warum nicht: 'aus' (keine chronicle_entity), 'getrennt' (keine
+  // Verbindung zu HA), 'fehlt' (die Liste gibt es nicht oder sie ist nicht erreichbar). Für den Rückblick, der nur
+  // liest: Anders als _chronikOn fragt das nicht, ob geschrieben werden dürfte. Gelesen wird darum auch an der
+  // Vorschau-Karte im Editor, ohne die beiden Helfer, auf einem Gerät in einer anderen Zeitzone und aus einer Liste,
+  // die keine neuen Einträge annimmt.
+  _chronikLesbar() {
+    const id = this._cfg?.chronicle_entity;
+    const hass = this._hass;
+    if (!id) return 'aus';
+    if (!hass || hass.connected === false) return 'getrennt';
+    const ent = hass.states?.[id];
+    return !ent || ent.state === 'unavailable' || ent.state === 'unknown' ? 'fehlt' : null;
   }
 
   // Liste lesen. → { t, tage: Map Datum → Eintrag } (auch in this._chronikStand) oder null, wenn sie gerade nicht

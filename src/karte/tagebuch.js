@@ -15,8 +15,11 @@ import {
 } from '../logik/tagebuch.js';
 import { ICON_LEAF, ICON_HEART, ICON_SPARK } from '../grafik/szene.js';
 import { GIFT_ITEMS, giftItem, GIFT_TRICK, GIFT_GILT, GIFT_PARCEL } from '../grafik/paeckchen.js';
-import { chronikStart } from '../logik/chronik.js';
-import { DIARY_BOOK, DIARY_PAW, DIARY_ICON, diaryPainting } from '../grafik/tagebuch.js';
+import { chronikStart, chronikDatum, chronikTag } from '../logik/chronik.js';
+import {
+  RUECK, RUECK_TXT, rueckTage, rueckMonat, rueckJm, rueckJmPlus, rueckJmVgl, rueckSummen, rueckGast, rueckSatz, rueckFazit,
+} from '../logik/rueckblick.js';
+import { DIARY_BOOK, DIARY_PAW, DIARY_PAW_O, DIARY_CASE, DIARY_TURN, DIARY_ICON, diaryPainting } from '../grafik/tagebuch.js';
 import { STYLE_DIARY } from '../stil/tagebuch.js';
 import { URLAUB_SIGN, URLAUB_CARD } from '../grafik/urlaub.js';
 import { FRIEND_ICON } from '../grafik/freunde.js';
@@ -512,14 +515,205 @@ export class Tagebuch {
     return `${h}<p class="note">Die Pfoten merkt sich nur dieses Gerät.</p>`;
   }
 
-  // Fenster über dem Dashboard öffnen (tab: 'heute', 'gestern', 'schatz', 'entd'). Lang drücken auf den
-  // Päckchen-Knopf schlägt gleich die Schätze auf.
+  // Reiter „Rückblick“: die Chronik (chronicle_entity, eine To-do-Liste von HA mit einer Zeile je Pika-Tag) als
+  // Monatskalender, der gewählte Tag aus seiner Sicht und die Summen. Den Reiter gibt es nur mit der Option und mit
+  // Tagebuch; ohne sie ändert sich nichts, und HA wird nicht gefragt. Die Seite liest nur: Sie schreibt, löscht und
+  // benennt nichts um, auch nicht an der Vorschau-Karte im Editor. Rechnen und Texte: src/logik/rueckblick.js.
+  _rueckOn() {
+    return this._diaryOn() && !!this._cfg?.chronicle_entity;
+  }
+
+  // Der Reiter wird aufgeschlagen. Gelesen wird beim ersten Mal und wieder, wenn der gemerkte Stand älter als
+  // RUECK.frisch ist (er liegt an der Karte und überdauert das Schließen des Tagebuchs). Solange neu gelesen wird,
+  // bleibt ein älterer Stand derselben Liste stehen. Was nicht gelang (Liste fehlt, keine Verbindung, HA lehnt ab),
+  // wird nicht gemerkt: Beim nächsten Aufschlagen wird es wieder versucht.
+  _rueckOpen() {
+    const id = this._cfg.chronicle_entity;
+    const S = this._rueckStand;
+    const da = !!S && S.id === id && S.st === 'ok';
+    if (da && Date.now() - S.at < RUECK.frisch) return;
+    // (ein Aufruf, auf den HA nie antwortet, hielte den Reiter sonst bis zum Neuladen bei „Ich blättere zurück“)
+    const L = this._rueckLauf;
+    if (L && L.id === id && Date.now() - L.at < RUECK.haengt) return;
+    const lauf = { id, at: Date.now() };
+    this._rueckLauf = lauf;
+    if (!da) this._rueckStand = { id, st: 'laden' };
+    this._rueckLies(id).then((neu) => {
+      if (this._rueckLauf !== lauf) return;
+      this._rueckLauf = null;
+      if (id !== this._cfg?.chronicle_entity) return;
+      this._rueckStand = { id, at: Date.now(), ...neu };
+      if (this._dia?.tab === 'rueck') this._rueckMalen();
+    });
+  }
+
+  // Liste lesen: derselbe Aufruf und derselbe Leser wie die Chronik (_chronikHol, chronikTage). → { st: 'ok', tage }
+  // oder { st: 'fehlt' | 'getrennt' | 'fehler' }; wird nie abgelehnt. Eine fehlende oder nicht erreichbare Liste und
+  // eine Ablehnung von HA (ein schlichtes Objekt oder eine Zahl) sind kein Fehler der Karte; nur ein Error aus dem
+  // eigenen Code kommt in den Fehlerspeicher.
+  async _rueckLies(id) {
+    const warum = this._chronikLesbar();
+    if (warum) return { st: warum === 'getrennt' ? 'getrennt' : 'fehlt' };
+    try {
+      const items = await this._chronikHol(id);
+      return items ? { st: 'ok', tage: rueckTage(items) } : { st: 'fehler' };
+    } catch (e) {
+      if (e instanceof Error) this._err('Rückblick', e);
+      else console.debug('pika-pet-card: Chronik für den Rückblick nicht lesbar', e);
+      return { st: 'fehler' };
+    }
+  }
+
+  // Bild zu einem Besuch (Kürzel der Chronik)
+  _rueckBild(k) {
+    return k === 'pino' ? DIARY_ICON.pino : hasKey(FRIEND_ICON, k) ? FRIEND_ICON[k] : k === 'vogel' ? DIARY_ICON.bird : k === 'falter' ? DIARY_ICON.bfly : '';
+  }
+
+  // Die Seite. Was gewählt ist, steht am offenen Fenster (D.rb: mon [Jahr, Monat], sel Datum): Anfangs der laufende
+  // Monat und der jüngste aufgeschriebene Tag. Geblättert wird vom ersten aufgeschriebenen Monat bis zum laufenden.
+  _rueckSeite() {
+    const D = this._dia;
+    const S = this._rueckStand;
+    const st = S && S.id === this._cfg.chronicle_entity ? S.st : 'laden';
+    if (st !== 'ok') return `<p class="${st === 'laden' ? 'wait' : 'none'}">${esc(RUECK_TXT[st] || RUECK_TXT.fehler)}</p>`;
+    const tage = S.tage;
+    if (!tage.length) return `<p class="none">${esc(RUECK_TXT.leer)}</p>`;
+    const heute = pikaDay(this._haNow());
+    const hd = chronikDatum(heute);
+    const fr = this._frName();
+    const M = new Map(tage.map((t) => [t.d, t]));
+    const sum = rueckSummen(tage, heute);
+    const R = (D.rb ||= {});
+    const von = rueckJm(tage[0].d);
+    // (bis zum laufenden Monat; steht ein späterer Tag in der Liste, weil eine Geräteuhr vorging, bis dorthin)
+    const bis = rueckJmVgl(rueckJm(tage.at(-1).d), rueckJm(hd)) > 0 ? rueckJm(tage.at(-1).d) : rueckJm(hd);
+    let mon = R.mon || rueckJm(hd);
+    if (rueckJmVgl(mon, von) < 0) mon = von;
+    if (rueckJmVgl(mon, bis) > 0) mon = bis;
+    R.mon = mon;
+    if (!M.has(R.sel)) R.sel = tage.at(-1).d;
+    const K = rueckMonat(mon[0], mon[1]);
+    // Tastatur: Ein Tag des Monats ist der Halt für die Tab-Taste (der gewählte, sonst der letzte mit Eintrag)
+    const anker = K.zellen.includes(R.sel) ? R.sel : K.zellen.filter((d) => d && M.has(d)).at(-1);
+    const zelle = (d) => {
+      if (!d) return '<span></span>';
+      const n = Number(d.slice(8));
+      const t = M.get(d);
+      const ist = d === hd;
+      if (!t) return `<span class="tg${ist ? ' heute" aria-current="date" title="heute' : ''}">${n}</span>`;
+      const z = rueckSatz(t, fr);
+      return `<button class="tg${t.gut ? ' gut' : ''}${ist ? ' heute' : ''}${d === R.sel ? ' sel' : ''}" data-rb="tag" data-tag="${d}" tabindex="${d === anker ? 0 : -1}"`
+        + ` aria-pressed="${d === R.sel}" aria-label="${esc(`${z.kopf}: ${z.text}`)}">${n}<i>${t.gut ? DIARY_PAW : t.urlaub ? DIARY_CASE : DIARY_PAW_O}</i></button>`;
+    };
+    const blatt = (dir) => {
+      const ziel = rueckJmPlus(mon, dir);
+      const ok = rueckJmVgl(ziel, von) >= 0 && rueckJmVgl(ziel, bis) <= 0;
+      return `<button data-rb="mon" data-dir="${dir}" data-mon="${ziel.join('-')}" aria-label="${dir < 0 ? 'Monat davor' : 'Monat danach'}: ${rueckMonat(ziel[0], ziel[1]).name}"`
+        + `${ok ? '' : ' disabled'}>${DIARY_TURN(dir)}</button>`;
+    };
+    let h = `<p class="fazit">${esc(rueckFazit(sum, heute))}</p>`;
+    h += `<div class="kn">${blatt(-1)}<b>${K.name}</b>${blatt(1)}</div>`;
+    h += `<div class="kw" aria-hidden="true">${['M', 'D', 'M', 'D', 'F', 'S', 'S'].map((w) => `<span>${w}</span>`).join('')}</div>`;
+    h += `<div class="kt" role="group" aria-label="${K.name}">${K.zellen.map(zelle).join('')}</div>`;
+    h += `<div class="kl"><span><i>${DIARY_PAW_O}</i>aufgeschrieben</span><span><i class="g">${DIARY_PAW}</i>guter Tag</span>`
+      + `${sum.urlaub ? `<span><i>${DIARY_CASE}</i>bei ${esc(fr)}</span>` : ''}</div>`;
+    // der gewählte Tag
+    const t = M.get(R.sel);
+    const z = rueckSatz(t, fr);
+    const bild = (k) => `<i class="ic" title="${esc(rueckGast(k, fr)[1])}">${this._rueckBild(k)}</i>`;
+    h += `<div class="rt"><div class="rk"><b>${esc(z.kopf)}</b>${t.gut ? `<span class="bdg"><i>${DIARY_PAW}</i>guter Tag</span>` : ''}</div><p>${esc(z.text)}</p>`
+      + `${z.gaeste.length || t.urlaub ? `<div class="gs">${t.urlaub ? `<i class="sg">${URLAUB_SIGN(fr)}</i>` : ''}${z.gaeste.map(bild).join('')}</div>` : ''}</div>`;
+    // Summen über alles Aufgeschriebene
+    const chips = (list, kl = '') => (list.length ? `<div class="chips sum${kl}">${list.map(([i, text]) => `<span>${i ? `<i>${i}</i>` : ''}${esc(text)}</span>`).join('')}</div>` : '');
+    const a = [[DIARY_PAW_O, `${sum.n === 1 ? '1 Tag' : `${sum.n} Tage`} aufgeschrieben`], [DIARY_PAW, sum.gut === 1 ? '1 guter Tag' : `${sum.gut} gute Tage`]];
+    if (sum.gut) a.push(['', `Gute Tage am Stück: längstens ${sum.laengste}, gerade ${sum.aktuell}`]);
+    if (sum.urlaub) a.push([DIARY_CASE, `${sum.urlaub === 1 ? '1 Tag' : `${sum.urlaub} Tage`} bei ${fr}`]);
+    const b = [];
+    if (sum.futter) b.push([ICON_LEAF, `${sum.futter}× gefüttert`]);
+    // (stand der Zähler an einem Tag am Anschlag, ist die Summe eine Untergrenze)
+    if (sum.streicheln) b.push([ICON_HEART, `${sum.mehr ? 'mindestens ' : ''}${sum.streicheln}× gestreichelt`]);
+    if (sum.putzen) b.push([ICON_SPARK, `${sum.putzen} Häufchen weggemacht`]);
+    if (sum.paeckchen) b.push([GIFT_PARCEL, `${sum.paeckchen} Päckchen ausgepackt`]);
+    h += `<h3>Alles zusammen</h3>${chips(a)}${chips(b)}`;
+    if (sum.besuch.length) h += `<h3>Wer zu Besuch war</h3>${chips(sum.besuch.map(([k, n]) => [this._rueckBild(k), `${rueckGast(k, fr)[1]} ${n}×`]), ' gst')}`;
+    return `${h}<p class="note">Heute steht noch nicht drin: Einen Tag schreibe ich erst auf, wenn er vorbei ist.</p>`;
+  }
+
+  // Die Seite neu zeichnen und den Fokus halten: Die Knöpfe entstehen neu, hatte einer den Fokus (Tastatur), bekommt
+  // ihn sein Nachfolger. Gibt es den nicht mehr (anderer Monat) oder ist er gesperrt (erster, letzter Monat), bekommt
+  // ihn die Seite, ein Tab weiter stehen die Knöpfe.
+  _rueckMalen() {
+    const D = this._dia;
+    if (!D) return;
+    const pg = D.root.querySelector('.page');
+    const a = D.root.activeElement;
+    const war = a && a !== pg && pg.contains(a) ? { ...a.dataset } : null;
+    this._diaryRender(true);
+    if (!war) return;
+    const z = [...pg.querySelectorAll('[data-rb]')].find((b) => b.dataset.rb === war.rb && (war.rb === 'tag' ? b.dataset.tag === war.tag : b.dataset.dir === war.dir));
+    (z && !z.disabled ? z : pg).focus({ preventScroll: true });
+  }
+
+  // Tipp (oder Eingabetaste) im Kalender: einen Tag wählen, einen Monat blättern
+  _rueckKlick(b) {
+    const D = this._dia;
+    if (!D || b.disabled) return;
+    const R = (D.rb ||= {});
+    const tag = b.dataset.rb === 'tag';
+    if (tag) R.sel = b.dataset.tag;
+    else if (b.dataset.rb === 'mon') R.mon = String(b.dataset.mon).split('-').map(Number);
+    this._rueckMalen();
+    if (!tag) return;
+    // Der Tag steht unter dem Kalender: Ragt er unten aus der Seite (sechs Wochenzeilen, kleines Handy), rückt die
+    // Seite so weit nach, dass er ganz zu sehen ist. (Gerechnet statt scrollIntoView: Das schöbe auch das Dashboard dahinter.)
+    const pg = D.root.querySelector('.page');
+    const rt = pg.querySelector('.rt');
+    const unten = rt ? rt.offsetTop - pg.offsetTop + rt.offsetHeight + 8 : NaN;
+    if (unten > pg.scrollTop + pg.clientHeight) pg.scrollTop = unten - pg.clientHeight;
+  }
+
+  // Pfeiltasten im Kalender, von einem Tag mit Eintrag aus: links und rechts zum Tag davor und danach, an dem etwas
+  // steht, hoch und runter zum selben Wochentag, Pos1 und Ende zum ersten und letzten des Monats. Der Fokus wandert,
+  // gewählt wird mit Eingabe- oder Leertaste. → ob die Taste verbraucht ist
+  _rueckTaste(e) {
+    const D = this._dia;
+    const a = D?.root.activeElement;
+    if (D?.tab !== 'rueck' || a?.dataset?.rb !== 'tag') return false;
+    const tags = [...D.root.querySelectorAll('button.tg')];
+    const i = tags.indexOf(a);
+    let z = null;
+    const woche = (um) => {
+      const t0 = chronikTag(a.dataset.tag);
+      for (let k = 1; k <= 5 && !z; k++) z = tags.find((b) => chronikTag(b.dataset.tag) === t0 + um * k) || null;
+    };
+    if (e.key === 'ArrowLeft') z = tags[i - 1];
+    else if (e.key === 'ArrowRight') z = tags[i + 1];
+    else if (e.key === 'ArrowUp') woche(-7);
+    else if (e.key === 'ArrowDown') woche(7);
+    else if (e.key === 'Home') z = tags[0];
+    else if (e.key === 'End') z = tags.at(-1);
+    else return false;
+    e.preventDefault();
+    if (z && z !== a) {
+      a.setAttribute('tabindex', '-1');
+      z.setAttribute('tabindex', '0');
+      z.focus();
+    }
+    return true;
+  }
+
+  // Fenster über dem Dashboard öffnen (tab: 'heute', 'gestern', 'rueck', 'schatz', 'entd'). Lang drücken auf den
+  // Päckchen-Knopf schlägt gleich die Schätze auf. Den Reiter „Rückblick“ gibt es nur mit chronicle_entity.
   _diaryOpen(tab = 'heute') {
     if (!this._el) return;
     // diary: false: nur die Schätze (lang drücken auf den Päckchen-Knopf), ohne Heute/Gestern und ohne den Verlauf zu lesen
     const only = !this._diaryOn();
+    const rb = this._rueckOn();
     if (only) tab = 'schatz';
+    else if (tab === 'rueck' && !rb) tab = 'heute';
     if (this._dia) return this._diaryTab(tab);
+    // Fünf Reiter: die drei Seiten über die Zeit zuerst (Heute, Gestern, Rückblick), dann Schätze und Entdeckungen
+    const reiter = [['heute', 'Heute'], ['gestern', 'Gestern'], ...(rb ? [['rueck', 'Rückblick']] : []), ['schatz', 'Schätze'], ['entd', 'Entdeckungen']];
     const n = String(this._cfg.name || 'Pika');
     const title = `${/[sßxz]$/i.test(n) ? `${n}’` : `${n}s`} ${only ? 'Schätze' : 'Tagebuch'}`;
     const host = document.createElement('div');
@@ -530,8 +724,8 @@ export class Tagebuch {
           <div class="sheet" role="dialog" aria-modal="true" aria-label="${esc(title)}" tabindex="-1">
             <div class="hd"><span class="bk">${DIARY_BOOK}</span><div class="ht"><b>${esc(title)}</b><span class="dt"></span></div>
               <button class="x" aria-label="Schließen" title="Schließen">✕</button></div>
-            ${only ? '' : `<div class="tabs" role="tablist">
-              <button role="tab" data-tab="heute">Heute</button><button role="tab" data-tab="gestern">Gestern</button><button role="tab" data-tab="schatz">Schätze</button><button role="tab" data-tab="entd">Entdeckungen</button>
+            ${only ? '' : `<div class="tabs${rb ? ' t5' : ''}" role="tablist">
+              ${reiter.map(([k, name]) => `<button role="tab" data-tab="${k}">${name}</button>`).join('')}
             </div>`}
             <div class="page" role="tabpanel" tabindex="0"></div>
             <div class="ft"></div>
@@ -551,13 +745,15 @@ export class Tagebuch {
         // Der Fokus bleibt im Fenster und läuft im Kreis: ✕, Reiter, Seite, ihre Knöpfe, die Fehlerliste im Fuß.
         // Gesperrte Knöpfe („Zu Pino schicken“, solange ein Päckchen wartet) und Unsichtbares zählen nicht: .focus()
         // tut dort nichts, bis 0.43.0 kam man mit Tab von der Seite nicht mehr weiter.
-        const f = [...root.querySelectorAll('button:not([disabled]), summary, .page')].filter((el) => el.getClientRects().length > 0);
+        // Im Kalender des Rückblicks ist nur ein Tag ein Halt (tabindex 0, die anderen −1), von dort geht es mit den
+        // Pfeiltasten weiter (_rueckTaste): Sonst lägen bis zu 31 Halte zwischen den Reitern und dem Fuß.
+        const f = [...root.querySelectorAll('button:not([disabled]), summary, .page')].filter((el) => el.getClientRects().length > 0 && el.tabIndex !== -1);
         e.preventDefault();
         if (!f.length) return;
         const i = f.indexOf(root.activeElement);
         // (vom Fenster selbst aus, i = -1: vorwärts zum ersten, rückwärts zum letzten)
         f[e.shiftKey ? (i <= 0 ? f.length - 1 : i - 1) : (i + 1) % f.length].focus();
-      }
+      } else this._rueckTaste(e);
     });
     // Wand-Tablet: nach DIARY.close ohne Berührung von selbst wieder zu
     const poke = () => {
@@ -567,8 +763,10 @@ export class Tagebuch {
     for (const t of ['pointerdown', 'keydown', 'wheel', 'touchmove']) host.addEventListener(t, poke, { passive: true });
     root.querySelector('.page').addEventListener('scroll', poke, { passive: true });
     poke();
-    // Schalter „Ferien bei Pino“ (Seite Heute)
+    // Schalter „Ferien bei Pino“ (Seite Heute); Kalender des Rückblicks (Tag wählen, Monat blättern)
     root.querySelector('.page').addEventListener('click', (e) => {
+      const r = e.target.closest?.('[data-rb]');
+      if (r) return this._rueckKlick(r);
       const b = e.target.closest?.('[data-ur]');
       if (!b || b.disabled) return;
       const a = b.dataset.ur;
@@ -585,6 +783,7 @@ export class Tagebuch {
       this._diaryRender(true);
       if (key) pg.focus({ preventScroll: true });
     });
+    if (tab === 'rueck') this._rueckOpen();
     this._diaryRender();
     root.querySelector('.sheet').focus();
     if (only) return;
@@ -593,21 +792,27 @@ export class Tagebuch {
       localStorage.setItem(`pika-pet-diary-seen:${this._cfg.name}`, this._diarySig());
     } catch (e) { /* egal */ }
     this._diaryDot();
+    // Der Verlauf für Heute und Gestern kommt später. Steht dann der Rückblick da, bleibt er an seiner Stelle, und
+    // ein Tag, der den Fokus hat, behält ihn (neu gezeichnet wird nur wegen des Fußes).
+    const fertig = () => (D.tab === 'rueck' ? this._rueckMalen() : this._diaryRender());
     this._diaryBuild().then((data) => {
       if (this._dia !== D) return;
       D.data = data;
-      this._diaryRender();
+      fertig();
     }).catch((e) => {
       this._err('Tagebuch', e);
       if (this._dia !== D) return;
       D.data = { fail: true, days: [] };
-      this._diaryRender();
+      fertig();
     });
   }
 
   _diaryTab(tab) {
     if (!this._dia) return;
-    this._dia.tab = this._diaryOn() ? tab : 'schatz';
+    this._dia.tab = !this._diaryOn() ? 'schatz' : tab === 'rueck' && !this._rueckOn() ? 'heute' : tab;
+    // Rückblick aufgeschlagen (auch wieder, von einer anderen Seite her): Die Liste wird gelesen, wenn der gemerkte
+    // Stand nicht mehr frisch ist
+    if (this._dia.tab === 'rueck') this._rueckOpen();
     this._diaryRender();
   }
 
@@ -626,6 +831,9 @@ export class Tagebuch {
     } else if (D.tab === 'entd') {
       dt.textContent = 'Was du bei mir ausprobieren kannst';
       pg.innerHTML = this._diaryFinds();
+    } else if (D.tab === 'rueck') {
+      dt.textContent = 'Was bisher geschah';
+      pg.innerHTML = this._rueckSeite();
     } else {
       const M = D.data?.days[today ? 0 : 1];
       const raw = { ...(this._wxRaw || {}), ...(this._dbgWeather || {}) };

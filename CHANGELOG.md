@@ -2,6 +2,19 @@
 
 Jede Version der Pika Pet Card, die neueste zuerst.
 
+## 0.45.0 (2026-11-22)
+
+Die Chronik, die die Karte seit 0.34 schreibt, hat endlich eine Seite: den Rückblick im Tagebuch.
+
+- **Rückblick:** Mit `chronicle_entity` hat das Tagebuch einen fünften Reiter. Er zeigt, was seit 0.34 in der Chronik steht: einen Monatskalender (Montag zuerst) mit einer Pfote für jeden aufgeschriebenen Tag, einer goldenen für einen guten Tag und einem Köfferchen für einen Tag bei Pino; heute ist gestrichelt umrandet. Geblättert wird vom ersten aufgeschriebenen Monat bis zum laufenden.
+- **Ein Tag zum Antippen:** Unter dem Kalender steht der gewählte Tag aus seiner Sicht: „Dienstag, 10. November: 3-mal gefüttert, 12-mal gestreichelt, 2 Häufchen weggemacht, 1 Päckchen ausgepackt. Pino und ein Vögelchen waren da.“, mit den Bildern des Besuchs. `streicheln=99` heißt „99-mal oder öfter“, an einem Urlaubstag hängt das Schild „Bin bei Pino“ dabei.
+- **Alles zusammen:** aufgeschriebene Tage, gute Tage, die längste und die laufende Serie guter Tage, Füttern, Streicheln, Häufchen, Päckchen, wer wie oft zu Besuch war und die Tage bei Pino. Ein nicht guter Tag und ein Tag ohne Eintrag beenden eine Serie, ein Urlaubstag weder noch. Fehlt gestern am Morgen noch, gilt die laufende Serie weiter.
+- **Liest nur:** Die Seite liest die Liste beim ersten Aufschlagen (derselbe Aufruf wie die Chronik), merkt sie sich fünf Minuten und schreibt, löscht und ändert nichts. Sie liest auch dort, wo die Chronik nicht schreibt: an der Vorschau-Karte im Editor, ohne die beiden Helfer, auf einem Gerät in einer anderen Zeitzone. Fehlt die Liste, ist HA nicht verbunden, ist sie leer oder lehnt HA ab, steht statt des Kalenders eine Zeile da.
+- **Fünf Reiter:** Heute, Gestern, Rückblick, Schätze, Entdeckungen (Schätze rückt an die vierte Stelle). Bis 420 px Breite stehen sie in zwei Reihen, drei und zwei. Ohne `chronicle_entity` bleibt es bei vier Reitern, und HA wird nicht gefragt.
+- **Tastatur:** Im Kalender ist ein Tag der Halt für die Tab-Taste, von dort geht es mit den Pfeiltasten, Pos1 und Ende von Tag zu Tag; Eingabe- oder Leertaste wählt.
+- **Vorschau:** In der Zeile Chronik „Rückblick: sechs Wochen füllen“ und „Rückblick öffnen“.
+- **Tests:** `test/rueckblick.test.mjs` (21 Tests): Monatsraster auch an der Zeitumstellung, Serien, Summen, Sätze, der Reiter nur mit Option, kein Dienstaufruf, jede Zeile, Tastatur, Kontraste am Tag und in der Nacht. 384 Tests.
+
 ## 0.44.0 (2026-11-22)
 
 Kirby, Rufus und Katzumi haben je ein eigenes Spiel, mehr von der Welt antwortet auf einen Tipp, vor dem Schlafengehen gibt es ein Abendritual, goldene Schätze können eine Kleinigkeit mehr, Regentage sind voller, und die Tiefe ist jetzt Standard.

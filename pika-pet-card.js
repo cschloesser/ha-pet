@@ -24,6 +24,7 @@
  *                         ist es voll, Tricks und Gold für die Schätze.
  *   Tagebuch            → Tipp auf die Statusleiste: was er heute und gestern erlebt hat (aus dem Verlauf der Helfer
  *                         in HA abgeleitet), dazu seine Schätze und die Entdeckungen (was man alles tun kann)
+ *                         und mit chronicle_entity der Rückblick
  *   Besuche (Vögelchen, Maus, Frosch, Schnecke, Pino) werden aus der Uhrzeit berechnet und sind auf allen Geräten gleich.
  *
  * Konfiguration:
@@ -60,7 +61,7 @@
  */
 (() => {
   // src/version.js
-  var VERSION = "0.44.0";
+  var VERSION = "0.45.0";
 
   // src/logik/hilfen.js
   var Cancel = class extends Error {
@@ -2059,7 +2060,7 @@
     sauger: "rand",
     reiter: "rand"
   };
-  var BZ = Object.fromEntries(Object.entries(BUEHNE).map(([art, reihe]) => [art, buehneZ(REIHE[reihe], art)]));
+  var BZ = Object.fromEntries(Object.entries(BUEHNE).map(([art, reihe2]) => [art, buehneZ(REIHE[reihe2], art)]));
   var LICHT = "brightness(var(--lb, 1)) saturate(var(--ls, 1))";
   var LICHT_P = "brightness(var(--lbp, 1)) saturate(var(--ls, 1))";
 
@@ -5896,6 +5897,50 @@
   .fd i svg { display: block; width: 100%; height: 100%; }
   .fd b { display: block; font-size: 14px; font-weight: 800; line-height: 1.25; }
   .fd span { display: block; margin-top: 1px; font-size: 13px; line-height: 1.4; color: var(--soft); }
+  /* Fünf Reiter (mit chronicle_entity kommt „Rückblick“ dazu): enger gesetzt, auf schmalen Bildschirmen in zwei
+     Reihen (oben die drei Seiten über die Zeit, unten Schätze und Entdeckungen). Eigene Regeln, damit sich ohne
+     Rückblick nichts ändert. */
+  .tabs.t5 { gap: 4px; }
+  .tabs.t5 button { padding: 0 4px; }
+  /* Rückblick: Monatskalender (Montag zuerst), darunter der gewählte Tag und die Summen */
+  .kn { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 2px 0 6px; }
+  .kn b { font-size: 15px; font-weight: 800; }
+  .kn button { flex: none; width: 40px; height: 40px; padding: 11px; box-sizing: border-box; border-radius: 50%; color: var(--soft); background: var(--tab); }
+  .kn svg { display: block; width: 100%; height: 100%; }
+  .kn button:disabled { opacity: .35; cursor: default; }
+  .kw, .kt { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 4px; }
+  .kw span { padding-bottom: 3px; text-align: center; font-size: 12px; font-weight: 700; color: var(--soft); }
+  /* Ein Tag: Zahl oben, darunter das Zeichen. Ohne Eintrag nur die Zahl (kein Knopf), mit Eintrag ein Knopf. */
+  .tg { display: flex; flex-direction: column; align-items: center; height: 40px; box-sizing: border-box; padding-top: 2px; border: 2px solid transparent;
+    border-radius: 11px; font-size: 12px; font-weight: 700; line-height: 14px; color: var(--soft); }
+  .tg i { display: block; width: 17px; height: 17px; margin-top: 1px; color: var(--soft); }
+  .tg svg, .kl svg, .rt .bdg svg { display: block; width: 100%; height: 100%; }
+  button.tg { background: var(--tab); color: var(--ink); }
+  /* guter Tag: gefüllte Pfote in der Akzentfarbe auf goldenem Grund */
+  .tg.gut { background: rgba(242, 182, 50, .3); }
+  .tg.gut i { color: var(--acc); }
+  .night .tg.gut { background: rgba(242, 197, 107, .22); }
+  /* heute (läuft noch, steht noch nicht in der Liste): gestrichelter Rand; der gewählte Tag: fester Rand in Tinte */
+  .tg.heute { border: 2px dashed var(--soft); }
+  .tg.sel { border: 2px solid var(--ink); }
+  .kl { display: flex; flex-wrap: wrap; gap: 4px 14px; margin: 8px 2px 0; font-size: 12px; color: var(--soft); }
+  .kl span { display: inline-flex; align-items: center; gap: 5px; }
+  .kl i { display: block; width: 14px; height: 14px; }
+  .kl i.g { color: var(--acc); }
+  /* der gewählte Tag aus seiner Sicht, mit den Bildern des Besuchs */
+  .rt { margin: 12px 0 2px; padding: 11px 12px 12px; border-radius: 14px; background: var(--tab); }
+  .rt .rk { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 4px 10px; }
+  .rt b { font-size: 14px; font-weight: 800; }
+  .rt .bdg { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; font-weight: 700; color: var(--soft); }
+  .rt .bdg i { display: block; width: 14px; height: 14px; color: var(--acc); }
+  .rt p { margin: 4px 0 0; font-size: 15px; line-height: 1.45; }
+  .rt .gs { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 9px; }
+  .rt .gs .ic:nth-child(even) { transform: rotate(3deg); }
+  .rt .sg { display: block; width: 66px; transform: rotate(-3deg); }
+  .rt .sg svg { display: block; width: 100%; height: auto; }
+  /* Summen: Zähler wie auf den Tagesseiten; beim Besuch etwas größere Bilder */
+  .chips.sum { margin-top: 6px; }
+  .chips.gst i { width: 20px; height: 20px; margin: -2px 0; }
   @keyframes tbin { from { opacity: 0; } }
   @keyframes tbup { from { transform: translateY(24px) scale(.96); opacity: 0; } }
   @media (max-width: 520px) {
@@ -5911,6 +5956,13 @@
   @media (max-width: 340px) {
     .tabs { gap: 4px; padding-left: 10px; padding-right: 10px; }
     .tabs button { padding: 0 4px; font-size: 13px; }
+  }
+  /* Fünf Reiter passen auf Handys nicht ausgeschrieben in eine Reihe (gemessen mit Segoe UI: 298 px Text, bei 401 px
+     Breite blieben je Reiter 5 px Rand): bis 420 px zwei Reihen, drei und zwei */
+  @media (max-width: 420px) {
+    .tabs.t5 { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 5px; }
+    .tabs.t5 button { grid-column: span 2; font-size: 14px; }
+    .tabs.t5 button:nth-child(n+4) { grid-column: span 3; }
   }
   @media (prefers-reduced-motion: reduce) { .bd, .sheet { animation: none; } }
   `;
@@ -6598,6 +6650,129 @@
       for (const x of les.slice(1)) out.push({ op: "remove", d, uid: x.uid });
     }
     return out;
+  };
+
+  // src/logik/rueckblick.js
+  var RUECK = { frisch: 5 * 6e4, haengt: 3e4 };
+  var RUECK_MONAT = ["Januar", "Februar", "März", "April", "Mai", "Juni", "Juli", "August", "September", "Oktober", "November", "Dezember"];
+  var RUECK_WTAG = ["Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag", "Samstag", "Sonntag"];
+  var RUECK_GAST = { vogel: ["ein Vögelchen", "Vögelchen"], falter: ["ein Schmetterling", "Schmetterling"] };
+  var RUECK_REIHE = ["pino", "kirby", "rufus", "katzumi", "vogel", "falter"];
+  var RUECK_TXT = {
+    // {a}: erster aufgeschriebener Tag, {n}: „10 Tage stehen“ oder „ein Tag steht“, {g}: der Satz zu den guten Tagen
+    fazit: [
+      "Seit dem {a} schreibe ich jeden Tag auf. {g}",
+      "Mein Rückblick fängt am {a} an, {n} schon drin. {g}",
+      "Am {a} hab ich angefangen aufzuschreiben. {g}"
+    ],
+    gut0: ["Die guten Tage kommen bestimmt noch.", "Ein guter Tag fehlt mir noch. Das wird schon!"],
+    gut1: ["Ein guter Tag war schon dabei!", "Einen guten Tag hab ich schon gezählt!"],
+    gutN: ["{z} gute Tage waren schon dabei!", "{z} gute Tage hab ich schon gezählt!"],
+    gutAlle: ["Und jeder war ein guter Tag!"],
+    // statt des Kalenders, je Lage eine Zeile
+    laden: "Ich blättere zurück …",
+    fehlt: "Ich finde meine Chronik gerade nicht. Die Liste gibt es in Home Assistant nicht, oder sie ist nicht erreichbar.",
+    getrennt: "Ich komme gerade nicht an meine Chronik: Home Assistant ist nicht verbunden.",
+    leer: "Ich fange gerade erst an aufzuschreiben. Morgen steht hier der erste Tag.",
+    fehler: "Meine Chronik klemmt gerade. Schlag den Rückblick gleich noch einmal auf."
+  };
+  var utc = (tag) => new Date(tag * 864e5);
+  var rueckDatum = (d, { wt = false, jahr = false } = {}) => {
+    const tag = chronikTag(d);
+    if (tag == null) return "";
+    const x = utc(tag);
+    return `${wt ? `${RUECK_WTAG[(x.getUTCDay() + 6) % 7]}, ` : ""}${x.getUTCDate()}. ${RUECK_MONAT[x.getUTCMonth()]}${jahr ? ` ${x.getUTCFullYear()}` : ""}`;
+  };
+  var rueckTage = (items) => [...chronikTage(items).values()].map((e) => ({
+    d: e.d,
+    tag: chronikTag(e.d),
+    futter: e.futter || 0,
+    streicheln: e.streicheln || 0,
+    putzen: e.putzen || 0,
+    paeckchen: e.paeckchen || 0,
+    besuch: [...e.besuch || []],
+    gut: e.x?.gut === "1",
+    urlaub: e.x?.urlaub === "1"
+  })).sort((a, b) => a.tag - b.tag);
+  var rueckMonat = (j, m) => {
+    const tage = new Date(Date.UTC(j, m, 0)).getUTCDate();
+    const vor = (new Date(Date.UTC(j, m - 1, 1)).getUTCDay() + 6) % 7;
+    const kopf = `${String(j).padStart(4, "0")}-${String(m).padStart(2, "0")}-`;
+    const zellen = [...Array(vor).fill(null), ...Array.from({ length: tage }, (_, i) => `${kopf}${String(i + 1).padStart(2, "0")}`)];
+    while (zellen.length % 7) zellen.push(null);
+    return { j, m, name: `${RUECK_MONAT[m - 1]} ${j}`, tage, vor, zellen };
+  };
+  var rueckJm = (d) => [Number(String(d).slice(0, 4)), Number(String(d).slice(5, 7))];
+  var rueckJmPlus = ([j, m], n) => {
+    const k = j * 12 + (m - 1) + n;
+    return [Math.floor(k / 12), (k % 12 + 12) % 12 + 1];
+  };
+  var rueckJmVgl = (a, b) => a[0] * 12 + a[1] - (b[0] * 12 + b[1]);
+  var rueckSerien = (tage, heute = null) => {
+    if (!tage.length) return { laengste: 0, aktuell: 0 };
+    const M = new Map(tage.map((t) => [t.tag, t]));
+    const a = tage[0].tag;
+    const b = tage.at(-1).tag;
+    let lauf = 0;
+    let laengste = 0;
+    for (let i = a; i <= b; i++) {
+      const t = M.get(i);
+      if (!t) lauf = 0;
+      else if (t.gut) laengste = Math.max(laengste, ++lauf);
+      else if (!t.urlaub) lauf = 0;
+    }
+    return { laengste, aktuell: heute == null || b >= heute - 2 ? lauf : 0 };
+  };
+  var rueckSummen = (tage, heute = null) => {
+    const S = {
+      n: tage.length,
+      gut: 0,
+      urlaub: 0,
+      futter: 0,
+      streicheln: 0,
+      mehr: false,
+      putzen: 0,
+      paeckchen: 0,
+      besuch: [],
+      ...rueckSerien(tage, heute),
+      erster: tage[0]?.d ?? null,
+      letzter: tage.at(-1)?.d ?? null
+    };
+    const G = /* @__PURE__ */ new Map();
+    for (const t of tage) {
+      if (t.gut) S.gut++;
+      if (t.urlaub) S.urlaub++;
+      for (const k of ["futter", "streicheln", "putzen", "paeckchen"]) S[k] += t[k];
+      if (t.streicheln >= PET_CAP) S.mehr = true;
+      for (const k of t.besuch) if (rueckGast(k)) G.set(k, (G.get(k) || 0) + 1);
+    }
+    S.besuch = [...G].sort((x, y) => y[1] - x[1] || RUECK_REIHE.indexOf(x[0]) - RUECK_REIHE.indexOf(y[0]));
+    return S;
+  };
+  var rueckGast = (k, fr = "Pino") => k === "pino" ? [fr, fr] : hasKey(FRIENDS, k) && FRIENDS[k].name ? [FRIENDS[k].name, FRIENDS[k].name] : hasKey(RUECK_GAST, k) ? RUECK_GAST[k] : null;
+  var reihe = (list) => list.length > 1 ? `${list.slice(0, -1).join(", ")} und ${list.at(-1)}` : list[0] || "";
+  var gross = (s) => s.replace(/^./, (c) => c.toUpperCase());
+  var rueckSatz = (t, fr = "Pino") => {
+    const z = [];
+    if (t.futter) z.push(`${t.futter}-mal gefüttert`);
+    if (t.streicheln) z.push(t.streicheln >= PET_CAP ? `${PET_CAP}-mal oder öfter gestreichelt` : `${t.streicheln}-mal gestreichelt`);
+    if (t.putzen) z.push(`${t.putzen} Häufchen weggemacht`);
+    if (t.paeckchen) z.push(`${t.paeckchen} Päckchen ausgepackt`);
+    const gaeste = t.besuch.filter((k) => rueckGast(k));
+    const s = [];
+    if (z.length) s.push(`${z.join(", ")}.`);
+    if (t.urlaub) s.push(z.length ? `Einen Teil des Tages war ich bei ${fr}.` : `Da war ich bei ${fr}.`);
+    else if (!z.length) s.push("Da war es ganz ruhig bei mir.");
+    if (gaeste.length) s.push(`${gross(reihe(gaeste.map((k) => rueckGast(k, fr)[0])))} ${gaeste.length > 1 ? "waren" : "war"} da.`);
+    if (t.gut) s.push("Das war ein guter Tag!");
+    return { kopf: rueckDatum(t.d, { wt: true }), text: s.join(" "), gaeste };
+  };
+  var rueckFazit = (S, heute = null) => {
+    if (!S.n) return RUECK_TXT.leer;
+    const t0 = chronikTag(S.erster);
+    const jahr = heute != null && utc(t0).getUTCFullYear() !== utc(heute).getUTCFullYear();
+    const g = !S.gut ? RUECK_TXT.gut0 : S.gut === S.n && S.n > 1 ? RUECK_TXT.gutAlle : S.gut === 1 ? RUECK_TXT.gut1 : RUECK_TXT.gutN;
+    return diaryPick(RUECK_TXT.fazit, "rb", t0, S.n).replace("{a}", rueckDatum(S.erster, { jahr })).replace("{n}", S.n === 1 ? "ein Tag steht" : `${S.n} Tage stehen`).replace("{g}", diaryPick(g, "rbg", t0, S.n).replace("{z}", S.gut));
   };
 
   // src/grafik/freunde.js
@@ -7413,6 +7588,12 @@
     <path d="M14.6 21.2 v2 l1.3 -1 l1.3 1 v-2" fill="#e8584e" stroke="${OUT}" stroke-width=".6" stroke-linejoin="round"/>`);
   var DIARY_PAW = DI(`<g fill="currentColor"><ellipse cx="12" cy="15.6" rx="5" ry="4.2"/><ellipse cx="5.6" cy="10.4" rx="2" ry="2.6"/>
     <ellipse cx="9.6" cy="6.8" rx="2" ry="2.7"/><ellipse cx="14.4" cy="6.8" rx="2" ry="2.7"/><ellipse cx="18.4" cy="10.4" rx="2" ry="2.6"/></g>`);
+  var DIARY_TURN = (dir) => DI(`<path d="${dir < 0 ? "M14.6 5.6 L8.4 12 L14.6 18.4" : "M9.4 5.6 L15.6 12 L9.4 18.4"}" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/>`);
+  var DIARY_PAW_O = DI(`<g fill="none" stroke="currentColor" stroke-width="1.9"><ellipse cx="12" cy="15.6" rx="4.2" ry="3.4"/><ellipse cx="5.6" cy="10.4" rx="1.3" ry="1.9"/>
+    <ellipse cx="9.6" cy="6.8" rx="1.3" ry="2"/><ellipse cx="14.4" cy="6.8" rx="1.3" ry="2"/><ellipse cx="18.4" cy="10.4" rx="1.3" ry="1.9"/></g>`);
+  var DIARY_CASE = DI(`<path d="M8.8 8 V5.6 a1.7 1.7 0 0 1 1.7 -1.7 h3 a1.7 1.7 0 0 1 1.7 1.7 V8" fill="none" stroke="currentColor" stroke-width="1.8"/>
+    <rect x="3.2" y="7.6" width="17.6" height="12.8" rx="2.6" fill="currentColor"/>
+    <path d="M8.2 7.6 v12.8 M15.8 7.6 v12.8" stroke="var(--pp, #fff)" stroke-width="1.4"/>`);
   var DIARY_ICON = {
     wake: DI(`<path d="M12 3 v3 M4.6 7.6 l2 2 M19.4 7.6 l-2 2 M2.4 15.6 h2.6 M19 15.6 h2.6" stroke="#f0a02c" stroke-width="1.6" stroke-linecap="round"/>
       <path d="M6 17 a6 6 0 0 1 12 0Z" fill="#f6c945" stroke="${OUT}" stroke-width="1"/><path d="M2 20 h20" stroke="#7cc35a" stroke-width="2.2" stroke-linecap="round"/>`),
@@ -13411,13 +13592,183 @@
       });
       return `${h}<p class="note">Die Pfoten merkt sich nur dieses Gerät.</p>`;
     }
-    // Fenster über dem Dashboard öffnen (tab: 'heute', 'gestern', 'schatz', 'entd'). Lang drücken auf den
-    // Päckchen-Knopf schlägt gleich die Schätze auf.
+    // Reiter „Rückblick“: die Chronik (chronicle_entity, eine To-do-Liste von HA mit einer Zeile je Pika-Tag) als
+    // Monatskalender, der gewählte Tag aus seiner Sicht und die Summen. Den Reiter gibt es nur mit der Option und mit
+    // Tagebuch; ohne sie ändert sich nichts, und HA wird nicht gefragt. Die Seite liest nur: Sie schreibt, löscht und
+    // benennt nichts um, auch nicht an der Vorschau-Karte im Editor. Rechnen und Texte: src/logik/rueckblick.js.
+    _rueckOn() {
+      return this._diaryOn() && !!this._cfg?.chronicle_entity;
+    }
+    // Der Reiter wird aufgeschlagen. Gelesen wird beim ersten Mal und wieder, wenn der gemerkte Stand älter als
+    // RUECK.frisch ist (er liegt an der Karte und überdauert das Schließen des Tagebuchs). Solange neu gelesen wird,
+    // bleibt ein älterer Stand derselben Liste stehen. Was nicht gelang (Liste fehlt, keine Verbindung, HA lehnt ab),
+    // wird nicht gemerkt: Beim nächsten Aufschlagen wird es wieder versucht.
+    _rueckOpen() {
+      const id = this._cfg.chronicle_entity;
+      const S = this._rueckStand;
+      const da = !!S && S.id === id && S.st === "ok";
+      if (da && Date.now() - S.at < RUECK.frisch) return;
+      const L = this._rueckLauf;
+      if (L && L.id === id && Date.now() - L.at < RUECK.haengt) return;
+      const lauf = { id, at: Date.now() };
+      this._rueckLauf = lauf;
+      if (!da) this._rueckStand = { id, st: "laden" };
+      this._rueckLies(id).then((neu) => {
+        if (this._rueckLauf !== lauf) return;
+        this._rueckLauf = null;
+        if (id !== this._cfg?.chronicle_entity) return;
+        this._rueckStand = { id, at: Date.now(), ...neu };
+        if (this._dia?.tab === "rueck") this._rueckMalen();
+      });
+    }
+    // Liste lesen: derselbe Aufruf und derselbe Leser wie die Chronik (_chronikHol, chronikTage). → { st: 'ok', tage }
+    // oder { st: 'fehlt' | 'getrennt' | 'fehler' }; wird nie abgelehnt. Eine fehlende oder nicht erreichbare Liste und
+    // eine Ablehnung von HA (ein schlichtes Objekt oder eine Zahl) sind kein Fehler der Karte; nur ein Error aus dem
+    // eigenen Code kommt in den Fehlerspeicher.
+    async _rueckLies(id) {
+      const warum = this._chronikLesbar();
+      if (warum) return { st: warum === "getrennt" ? "getrennt" : "fehlt" };
+      try {
+        const items = await this._chronikHol(id);
+        return items ? { st: "ok", tage: rueckTage(items) } : { st: "fehler" };
+      } catch (e) {
+        if (e instanceof Error) this._err("Rückblick", e);
+        else console.debug("pika-pet-card: Chronik für den Rückblick nicht lesbar", e);
+        return { st: "fehler" };
+      }
+    }
+    // Bild zu einem Besuch (Kürzel der Chronik)
+    _rueckBild(k) {
+      return k === "pino" ? DIARY_ICON.pino : hasKey(FRIEND_ICON, k) ? FRIEND_ICON[k] : k === "vogel" ? DIARY_ICON.bird : k === "falter" ? DIARY_ICON.bfly : "";
+    }
+    // Die Seite. Was gewählt ist, steht am offenen Fenster (D.rb: mon [Jahr, Monat], sel Datum): Anfangs der laufende
+    // Monat und der jüngste aufgeschriebene Tag. Geblättert wird vom ersten aufgeschriebenen Monat bis zum laufenden.
+    _rueckSeite() {
+      const D = this._dia;
+      const S = this._rueckStand;
+      const st = S && S.id === this._cfg.chronicle_entity ? S.st : "laden";
+      if (st !== "ok") return `<p class="${st === "laden" ? "wait" : "none"}">${esc(RUECK_TXT[st] || RUECK_TXT.fehler)}</p>`;
+      const tage = S.tage;
+      if (!tage.length) return `<p class="none">${esc(RUECK_TXT.leer)}</p>`;
+      const heute = pikaDay(this._haNow());
+      const hd = chronikDatum(heute);
+      const fr = this._frName();
+      const M = new Map(tage.map((t2) => [t2.d, t2]));
+      const sum = rueckSummen(tage, heute);
+      const R2 = D.rb ||= {};
+      const von = rueckJm(tage[0].d);
+      const bis = rueckJmVgl(rueckJm(tage.at(-1).d), rueckJm(hd)) > 0 ? rueckJm(tage.at(-1).d) : rueckJm(hd);
+      let mon = R2.mon || rueckJm(hd);
+      if (rueckJmVgl(mon, von) < 0) mon = von;
+      if (rueckJmVgl(mon, bis) > 0) mon = bis;
+      R2.mon = mon;
+      if (!M.has(R2.sel)) R2.sel = tage.at(-1).d;
+      const K2 = rueckMonat(mon[0], mon[1]);
+      const anker = K2.zellen.includes(R2.sel) ? R2.sel : K2.zellen.filter((d) => d && M.has(d)).at(-1);
+      const zelle = (d) => {
+        if (!d) return "<span></span>";
+        const n = Number(d.slice(8));
+        const t2 = M.get(d);
+        const ist = d === hd;
+        if (!t2) return `<span class="tg${ist ? ' heute" aria-current="date" title="heute' : ""}">${n}</span>`;
+        const z2 = rueckSatz(t2, fr);
+        return `<button class="tg${t2.gut ? " gut" : ""}${ist ? " heute" : ""}${d === R2.sel ? " sel" : ""}" data-rb="tag" data-tag="${d}" tabindex="${d === anker ? 0 : -1}" aria-pressed="${d === R2.sel}" aria-label="${esc(`${z2.kopf}: ${z2.text}`)}">${n}<i>${t2.gut ? DIARY_PAW : t2.urlaub ? DIARY_CASE : DIARY_PAW_O}</i></button>`;
+      };
+      const blatt = (dir) => {
+        const ziel = rueckJmPlus(mon, dir);
+        const ok = rueckJmVgl(ziel, von) >= 0 && rueckJmVgl(ziel, bis) <= 0;
+        return `<button data-rb="mon" data-dir="${dir}" data-mon="${ziel.join("-")}" aria-label="${dir < 0 ? "Monat davor" : "Monat danach"}: ${rueckMonat(ziel[0], ziel[1]).name}"${ok ? "" : " disabled"}>${DIARY_TURN(dir)}</button>`;
+      };
+      let h = `<p class="fazit">${esc(rueckFazit(sum, heute))}</p>`;
+      h += `<div class="kn">${blatt(-1)}<b>${K2.name}</b>${blatt(1)}</div>`;
+      h += `<div class="kw" aria-hidden="true">${["M", "D", "M", "D", "F", "S", "S"].map((w) => `<span>${w}</span>`).join("")}</div>`;
+      h += `<div class="kt" role="group" aria-label="${K2.name}">${K2.zellen.map(zelle).join("")}</div>`;
+      h += `<div class="kl"><span><i>${DIARY_PAW_O}</i>aufgeschrieben</span><span><i class="g">${DIARY_PAW}</i>guter Tag</span>${sum.urlaub ? `<span><i>${DIARY_CASE}</i>bei ${esc(fr)}</span>` : ""}</div>`;
+      const t = M.get(R2.sel);
+      const z = rueckSatz(t, fr);
+      const bild = (k) => `<i class="ic" title="${esc(rueckGast(k, fr)[1])}">${this._rueckBild(k)}</i>`;
+      h += `<div class="rt"><div class="rk"><b>${esc(z.kopf)}</b>${t.gut ? `<span class="bdg"><i>${DIARY_PAW}</i>guter Tag</span>` : ""}</div><p>${esc(z.text)}</p>${z.gaeste.length || t.urlaub ? `<div class="gs">${t.urlaub ? `<i class="sg">${URLAUB_SIGN(fr)}</i>` : ""}${z.gaeste.map(bild).join("")}</div>` : ""}</div>`;
+      const chips = (list, kl = "") => list.length ? `<div class="chips sum${kl}">${list.map(([i, text]) => `<span>${i ? `<i>${i}</i>` : ""}${esc(text)}</span>`).join("")}</div>` : "";
+      const a = [[DIARY_PAW_O, `${sum.n === 1 ? "1 Tag" : `${sum.n} Tage`} aufgeschrieben`], [DIARY_PAW, sum.gut === 1 ? "1 guter Tag" : `${sum.gut} gute Tage`]];
+      if (sum.gut) a.push(["", `Gute Tage am Stück: längstens ${sum.laengste}, gerade ${sum.aktuell}`]);
+      if (sum.urlaub) a.push([DIARY_CASE, `${sum.urlaub === 1 ? "1 Tag" : `${sum.urlaub} Tage`} bei ${fr}`]);
+      const b = [];
+      if (sum.futter) b.push([ICON_LEAF, `${sum.futter}× gefüttert`]);
+      if (sum.streicheln) b.push([ICON_HEART, `${sum.mehr ? "mindestens " : ""}${sum.streicheln}× gestreichelt`]);
+      if (sum.putzen) b.push([ICON_SPARK, `${sum.putzen} Häufchen weggemacht`]);
+      if (sum.paeckchen) b.push([GIFT_PARCEL, `${sum.paeckchen} Päckchen ausgepackt`]);
+      h += `<h3>Alles zusammen</h3>${chips(a)}${chips(b)}`;
+      if (sum.besuch.length) h += `<h3>Wer zu Besuch war</h3>${chips(sum.besuch.map(([k, n]) => [this._rueckBild(k), `${rueckGast(k, fr)[1]} ${n}×`]), " gst")}`;
+      return `${h}<p class="note">Heute steht noch nicht drin: Einen Tag schreibe ich erst auf, wenn er vorbei ist.</p>`;
+    }
+    // Die Seite neu zeichnen und den Fokus halten: Die Knöpfe entstehen neu, hatte einer den Fokus (Tastatur), bekommt
+    // ihn sein Nachfolger. Gibt es den nicht mehr (anderer Monat) oder ist er gesperrt (erster, letzter Monat), bekommt
+    // ihn die Seite, ein Tab weiter stehen die Knöpfe.
+    _rueckMalen() {
+      const D = this._dia;
+      if (!D) return;
+      const pg = D.root.querySelector(".page");
+      const a = D.root.activeElement;
+      const war = a && a !== pg && pg.contains(a) ? { ...a.dataset } : null;
+      this._diaryRender(true);
+      if (!war) return;
+      const z = [...pg.querySelectorAll("[data-rb]")].find((b) => b.dataset.rb === war.rb && (war.rb === "tag" ? b.dataset.tag === war.tag : b.dataset.dir === war.dir));
+      (z && !z.disabled ? z : pg).focus({ preventScroll: true });
+    }
+    // Tipp (oder Eingabetaste) im Kalender: einen Tag wählen, einen Monat blättern
+    _rueckKlick(b) {
+      const D = this._dia;
+      if (!D || b.disabled) return;
+      const R2 = D.rb ||= {};
+      const tag = b.dataset.rb === "tag";
+      if (tag) R2.sel = b.dataset.tag;
+      else if (b.dataset.rb === "mon") R2.mon = String(b.dataset.mon).split("-").map(Number);
+      this._rueckMalen();
+      if (!tag) return;
+      const pg = D.root.querySelector(".page");
+      const rt = pg.querySelector(".rt");
+      const unten = rt ? rt.offsetTop - pg.offsetTop + rt.offsetHeight + 8 : NaN;
+      if (unten > pg.scrollTop + pg.clientHeight) pg.scrollTop = unten - pg.clientHeight;
+    }
+    // Pfeiltasten im Kalender, von einem Tag mit Eintrag aus: links und rechts zum Tag davor und danach, an dem etwas
+    // steht, hoch und runter zum selben Wochentag, Pos1 und Ende zum ersten und letzten des Monats. Der Fokus wandert,
+    // gewählt wird mit Eingabe- oder Leertaste. → ob die Taste verbraucht ist
+    _rueckTaste(e) {
+      const D = this._dia;
+      const a = D?.root.activeElement;
+      if (D?.tab !== "rueck" || a?.dataset?.rb !== "tag") return false;
+      const tags = [...D.root.querySelectorAll("button.tg")];
+      const i = tags.indexOf(a);
+      let z = null;
+      const woche = (um) => {
+        const t0 = chronikTag(a.dataset.tag);
+        for (let k = 1; k <= 5 && !z; k++) z = tags.find((b) => chronikTag(b.dataset.tag) === t0 + um * k) || null;
+      };
+      if (e.key === "ArrowLeft") z = tags[i - 1];
+      else if (e.key === "ArrowRight") z = tags[i + 1];
+      else if (e.key === "ArrowUp") woche(-7);
+      else if (e.key === "ArrowDown") woche(7);
+      else if (e.key === "Home") z = tags[0];
+      else if (e.key === "End") z = tags.at(-1);
+      else return false;
+      e.preventDefault();
+      if (z && z !== a) {
+        a.setAttribute("tabindex", "-1");
+        z.setAttribute("tabindex", "0");
+        z.focus();
+      }
+      return true;
+    }
+    // Fenster über dem Dashboard öffnen (tab: 'heute', 'gestern', 'rueck', 'schatz', 'entd'). Lang drücken auf den
+    // Päckchen-Knopf schlägt gleich die Schätze auf. Den Reiter „Rückblick“ gibt es nur mit chronicle_entity.
     _diaryOpen(tab = "heute") {
       if (!this._el) return;
       const only = !this._diaryOn();
+      const rb = this._rueckOn();
       if (only) tab = "schatz";
+      else if (tab === "rueck" && !rb) tab = "heute";
       if (this._dia) return this._diaryTab(tab);
+      const reiter = [["heute", "Heute"], ["gestern", "Gestern"], ...rb ? [["rueck", "Rückblick"]] : [], ["schatz", "Schätze"], ["entd", "Entdeckungen"]];
       const n = String(this._cfg.name || "Pika");
       const title = `${/[sßxz]$/i.test(n) ? `${n}’` : `${n}s`} ${only ? "Schätze" : "Tagebuch"}`;
       const host = document.createElement("div");
@@ -13428,8 +13779,8 @@
           <div class="sheet" role="dialog" aria-modal="true" aria-label="${esc(title)}" tabindex="-1">
             <div class="hd"><span class="bk">${DIARY_BOOK}</span><div class="ht"><b>${esc(title)}</b><span class="dt"></span></div>
               <button class="x" aria-label="Schließen" title="Schließen">✕</button></div>
-            ${only ? "" : `<div class="tabs" role="tablist">
-              <button role="tab" data-tab="heute">Heute</button><button role="tab" data-tab="gestern">Gestern</button><button role="tab" data-tab="schatz">Schätze</button><button role="tab" data-tab="entd">Entdeckungen</button>
+            ${only ? "" : `<div class="tabs${rb ? " t5" : ""}" role="tablist">
+              ${reiter.map(([k, name]) => `<button role="tab" data-tab="${k}">${name}</button>`).join("")}
             </div>`}
             <div class="page" role="tabpanel" tabindex="0"></div>
             <div class="ft"></div>
@@ -13446,12 +13797,12 @@
           e.stopPropagation();
           this._diaryClose();
         } else if (e.key === "Tab") {
-          const f2 = [...root.querySelectorAll("button:not([disabled]), summary, .page")].filter((el) => el.getClientRects().length > 0);
+          const f2 = [...root.querySelectorAll("button:not([disabled]), summary, .page")].filter((el) => el.getClientRects().length > 0 && el.tabIndex !== -1);
           e.preventDefault();
           if (!f2.length) return;
           const i = f2.indexOf(root.activeElement);
           f2[e.shiftKey ? i <= 0 ? f2.length - 1 : i - 1 : (i + 1) % f2.length].focus();
-        }
+        } else this._rueckTaste(e);
       });
       const poke = () => {
         clearTimeout(D.t);
@@ -13461,6 +13812,8 @@
       root.querySelector(".page").addEventListener("scroll", poke, { passive: true });
       poke();
       root.querySelector(".page").addEventListener("click", (e) => {
+        const r = e.target.closest?.("[data-rb]");
+        if (r) return this._rueckKlick(r);
         const b = e.target.closest?.("[data-ur]");
         if (!b || b.disabled) return;
         const a = b.dataset.ur;
@@ -13475,6 +13828,7 @@
         this._diaryRender(true);
         if (key) pg.focus({ preventScroll: true });
       });
+      if (tab === "rueck") this._rueckOpen();
       this._diaryRender();
       root.querySelector(".sheet").focus();
       if (only) return;
@@ -13484,20 +13838,22 @@
       } catch (e) {
       }
       this._diaryDot();
+      const fertig = () => D.tab === "rueck" ? this._rueckMalen() : this._diaryRender();
       this._diaryBuild().then((data) => {
         if (this._dia !== D) return;
         D.data = data;
-        this._diaryRender();
+        fertig();
       }).catch((e) => {
         this._err("Tagebuch", e);
         if (this._dia !== D) return;
         D.data = { fail: true, days: [] };
-        this._diaryRender();
+        fertig();
       });
     }
     _diaryTab(tab) {
       if (!this._dia) return;
-      this._dia.tab = this._diaryOn() ? tab : "schatz";
+      this._dia.tab = !this._diaryOn() ? "schatz" : tab === "rueck" && !this._rueckOn() ? "heute" : tab;
+      if (this._dia.tab === "rueck") this._rueckOpen();
       this._diaryRender();
     }
     // keep: an der Stelle bleiben (Klick auf den Schalter), sonst nach oben
@@ -13515,6 +13871,9 @@
       } else if (D.tab === "entd") {
         dt.textContent = "Was du bei mir ausprobieren kannst";
         pg.innerHTML = this._diaryFinds();
+      } else if (D.tab === "rueck") {
+        dt.textContent = "Was bisher geschah";
+        pg.innerHTML = this._rueckSeite();
       } else {
         const M = D.data?.days[today ? 0 : 1];
         const raw = { ...this._wxRaw || {}, ...this._dbgWeather || {} };
@@ -22579,8 +22938,8 @@
   var Chronik = class {
     // Mit chronicle_entity (einer To-do-Liste von HA) trägt die Karte einmal am Tag nach, was an den vergangenen
     // Pika-Tagen geschah: je Tag ein Eintrag (Format und Regeln in src/logik/chronik.js). Abgeleitet wird die Bilanz wie
-    // das Tagebuch aus dem Verlauf der beiden Helfer. Gezeigt wird sie noch nirgends. Ohne die Option passiert hier
-    // nichts: kein Aufruf an HA, kein Zeitgeber.
+    // das Tagebuch aus dem Verlauf der beiden Helfer. Gezeigt wird sie im Tagebuch auf der Seite „Rückblick“
+    // (src/karte/tagebuch.js, liest nur). Ohne die Option passiert hier nichts: kein Aufruf an HA, kein Zeitgeber.
     // Andere Liste (oder keine mehr): von vorn. Ein laufender Lauf gehört zur alten Liste und endet.
     _chronikReset() {
       this._chronikStop();
@@ -22761,10 +23120,29 @@
     async _chronikItems() {
       if (!this._chronikOn()) return null;
       const id = this._cfg.chronicle_entity;
+      const items = await this._chronikHol(id);
+      if (!items || id !== this._cfg?.chronicle_entity) return null;
+      this._chronikStand = { t: this._haNow(), tage: chronikTage(items) };
+      return items;
+    }
+    // Der eine Aufruf, mit dem die Liste gelesen wird (Chronik und Rückblick im Tagebuch teilen ihn). → Einträge;
+    // null, wenn die Antwort keine Liste enthält. Lehnt HA ab, wirft der Aufruf. Merkt sich nichts.
+    async _chronikHol(id) {
       const r = await this._hass.callWS({ type: "todo/item/list", entity_id: id });
-      if (!Array.isArray(r?.items) || id !== this._cfg?.chronicle_entity) return null;
-      this._chronikStand = { t: this._haNow(), tage: chronikTage(r.items) };
-      return r.items;
+      return Array.isArray(r?.items) ? r.items : null;
+    }
+    // Lässt sich die Liste gerade lesen? → null (ja) oder warum nicht: 'aus' (keine chronicle_entity), 'getrennt' (keine
+    // Verbindung zu HA), 'fehlt' (die Liste gibt es nicht oder sie ist nicht erreichbar). Für den Rückblick, der nur
+    // liest: Anders als _chronikOn fragt das nicht, ob geschrieben werden dürfte. Gelesen wird darum auch an der
+    // Vorschau-Karte im Editor, ohne die beiden Helfer, auf einem Gerät in einer anderen Zeitzone und aus einer Liste,
+    // die keine neuen Einträge annimmt.
+    _chronikLesbar() {
+      const id = this._cfg?.chronicle_entity;
+      const hass = this._hass;
+      if (!id) return "aus";
+      if (!hass || hass.connected === false) return "getrennt";
+      const ent = hass.states?.[id];
+      return !ent || ent.state === "unavailable" || ent.state === "unknown" ? "fehlt" : null;
     }
     // Liste lesen. → { t, tage: Map Datum → Eintrag } (auch in this._chronikStand) oder null, wenn sie gerade nicht
     // lesbar ist. Schreibt nichts.
@@ -24703,6 +25081,19 @@
       chronikFehlt,
       chronikPlan,
       diaryDerive,
+      RUECK,
+      RUECK_TXT,
+      rueckDatum,
+      rueckTage,
+      rueckMonat,
+      rueckJm,
+      rueckJmPlus,
+      rueckJmVgl,
+      rueckSerien,
+      rueckSummen,
+      rueckGast,
+      rueckSatz,
+      rueckFazit,
       AREALE,
       randStil,
       LOOKOUT_SVG,

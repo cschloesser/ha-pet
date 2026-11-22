@@ -13,6 +13,16 @@ const DIARY_BOOK = DI(`<rect x="4.6" y="2.6" width="15" height="18.8" rx="2.2" f
     <path d="M14.6 21.2 v2 l1.3 -1 l1.3 1 v-2" fill="#e8584e" stroke="${OUT}" stroke-width=".6" stroke-linejoin="round"/>`);
 const DIARY_PAW = DI(`<g fill="currentColor"><ellipse cx="12" cy="15.6" rx="5" ry="4.2"/><ellipse cx="5.6" cy="10.4" rx="2" ry="2.6"/>
     <ellipse cx="9.6" cy="6.8" rx="2" ry="2.7"/><ellipse cx="14.4" cy="6.8" rx="2" ry="2.7"/><ellipse cx="18.4" cy="10.4" rx="2" ry="2.6"/></g>`);
+// Rückblick (Kalender): Pfote im Umriss für einen aufgeschriebenen Tag (die gefüllte DIARY_PAW steht für einen guten
+// Tag: Der Unterschied liegt in der Form, nicht nur in der Farbe) und ein Köfferchen für einen Urlaubstag. Beide in
+// der Schriftfarbe, die Riemen des Koffers in der Farbe des Papiers.
+// (die Winkel zum Blättern der Monate: als Zeichnung, das Schriftzeichen „‹“ fällt je nach Schrift winzig aus)
+const DIARY_TURN = (dir) => DI(`<path d="${dir < 0 ? 'M14.6 5.6 L8.4 12 L14.6 18.4' : 'M9.4 5.6 L15.6 12 L9.4 18.4'}" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/>`);
+const DIARY_PAW_O = DI(`<g fill="none" stroke="currentColor" stroke-width="1.9"><ellipse cx="12" cy="15.6" rx="4.2" ry="3.4"/><ellipse cx="5.6" cy="10.4" rx="1.3" ry="1.9"/>
+    <ellipse cx="9.6" cy="6.8" rx="1.3" ry="2"/><ellipse cx="14.4" cy="6.8" rx="1.3" ry="2"/><ellipse cx="18.4" cy="10.4" rx="1.3" ry="1.9"/></g>`);
+const DIARY_CASE = DI(`<path d="M8.8 8 V5.6 a1.7 1.7 0 0 1 1.7 -1.7 h3 a1.7 1.7 0 0 1 1.7 1.7 V8" fill="none" stroke="currentColor" stroke-width="1.8"/>
+    <rect x="3.2" y="7.6" width="17.6" height="12.8" rx="2.6" fill="currentColor"/>
+    <path d="M8.2 7.6 v12.8 M15.8 7.6 v12.8" stroke="var(--pp, #fff)" stroke-width="1.4"/>`);
 const DIARY_ICON = {
   wake: DI(`<path d="M12 3 v3 M4.6 7.6 l2 2 M19.4 7.6 l-2 2 M2.4 15.6 h2.6 M19 15.6 h2.6" stroke="#f0a02c" stroke-width="1.6" stroke-linecap="round"/>
       <path d="M6 17 a6 6 0 0 1 12 0Z" fill="#f6c945" stroke="${OUT}" stroke-width="1"/><path d="M2 20 h20" stroke="#7cc35a" stroke-width="2.2" stroke-linecap="round"/>`),
@@ -82,4 +92,4 @@ const diaryPainting = (motif) => (!hasKey(EASEL_MOTIF, motif) ? '' : `<svg class
     <rect x="9" y="7" width="42" height="44" fill="#bfe3f7"/><circle cx="42" cy="16" r="4.6" fill="#f6c945"/>
     <path d="M9 38 Q21 30 33 36 T51 33 V51 H9Z" fill="#86c46b"/><path d="M9 45 Q26 40 51 45 V51 H9Z" fill="#5fae4a"/>${EASEL_MOTIF[motif][1]}</svg>`);
 
-export { DIARY_BOOK, DIARY_PAW, DIARY_ICON, diaryPainting };
+export { DIARY_BOOK, DIARY_PAW, DIARY_PAW_O, DIARY_CASE, DIARY_TURN, DIARY_ICON, diaryPainting };
