@@ -3,15 +3,12 @@
 import { clamp } from '../logik/hilfen.js';
 import { HAY_MAX, PLAN_MIN, planBlank, planSer, planParse, planApply, planOld, planKeep, planRebase } from '../logik/tagesplan.js';
 import { ACT_SMALL } from '../logik/beschaeftigungen.js';
-import { ECHO_JUDGE } from '../logik/zustand.js';
+import { ECHO_JUDGE, PLAN_DOUBT } from '../logik/zustand.js';
 
 // Schreibsperre (siehe _planBlind): so oft schaut ein zurückgehaltenes Schreiben nach, ob es hinaus darf
 const PLAN_HOLD = 5000;
 // … in kurzen Schritten, wenn es nur noch darauf wartet, dass der Stand nach langer Pause als frisch gilt (_planHoldMs)
 const PLAN_HOLD_STALE = 500;
-// … und so lange gilt ein Zweifel am eigenen Stand höchstens weiter, nachdem HA wieder verbunden liefert, ohne dass ein
-// neuer Stand kam (dann hat sich dort nichts geändert)
-const PLAN_DOUBT = 10000;
 // Einen zurückgefallenen Stand (planKeep) erst nach so langer Zeit wieder vervollständigen: Schrieben nur zwei Geräte
 // fast gleichzeitig, legt das überschriebene seine Änderung nach 0,4 s selbst wieder obendrauf, dann ist nichts mehr zu tun
 const PLAN_HEAL = 2000;
@@ -456,7 +453,9 @@ export class Tagesplan {
   // Seite wird versteckt oder geschlossen (App zu, Neuladen): Ungesendetes sofort hinaus, die Zeitgeber kämen nicht
   // mehr dran und das eben Gefütterte oder Gestreichelte wäre weg
   _flush() {
-    if (this._saveT) this._saveNow();
+    // (auch ein Schreiben, das auf den frischen Stand wartet: Hat HA dieselben Zustände bestätigt, geht es jetzt
+    // hinaus, siehe _stDoubt)
+    if (this._saveT || this._saveWait) this._saveNow(true);
     if (this._planT) this._planSaveNow();
     // Zurückgehaltenes auch, wenn es inzwischen hinaus darf (sonst käme es erst mit dem nächsten Nachsehen)
     else this._planRelease(true);

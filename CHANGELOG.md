@@ -2,6 +2,17 @@
 
 Jede Version der Pika Pet Card, die neueste zuerst.
 
+## 0.45.1 (2026-11-22)
+
+Nachbesserung aus dem Nach-Audit der Versionen 0.42.2 bis 0.45.0: Ein Gerät, das länger nicht zu sehen war, überschreibt kein Füttern mehr, und das Tagebuch behält den Fokus.
+
+- **Kein Überschreiben nach dem Wiedereinblenden:** War die Karte länger als 2 s abgehängt (andere Ansicht, Panel im Hintergrund), schreibt sie ihren Zustand erst, wenn HA einen frischen Stand geliefert hat – wie den Tagesplan seit 0.42.2. Bis 0.45.0 ging der Stand von vor der Trennung 1,2 s nach dem ersten Füttern oder Streicheln hinaus und überschrieb, was andere Geräte inzwischen gefüttert hatten (seit 0.42.2 auch beim Streicheln, beim reinen Füttern schon länger). Liefert HA dieselben Zustände wieder (nichts hat sich geändert), gilt der eigene nach 10 s. Wird die Karte in der Zeit wieder abgehängt, wartet sie; geht die App zu, nachdem HA die Zustände bestätigt hat, geht die Portion noch hinaus.
+- **Weniger doppeltes Senden:** Nach dem Wiederverbinden wartet ein neuer Versuch auf den frischen Stand und unterbleibt, wenn darin schon das Echo des ersten steht.
+- **Tagebuch, Tastatur:** Nach „Ja, los“ und „Zurückholen“ bleibt der Fokus im Fenster (der Fix aus 0.43.1 griff dort zu spät), ebenso, wenn der Urlaub auf einem anderen Gerät wechselt. Danach schließt Escape wieder, und Tab bleibt in der Runde.
+- **Tagebuch, Selbstschließen:** Nach Escape stellt das Fenster keine neue 60-s-Uhr mehr. Bis 0.45.0 schloss sie ein innerhalb einer Minute wieder geöffnetes Tagebuch mitten in der Benutzung (seit 0.27).
+- **Bekannte Grenze:** Füttern zwei Geräte in derselben Sekunde gleich viel und wird eins sofort danach ausgeblendet, kann eine Portion fehlen. Das bleibt bewusst so (siehe `_sentSettle`), sonst käme das doppelte Zählen aus 0.43.0 zurück.
+- **Tests:** `test/zustand-sperre.test.mjs` (7 Tests), drei neue in `test/tagebuch-a11y.test.mjs`. 394 Tests.
+
 ## 0.45.0 (2026-11-22)
 
 Die Chronik, die die Karte seit 0.34 schreibt, hat endlich eine Seite: den Rückblick im Tagebuch.

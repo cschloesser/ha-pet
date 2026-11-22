@@ -756,9 +756,12 @@ export class Tagebuch {
       } else this._rueckTaste(e);
     });
     // Wand-Tablet: nach DIARY.close ohne Berührung von selbst wieder zu
+    // (Nur für dieses Fenster: Escape schließt es, bevor poke denselben Tastendruck sieht. Bis 0.45.0 stellte poke dann
+    // eine neue Uhr, und die schloss 60 s später ein inzwischen wieder geöffnetes Tagebuch mitten in der Benutzung.)
     const poke = () => {
       clearTimeout(D.t);
-      D.t = setTimeout(() => this._diaryClose(), DIARY.close);
+      if (this._dia !== D) return;
+      D.t = setTimeout(() => this._dia === D && this._diaryClose(), DIARY.close);
     };
     for (const t of ['pointerdown', 'keydown', 'wheel', 'touchmove']) host.addEventListener(t, poke, { passive: true });
     root.querySelector('.page').addEventListener('scroll', poke, { passive: true });
@@ -776,12 +779,9 @@ export class Tagebuch {
         D.urAsk = false;
         this._urlaubStart();
       } else if (a === 'back') this._urlaubEnde();
-      // Der Kasten wird neu gezeichnet, der gedrückte Knopf ist danach fort. Hatte er den Fokus (Tastatur), fiele
-      // der aus dem Fenster an die Seite dahinter: Dann bekommt ihn die Tagebuch-Seite, ein Tab weiter stehen die Knöpfe.
-      const pg = root.querySelector('.page');
-      const key = pg.contains(root.activeElement);
+      // Der Kasten wird neu gezeichnet, der gedrückte Knopf ist danach fort. Hatte er den Fokus (Tastatur), bekommt
+      // ihn die Tagebuch-Seite (_diaryRender), ein Tab weiter stehen die Knöpfe.
       this._diaryRender(true);
-      if (key) pg.focus({ preventScroll: true });
     });
     if (tab === 'rueck') this._rueckOpen();
     this._diaryRender();
@@ -821,7 +821,14 @@ export class Tagebuch {
     const D = this._dia;
     if (!D) return;
     const pg = D.root.querySelector('.page');
+    const ft = D.root.querySelector('.ft');
     const top = pg.scrollTop;
+    // Hat etwas auf der Seite oder im Fuß den Fokus (Tastatur), ist es nach dem Neuzeichnen fort, und der Fokus fiele
+    // aus dem Fenster an die Seite dahinter (Escape und die Tab-Runde hingen dann nicht mehr). Dann bekommt ihn die
+    // Seite selbst. So auch, wenn der Urlaub von einem anderen Gerät aus wechselt, oder der Knopf „Ja, los“ selbst ihn
+    // über _urlaubStart neu zeichnen lässt (bis 0.45.0 fiel der Fokus dort heraus).
+    const act = D.root.activeElement;
+    const had = !!act && act !== pg && (pg.contains(act) || ft.contains(act));
     D.root.querySelectorAll('[data-tab]').forEach((b) => b.setAttribute('aria-selected', String(b.dataset.tab === D.tab)));
     const dt = D.root.querySelector('.dt');
     const today = D.tab === 'heute';
@@ -847,8 +854,9 @@ export class Tagebuch {
     // Fuß: Version der Karte auf diesem Gerät (liefe hier noch eine alte, sähe man es) und, falls es welche gab, die
     // letzten Fehler. Auf dem Wand-Tablet ist das der einzige Ort, an dem man sie sieht.
     const errs = this._errs || [];
-    D.root.querySelector('.ft').innerHTML = `<span>Pika Pet Card ${VERSION}</span>${errs.length ? `<details><summary>${errs.length === 1 ? '1 Fehler' : `${errs.length} Fehler`} seit dem Laden</summary><ul>${errs.map((e) =>
+    ft.innerHTML = `<span>Pika Pet Card ${VERSION}</span>${errs.length ? `<details><summary>${errs.length === 1 ? '1 Fehler' : `${errs.length} Fehler`} seit dem Laden</summary><ul>${errs.map((e) =>
       `<li>${esc(new Date(e.t).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' }))} · ${esc(e.where)}${e.n > 1 ? ` (${e.n}×)` : ''}: ${esc(e.msg)}</li>`).join('')}</ul></details>` : ''}`;
+    if (had && !D.root.activeElement) pg.focus({ preventScroll: true });
   }
 
   _diaryClose() {

@@ -13,6 +13,9 @@ const GAIN = { feed: 25, pet: 8, clean: 10 };
 // nur so lange nach dem Senden als fremd (siehe _echoFremd in karte/zustand.js): Später kann die Kennung auch deshalb eine
 // andere sein, weil HA neu gestartet ist und den Helfer mit dem alten Wert unter neuer Kennung wiederhergestellt hat.
 const ECHO_JUDGE = 15000;
+// So lange gilt ein Zweifel am eigenen Stand (Tagesplan und Zustand, siehe _planBlind) höchstens weiter, nachdem HA
+// wieder verbunden liefert, ohne dass ein neuer Stand kam (dann hat sich dort nichts geändert)
+const PLAN_DOUBT = 10000;
 // Selbst gefressen (Wiesenblume, Heu): wenig und nur bis SELF_MAX. Jedes Gerät knabbert für sich und Blumen
 // wachsen alle 2,5 Min nach, ohne Grenze wäre er immer satt. Bis 0.34 lag die Grenze bei 50: Solange ein Gerät
 // zusah, kam er nie unter 30 (Hunger). Jetzt hat er Hunger, wenn niemand füttert, und das Knabbern hält ihn nur über
@@ -65,5 +68,5 @@ const mergeStats = (own, other, gain, now, decayH = (t1, t2) => (t2 - t1) / 3.6e
 
 export {
   RATE, SLEEP_DECAY, CLOCK_KEEP, CLOCK_STEP, GAIN, SELF, SELF_MAX, POOP, sec, freshStats, serialize, parseStats,
-  mergeStats, ECHO_JUDGE,
+  mergeStats, ECHO_JUDGE, PLAN_DOUBT,
 };

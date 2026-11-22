@@ -61,7 +61,7 @@
  */
 (() => {
   // src/version.js
-  var VERSION = "0.45.0";
+  var VERSION = "0.45.1";
 
   // src/logik/hilfen.js
   var Cancel = class extends Error {
@@ -120,6 +120,7 @@
   var CLOCK_STEP = 250;
   var GAIN = { feed: 25, pet: 8, clean: 10 };
   var ECHO_JUDGE = 15e3;
+  var PLAN_DOUBT = 1e4;
   var SELF = { flower: 3, hay: 2 };
   var SELF_MAX = 25;
   var POOP = { every: 80, spread: 60, morning: [10, 20], max: 8, latrine: 3, idx: 24, fly: 4, live: 3 };
@@ -13806,7 +13807,8 @@
       });
       const poke = () => {
         clearTimeout(D.t);
-        D.t = setTimeout(() => this._diaryClose(), DIARY.close);
+        if (this._dia !== D) return;
+        D.t = setTimeout(() => this._dia === D && this._diaryClose(), DIARY.close);
       };
       for (const t of ["pointerdown", "keydown", "wheel", "touchmove"]) host.addEventListener(t, poke, { passive: true });
       root.querySelector(".page").addEventListener("scroll", poke, { passive: true });
@@ -13823,10 +13825,7 @@
           D.urAsk = false;
           this._urlaubStart();
         } else if (a === "back") this._urlaubEnde();
-        const pg = root.querySelector(".page");
-        const key = pg.contains(root.activeElement);
         this._diaryRender(true);
-        if (key) pg.focus({ preventScroll: true });
       });
       if (tab === "rueck") this._rueckOpen();
       this._diaryRender();
@@ -13861,7 +13860,10 @@
       const D = this._dia;
       if (!D) return;
       const pg = D.root.querySelector(".page");
+      const ft = D.root.querySelector(".ft");
       const top = pg.scrollTop;
+      const act = D.root.activeElement;
+      const had = !!act && act !== pg && (pg.contains(act) || ft.contains(act));
       D.root.querySelectorAll("[data-tab]").forEach((b) => b.setAttribute("aria-selected", String(b.dataset.tab === D.tab)));
       const dt = D.root.querySelector(".dt");
       const today = D.tab === "heute";
@@ -13884,7 +13886,8 @@
       }
       pg.scrollTop = keep ? top : 0;
       const errs = this._errs || [];
-      D.root.querySelector(".ft").innerHTML = `<span>Pika Pet Card ${VERSION}</span>${errs.length ? `<details><summary>${errs.length === 1 ? "1 Fehler" : `${errs.length} Fehler`} seit dem Laden</summary><ul>${errs.map((e) => `<li>${esc(new Date(e.t).toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" }))} · ${esc(e.where)}${e.n > 1 ? ` (${e.n}×)` : ""}: ${esc(e.msg)}</li>`).join("")}</ul></details>` : ""}`;
+      ft.innerHTML = `<span>Pika Pet Card ${VERSION}</span>${errs.length ? `<details><summary>${errs.length === 1 ? "1 Fehler" : `${errs.length} Fehler`} seit dem Laden</summary><ul>${errs.map((e) => `<li>${esc(new Date(e.t).toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" }))} · ${esc(e.where)}${e.n > 1 ? ` (${e.n}×)` : ""}: ${esc(e.msg)}</li>`).join("")}</ul></details>` : ""}`;
+      if (had && !D.root.activeElement) pg.focus({ preventScroll: true });
     }
     _diaryClose() {
       const D = this._dia;
@@ -15757,6 +15760,10 @@
     // anderen Geräte haben den eigenen längst gesehen und darauf aufgebaut, sein Gewinn steckt schon darin. Bis 0.43.0
     // kam er ein zweites Mal obendrauf: füttern, gleich die Ansicht wechseln, ein anderes Gerät füttert – beim
     // Zurückkommen zählte das eigene Füttern doppelt. Hat die Karte ohne Lücke zugehört, bleibt es bei der Annahme.
+    // Bekannte Grenze (Nach-Audit 0.45.1, bewusst so gelassen): Fütterte ein anderes Gerät in derselben Sekunde gleich
+    // viel, sendeten beide denselben Text, und das eigene Schreiben änderte in HA nichts. Wer danach sofort abgehängt
+    // wird, verliert hier seine Portion. Unterscheiden ließe sich das nur an der Kennung des Stands, den diese Karte
+    // verpasst hat (HA liefert sie im Nachhinein nicht); ohne _sentSettle käme der viel häufigere Fall oben zurück.
     _sentSettle() {
       const n = this._sent.length;
       for (let i = n - 1; i >= 0; i--) if (this._sent[i].ok && this._sent[i].gap) this._sent.splice(i, 1);
@@ -15815,6 +15822,20 @@
       for (const e of this._sent) if (!(e.due > now)) Object.assign(e, { due: now + (e.failed ? 5e3 : SENT_FIRST), step: SENT_FIRST });
       this._sentArm();
     }
+    // Zweifel am eigenen Stand nach dem Wiedereinhängen oder Trennen (gepflegt vom Tagesplan, _planDoubt/_planHass, auch
+    // ohne plan_entity): → 0 kein Zweifel; -1 warten, bis HA einen frischen Stand liefert; > 0 so viele ms noch, dann
+    // gilt der eigene (HA hat dieselben Zustände bestätigt). Wieder abgehängt: warten (die Karte sieht nichts mehr, die
+    // Frist sagte sonst blind „gilt“). flush: Die Seite geht zu: Hat HA dieselben Zustände schon bestätigt, nicht mehr
+    // auf die Frist warten (sonst wäre die Portion weg); ohne frischen Stand bleibt es beim Warten.
+    _stDoubt(flush = false) {
+      const D = this._planDoubt;
+      if (!D) return 0;
+      if (this._planOff) return -1;
+      if (!D.fed) return -1;
+      if (flush) return 0;
+      const rest = D.at + PLAN_DOUBT - Date.now();
+      return rest > 0 ? rest + 50 : 0;
+    }
     _save() {
       this._pendingWrite = true;
       this._saveWait = false;
@@ -15822,7 +15843,7 @@
       this._saveSince ??= Date.now();
       this._saveT = setTimeout(() => this._saveNow(), clamp(this._saveSince + 4e3 - Date.now(), 0, 1200));
     }
-    _saveNow() {
+    _saveNow(flush = false) {
       clearTimeout(this._saveT);
       this._saveT = null;
       this._saveSince = null;
@@ -15838,6 +15859,12 @@
         const st = this._hass.states[id]?.state;
         if (this._hass.connected === false || this._hass.connection?.connected === false || st === "unavailable") {
           this._saveWait = true;
+          return;
+        }
+        const wait = this._stDoubt(flush);
+        if (wait) {
+          this._saveWait = true;
+          if (wait > 0) this._saveT = setTimeout(() => this._save(), wait);
           return;
         }
         if (st !== v) {
@@ -21416,7 +21443,6 @@
   // src/karte/tagesplan.js
   var PLAN_HOLD = 5e3;
   var PLAN_HOLD_STALE = 500;
-  var PLAN_DOUBT = 1e4;
   var PLAN_HEAL = 2e3;
   var PLAN_MEND = 30 * 6e4;
   var Tagesplan = class {
@@ -21757,7 +21783,7 @@
     // Seite wird versteckt oder geschlossen (App zu, Neuladen): Ungesendetes sofort hinaus, die Zeitgeber kämen nicht
     // mehr dran und das eben Gefütterte oder Gestreichelte wäre weg
     _flush() {
-      if (this._saveT) this._saveNow();
+      if (this._saveT || this._saveWait) this._saveNow(true);
       if (this._planT) this._planSaveNow();
       else this._planRelease(true);
     }

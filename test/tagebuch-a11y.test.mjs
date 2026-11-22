@@ -585,3 +585,82 @@ test('Tagebuch als Blatt von unten (bis 520 px): Der Fuß hält Abstand zum Home
   assert.match(regel(R, '.page'), /flex: 1; min-height: 120px; overflow-y: auto;/);
   assert.equal(wert(regel(R, '.sheet'), 'flex-direction'), 'column');
 });
+
+// ---------- 6 Fokus nach dem Urlaubsschalter, Selbstschließ-Uhr (Nach-Audit 0.45.1) ----------
+// Hier mit dem echten _urlaubStart/_urlaubEnde bis _urlaubFromPlan: Der zeichnet die Seite selbst neu (der Urlaub hat
+// gewechselt), noch bevor der Klick-Horcher es tut. Bis 0.45.0 war der gedrückte Knopf da schon fort, und der Fokus
+// fiel aus dem Fenster (die Prüfung im Horcher kam zu spät).
+const urlaubBuch = async () => {
+  const D = await tagebuch();
+  const c = D.c;
+  let on = false;
+  delete c._urlaubStart;
+  delete c._urlaubEnde;
+  Object.assign(c, {
+    _urlaubMay: () => true, _urlaubBusy: () => false, _urlaubOn: () => on, _careEval: () => null,
+    _urlaubScene() {}, _urlaubRebase() {}, _awakeBack: (n) => n, _awakeMs: () => 0,
+    // wie der Tagesplan den Urlaub einträgt bzw. beendet
+    _planOp(op) {
+      if (op.t === 'von') { on = true; c._plan.ur = { t: MITTAG }; }
+      if (op.t === 'voff') { on = false; c._plan.ur = null; }
+    },
+  });
+  c._plan.hay = { t: 0 };
+  return D;
+};
+const klick = (D, ur) => {
+  const b = D.root.querySelectorAll('[data-ur]').find((x) => x.dataset.ur === ur);
+  b.focus();
+  D.root.querySelector('.page').melde('click', { target: b });
+};
+
+test('Tagebuch, Tastatur: nach „Ja, los“ und „Zurückholen“ bleibt der Fokus im Fenster, auch wenn der Urlaub die Seite selbst neu zeichnet', async () => {
+  const D = await urlaubBuch();
+  klick(D, 'ask');
+  klick(D, 'go');
+  assert.equal(D.c._urlaubOn(), true);
+  assert.deepEqual(D.root.querySelectorAll('[data-ur]').map((b) => b.dataset.ur), ['back']);
+  assert.equal(D.wo(), 'page');
+  D.taste('Tab');
+  assert.equal(D.wo(), 'back');
+  klick(D, 'back');
+  assert.equal(D.c._urlaubOn(), false);
+  assert.equal(D.wo(), 'page');
+  // Escape schließt weiter (der Fokus liegt im Fenster, dort horcht die Karte)
+  const e = D.taste('Escape');
+  assert.deepEqual([e.gestoppt, D.c._dia], [true, null]);
+});
+
+test('Tagebuch, Tastatur: wechselt der Urlaub auf einem anderen Gerät, behält das Fenster den Fokus', async () => {
+  const D = await urlaubBuch();
+  D.root.querySelector('[data-ur]').focus();
+  assert.equal(D.wo(), 'ask');
+  D.c._diaryRender(true); // wie _urlaubFromPlan beim fremden Wechsel
+  assert.equal(D.wo(), 'page');
+  // Hatte nichts auf der Seite den Fokus, bleibt es dabei (das Neuzeichnen holt ihn nicht dorthin)
+  D.root.querySelector('.x').focus();
+  D.c._diaryRender(true);
+  assert.equal(D.wo(), 'x');
+});
+
+test('Tagebuch: nach Escape schließt die Selbstschließ-Uhr kein danach wieder geöffnetes Tagebuch', async () => {
+  const uhr = [];
+  const alt = [WELT.setTimeout, WELT.clearTimeout];
+  WELT.setTimeout = (fn, ms) => { const h = { fn, ms, weg: false }; uhr.push(h); return h; };
+  WELT.clearTimeout = (h) => { if (h && typeof h === 'object') h.weg = true; };
+  try {
+    const D = await tagebuch();
+    D.taste('Escape'); // schließt; poke sieht denselben Tastendruck danach
+    assert.equal(D.c._dia, null);
+    const scharf = uhr.filter((h) => !h.weg && h.ms === 60000);
+    assert.equal(scharf.length, 0, 'nach Escape läuft keine Uhr mehr');
+    D.c._diaryOpen();
+    await atmen();
+    const neu = D.c._dia;
+    uhr.filter((h) => h !== neu.t).forEach((h) => !h.weg && h.ms === 60000 && h.fn());
+    assert.equal(D.c._dia, neu, 'das neue Tagebuch bleibt offen');
+    D.c._diaryClose();
+  } finally {
+    [WELT.setTimeout, WELT.clearTimeout] = alt;
+  }
+});

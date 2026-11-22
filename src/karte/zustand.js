@@ -2,7 +2,7 @@
 
 import { clamp } from '../logik/hilfen.js';
 import {
-  RATE, SLEEP_DECAY, CLOCK_KEEP, CLOCK_STEP, SELF_MAX, ECHO_JUDGE, sec, freshStats, serialize, parseStats, mergeStats,
+  RATE, SLEEP_DECAY, CLOCK_KEEP, CLOCK_STEP, SELF_MAX, ECHO_JUDGE, PLAN_DOUBT, sec, freshStats, serialize, parseStats, mergeStats,
 } from '../logik/zustand.js';
 import { CRIT_KINDS } from '../logik/besucher.js';
 import { urlaubCut } from '../logik/urlaub.js';
@@ -252,6 +252,10 @@ export class Zustand {
   // anderen Geräte haben den eigenen längst gesehen und darauf aufgebaut, sein Gewinn steckt schon darin. Bis 0.43.0
   // kam er ein zweites Mal obendrauf: füttern, gleich die Ansicht wechseln, ein anderes Gerät füttert – beim
   // Zurückkommen zählte das eigene Füttern doppelt. Hat die Karte ohne Lücke zugehört, bleibt es bei der Annahme.
+  // Bekannte Grenze (Nach-Audit 0.45.1, bewusst so gelassen): Fütterte ein anderes Gerät in derselben Sekunde gleich
+  // viel, sendeten beide denselben Text, und das eigene Schreiben änderte in HA nichts. Wer danach sofort abgehängt
+  // wird, verliert hier seine Portion. Unterscheiden ließe sich das nur an der Kennung des Stands, den diese Karte
+  // verpasst hat (HA liefert sie im Nachhinein nicht); ohne _sentSettle käme der viel häufigere Fall oben zurück.
   _sentSettle() {
     const n = this._sent.length;
     for (let i = n - 1; i >= 0; i--) if (this._sent[i].ok && this._sent[i].gap) this._sent.splice(i, 1);
@@ -318,6 +322,21 @@ export class Zustand {
     this._sentArm();
   }
 
+  // Zweifel am eigenen Stand nach dem Wiedereinhängen oder Trennen (gepflegt vom Tagesplan, _planDoubt/_planHass, auch
+  // ohne plan_entity): → 0 kein Zweifel; -1 warten, bis HA einen frischen Stand liefert; > 0 so viele ms noch, dann
+  // gilt der eigene (HA hat dieselben Zustände bestätigt). Wieder abgehängt: warten (die Karte sieht nichts mehr, die
+  // Frist sagte sonst blind „gilt“). flush: Die Seite geht zu: Hat HA dieselben Zustände schon bestätigt, nicht mehr
+  // auf die Frist warten (sonst wäre die Portion weg); ohne frischen Stand bleibt es beim Warten.
+  _stDoubt(flush = false) {
+    const D = this._planDoubt;
+    if (!D) return 0;
+    if (this._planOff) return -1;
+    if (!D.fed) return -1;
+    if (flush) return 0;
+    const rest = D.at + PLAN_DOUBT - Date.now();
+    return rest > 0 ? rest + 50 : 0;
+  }
+
   _save() {
     this._pendingWrite = true;
     this._saveWait = false;
@@ -327,7 +346,7 @@ export class Zustand {
     this._saveT = setTimeout(() => this._saveNow(), clamp(this._saveSince + 4000 - Date.now(), 0, 1200));
   }
 
-  _saveNow() {
+  _saveNow(flush = false) {
     clearTimeout(this._saveT);
     this._saveT = null;
     this._saveSince = null;
@@ -355,6 +374,18 @@ export class Zustand {
       // weggeräumten Panel setzt HA kein hass mehr, ihr letztes sagt noch „verbunden“ (siehe _planBlind).
       if (this._hass.connected === false || this._hass.connection?.connected === false || st === 'unavailable') {
         this._saveWait = true;
+        return;
+      }
+      // Nach längerem Abhängen noch ohne frischen Stand von HA (derselbe Zweifel wie beim Tagesplan, _planDoubt): Der
+      // eigene Stand ist so alt wie die Trennung. Ging er jetzt hinaus, überschriebe er, was andere Geräte inzwischen
+      // gefüttert und gestreichelt haben. Warten, der frische Stand wird beim Eintreffen zusammengeführt (set hass).
+      // Bis 0.42.1 brachte das sofortige Schreiben des Tagesplans dieses hass zufällig vorher herbei.
+      const wait = this._stDoubt(flush);
+      if (wait) {
+        this._saveWait = true;
+        // Liefert HA dieselben Zustände wieder (es hat sich nichts geändert), gilt der eigene nach der Frist: dann von
+        // selbst nachsehen, auch wenn kein weiteres hass kommt
+        if (wait > 0) this._saveT = setTimeout(() => this._save(), wait);
         return;
       }
       // Derselbe Wert ändert in HA nichts (es käme kein Echo): nicht senden

@@ -598,10 +598,12 @@ const gekappt = async (zurueck, laufzeit) => {
 };
 test('Zustand: Ein Schreiben kam an, die Antwort nicht – der neue Versuch mit demselben Text macht das eigene Echo nicht zu einem fremden Stand', async () => {
   // Wieder verbunden zwischen „gilt als verloren“ (5 s nach dem Fehler) und dem neuen Senden (1,2 s danach): Der frische
-  // Stand trifft auf den zweiten Versuch. Bis zur Nachbesserung zählte das Füttern dann doppelt.
-  assert.equal(await gekappt(6100, 300), 2);
+  // Stand trifft auf den zweiten Versuch. Bis zur Nachbesserung zählte das Füttern dann doppelt. Seit 0.45.1 wartet der
+  // neue Versuch nach dem Wiederverbinden auf den frischen Stand (_stDoubt), sieht darin das Echo des ersten und
+  // unterbleibt: Es bleibt bei einem Schreiben, das Füttern zählt einmal.
+  assert.equal(await gekappt(6100, 300), 1);
   // … oder später, und der frische Stand braucht länger als die 1,2 s bis zum neuen Senden
-  assert.equal(await gekappt(20000, 1500), 2);
+  assert.equal(await gekappt(20000, 1500), 1);
   // Gegenproben: schneller wieder da (das Echo trifft das erste, noch unbestätigte Schreiben), und später mit dem
   // frischen Stand vor dem neuen Senden (spätes Echo eines verlorenen Schreibens)
   assert.equal(await gekappt(2000, 300), 1);
