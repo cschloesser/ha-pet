@@ -208,6 +208,17 @@ const STYLE_BOTE = `
     100% { transform: translate(calc(var(--H) * .015), calc(var(--H) * -.1)) scale(1.3); opacity: 0; }
   }
   @media (prefers-reduced-motion: reduce) { .hb-sm i { animation: none; opacity: .6; } .hb-sm i:nth-child(2) { transform: translateY(-60%); } }
+  /* Bewegung reduzieren: Blasen, Tropfen, warme Luft und Dampf stehen still (animation: none in STYLE). Ihre
+     Deckkraft kommt aber nur aus den Keyframes, ohne Animation wären sie ganz weg. Darum ein fester Zustand: zwei
+     Blasen über dem Schaum, die Tropfen hängen an der Wäsche, Luft und Dampf stehen als versetzte Schlieren. Die
+     Regeln müssen hier stehen, hinter den Grundregeln oben (STYLE kommt im Stylesheet vor diesem Stil). */
+  @media (prefers-reduced-motion: reduce) {
+    .hb-bubs circle:nth-child(-n+2) { opacity: .9; transform: translate(.5px, -4px); }
+    .hb-bubs circle:nth-child(2) { transform: translate(1.5px, -8px) scale(.8); }
+    .hb-drip { opacity: .9; }
+    .hb-heat > g, .hb-steam > g { opacity: .75; }
+    .hb-heat > g:nth-child(2), .hb-steam > g:nth-child(2) { transform: translateY(-3px); }
+  }
 
   /* Fähnchen wie beim Flugzeug: Gerätename und Stand */
   .hb-tag {

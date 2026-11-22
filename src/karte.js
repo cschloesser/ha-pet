@@ -2,7 +2,7 @@
 
 import { clamp } from './logik/hilfen.js';
 import { WAKE_EVENTS, DEFAULTS } from './logik/einstellungen.js';
-import { sec, freshStats, parseStats, mergeStats } from './logik/zustand.js';
+import { freshStats, parseStats } from './logik/zustand.js';
 import { AREALE } from './grafik/areale.js';
 import { Editor } from './karte/editor.js';
 import { Aufbau } from './karte/aufbau.js';
@@ -35,6 +35,9 @@ import { Urlaub } from './karte/urlaub.js';
 import { Signale } from './karte/signale.js';
 import { Fenster } from './karte/fenster.js';
 import { Messung } from './karte/messung.js';
+
+// So viele ms liegen mindestens zwischen zwei Auslegungen der Szene, die der ResizeObserver auslöst (siehe _resized)
+const LAYOUT_GAP = 100;
 
 class PikaPetCard extends HTMLElement {
   constructor() {
@@ -72,6 +75,10 @@ class PikaPetCard extends HTMLElement {
 
   setConfig(config) {
     const cfg = { ...DEFAULTS, ...(config || {}) };
+    // Namen: ein Text ohne Rand, sonst der übliche. `name: null` (leeres Feld im YAML) oder ein im Editor geleertes Feld
+    // kämen sonst durch: Schlüssel „…:null“ im Browser, „null ist verreist“, Unterschrift „null“ im Tagebuch.
+    const roh = String(cfg.name);
+    for (const k of ['name', 'friend_name']) cfg[k] = String(cfg[k] ?? '').trim() || DEFAULTS[k];
     // Grobe Fehler gleich als Fehlerkarte zeigen statt still falsch zu speichern
     for (const k of ['entity', 'plan_entity']) {
       if (cfg[k] && !/^input_text\.\w+$/.test(cfg[k])) throw new Error(`pika-pet-card: ${k} muss ein input_text-Helfer sein (ist "${cfg[k]}")`);
@@ -79,6 +86,9 @@ class PikaPetCard extends HTMLElement {
     if (cfg.entity && cfg.entity === cfg.plan_entity) throw new Error('pika-pet-card: entity und plan_entity brauchen zwei verschiedene Helfer');
     if (cfg.chronicle_entity && !/^todo\.\w+$/.test(cfg.chronicle_entity)) throw new Error(`pika-pet-card: chronicle_entity muss eine To-do-Liste sein (ist "${cfg.chronicle_entity}")`);
     if (cfg.areal && !AREALE[cfg.areal]) console.warn(`pika-pet-card: areal "${cfg.areal}" gibt es nicht (${Object.keys(AREALE).join(', ')}), nehme huegel`);
+    // Was bis 0.43.0 unter dem rohen Namen im Browser lag („…:null“, „…: Momo “), zieht unter den bereinigten mit (für
+    // immer, nicht als Kopie auf Zeit), sonst finge ein Pika ohne Helfer nach dem Update von vorn an
+    if (roh !== cfg.name) this._lsRename(roh, cfg.name, true);
     this._lsRename(this._cfg?.name, cfg.name);
     this._cfg = cfg;
     if (!this._el) this._build();
@@ -106,11 +116,15 @@ class PikaPetCard extends HTMLElement {
       this._saveT = this._saveSince = null;
       clearTimeout(this._freshT);
       clearTimeout(this._unavT);
-      this._pendingWrite = this._synced = this._noEntity = this._saveWait = false;
+      clearTimeout(this._sentT);
+      this._sentT = null;
+      this._pendingWrite = this._synced = this._noEntity = this._saveWait = this._saveHeld = false;
       this._lostW = [];
       this._saveFail = 0;
       this._gain = { s: 0, g: 0, c: false };
-      this._sent = []; // gesendet, von HA noch nicht bestätigt: { v, gain, at }
+      this._gainOld = false; // im Ungesendeten steckt ein Gewinn, der vielleicht schon in HA steht (siehe _echoFremd)
+      this._sentV = []; // die zuletzt gesendeten Texte (ein zweites Mal derselbe: siehe _echoDup)
+      this._sent = []; // gesendet, von HA noch nicht bestätigt: { v, gain, at, n, due, step, ctx, seen, ok, gap, failed }
       this._lastEntityState = null; // beim nächsten hass neu lesen, auch wenn der Helfer fehlt
       this._stats = null;
       if (!ent) this._loadLocal();
@@ -140,6 +154,17 @@ class PikaPetCard extends HTMLElement {
       const st = hass.states[c.entity]?.state;
       // Ungesendetes, weil die Verbindung weg war: jetzt hinaus
       if (this._saveWait && hass.connected !== false && st !== 'unavailable') this._save();
+      // Zurückgehalten, weil die Karte Vorschau war (Editor, Dashboard in Bearbeitung): Ist das vorbei, jetzt hinaus
+      if (this._saveHeld && this.preview !== true) {
+        this._saveHeld = false;
+        this._save();
+      }
+      // Unbestätigte Schreiben: Ohne Verbindung kann ihr Echo verloren gehen (_sentSettle). Liefert HA (wieder), wird
+      // nach ihnen geschaut, auch wenn die Prüfung inzwischen ruhte (abgehängt, lange kein hass).
+      if (this._sent.length) {
+        if (hass.connected === false) this._sentGap();
+        else if (fresh) this._sentWake();
+      }
       if (st !== this._lastEntityState) {
         this._lastEntityState = st;
         const parsed = parseStats(st);
@@ -162,14 +187,25 @@ class PikaPetCard extends HTMLElement {
             this._renderStats();
           }, 60000);
         }
-        const own = parsed ? this._sent.findIndex((e) => e.v === st) : -1;
+        // Kennung des Aufrufs, der diesen Stand erzeugt hat (ohne: ältere HA-Version, dann zählt nur der Wortlaut)
+        const ctx = hass.states[c.entity]?.context?.id;
+        const own = parsed ? this._echoFind(this._sent, st, ctx) : -1;
         const late = own < 0 && parsed ? this._lostW?.find((e) => e.v === st) : null;
+        // Ein anderer Stand als das Echo, während eigene Schreiben noch unbestätigt sind: Für sie zählt ab jetzt nur
+        // noch der Wortlaut (ihr Echo kann mit diesem Stand in einer Meldung untergegangen sein)
+        if (own < 0) this._echoTxt(this._sent);
         if (own >= 0) {
           // Echo eines eigenen Schreibens: bestätigt (ältere auch, HA arbeitet der Reihe nach). Der eigene Stand
           // ist schon so weit oder weiter, nichts übernehmen.
+          const e = this._sent[own];
           this._sent.splice(0, own + 1);
-          this._lostW = this._lostW?.filter((e) => e.v !== st);
+          this._lostW = this._lostW?.filter((l) => l.v !== st);
           this._saveFail = 0;
+          this._sentArm();
+          // Derselbe Wortlaut, aber laut Kennung das Schreiben eines anderen Geräts (beide haben in derselben Sekunde
+          // dasselbe getan, das eigene Schreiben änderte in HA nichts mehr): Der eigene Gewinn fehlt dort, er kommt
+          // obendrauf. Steht die Antwort auf das eigene Schreiben noch aus, entscheidet sie (_saveNow).
+          if (this._echoFremd(e, ctx, e.at)) this._sentAgain(e);
         } else if (late) {
           // Spätes Echo eines Schreibens, das schon als verloren galt: Es ist doch angekommen und gilt als eigenes.
           // Sein Gewinn liegt inzwischen wieder im Ungesendeten bzw. im neuen Schreiben: dort heraus, sonst käme er
@@ -182,29 +218,18 @@ class PikaPetCard extends HTMLElement {
           // Den eigenen, jetzt veralteten Stand hier nicht mehr bewerten: Wer gepflegt hat, hat das vor seiner Änderung
           // selbst getan (_add, _cleanPile) und schon entwarnt. Eine Warnung von hier käme danach und bliebe stehen,
           // die Serie risse trotz Füttern.
+          // Eigene Änderung ungesendet oder noch unbestätigt: zusammenführen statt den fremden Stand zu
+          // übernehmen. Der fremde kam bei HA vor dem eigenen an, ihm fehlt also alles, was hier noch offen ist.
+          // (Nicht mehr offen ist, was HA ausgeführt hat und was nur ohne Echo blieb, weil diese Karte abgehängt
+          // oder getrennt war: Darauf baut der fremde Stand schon auf, siehe _sentSettle.)
+          this._sentSettle();
           const gain = this._sentGain();
-          if (this._stats && (this._pendingWrite || gain.s || gain.g || gain.c)) {
-            // Eigene Änderung ungesendet oder noch unbestätigt: zusammenführen statt den fremden Stand zu
-            // übernehmen. Der fremde kam bei HA vor dem eigenen an, ihm fehlt also alles, was hier noch offen ist.
-            this._stats = mergeStats(this._stats, parsed, gain, this._haNow(), (a, b) => this._decayH(a, b));
-            // Zwei Geräte haben fast gleichzeitig die letzten Häufchen einzeln weggemacht: Zusammen ist alles
-            // sauber, aber keines hat den Großputz gesehen. Den jetzt nachholen, sonst blieben alle Plätze belegt
-            // (nach dem achten käme nie wieder eins).
-            this._poopCache = null;
-            if (gain.c && this._stats.m && !this._poops().piles.length) {
-              const t = sec(this._now());
-              Object.assign(this._stats, { c: t, l: t, m: 0 });
-              this._poopCache = null;
-            }
-            this._sent.forEach((e) => (e.gain = { s: 0, g: 0, c: false })); // steckt jetzt im nächsten Schreiben
-            this._gain = gain;
-            this._save();
-          } else {
-            this._stats = parsed;
-          }
+          if (this._stats && (this._pendingWrite || gain.s || gain.g || gain.c)) this._statsMerge(parsed, gain);
+          else this._stats = parsed;
         } else if (!this._synced && st !== undefined && st !== 'unavailable') {
           // Helfer neu angelegt, leer oder mit fremdem Inhalt: mit Startwerten füllen. "unknown" gibt es auch kurz
           // beim Start von HA, darum erst, wenn es so bleibt – sonst wäre der gespeicherte Stand weg. unavailable: abwarten.
+          // (Die Vorschau-Karte im Editor füllt nur im Speicher: Geschrieben wird dort nicht, siehe _saveNow.)
           if (st !== '' && st !== 'unknown') console.warn(`pika-pet-card: ${c.entity} enthält "${st}", fange neu an`);
           const fill = () => {
             this._synced = true;
@@ -287,7 +312,9 @@ class PikaPetCard extends HTMLElement {
   _attach() {
     if (this._attached) return;
     this._attached = true;
-    this._ro = new ResizeObserver(() => this._layout());
+    // Größe der Szene: Die erste Meldung nach dem Einhängen legt gleich aus, weitere gebündelt (_resized)
+    this._layAt = 0;
+    this._ro = new ResizeObserver(() => this._resized());
     this._ro.observe(this._el.scene);
     this._onVis = () => this._visSync();
     document.addEventListener('visibilitychange', this._onVis);
@@ -339,6 +366,8 @@ class PikaPetCard extends HTMLElement {
       // 0,6 s oben reichen dafür nicht: Kam die Karte mit dem Panel aus dem Hintergrund zurück, baut sich die
       // Verbindung gerade erst wieder auf, und ihr letztes hass-Objekt sagt noch „verbunden“)
       this._planWake(Date.now() - this._detachAt > 2000);
+      // … und nach unbestätigten Schreiben des Zustands wird wieder geschaut
+      this._sentWake();
     }
     this._showReq();
     this._start();
@@ -363,9 +392,13 @@ class PikaPetCard extends HTMLElement {
     // Ab hier kommt kein hass mehr (zwischengespeicherte Ansicht, weggeräumtes Panel): Ungesendetes aus dem Tagesplan
     // noch hinaus, danach schreibt diese Karte ihn nicht, bis sie wieder eingehängt ist
     this._guard('Tagesplan', () => this._planPark());
+    // Nach unbestätigten Schreiben des Zustands schaut eine abgehängte Karte nicht weiter (kein Zeitgeber ohne Ende)
+    this._sentPark();
     this._stop();
     this._stopCritters();
     this._ro?.disconnect();
+    clearTimeout(this._layT);
+    this._layT = null;
     this._io?.disconnect();
     clearTimeout(this._staleT);
     document.removeEventListener('visibilitychange', this._onVis);
@@ -385,6 +418,27 @@ class PikaPetCard extends HTMLElement {
     this._detachSig();
     this._chronikStop();
     this._diaryClose();
+  }
+
+  // Der ResizeObserver meldet eine neue Größe der Szene. Beim Ziehen am Fenster, während die Seitenleiste von HA
+  // ein- oder ausfährt, im Editor und beim Drehen des iPads kommt das mit jedem Bild, und _layout rechnet jedes Mal die
+  // ganze Szene neu (Bau, Stein, Blumen, Häufchen, Geräte). Darum: die erste Meldung sofort (noch vor dem Zeichnen, so
+  // steht nach dem Einhängen und nach einem einzelnen Sprung nie ein Bild in alter Größe), weitere frühestens
+  // LAYOUT_GAP ms nach dem letzten Auslegen, die letzte Größe geht nie verloren (ein Nachlauf steht dann an). _layout
+  // selbst tut bei gleicher Größe nichts.
+  _resized() {
+    if (this._layT) return;
+    const since = Date.now() - (this._layAt || 0);
+    if (!this._g || since >= LAYOUT_GAP || since < 0) {
+      this._layAt = Date.now();
+      this._layout();
+      return;
+    }
+    this._layT = setTimeout(() => {
+      this._layT = null;
+      this._layAt = Date.now();
+      this._guard('Größe', () => this._layout());
+    }, LAYOUT_GAP - since);
   }
 
   // Fehler merken (die letzten 10, zu sehen im Fuß des Tagebuchs) und einmal je Stelle und Meldung in die Konsole

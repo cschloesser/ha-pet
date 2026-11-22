@@ -442,6 +442,10 @@ const STYLE_ACT = `
     .ap-w, .ap-s { transform: none; }
     .sb-lean .jump, .sb-push .jump { transition: none; }
     .sb-pat .paws { animation: none; transform: translate(13px, 14px); }
+    /* Seifenblasen wabern nicht (sie schweben weiter, platzen wie sonst); die Regenringe in der Pfütze stehen still
+       da (ohne Animation ruhten sie bei opacity 0 und wären weg) */
+    .bub:not(.pop) i { animation: none; }
+    .pd-dot { opacity: .6; }
   }
   `;
 

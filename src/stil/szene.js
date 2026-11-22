@@ -211,6 +211,8 @@ const STYLE = `
   /* Ruck: Die Pfote geht mit dem Pika nach hinten (.ktug), der Anfang der Schnur im selben Takt mit (--ktx, --kty) */
   .kite.kpull { transform: translate(var(--ktx, 0px), var(--kty, 0px)); transition: opacity .6s, transform .18s ease-out, filter 2.5s; }
   .kite.gone { opacity: 0; }
+  /* Das <svg> ist 1 × 1 groß und malt nach außen. Seine Box ist trotzdem so groß wie alles, was der Drachen je
+     bemalt (padding und margin setzt KITE_SVG, siehe kiteRand): Safari schneidet den Lichtfilter von .kite sonst ab. */
   .kite svg { position: absolute; left: 0; top: 0; overflow: visible; }
   .kite .kl { transform-box: view-box; transform-origin: 0 0; transform: rotate(var(--k0, 0deg)) scale(.25); transition: transform 3s ease-out; }
   .kite.up .kl { transform: none; }
@@ -347,19 +349,6 @@ const STYLE = `
     85% { transform: translateY(-10%) rotate(-3deg); }
     100% { transform: none; }
   }
-
-  .ff i {
-    position: absolute; width: 4px; height: 4px; border-radius: 50%; background: #fffbb0;
-    box-shadow: 0 0 6px 2px rgba(247, 240, 138, .8); opacity: 0; transition: opacity 3s;
-    animation: fly 9s ease-in-out infinite alternate, glow 1.8s ease-in-out infinite alternate;
-  }
-  .night.summer .ff i { opacity: 1; }
-  @keyframes fly {
-    33% { transform: translate(calc(var(--H) * .25), calc(var(--H) * -.12)); }
-    66% { transform: translate(calc(var(--H) * -.1), calc(var(--H) * -.22)); }
-    100% { transform: translate(calc(var(--H) * .15), calc(var(--H) * .05)); }
-  }
-  @keyframes glow { from { filter: brightness(.4); } }
 
   /* ---- Pika ---- */
   .pika {
@@ -899,10 +888,10 @@ const STYLE = `
   /* Ansagen für Bildschirmleser (nur Begrüßung, Wiedersehen, Geschenk, Hunger) */
   .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
   .pika:focus { outline: none; }
-  .pika:focus-visible { outline: 2px dashed rgba(255, 255, 255, .9); outline-offset: -2px; border-radius: 14px; }
+  .pika:focus-visible { outline: 2px solid #3b2d22; outline-offset: -4px; border-radius: 14px; box-shadow: inset 0 0 0 2px #fff; }
   /* Alles andere Antippbare (Häufchen, Geschenk, Pino, Besucher, Geräte, Flugzeuge) mit der Tastatur angewählt */
   .ktap:focus { outline: none; }
-  .ktap:focus-visible { outline: 2px dashed rgba(255, 255, 255, .9); outline-offset: 1px; border-radius: 10px; }
+  .ktap:focus-visible { outline: 2px solid #3b2d22; outline-offset: 1px; border-radius: 10px; box-shadow: 0 0 0 5px #fff; }
   .heart {
     position: absolute; width: calc(var(--ph) * .2); margin-left: calc(var(--ph) * -.1);
     animation: heart 1.5s ease-out forwards;
@@ -1219,6 +1208,11 @@ const STYLE = `
   .scene.night:not(.windy) .flower { animation-play-state: paused; }
   .scene.night:not(.windy) .flower.grow { animation-play-state: running, paused; }
   .scene.night:not(.windy) .flower.picked { animation-play-state: running; }
+  /* Unter der Schneedecke sind die Blumen nicht zu sehen (.snowcover .flower): Dann schaukeln sie auch nicht, sonst
+     hielten fünf Animationen den ganzen Wintertag die Bildwiederholung in Gang (wie ausgeblendete Wolken und Nebel).
+     Die Regel steht hier unten, weil .windy .flower und .flower.grow weiter oben mit der Kurzschreibweise animation
+     den Lauf wieder anstellten. */
+  .scene.snowcover .flower { animation-play-state: paused; }
   /* Weniger Bewegung gewünscht (Systemeinstellung): Wolken, Sterne, Blumen, Rauch, Niederschlag und Blinklichter ruhen */
   @media (prefers-reduced-motion: reduce) {
     .stars b, .flower, .smoke circle, .precip .pl, .precip .pw, .fog i, .lt.flk, .br, .brolly,
@@ -1238,6 +1232,26 @@ const STYLE = `
     .hb-bar.ind b, .hb-stick, .hb-ring, .hb-bbl, .hb-soap:not(.pop) i, .hb-carry.hb-shine > i,
     .plane .rotor, .plane .prop, .plane .trotor, .fly, .fly::after, .zzz span {
       animation: none !important;
+    }
+    /* Auch was am Rand von selbst läuft, ruht: Schmetterling und Vogel gleiten, ohne zu flattern, die Maus huscht
+       ohne Trippeln und Schnuppern, der Frosch zwinkert nicht, die Schnecke gleitet ohne Wellen und Fühlerspiel, die
+       Spielfigur im Gameboy steht. (Seifenblasen, Fledermaus, Kaffeedampf und das Störungslicht des Saugroboters
+       stehen bei ihrem eigenen Stil.) Der Körper des Pikas bewegt sich weiter: Hoppeln, Kauen, Putzen, Winken. */
+    .bfly .bwl, .bfly .bwr, .bird.flying .wu, .mouse.run .mb, .mouse.run .mtail, .mouse.sniff .mnose, .mouse.sniff .whisk,
+    .flid, .snail.crawl .sbody, .snail.crawl .sshell, .snail.crawl .sfeel, .snail.peer .sfeel,
+    .gaming .gbs rect:first-child, .gaming .gbs rect:last-child {
+      animation: none !important;
+    }
+    /* Der Schornsteinrauch ruht ohne Animation unsichtbar (seine Deckkraft kommt nur aus den Keyframes): Dann steht
+       ein Wölkchen aus drei versetzten Kringeln über dem Schornstein, in Windrichtung (--smx) geneigt */
+    .chilly .smoke circle, .dusk .smoke circle, .night .smoke circle {
+      opacity: .6; transform: translate(calc(var(--smx, -6px) * .12), -3px) scale(.9);
+    }
+    .chilly .smoke circle:nth-child(2), .dusk .smoke circle:nth-child(2), .night .smoke circle:nth-child(2) {
+      opacity: .45; transform: translate(calc(var(--smx, -6px) * .45), -8px) scale(1.45);
+    }
+    .chilly .smoke circle:nth-child(3), .dusk .smoke circle:nth-child(3), .night .smoke circle:nth-child(3) {
+      opacity: .3; transform: translate(calc(var(--smx, -6px) * .9), -13.5px) scale(2);
     }
     .tv-on .tvl .tvg, .tv .bk .rim { opacity: .6; }
     .zzz span { opacity: .9; }

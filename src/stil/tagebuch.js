@@ -9,9 +9,13 @@ const STYLE_DIARY = `
     position: fixed; inset: 0; z-index: 9999; display: flex; align-items: center; justify-content: center; padding: 14px;
     box-sizing: border-box; background: rgba(40, 28, 18, .5); animation: tbin .2s; -webkit-tap-highlight-color: transparent;
     font-family: var(--ha-font-family-body, var(--paper-font-body1_-_font-family, Roboto, "Segoe UI", system-ui, sans-serif));
-    --pp: #fbf5e6; --ink: #4a3a2c; --soft: #8a7461; --line: rgba(90, 64, 48, .2); --rand: rgba(232, 88, 78, .32); --tab: rgba(90, 64, 48, .08); --acc: #c9853a;
+    /* Am Tag (seit 0.43.1 dunkler, damit kleine Schrift auf dem Papier lesbar ist, WCAG AA 4,5 : 1): --acc trägt
+       Überschriften und weiße Schrift auf Reitern und Knöpfen (vorher #c9853a: 2,8 und 3,0), --soft die kleine graue
+       Schrift, auch auf --tab (vorher #8a7461: 4,1 und 3,6), --warn die Warnung bei den Schätzen (vorher #d9622b: 3,4).
+       Die Nacht blieb, wie sie war. test/tagebuch-a11y.test.mjs rechnet nach. */
+    --pp: #fbf5e6; --ink: #4a3a2c; --soft: #75604e; --line: rgba(90, 64, 48, .2); --rand: rgba(232, 88, 78, .32); --tab: rgba(90, 64, 48, .08); --acc: #a2601b; --warn: #bd4c1b;
   }
-  .bd.night { --pp: #262d4a; --ink: #ecebf7; --soft: #a9add0; --line: rgba(255, 255, 255, .16); --rand: rgba(255, 150, 150, .3); --tab: rgba(255, 255, 255, .09); --acc: #f2c56b; }
+  .bd.night { --pp: #262d4a; --ink: #ecebf7; --soft: #a9add0; --line: rgba(255, 255, 255, .16); --rand: rgba(255, 150, 150, .3); --tab: rgba(255, 255, 255, .09); --acc: #f2c56b; --warn: #ea7a45; }
   .sheet {
     position: relative; display: flex; flex-direction: column; width: min(440px, 100%); height: min(640px, 100%);
     box-sizing: border-box; border-radius: 18px; background: var(--pp); color: var(--ink); outline: none;
@@ -29,7 +33,7 @@ const STYLE_DIARY = `
   .ht b { display: block; font-size: 19px; font-weight: 800; line-height: 1.2; }
   .ht span { display: block; font-size: 13px; color: var(--soft); margin-top: 1px; }
   button { font: inherit; color: inherit; border: none; background: none; cursor: pointer; padding: 0; }
-  button:focus-visible, .page:focus-visible { outline: 2px solid var(--acc); outline-offset: 1px; }
+  button:focus-visible, .page:focus-visible, summary:focus-visible { outline: 2px solid var(--acc); outline-offset: 1px; }
   .x { flex: none; width: 40px; height: 40px; border-radius: 50%; font-size: 18px; color: var(--soft); }
   .x:hover { background: var(--tab); }
   .tabs { display: flex; gap: 6px; padding: 6px 16px 10px; }
@@ -90,7 +94,7 @@ const STYLE_DIARY = `
   .t.gilt i svg { filter: ${GILT_F} drop-shadow(0 0 2px rgba(255, 214, 90, .9)); }
   .t.gilt i::after { background: #f2b632; }
   .row { display: grid; grid-template-columns: 38px minmax(0, 1fr); gap: 11px; align-items: center; padding: 10px 8px 0; }
-  .row .w { color: #d9622b; font-weight: 800; }
+  .row .w { color: var(--warn); font-weight: 800; }
   .dots { display: inline-flex; gap: 3px; margin-left: 6px; vertical-align: -1px; }
   .dots u { width: 9px; height: 9px; border-radius: 50%; box-shadow: inset 0 0 0 1px rgba(90, 64, 48, .35); }
   /* Gute Tage: sieben Punkte bis zum goldenen Päckchen */
@@ -127,6 +131,9 @@ const STYLE_DIARY = `
     .bd { align-items: flex-end; padding: 0; }
     .sheet { width: 100%; height: min(640px, 90%); border-radius: 20px 20px 0 0; }
     .page { border-radius: 0; padding-bottom: 24px; }
+    /* iPhone: Das Blatt reicht bis zum unteren Rand, der Fuß (Version, Fehlerliste) läge im Streifen des Home-Balkens.
+       Die Seite darüber gibt den Platz her. */
+    .ft { padding-bottom: max(8px, env(safe-area-inset-bottom)); }
     .tre { grid-template-columns: 1fr; }
   }
   /* Sehr schmale Handys: Die vier Reiter rücken zusammen, damit „Entdeckungen“ ausgeschrieben bleibt */
@@ -143,7 +150,9 @@ const STYLE_DIARY_BTN = `
   .stats.dia { cursor: pointer; }
   .stats.dia .tb { display: block; }
   .stats.dia:active { transform: scale(.97); }
-  .stats:focus-visible, .tbbtn:focus-visible { outline: 2px solid #fff; outline-offset: 1px; }
+  /* Fokusring in zwei Tönen: dunkle Linie innen, heller Rand außen. Bis 0.43.0 ein weißer Ring um die weiße Leiste,
+     vor dem Taghimmel kaum zu sehen (1,2 bis 1,7 : 1); so hebt sich immer einer der beiden Töne ab. */
+  .stats:focus-visible, .tbbtn:focus-visible { outline: 2px solid #3b2d22; outline-offset: 1px; box-shadow: 0 0 0 5px #fff; }
   .stats.neu .tb::after, .tbbtn.neu::after {
     content: ''; position: absolute; right: -3px; top: -3px; width: 7px; height: 7px; border-radius: 50%; background: #e8584e;
     box-shadow: 0 0 0 1.5px rgba(255, 255, 255, .9);
@@ -153,6 +162,7 @@ const STYLE_DIARY_BTN = `
     cursor: pointer; background: rgba(255, 255, 255, .75); box-shadow: 0 2px 6px rgba(0, 0, 0, .18); transition: transform .15s, background 2.5s;
   }
   .tbbtn[hidden] { display: none; }
+  .tbbtn:focus-visible { box-shadow: 0 0 0 5px #fff, 0 2px 6px rgba(0, 0, 0, .18); }
   .tbbtn:active { transform: scale(.88); }
   .tbbtn svg { display: block; width: 100%; height: 100%; }
   .night .tbbtn { background: rgba(15, 22, 45, .55); }

@@ -3,7 +3,7 @@
 import { rnd, pick, clamp } from '../logik/hilfen.js';
 import { MEM_TONNE, MEM_TONNE2, pikaDay } from '../logik/tagesplan.js';
 import { BOTE_FRONT_DY } from '../logik/haus-bote.js';
-import { SIG, binPlan, binDone, wardrobePick, WARD_SAY, vacMode } from '../logik/signale.js';
+import { SIG, binPlan, binDone, binTap, wardrobePick, WARD_SAY, vacMode } from '../logik/signale.js';
 import { SIG_BIN, SIG_VAC, SIG_WEAR } from '../grafik/signale.js';
 
 // Garderobe: Breite je Stück (Anteil von H); die Stiefel-Grafik ist 26 × 20 (SIG_WEAR), die Sohle liegt bei 92 % der Höhe
@@ -19,7 +19,7 @@ export class Signale {
   // Konfiguration `signals`: { waste: calendar.*, wardrobe: true, vacuum: vacuum.*, door: binary_sensor.*, window:
   // binary_sensor.* oder Liste (seit 0.40, karte/fenster.js) }. Alles ist
   // aus, solange nichts eingetragen ist. Was alle Geräte gleich zeigen sollen, folgt aus den Zuständen in HA; nur
-  // „Tonne steht draußen“ steht im Tagesplan (Bit MEM_TONNE, siehe logik/signale.js).
+  // „Tonne steht draußen“ steht im Tagesplan (Bits MEM_TONNE und MEM_TONNE2, siehe logik/signale.js).
 
   _sigCfg() {
     const s = this._cfg?.signals;
@@ -30,6 +30,7 @@ export class Signale {
   _hassSig(hass) {
     const c = this._sigCfg();
     const S = hass.states;
+    this._sigDoorExpire();
     const w = c.waste ? S[c.waste] : undefined;
     if (w !== this._sigW) {
       this._sigW = w;
@@ -65,8 +66,9 @@ export class Signale {
   }
 
   _hiddenSig(hidden) {
-    if (hidden) clearTimeout(this._sigVacT);
-    else this._sigVacSync(true);
+    if (hidden) return void clearTimeout(this._sigVacT);
+    this._sigDoorExpire();
+    this._sigVacSync(true);
   }
 
   _layoutSig() {
@@ -79,6 +81,9 @@ export class Signale {
   _tickSig() {
     this._sigBinSync();
     this._sigWearSync();
+    // Der Sauger meldet sich nicht: Seine Frist (SIG.vacDead) läuft ab, ohne dass HA etwas Neues schickt
+    if (this._sigVac && this._sigVDead != null) this._sigVacSync();
+    this._sigDoorExpire();
     this._winTick();
   }
 
@@ -94,7 +99,8 @@ export class Signale {
     const acts = [];
     if (this._el.sigbin && now >= (this._sigBinAt || 0)) acts.push([6, 'sigBinNudge']);
     if (this._sigWearEls?.size && now >= (this._sigWearAt || 0)) acts.push([3, 'sigWear']);
-    const V = this._sigVac;
+    // (ohne Zustand fährt der Roboter noch eine Weile weiter, V.dead: Dann steigt er nicht auf und schiebt nicht an)
+    const V = this._sigVac?.dead ? null : this._sigVac;
     if (V?.mode === 'drive' && !V.hold && now - (this._sigRideAt || 0) > SIG.rideGap) acts.push([4, 'sigRide']);
     if (V?.mode === 'stuck' && now - (this._sigPushAt || 0) > SIG.rideGap) acts.push([5, 'sigPush']);
     return acts;
@@ -108,7 +114,8 @@ export class Signale {
   // ---------- Mülltonne ----------
 
   // Steht die Tonne heute da? → Abholung (binPlan) oder null. „Steht draußen“ von heute (MEM_TONNE) gilt immer, das
-  // vom Vortag übernommene (MEM_TONNE2) nur für die Tonne, die gestern schon stand (binDone).
+  // vom Vortag übernommene oder am Morgen der Abholung getippte (MEM_TONNE2) nur für die Tonne, die gestern schon
+  // stand (binDone, dort die Wahrheitstafel).
   _sigBin() {
     const st = this._sigW;
     if (!st || this._urlaubOn()) return null;
@@ -164,11 +171,18 @@ export class Signale {
     this._boteLayout?.();
   }
 
-  // Angetippt: steht draußen. Gilt auf allen Geräten (Tagesplan), bis zur Abholung.
+  // Angetippt: steht draußen. Gilt auf allen Geräten (Tagesplan), bis zur Abholung. Am Vorabend merkt er sich
+  // MEM_TONNE, am Morgen der Abholung MEM_TONNE2 (binTap): MEM_TONNE von heute gälte sonst am Nachmittag und, vom
+  // nächsten Tag übernommen, am Morgen darauf für die Tonne des nächsten Tags.
   _sigBinOut() {
     const el = this._el?.sigbin;
     if (!el) return;
-    this._planOp({ t: 'mem', d: pikaDay(this._haNow()), b: MEM_TONNE });
+    const P = this._sigBin();
+    // Die Abholung hat in diesen Sekunden begonnen (der nächste Takt räumt die Tonne weg): nichts mehr merken, es
+    // gälte für die nächste Abholung
+    if (!P) return void this._sigBinSync();
+    const d = pikaDay(this._haNow());
+    this._planOp({ t: 'mem', d, b: binTap(d, pikaDay(P.from)) });
     this._sigBinSync();
     if (this._sigAwake() && this._running) this._say(pick(['danke!', 'steht draußen!', 'super!']), 1300);
   }
@@ -204,30 +218,78 @@ export class Signale {
   // ---------- Garderobe ----------
 
   // Stündliche Vorhersage abonnieren (wie die Wetter-Karte von HA). Ohne Verbindung (Vorschau) bleibt _sigFc leer.
+  // Bei jedem hass: _sigFcId ist die Entität, für die das Abo gilt, _sigFcUn das Abo (ein Promise: es steht oder die
+  // Antwort steht noch aus), _sigFcT der Zeitgeber bis zum nächsten Versuch nach einer Ablehnung.
+  // Die Karte führt das Abo selbst (resubscribe: false, siehe _sigFcTry): Mit der Verbindung ist es weg, und kommt
+  // sie wieder (hass.connected, wie _wxConn in karte.js), abonniert sie neu. Abbestellt wird das alte dabei nicht:
+  // Seine Kennung gilt auf der neuen Verbindung nicht mehr (home-assistant-js-websocket zählt dort wieder ab 1, bis
+  // 9.7.1 konnte ein altes Abo so ein fremdes abbestellen).
   _sigFcSub(hass) {
     const id = this._cfg.weather_entity;
-    if (this._sigFcId === id) return;
-    this._sigFcStop();
-    this._sigFcId = id;
-    const conn = hass.connection;
-    if (!id || typeof conn?.subscribeMessage !== 'function') return;
-    try {
-      const p = conn.subscribeMessage((m) => {
-        this._sigFc = Array.isArray(m?.forecast) ? m.forecast : [];
-        this._sigWearSync();
-      }, { type: 'weather/subscribe_forecast', forecast_type: 'hourly', entity_id: id });
-      this._sigFcUn = p;
-      Promise.resolve(p).catch((e) => console.debug('pika-pet-card: Vorhersage nicht abonnierbar', e));
-    } catch (e) {
-      console.debug('pika-pet-card: Vorhersage nicht abonnierbar', e);
+    if (this._sigFcId !== id) {
+      this._sigFcStop();
+      this._sigFcId = id;
     }
+    const conn = hass.connected !== false && hass.connection?.connected !== false;
+    const back = conn && this._sigFcConn === false;
+    this._sigFcConn = conn;
+    if (!conn) {
+      this._sigFcUn = null;
+      return;
+    }
+    // Wieder verbunden: sofort, und die Pausen beginnen von vorn. Sonst nur, wenn weder ein Abo noch ein Versuch läuft.
+    if (back) this._sigFcN = 0;
+    if (!this._sigFcUn && (back || !this._sigFcT)) this._sigFcTry();
   }
 
+  // Ein Versuch. Lehnt HA ab (die Wetter-Entität ist beim Start von HA noch nicht geladen, die Integration lädt
+  // neu), kommt der nächste nach SIG.fcRetry: nach 30 s, dann jedes Mal doppelt so spät, höchstens alle 30 Min.
+  // Bis 0.43.0 blieb es bei dem einen Versuch, die Garderobe blieb bis zum Neuladen der Seite leer.
+  // resubscribe: false: Sonst meldete die Bibliothek das Abo nach dem Wiederverbinden selbst wieder an. Scheitert
+  // das (HA ist neu gestartet, das Wetter fehlt noch), erfährt es niemand, und die Vorhersage bliebe die alte.
+  _sigFcTry() {
+    clearTimeout(this._sigFcT);
+    this._sigFcT = null;
+    const id = this._sigFcId;
+    const hass = this._hass;
+    const conn = hass?.connection;
+    if (!id || this._sigFcUn || typeof conn?.subscribeMessage !== 'function') return;
+    // Getrennt wird nichts gesendet: Der Versuch kommt mit der Verbindung (_sigFcSub)
+    if (hass.connected === false || conn.connected === false) return;
+    let p = null;
+    try {
+      p = Promise.resolve(conn.subscribeMessage((m) => {
+        if (this._sigFcUn !== p) return; // ein Abo von früher (abbestellt, getrennt)
+        this._sigFc = Array.isArray(m?.forecast) ? m.forecast : [];
+        this._sigWearSync();
+      }, { type: 'weather/subscribe_forecast', forecast_type: 'hourly', entity_id: id }, { resubscribe: false }));
+    } catch (e) {
+      p = Promise.reject(e);
+    }
+    this._sigFcUn = p;
+    p.then(() => {
+      if (this._sigFcUn === p) this._sigFcN = 0;
+    }, (e) => {
+      console.debug('pika-pet-card: Vorhersage nicht abonnierbar', e);
+      // Inzwischen abbestellt, getrennt oder neu abonniert: Diese Antwort geht niemanden mehr an
+      if (this._sigFcUn !== p) return;
+      this._sigFcUn = null;
+      const n = this._sigFcN || 0;
+      this._sigFcN = n + 1;
+      this._sigFcT = setTimeout(() => this._sigFcTry(), Math.min(SIG.fcRetry[1], SIG.fcRetry[0] * 2 ** n));
+    });
+  }
+
+  // Abbestellen (Garderobe aus, andere Wetter-Entität, Karte abgehängt), auch ein Abo, dessen Antwort noch aussteht.
+  // Kein Versuch mehr.
   _sigFcStop() {
     const p = this._sigFcUn;
     this._sigFcUn = null;
     this._sigFcId = null;
-    if (p) Promise.resolve(p).then((u) => typeof u === 'function' && u()).catch(() => {});
+    clearTimeout(this._sigFcT);
+    this._sigFcT = null;
+    this._sigFcN = 0;
+    if (p) p.then((u) => typeof u === 'function' && u()).catch(() => {});
   }
 
   // Was heute an der Tür hängt (SIG.ward von bis), oder nichts
@@ -364,12 +426,21 @@ export class Signale {
 
   // ---------- Saugroboter ----------
 
-  // Zustand des Saugers → Roboter vorn auf der Wiese: fährt hin und her, fährt heim (aus dem Bild), steht, steckt fest
+  // Zustand des Saugers → Roboter vorn auf der Wiese: fährt hin und her, fährt heim (aus dem Bild), steht, steckt fest.
+  // Ohne Zustand (unavailable, unknown, die Entität fehlt) bleibt er zunächst, wie er war: Ein kurzer Ausfall (WLAN,
+  // Neustart von HA) soll ihn nicht verschwinden und wieder aus der Station kommen lassen. Nach SIG.vacDead (15 Min)
+  // ist er weg, wie die Geräte des Haus-Boten nach langem Ausfall neu gelesen werden: Bis 0.43.0 fuhr ein Roboter,
+  // dessen Sauger mitten im Putzen ausfiel, bis zum Neuladen der Seite, und der Pika ritt weiter auf ihm. Die Frist
+  // läuft ab dem Ausfall in HA (last_changed; fehlt die Entität, ab jetzt), nachgesehen wird im Takt (_tickSig).
+  // Kommt ein echter Zustand, gilt wieder der.
   _sigVacSync(relayout = false) {
     if (!this._el || !this._g) return;
     const st = this._sigV;
     const dead = !st || ['unavailable', 'unknown'].includes(st.state);
-    const mode = dead ? this._sigVac?.mode ?? null : vacMode(st.state);
+    const now = this._haNow();
+    this._sigVDead = dead ? this._sigVDead ?? Math.min(now, Date.parse(st?.last_changed) || now) : null;
+    const lost = dead && now - this._sigVDead >= SIG.vacDead;
+    const mode = dead ? (lost ? null : this._sigVac?.mode ?? null) : vacMode(st.state);
     let V = this._sigVac;
     if (!mode) {
       if (V) {
@@ -395,6 +466,7 @@ export class Signale {
       relayout = true;
     }
     V.w = w;
+    V.dead = dead;
     V.top = this._sigGround() - h * 0.95;
     V.el.style.width = `${w.toFixed(1)}px`;
     V.el.style.top = `${V.top.toFixed(1)}px`;
@@ -457,7 +529,7 @@ export class Signale {
   async _sigRide() {
     const V = this._sigVac;
     this._sigRideAt = this._haNow();
-    if (!V || V.mode !== 'drive') return;
+    if (!V || V.dead || V.mode !== 'drive') return;
     const p = this._el.pika;
     const { pW, gy } = this._g;
     V.hold = true;
@@ -496,12 +568,21 @@ export class Signale {
       this._say(pick(['nochmal!', 'lustig!', 'hihi']), 1200);
       await this._wait(900);
     } finally {
-      this._reiter = false;
-      if (on) {
-        // unterbrochen, während er oben saß: wieder auf den Boden
+      // Unterbrochen, während er oben saß oder im Sprung war (_hopTo setzt die Höhe gleich beim Absprung, „on“ gilt
+      // erst nach der Landung): auf den Boden, und zwar dort, wo er gerade wirklich ist. this._x ist während Fahrt
+      // und Sprung schon das Ziel (_liveX liest die laufende Überblendung): Sonst spränge er ans Ende der Fahrt,
+      // während der Roboter von seiner wirklichen Stelle weiterfährt. Blieb die Höhe stehen, stünde er mit depth
+      // ein paar Pixel unter der Bodenlinie (die Scheibe liegt tiefer, _step kennt nur Höhen über null), ohne depth
+      // schickte ihn _step mit hopDown von hier an den Fuß des Aussichtssteins.
+      if (on || this._lift !== 0) {
+        const x = this._liveX();
+        this._reiter = false;
         this._lift = 0;
-        this._setX(this._x, true);
-      } else this._pikaZ();
+        this._setX(x, true);
+      } else {
+        this._reiter = false;
+        this._pikaZ();
+      }
       p.classList.remove('happy');
       V.hold = false;
       if (this._sigVac === V) this._sigVacMove();
@@ -512,7 +593,7 @@ export class Signale {
   async _sigPush() {
     const V = this._sigVac;
     this._sigPushAt = this._haNow();
-    if (!V || V.mode !== 'stuck') return;
+    if (!V || V.dead || V.mode !== 'stuck') return;
     const vx = V.x + V.w / 2;
     const side = this._x < vx ? -1 : 1;
     await this._walkTo(vx + side * this._g.pW * 0.6, 1.3);
@@ -538,11 +619,31 @@ export class Signale {
     if (this._asleep) return void this._cls('stw', 550, true);
     if (this._running && !this._next && ['idle', 'look', 'wander', 'groom', 'squeak', 'curious', 'nibble', 'lookout'].includes(this._action)) {
       this._next = 'sigDoor';
+      this._sigDoorDue = Date.now();
       this._interrupt();
     }
   }
 
+  // Die Reaktion auf die Tür gilt nur gleich danach (SIG.doorTtl, wie TOUCH_TTL bei Berührungen): Geht _step
+  // stattdessen schlafen oder Kaffee holen, bliebe _next sonst liegen, er riefe am nächsten Morgen „Hallo?“, und bis
+  // dahin hielte es alles auf, was auf ein freies _next wartet (Haus-Bote, Kaffee, Päckchen, Fenster). Aufgeräumt
+  // wird bei jedem hass, im Takt und beim Sichtbarwerden; _sigDoor prüft es selbst noch einmal.
+  _sigDoorExpire() {
+    const due = this._sigDoorDue;
+    if (!due) return;
+    // (kam etwas anderes in _next, etwa eine Berührung, gehört der Zeitstempel zu nichts mehr)
+    if (this._next !== 'sigDoor') this._sigDoorDue = 0;
+    else if (Math.abs(Date.now() - due) > SIG.doorTtl) {
+      this._next = null;
+      this._sigDoorDue = 0;
+    }
+  }
+
   async _sigDoor() {
+    // Zu spät drangekommen: nichts mehr. Ohne Zeitstempel (Vorschau, _next von Hand) immer.
+    const due = this._sigDoorDue;
+    this._sigDoorDue = 0;
+    if (due && Math.abs(Date.now() - due) > SIG.doorTtl) return;
     const p = this._el.pika;
     this._face(-1);
     this._cls('stw', 550, true);

@@ -246,6 +246,11 @@ export class Lebensschleife {
     // Der Merker gilt nur für diesen Schritt: Biegt er vor der Wartezeile ab (herunter vom Stein, Kaffee, Schlafen,
     // Aufwachen, Traum), bräche der frische Stand sonst die fremde Aktion ab (_planFresh, _planReady)
     this._planWaiting = false;
+    // Ebenso „auch ohne passendes Wetter“ (_forced, für Aktionen aus _next wie die Vorschau-Knöpfe): Gesetzt wird es
+    // unten für genau den Schritt, der _next ausführt. Ohne das Zurücksetzen hier oben bliebe es nach Häufchen, Tür
+    // oder Fenster stehen, wenn der nächste Schritt vorher abbiegt, etwa in eine Beschäftigung aus dem Tagesplan:
+    // Drachen und Seifenblasen (_kite, _bubbles) liefen dann weiter, obwohl der Wind eingeschlafen oder aufgefrischt ist.
+    this._forced = false;
     // Über das Aufräumen gehaltene Streichel-Mimik: jetzt weg, im selben Atemzug setzt die nächste Aktion ihre eigene
     if (this._petHeld) {
       this._petHeld = false;
@@ -260,6 +265,8 @@ export class Lebensschleife {
     }
     // Eine Berührung von vor Kaffee, Schlafengehen oder Begrüßung ist vorbei: nicht Minuten später darauf reagieren
     if (TOUCH_NEXT.has(this._next) && Date.now() - (this._nextAt || 0) > TOUCH_TTL) this._next = null;
+    // Ebenso die Haustür: Ging sie auf, als er gerade schlafen ging, sagt er nicht am nächsten Morgen „Hallo?“
+    this._sigDoorExpire();
     // In der Hängematte unterbrochen: aus ihr heraus (nicht zum Stein). Am Boden (z. B. schon beim Anlauf
     // unterbrochen, _lift kommt erst mit dem Sprung) gilt der Merker nicht mehr.
     if (!(this._lift > 0)) this._onHam = false;
@@ -311,7 +318,6 @@ export class Lebensschleife {
       this._forced = !TOUCH_NEXT.has(next); // Vorschau: auch ohne passendes Wetter
       return this._run(next);
     }
-    this._forced = false;
     // Ein Häufchen wurde fällig, während er beschäftigt war, und hat gewartet (_renderPiles): jetzt ist Zeit dafür.
     // Nur solange es frisch ist: Ein älteres liegt auf den anderen Geräten längst da, hier dann auch.
     if (this._poopPending) {

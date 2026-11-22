@@ -115,7 +115,9 @@ const FEST_LANTERN = {
       <circle cx="13.5" cy="18" r="15" fill="url(#fst-mg)"/>
       <ellipse cx="13.5" cy="18" rx="7" ry="6.6" fill="#fff1b8" opacity=".45"/></g></g></g>`,
 };
-// Laterne am Stab, die der Pika trägt (in den Koordinaten der Pika-Grafik, viewBox 120 × 100)
+// Laterne am Stab, die der Pika trägt (in den Koordinaten der Pika-Grafik, viewBox 120 × 100). .lgl ist der Schein um
+// die Laterne (leuchtet nachts voll), .lgk der Lichtkern im Körper: Er liegt über den bunten Streifen und bleibt
+// durchscheinend (eigene Klasse, mit .lgl deckte er sie nachts ganz zu)
 const FEST_CARRY = `<svg viewBox="0 0 120 100" aria-hidden="true">
     <defs>${GLOW_GRAD('fst-cg', '#ffd27a')}</defs>
     <path d="M101 63 L128 6" stroke="#8a5a3b" stroke-width="1.9" stroke-linecap="round"/>
@@ -123,7 +125,7 @@ const FEST_CARRY = `<svg viewBox="0 0 120 100" aria-hidden="true">
       <circle class="lgl" cx="128" cy="27.6" r="21" fill="url(#fst-cg)"/>
       <g transform="translate(128 6) scale(1.35) translate(-13.5 -2)">
         <path d="M13.5 2 V8.6" stroke="${OUT}" stroke-width=".6"/>${FEST_LANTERN_BODY.replace('#e8584e', '#f28fb1').replace('#5fb9de', '#7cc35a')}
-        <ellipse class="lgl" cx="13.5" cy="18" rx="6" ry="5.6" fill="#fff1b8" opacity=".5"/>
+        <ellipse class="lgk" cx="13.5" cy="18" rx="6" ry="5.6" fill="#fff1b8" opacity=".45"/>
       </g>
     </g>
     <ellipse cx="101" cy="62.4" rx="4" ry="5" fill="#ecdcc6" stroke="${OUT}" stroke-width="1.4"/>

@@ -7,10 +7,14 @@ import { MEM_TONNE, MEM_TONNE2 } from './tagesplan.js';
 // darum zeigen alle Geräte dasselbe. Geteilt werden muss nur „Tonne steht draußen“: ein Bit im Tagesplan (MEM_TONNE).
 // SIG: bin = ab so viel Uhr am Vortag steht die Tonne da; binNudge = so oft erinnert er wach an sie (min, max ms);
 // ward = Garderobe von bis (Stunde), bewertet werden die Stunden wardFrom bis wardTo; doorGap = höchstens so oft
-// reagiert er auf die Haustür; doorFresh = nur auf ein Öffnen, das höchstens so alt ist
+// reagiert er auf die Haustür; doorFresh = nur auf ein Öffnen, das höchstens so alt ist; doorTtl = kommt die Reaktion
+// nicht binnen dieser Zeit dran (Schlafenszeit, Kaffee), verfällt sie; vacDead = so lange fährt der Roboter ohne
+// Zustand (unavailable, unknown, Entität fehlt) noch weiter, dann verschwindet er; fcRetry = lehnt HA das Abo der
+// Vorhersage ab, der nächste Versuch nach min ms, danach jedes Mal doppelt so spät, höchstens max
 const SIG = {
   bin: 14, binNudge: [8 * 6e4, 12 * 6e4], ward: [6, 10], wardFrom: 7, wardTo: 19,
-  rain: 0.5, umbrella: 2, cold: 3, uv: 5, doorGap: 2 * 6e4, doorFresh: 30000, rideGap: 5 * 6e4,
+  rain: 0.5, umbrella: 2, cold: 3, uv: 5, doorGap: 2 * 6e4, doorFresh: 30000, doorTtl: 20000, rideGap: 5 * 6e4,
+  vacDead: 15 * 6e4, fcRetry: [30000, 30 * 6e4],
 };
 
 // Datum aus dem Kalender ("2026-11-18 07:00:00" in Ortszeit, oder ISO) → ms
@@ -48,17 +52,41 @@ const binPlan = (st, now) => {
   return { at, from, name, ...binKind(name) };
 };
 
-// Tonne schon rausgestellt? Das Bit gilt an dem Pika-Tag, an dem sie dasteht (Vortag), und am Tag der Abholung
-// (cute.d zwischen beiden; der Tag davor oder ein alter Tag zählen nicht). bit: welche der beiden Bits gefragt sind.
-// MEM_TONNE ist heute gesetzt worden. MEM_TONNE2 hat der neue Pika-Tag von gestern übernommen (cuteNew), es meint
-// also die Tonne, die gestern schon stand: Es zählt nur, wenn diese Abholung da schon dastand (cute.d - 1 >= dFrom).
-// Sonst nähme es an Tagen mit Abholungen hintereinander (Dienstag Bio, Mittwoch Gelber Sack) am Dienstagnachmittag
-// die Tonne für Mittwoch weg, sobald jemand streichelt, und niemand stellte sie raus.
+// „Tonne steht draußen“: zwei Bits im Gedächtnis des Pika-Tags (cute.m im Tagesplan). Eine Abholung steht von
+// dFrom = pikaDay(from) (Vortag ab 14 Uhr) bis dAt = pikaDay(at) da, meist ist dAt = dFrom + 1.
+// - MEM_TONNE: „die Tonne, die seit heute dasteht, ist draußen“. Geschrieben beim Antippen am Pika-Tag dFrom
+//   (Vorabend, bis 4 Uhr früh). Der nächste Pika-Tag übernimmt es als MEM_TONNE2 (cuteNew, logik/tagesplan.js).
+// - MEM_TONNE2: „die Tonne, die gestern schon dastand, ist draußen“. Vom Vortag übernommen, oder geschrieben beim
+//   Antippen am Morgen der Abholung (Pika-Tag nach dFrom, binTap). Es wird nicht weitergegeben.
+// binDone: Die Abholung ist erledigt, wenn cute.d zwischen dFrom und dAt liegt (der Tag davor oder ein alter Tag
+// zählen nicht) und MEM_TONNE gesetzt ist, oder MEM_TONNE2 und sie am Vortag schon dastand (cute.d - 1 >= dFrom).
+// bit: welche der beiden Bits gefragt sind.
+//
+// Wahrheitstafel. A wird am Tag 1 abgeholt (dFrom 0, dAt 1), B ist die nächste Abholung. Die Spalten Tag 0 bis 2
+// zeigen die Bits in cute, wenn an dem Tag etwas in den Plan kommt (Tippen, Streicheln, ein Erlebnis); sonst bleibt
+// cute beim letzten Tag stehen, und das Ergebnis ist dasselbe (MEM_TONNE am Tag dFrom gilt bis dAt, und für B liegt
+// cute.d dann vor dFrom).
+//   getippt                        | Tag 0 | Tag 1        | Tag 2  | A bis zur Abholung | B am Tag 2: ab Tag 1, 14 Uhr | B am Tag 3
+//   gar nicht                      | –     | –            | –      | steht da           | steht da                     | steht da
+//   A am Vorabend (Tag 0)          | TONNE | TONNE2       | –      | weg                | steht da                     | steht da
+//   A am Morgen (Tag 1)            | –     | TONNE2       | –      | weg                | steht da                     | steht da
+//   A am Vorabend, B am Vorabend   | TONNE | TONNE2+TONNE | TONNE2 | weg                | weg                          |
+//   A am Morgen, B am Vorabend     | –     | TONNE2+TONNE | TONNE2 | weg                | weg                          |
+//   A beliebig, B am Morgen (Tag 2)| …     | TONNE2       | TONNE2 | weg                | steht da bis zum Tippen      |
+// Bis 0.43.0 schrieb jedes Tippen MEM_TONNE. Am Morgen der Abholung getippt (Dienstag 6:30 für Bio um 7 Uhr), lag es
+// damit am Tag dFrom der nächsten Abholung: Der Gelbe Sack für Mittwoch blieb den ganzen Dienstagnachmittag und,
+// übernommen, am Mittwochmorgen weg, und niemand stellte ihn raus. MEM_TONNE und MEM_TONNE2 zusammen am Morgen
+// gingen auch nicht: Das ist der Stand „A am Vorabend, B am Vorabend“, bei dem B weg sein muss, und cuteNew gibt
+// jedes MEM_TONNE an den nächsten Tag weiter. Bei mehreren Abholungen hintereinander (0.42.2) gilt das übernommene
+// Bit nur für die Tonne, die gestern schon stand: Sonst nähme es am Dienstagnachmittag die Tonne für Mittwoch weg,
+// sobald jemand streichelt.
 const binDone = (cute, dFrom, dAt, bit = MEM_TONNE | MEM_TONNE2) => {
   if (!cute || cute.d < dFrom || cute.d > dAt) return false;
   if (cute.m & bit & MEM_TONNE) return true;
   return (cute.m & bit & MEM_TONNE2) !== 0 && cute.d - 1 >= dFrom;
 };
+// Angetippt am Pika-Tag today: welches Bit kommt für die Abholung, die seit dFrom dasteht, in den Plan von heute?
+const binTap = (today, dFrom) => (today > dFrom ? MEM_TONNE2 : MEM_TONNE);
 
 // Garderobe: was man heute braucht, aus der stündlichen Vorhersage ([{ datetime, temperature, precipitation,
 // uv_index }]) für die Stunden SIG.wardFrom bis SIG.wardTo des Tags day (ms, irgendwann an dem Tag). Reihenfolge:
@@ -118,4 +146,4 @@ const vacRuns = (rows) => {
   return merged;
 };
 
-export { SIG, sigTime, BIN_KINDS, binKind, binPlan, binDone, wardrobePick, WARD_SAY, VAC, vacMode, vacRuns };
+export { SIG, sigTime, BIN_KINDS, binKind, binPlan, binDone, binTap, wardrobePick, WARD_SAY, VAC, vacMode, vacRuns };

@@ -29,8 +29,6 @@ export class Himmel {
       sc.remove('day', 'dusk', 'night');
       sc.add(mode);
     }
-    const month = new Date(this._dbgDate ?? Date.now()).getMonth();
-    sc.toggle('summer', month >= 4 && month <= 8);
     sc.toggle('sun-low', e != null && e < 8);
     sc.toggle('sun-down', e != null && e < -1);
     this._light(mode);
@@ -148,7 +146,7 @@ export class Himmel {
 
   // Sternschnuppen (nur zum Anschauen, kein Zähler): ein Zeitgeber alle 1,5–5 Minuten, der nur nachts bei
   // klarem Himmel eine losschickt. Jede läuft als CSS-Animation in .meteors und entfernt sich danach selbst.
-  // Glühwürmchen: ersetzen die sechs Punkte aus _build durch 10–14 eigene; die Ebene .ff blendet je nach
+  // Glühwürmchen: 10–14 in der Ebene .ff (leer angelegt in _build, gefüllt von _ffBuild); sie blendet je nach
   // Lage (Sommernacht, späte Sommerdämmerung, trocken) ein oder aus.
   _hassSky(hass) {
     // erst nach _updateSky im selben hass-Aufruf, damit die Szenen-Klassen schon stimmen

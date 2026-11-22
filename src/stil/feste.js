@@ -87,6 +87,11 @@ const STYLE_FEST = `
   .fest-carry .lgl { opacity: .45; transition: opacity 2.5s; }
   .dusk .fest-carry .lgl { opacity: .8; }
   .night .fest-carry .lgl { opacity: 1; }
+  /* Der Lichtkern im Laternenkörper bleibt durchscheinend, sonst deckte er nachts die bunten Streifen zu (die
+     hängende Laterne hält ihren bei .45) */
+  .fest-carry .lgk { opacity: .45; transition: opacity 2.5s; }
+  .dusk .fest-carry .lgk { opacity: .5; }
+  .night .fest-carry .lgk { opacity: .55; }
   /* Zucken beim Knall */
   .pika.fest-zuck .hop { animation: fzuck .4s ease-out; }
   @keyframes fzuck { 25% { transform: translateY(-6%) scale(.96, 1.05); } 60% { transform: scale(1.04, .96); } }
@@ -121,6 +126,8 @@ const STYLE_FEST = `
   /* Weniger Bewegung gewünscht: Wimpel und Maibaum-Bänder hängen still (Teilchen spart das Skript, calmMotion) */
   @media (prefers-reduced-motion: reduce) {
     .fpn, .fmai .rb { animation: none !important; }
+    /* Fledermäuse kommen dann keine (_festBat); eine, die schon unterwegs ist, gleitet zu Ende, statt zu flattern */
+    .fbat .w { animation: none; }
     /* Advent: Die neue Flamme blendet nur ein, die Pfoten halten still */
     .fwreath.lit .fpop, .pika.fest-warm:not(.fest-reach) .paws { animation: none; }
   }

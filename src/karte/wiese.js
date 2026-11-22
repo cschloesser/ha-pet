@@ -257,7 +257,10 @@ export class Wiese {
     }
   }
 
+  // Alle 2,5 Minuten wächst eine Blume nach (bis sechs). Sieht keiner hin, wächst nichts: Es wäre Arbeit am DOM auf
+  // einer Karte im Hintergrund, und das Wachsen (.grow) sähe niemand.
   _regrow() {
+    if (this._away()) return;
     if (this._g && this._flowers.length < 6) this._addFlower(true);
   }
 

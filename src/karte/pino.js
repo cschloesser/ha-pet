@@ -220,7 +220,9 @@ export class Pino {
     return String(this._cfg.friend_name || 'Pino');
   }
 
-  // Wer gerade zu Besuch ist (oder zuletzt war: Abschied, Fangen): Pino heißt wie in friend_name, die anderen fest
+  // Name des Besuchers, mit dem der Pika ihn begrüßt und verabschiedet („Kirby!“, „tschüss, Kirby!“; sonst braucht
+  // ihn niemand). _frWho setzt die Ankunft und bleibt über den Abschied hinaus stehen (er winkt ihm nach, wenn der
+  // Freund schon weg ist). Pino heißt wie in friend_name, die anderen fest.
   _frGuest() {
     return this._frWho || this._frName();
   }
@@ -596,6 +598,8 @@ export class Pino {
         + (sc !== 1 ? ` scale(${sc.toFixed(3)})` : '');
     }
     fr.el.classList.toggle('lane1', !!dy);
+    // auch an der Hülle der Sprechblase: Sie ist dort mit verkleinert, der Stil hält die Schrift trotzdem lesbar
+    fr.sw.classList.toggle('lane1', !!dy);
     // Bühne: Ebene erst auf halbem Weg wechseln, bis dahin steht er noch auf der alten Spur (wie _walkTo)
     clearTimeout(fr.laneZT);
     if (ms > 0 && (lane || 0) !== (vor || 0)) {

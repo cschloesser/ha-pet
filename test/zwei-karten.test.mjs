@@ -611,10 +611,18 @@ test('Tagesplan: zweimal gestreichelt, das erste ist noch unterwegs, da kommt ei
   await W.vor(40);
   assert.equal(A.c._planSt, W.ha.wert(PLAN), 'der fremde Stand ist bei A');
   assert.equal(A.plan().cute.n, 5, 'A zeigt weiter beide (das zweite zählt vom ersten aus, nicht vom fremden Stand)');
+  // Dann kommt das Echo des ersten Schreibens: Es hat den fremden Stand im Helfer überschrieben, ihm fehlt dessen
+  // Erlebnis. A weiß das (es hat den fremden Stand gesehen) und behält es, statt das Echo ungeprüft als neuen Stand
+  // des Helfers zu nehmen.
+  await W.vor(250);
+  assert.equal(T.planParse(W.ha.wert(PLAN)).cute.m, 1, 'im Helfer steht gerade A\'s erstes Schreiben, ohne das fremde Erlebnis');
+  assert.equal(A.c._planSt, W.ha.wert(PLAN), 'das Echo ist bei A');
+  assert.deepEqual([A.plan().cute.n, A.plan().cute.m, A.c._planKnown.cute.m], [5, 1 | 4, 1 | 4]);
   await W.vor(60000);
-  // (Das Erlebnis aus dem fremden Schreiben hat A's erstes, schon gesendetes Schreiben im Helfer überschrieben, wie
-  // bisher: Ein Gerät, das es selbst geschrieben hat, legt es noch einmal darauf, hier gibt es keins.)
-  assert.equal(cute().n, 5);
+  // Bis 0.43.0 war das Erlebnis damit weg: Zurück kam es nur, wenn das Gerät, das es geschrieben hatte, noch zusah und
+  // es selbst wieder darauflegte (hier gibt es keins). Jetzt schreibt A es mit seinem zweiten Streicheln zurück.
+  assert.deepEqual(cute(), { d: tag, n: 5, m: 1 | 4 });
+  assert.equal(A.geschrieben(PLAN).length, 2);
   einig(W, T, A);
   assert.deepEqual(W.warnungen, []);
 });

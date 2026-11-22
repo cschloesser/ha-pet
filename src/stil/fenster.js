@@ -2,6 +2,19 @@
 
 import { BZ, LICHT } from '../logik/buehne.js';
 import { PK_DIM } from '../grafik/pika.js';
+import { FEN } from '../grafik/fenster.js';
+import { AREALE } from '../grafik/areale.js';
+
+// Tippfläche des offenen Fensters: Rand zum Kästchen ringsum (das Kästchen misst 2 × FEN.box Bau-Einheiten, die
+// Fenstermitte liegt in seiner Mitte). FEN_RAND: wie bisher ein Kreis von 50 % des Kästchens, aber nie kleiner als
+// 44 px (bis 0.43.0 waren es 20,7 px bei 180 px Kartenhöhe, 13,8 px bei der kleinsten Karte). FEN_TUER: Nach links
+// endet sie spätestens an der rechten Kante der Tür. Der Tipp auf die Tür hat keine eigene Fläche, die Szene sucht
+// ihn nach Rechtecken (_worldZones), und das Fenster läge mit seinem eigenen Klick darüber. Das greift nur auf
+// Karten unter etwa 154 px Größeneinheit; dort wird die Fläche links schmaler (39 × 44 px bei der kleinsten).
+// Alles andere Antippbare in der Nähe (Vögel am Blumenkasten, Geräte, Häufchen, Besucher) hat eine eigene Fläche auf
+// einer höheren Ebene der Bühne und behält den Vorrang.
+const FEN_RAND = 'min(25%, calc(50% - 22px))';
+const FEN_TUER = `${+(50 - ((FEN.cx - AREALE.huegel.hole.x2) / (2 * FEN.box)) * 100).toFixed(2)}%`;
 
 const STYLE_FEN = `
   /* Über dem Fensterlicht des Baus (Reihe bau, Rang fenster). Zu und fertig ist es nicht zu sehen: Dann zeigen Bau und
@@ -11,9 +24,11 @@ const STYLE_FEN = `
   .fenster.da { visibility: visible; }
   .fenster > div { position: absolute; inset: 0; pointer-events: none; }
   .fenster svg { display: block; width: 100%; height: 100%; overflow: visible; }
-  /* Trefferfläche: nur das offene Fenster samt Rahmen (Kreis), nicht das ganze Kästchen */
+  /* Trefferfläche: nur das offene Fenster samt Rahmen (Kreis), nicht das ganze Kästchen; auf kleinen Karten ragt sie
+     über das Kästchen hinaus (mindestens 44 px, siehe FEN_RAND und FEN_TUER) */
   .fenster::after {
-    content: ''; position: absolute; left: 25%; top: 25%; width: 50%; height: 50%; border-radius: 50%; pointer-events: none;
+    content: ''; position: absolute; left: max(${FEN_TUER}, ${FEN_RAND}); top: ${FEN_RAND}; right: ${FEN_RAND}; bottom: ${FEN_RAND};
+    border-radius: 50%; pointer-events: none;
   }
   .fenster.da.auf::after { pointer-events: auto; cursor: pointer; }
   /* Bei Wolken und in der Dämmerung dämmert der Fensterflügel mit dem Bau (Licht wie .burrow); nachts nicht, da

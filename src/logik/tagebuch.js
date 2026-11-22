@@ -95,7 +95,7 @@ const DIARY_TXT = {
   urlaubTag: ['Ich bin bei {n}.', 'Heute bin ich noch bei {n}.'],
   heim: ['Wieder zu Hause! {d} war ich bei {n}. Hier ist meine Postkarte.', 'Da bin ich wieder! {d} bei {n}, es war schön. Die Postkarte ist für euch.'],
   mile: ['Das war mein {z}. Päckchen! Ich hab ein bisschen gefeiert.'],
-  tonne: ['Die Tonne steht an der Straße. Danke fürs Rausstellen!', 'Morgen kommt die Müllabfuhr. Die Tonne steht schon draußen.'],
+  tonne: ['Die Tonne steht an der Straße. Danke fürs Rausstellen!', 'Die Müllabfuhr kann kommen. Die Tonne steht schon draußen.'],
   sauger: ['Der Saugroboter war unterwegs. Ich bin hinterhergehoppelt.', 'Der Saugroboter hat geputzt. Vielleicht bin ich ein Stück mitgefahren!'],
   allGold: ['Jetzt sind alle meine Schätze golden. Was für ein Fest!'],
   flowerTaken: ['Ich hab dir eine Blume gepflückt und ins Gras gelegt. Du hast sie genommen!', 'Für dich: eine Blume mit Schleife. Du hast sie angenommen, da hab ich mich gefreut.'],
@@ -202,7 +202,9 @@ const diaryDerive = (S, P, from, { decayAt, until }) => {
       petMax(c);
       const neu = c.m & ~(mem[c.d] || 0);
       mem[c.d] = (mem[c.d] || 0) | c.m;
-      MEM_BITS.forEach((name, bit) => neu & (1 << bit) && add(t, 'mem', { b: name }));
+      // „tonne2“ ohne „tonne“ am Vortag ist nicht übernommen (cuteNew), sondern am Morgen der Abholung getippt (binTap):
+      // fürs Tagebuch dasselbe wie „tonne“
+      MEM_BITS.forEach((name, bit) => neu & (1 << bit) && add(t, 'mem', { b: name === 'tonne2' && !((mem[c.d - 1] || 0) & (1 << MEM_BITS.indexOf('tonne'))) ? 'tonne' : name }));
     }
     urSee(b.ur);
     const g0 = a.gift;

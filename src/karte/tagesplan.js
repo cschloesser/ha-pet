@@ -3,9 +3,12 @@
 import { clamp } from '../logik/hilfen.js';
 import { HAY_MAX, PLAN_MIN, planBlank, planSer, planParse, planApply, planOld, planKeep, planRebase } from '../logik/tagesplan.js';
 import { ACT_SMALL } from '../logik/beschaeftigungen.js';
+import { ECHO_JUDGE } from '../logik/zustand.js';
 
 // Schreibsperre (siehe _planBlind): so oft schaut ein zurückgehaltenes Schreiben nach, ob es hinaus darf
 const PLAN_HOLD = 5000;
+// … in kurzen Schritten, wenn es nur noch darauf wartet, dass der Stand nach langer Pause als frisch gilt (_planHoldMs)
+const PLAN_HOLD_STALE = 500;
 // … und so lange gilt ein Zweifel am eigenen Stand höchstens weiter, nachdem HA wieder verbunden liefert, ohne dass ein
 // neuer Stand kam (dann hat sich dort nichts geändert)
 const PLAN_DOUBT = 10000;
@@ -26,7 +29,8 @@ export class Tagesplan {
     this._planSeen = false; // der Helfer war schon einmal da (fehlt er später kurz, startet HA wohl neu)
     this._planNewer = false; // im Helfer steht das Format einer neueren Karte: nur lesen
     this._planOps = [];
-    this._planSent = []; // gesendet, noch ohne Echo: { v, at }
+    this._planSent = []; // gesendet, noch ohne Echo: { v, at, ms, n, k, ctx, seen, txt, failed }
+    this._planVs = []; // die zuletzt gesendeten Texte (ein zweites Mal derselbe: siehe _echoDup)
     this._planAck = 0; // Änderungen bis zu dieser Zeit hat HA bestätigt
     this._planKnown = null; // was dieses Gerät zuletzt im Helfer gesehen hat (für planKeep)
     this._planHeal = false; // im Helfer fehlt etwas, das dort schon stand: wieder hineinschreiben
@@ -68,11 +72,22 @@ export class Tagesplan {
     if (st === this._planSt) return;
     this._planSt = st;
     // Echo eines eigenen Schreibens: alles, was bis dahin geändert wurde, ist in HA angekommen
-    const sent = this._planSent.findIndex((e) => e.v === st);
+    const ctx = hass.states[id]?.context?.id;
+    const sent = this._echoFind(this._planSent, st, ctx);
+    // … außer es war laut Kennung der gleichlautende Stand eines anderen Geräts (siehe „Echo oder fremder Stand?“ in
+    // karte/zustand.js): Dann fehlt im Helfer das eigene Streicheln (_planAgain, am Ende). Alles andere stimmt auch
+    // dann, der Wortlaut ist ja derselbe.
+    // Ein anderer Stand als ein Echo, während eigene Schreiben unbestätigt sind: Für sie zählt ab jetzt nur noch der
+    // Wortlaut. Ihr Echo kann mit diesem Stand in einer Meldung untergegangen sein, und lautet später wieder einer
+    // gleich, hat ihn ein anderes Gerät wiederhergestellt (planKeep), das eigene Streicheln steckt darin.
+    if (sent < 0) this._echoTxt(this._planSent);
+    let fremd = null;
     if (sent >= 0) {
-      this._planAck = Math.max(this._planAck, this._planSent[sent].at);
+      const e = this._planSent[sent];
+      this._planAck = Math.max(this._planAck, e.at);
       this._planSent.splice(0, sent + 1);
       this._planFail = 0;
+      if (this._echoFremd(e, ctx, e.ms)) fremd = e;
     }
     // Helfer zu kurz für den Plan: er wird nicht beschrieben, sein eingefrorener Stand zählt nicht (sonst sprängen Serie,
     // Album und Vorrat bei jedem Neuladen zurück). Der Plan bleibt im Browser, siehe _planSave.
@@ -109,16 +124,20 @@ export class Tagesplan {
       //   auf den fremden Stand. Darum kommen diese Änderungen zuerst darauf (Q), gerettet wird nur, was dann noch
       //   fehlt. Fehlt nichts, bleibt alles wie immer: Stand ist der fremde, _planCompose schreibt.
       // - Was noch offen ist (unbestätigt, ungesendet), entstand auf dem Stand von alt und kommt danach obendrauf.
-      // Ein Echo ist der eigene Plan, daran gibt es nichts zu retten.
+      // Auch ein Echo wird so geprüft: War das eigene Schreiben schon unterwegs, als ein fremder Stand eintraf, hat es
+      // den im Helfer überschrieben, und dem Echo fehlt, was der fremde brachte. Bis 0.43.0 galt das Echo ungeprüft
+      // als neuer Stand des Helfers (_planKnown fiel damit zurück), und zurück kam das Fehlende nur, wenn das andere
+      // Gerät noch da war. Beim Echo zählt aber allein, was ihm selbst fehlt: Ein ausstehendes Retten (_planMend)
+      // macht den eigenen Plan nicht „veraltet“, sonst höbe es eine Änderung aus der Vorschau gleich wieder auf.
       // Erwiesen veraltet ist ein fremder Stand auch, solange das eigene Retten noch aussteht (_planMend): Bis es im
       // Helfer steht, kann kein Gerät darauf aufgebaut haben. Sonst gälte der Plan eines Geräts, das eben neu geladen
       // hat und auf dem veralteten Stand etwas ändert, als frisch, und das Gerettete wäre wieder weg.
       const alt = this._planKnown;
-      const old = sent < 0 && !!alt && (planOld(P, alt) || this._planMend());
+      const old = !!alt && (planOld(P, alt) || (sent < 0 && this._planMend()));
       const now = this._haNow();
       const Q = this._planOps.filter((o) => o.at <= this._planAck && now - o.at < 15000).reduce((X, o) => planApply(X, o, o.at), P);
-      const K = sent < 0 ? planKeep(Q, alt, old) : Q;
-      this._planKnown = sent < 0 ? planKeep(P, alt, old) : P;
+      const K = planKeep(Q, alt, old);
+      this._planKnown = planKeep(P, alt, old);
       if (K !== Q && !this._planMend()) this._planHealAt = now;
       this._planHeal = K !== Q;
       this._planBase = this._planHeal ? K : P;
@@ -154,6 +173,21 @@ export class Tagesplan {
     this._planCompose(true);
     // (nicht, wenn ohnehin gleich geschrieben wird: Das nimmt das Gerettete mit)
     if (this._planMend() && !this._planT && planSer(this._plan) !== st) this._planSave(PLAN_HEAL);
+    if (fremd) this._planAgain(fremd);
+  }
+
+  // Der als Echo angenommene Stand war der gleichlautende eines anderen Geräts (beide haben im selben Augenblick
+  // gestreichelt): Das eigene Schreiben e hat in HA nichts mehr geändert. Für fast alles ist das einerlei, die
+  // Änderungen sind wiederholbar und stehen ja im Helfer. Nur das Streicheln zählt: Was mit e zum ersten Mal
+  // hinausging (o.out === e.k), ist dort einmal zu wenig gezählt. Es gilt wieder als nie gesendet, zählt auf den
+  // Stand obendrauf (planRebase) und bleibt offen, bis HA es bestätigt.
+  _planAgain(e) {
+    const mine = this._planOps.filter((o) => o.t === 'pet' && o.out === e.k);
+    if (!mine.length) return;
+    const now = this._haNow();
+    const rest = this._planOps.filter((o) => !mine.includes(o));
+    this._planOps = planRebase([...rest, ...mine.map((o) => ({ t: 'pet', d: o.d, n: o.n, at: now }))], this._planBase);
+    if (this._planCompose(false)) this._planSave();
   }
 
   // Steht ein Retten aus (im Helfer fehlt etwas, das dort schon stand)? Höchstens PLAN_MEND lang: Lehnt HA das
@@ -232,11 +266,15 @@ export class Tagesplan {
   //   danach PLAN_DOUBT lang keine neuen, hat sich dort nichts geändert: Dann gilt der alte. Ohne ein einziges hass
   //   seit dem Zweifel endet er nie: Dass nichts ankommt, heißt nicht, dass nichts geschah (eine wieder eingehängte
   //   Karte hat alles verpasst, auch wenn die Verbindung steht).
+  // Und gar nicht schreibt die Vorschau-Karte im Editor von HA (preview = true, siehe _saveNow): Sie plant im Speicher,
+  // ihre Änderungen warten wie oben. Dafür läuft kein Zeitgeber; endet die Vorschau an derselben Karte, geht es mit dem
+  // nächsten hass weiter (_planHass).
   _planBlind() {
     const h = this._hass;
-    if (this._planOff || !h) return true;
+    if (this._planOff || !h || this.preview === true) return true;
     if (h.connected === false || h.connection?.connected === false) {
       this._planDoubt = { states: h.states, at: Date.now(), fed: false };
+      this._echoTxt(this._planSent); // (wie in _planHass: Ohne Verbindung kann ein Echo verloren gehen)
       return true;
     }
     if (this._planStale) return true;
@@ -253,16 +291,40 @@ export class Tagesplan {
     const D = this._planDoubt;
     if (hass.connected === false || hass.connection?.connected === false) {
       this._planDoubt = { states: hass.states, at: Date.now(), fed: false };
+      // (ohne Verbindung kann ein Echo verloren gehen: Für das Unbestätigte zählt nur noch der Wortlaut)
+      this._echoTxt(this._planSent);
     } else if (D && fresh) {
       // Ein anderes states-Objekt als beim Aufkommen des Zweifels: Das ist der frische Stand. Dasselbe (nur „wieder
       // verbunden“, oder es hat sich nichts geändert): Ab jetzt läuft die Frist, der frische Stand kommt gleich.
       if (hass.states !== D.states) this._planDoubt = null;
       else if (!D.fed) Object.assign(D, { fed: true, at: Date.now() });
     }
-    if (this._planHeld && !this._planBlind()) {
-      this._planHeld = false;
-      this._planSave();
-    }
+    // Vorschau zu Ende: Was offen blieb, wird wieder verfolgt
+    const pv = this.preview === true;
+    if (this._planPv && !pv && !this._planRT && !this._planOff && (this._planMend() || this._planOps.some((o) => o.at > this._planAck))) this._planRetry(PLAN_HOLD);
+    this._planPv = pv;
+    this._planRelease();
+  }
+
+  // Ein zurückgehaltenes Schreiben geht hinaus, wenn der eigene Stand wieder sicher ist. now: sofort statt gebündelt
+  // (die Seite geht zu, die Karte wird abgehängt, oder es hat ohnehin schon gewartet). → ob es hinausging
+  _planRelease(now = false) {
+    if (!this._planHeld || this._planBlind()) return false;
+    this._planHeld = false;
+    if (now) this._planSaveNow();
+    else this._planSave();
+    return true;
+  }
+
+  // So bald schaut ein zurückgehaltenes Schreiben wieder nach, ob es hinaus darf. Wartet es nur noch darauf, dass der
+  // Stand nach langer Pause als frisch gilt (_planStale: Das endet ohne neuen Stand nach 4 s von selbst, _planFresh,
+  // und kein hass muss dann folgen), in kurzen Schritten: Sonst käme ein Streicheln gleich nach dem Wiedersehen erst
+  // nach rund 6 s im Helfer an. Ohne Verbindung bleibt es bei PLAN_HOLD, und nach 10 s auch sonst (die Frist ist dann
+  // längst um; gilt der Stand immer noch als veraltet, hängt es an etwas anderem).
+  _planHoldMs() {
+    const h = this._hass;
+    const kurz = this._planHeld && this._planStale && Date.now() - this._planHeldAt < 10000;
+    return kurz && h && h.connected !== false && h.connection?.connected !== false ? PLAN_HOLD_STALE : PLAN_HOLD;
   }
 
   // Karte wird abgehängt: Ungesendetes noch hinaus (bis eben kam hass, der Stand ist frisch), danach schreibt sie den
@@ -272,7 +334,12 @@ export class Tagesplan {
   _planPark() {
     if (this._planOff) return;
     if (this._planT) this._planSaveNow();
+    else this._planRelease(true);
     this._planOff = true;
+    // Ab jetzt verpasst die Karte, was im Helfer geschieht, auch das Echo von eben: Lautet beim Wiedereinhängen ein
+    // Stand wie ihr Schreiben, zählt nur der Wortlaut (siehe _echoFremd). Sonst zählte sie ihr Streicheln noch einmal,
+    // wenn ein anderes Gerät den Plan inzwischen überschrieben und wiederhergestellt hat.
+    this._echoTxt(this._planSent);
     clearTimeout(this._planRT);
     this._planRT = null;
   }
@@ -316,28 +383,54 @@ export class Tagesplan {
         this._planBase = P;
         return this._planRetry(15000);
       }
+      // Länger, als der Helfer fasst (_planFit kürzt nur den Verlauf; ist der schon leer, bleibt der Text zu lang):
+      // nicht senden, HA lehnte den Wert ab, und das bei jedem Versuch wieder. Einmal warnen; der Plan gilt auf diesem
+      // Gerät weiter, und ein neuer Versuch folgt erst mit der nächsten Änderung.
+      if (v.length > this._planMax()) {
+        if (!this._planLongW) {
+          this._planLongW = true;
+          console.warn(`pika-pet-card: Der Tagesplan ist mit ${v.length} Zeichen zu lang für ${id} (max. Länge ${this._planMax()}) und wird nicht gesendet. Bitte die max. Länge des Helfers auf 255 stellen.`);
+        }
+        this._planBase = P;
+        this._planHeld = false;
+        this._planOps = this._planOps.filter((o) => !(o.t === 'gather' && o.m == null));
+        return;
+      }
       // _planSt bleibt der Stand von HA (erst das Echo ändert ihn): so liest nicht jedes fremde hass-Update bis zum
       // Echo den alten Stand neu ein und schreibt denselben Wert noch einmal
       const neu = v !== this._planSt && v !== this._planSent.at(-1)?.v;
       // Der eigene Stand ist gerade nicht sicher der von HA (_planBlind): nicht senden. Die eigenen Änderungen bleiben
       // offen wie oben und gehen hinaus, sobald ein frischer Stand da ist, dann auf ihn gelegt (_planHass).
+      const held = this._planHeld;
       this._planHeld = neu && this._planBlind();
       if (this._planHeld) {
+        if (!held) this._planHeldAt = Date.now(); // seit wann es wartet (siehe _planHoldMs)
         this._planBase = P;
         // (wie unten: nicht wiederholbar, und mit P als Stand zählte es beim nächsten Zusammensetzen doppelt)
         this._planOps = this._planOps.filter((o) => !(o.t === 'gather' && o.m == null));
-        if (!this._planOff) this._planRetry(PLAN_HOLD);
+        // (in der Vorschau ohne Zeitgeber: _planHass schaut nach, sobald sie endet)
+        if (!this._planOff && this.preview !== true) this._planRetry(this._planHoldMs());
         return;
       }
       if (neu) {
-        // n: so viele hass-Objekte kamen bis zum Senden (siehe _planRetry)
-        const e = { v, at: this._haNow(), n: this._hassN };
+        // n: so viele hass-Objekte kamen bis zum Senden (siehe _planRetry); ms: Gerätezeit; k: laufende Nummer
+        const key = this._planKey;
+        // txt: Ob ein gleichlautender Stand das eigene Echo ist, entscheidet nur der Wortlaut (siehe _echoFremd)
+        const dup = this._echoDup(this._planSent, this._planVs, v);
+        const e = { v, at: this._haNow(), ms: Date.now(), n: this._hassN, k: (this._planSeq = (this._planSeq || 0) + 1), txt: dup || !!this._planOff };
         this._planSent.push(e);
         if (this._planSent.length > 8) this._planSent.shift();
-        // Ab jetzt kann jede dieser Änderungen in einem fremden Stand schon stecken (siehe planRebase)
-        for (const o of this._planOps) o.out = true;
+        // Ab jetzt kann jede dieser Änderungen in einem fremden Stand schon stecken (siehe planRebase). out nennt das
+        // Schreiben, mit dem sie zum ersten Mal hinausging (siehe _planAgain).
+        for (const o of this._planOps) o.out ||= e.k;
         this._hass.callService('input_text', 'set_value', { entity_id: id, value: v })
-          .catch((err) => {
+          .then((r) => {
+            // Antwort von HA mit der Kennung des Aufrufs. Kam ein gleichlautender Stand schon vorher an und trug eine
+            // andere, war er nicht das Echo.
+            e.ctx = r?.context?.id || null;
+            // (nur, wenn die Antwort bald kommt, siehe _saveNow)
+            if (this._planKey === key && e.seen && e.ctx && e.seen !== e.ctx && Date.now() - e.ms < ECHO_JUDGE) this._guard('Tagesplan', () => this._planAgain(e));
+          }, (err) => {
             console.warn('pika-pet-card: Tagesplan speichern fehlgeschlagen, neuer Versuch', err);
             e.failed = true;
             // mit wachsender Pause wie beim Zustand (5 s, 10 s … höchstens 5 Min): Lehnt HA den Wert ab, nicht alle
@@ -365,6 +458,8 @@ export class Tagesplan {
   _flush() {
     if (this._saveT) this._saveNow();
     if (this._planT) this._planSaveNow();
+    // Zurückgehaltenes auch, wenn es inzwischen hinaus darf (sonst käme es erst mit dem nächsten Nachsehen)
+    else this._planRelease(true);
   }
 
   // Max. Länge des Helfers (ohne Helfer: unbegrenzt, der Plan bleibt im Browser)
@@ -402,7 +497,7 @@ export class Tagesplan {
       // Eigener Stand gerade nicht sicher (getrennt, veraltet): später noch einmal schauen. (Ohne den Plan neu
       // zusammenzusetzen: Das zöge sonst, solange die Verbindung fehlt, alle 5 s die Szene nach.)
       if (this._planBlind()) {
-        if (open()) this._planRetry(PLAN_HOLD);
+        if (open() && this.preview !== true) this._planRetry(this._planHoldMs());
         return;
       }
       this._planCompose(false); // zu alte Änderungen fallen hier weg
@@ -421,7 +516,11 @@ export class Tagesplan {
       const last = this._planSent.at(-1);
       if (last && !last.failed && last.n === this._hassN) return this._planRetry(15000);
       this._planSent = [];
-      this._planSave();
+      // (was schon gewartet hat, gleich: Die 0,4 s zum Bündeln sind längst um)
+      if (this._planHeld) {
+        this._planHeld = false;
+        this._planSaveNow();
+      } else this._planSave();
     }, ms);
   }
 }

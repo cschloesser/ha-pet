@@ -6,14 +6,59 @@ import { OUT, BOAT_ART } from './pika.js';
 // Fernsehbild: wechselt alle paar Sekunden die Farbe (Schnitt), daraus Licht im Eingang und Lichtsaum
 const TV_COLORS = ['#9fd0ff', '#e8f4ff', '#a8f0c6', '#ffd59e', '#c8b6ff', '#ff9fb2', '#9fe7ff'];
 
+// Überstand des Drachens (wie randStil in areale.js, hier in px). Der Drachen malt ganz außerhalb seines 1 × 1 großen
+// <svg>, und die Hülle .kite ist 0 × 0. Unter Wolken und bei tiefer Sonne liegt der Lichtfilter auf .kite
+// (.shade .kite), und Safari auf iPhone und iPad schneidet ein gefiltertes Element an seinen Boxen ab: Der Drachen
+// wäre dort abgeschnitten oder ganz weg. Darum bekommt das <svg> eine Box um alles, was es je bemalt: padding in px,
+// mit negativem margin zurückgezogen. Inhalt und Ursprung bleiben an der Pfote (um sie drehen sich .kl und .kr,
+// transform-box: view-box), die Zeichnung steht, wo sie stand.
+// Die Box deckt jede Lage, die der Stil kennt (stil/szene.js), und nicht mehr (sie ist die gefilterte Fläche):
+// Aufstieg und Einholen (.kl: von rotate(±60°) scale(.25) bis none, Winkel und Größe gleiten gemeinsam; gedreht wird
+// in Windrichtung, das ist die Seite, auf der der Drachen steht), Schwanken (.kr, −3° … 4°) und Ruck der Schnur
+// (bis 6° und 1,03-fach), Schaukeln des Drachens (.kb, ±9° um 50 % 30 % seiner Box) und Wedeln des Schwanzes (.kt, ±14°).
+// → { t, r, b, l } in px
+const KITE_LAGE = { auf: 60, klein: 0.25, schwank: [-3, 4], ruck: [6, 1.03] };
+const kiteRand = (kx, ky, K) => {
+  // Schnur (Bogen von der Pfote zum Drachen) und der Drachen samt Schwanz mit Schaukeln und Wedeln: Spitze oben bis
+  // −0,65 K, Ecken bis ±0,55 K, das Schwanzende schwingt bis ±0,92 K aus und reicht bis 2,7 K hinunter
+  const pts = [[0, 0]];
+  for (const t of [0.25, 0.5, 0.75]) pts.push([(2 * t * (1 - t) * 0.6 + t * t) * kx, (2 * t * (1 - t) * 0.3 + t * t) * ky]);
+  for (const [x, y] of [[-0.25, -0.65], [0.25, -0.65], [-0.55, -0.1], [0.55, -0.1], [-0.92, 2.3], [0.92, 2.3], [-0.92, 2.7], [0.92, 2.7]]) {
+    pts.push([kx + x * K, ky + y * K]);
+  }
+  // Drehungen um die Pfote: [Winkel in Grad, Größe]
+  const dir = kx < 0 ? -1 : 1;
+  const um = [];
+  const { auf, klein, schwank, ruck } = KITE_LAGE;
+  for (let i = 0; i <= 20; i++) {
+    const t = i / 20;
+    const g = klein + (1 - klein) * t;
+    for (const a of schwank) um.push([dir * auf * (1 - t) + a, g]);
+    for (const k of [0.5, 1]) um.push([dir * auf * (1 - t) + ruck[0] * k, g * (1 + (ruck[1] - 1) * k)]);
+  }
+  const E = { l: 0, t: 0, r: 1, b: 1 };
+  for (const [w, g] of um) {
+    const c = Math.cos((w * Math.PI) / 180) * g;
+    const s = Math.sin((w * Math.PI) / 180) * g;
+    for (const [x, y] of pts) {
+      E.l = Math.min(E.l, x * c - y * s); E.r = Math.max(E.r, x * c - y * s);
+      E.t = Math.min(E.t, x * s + y * c); E.b = Math.max(E.b, x * s + y * c);
+    }
+  }
+  // dazu die halbe Linienbreite, auf ganze Pixel
+  return { t: Math.ceil(1 - E.t), r: Math.ceil(E.r), b: Math.ceil(E.b), l: Math.ceil(1 - E.l) };
+};
+
 // Drachen in px um die Pfote (0, 0): Schnur bis (kx, ky), dort der Drache (Größe K) mit Gesicht und Schwanz
 const KITE_SVG = (kx, ky, K) => {
   const f = (n) => n.toFixed(1);
+  const R = kiteRand(kx, ky, K);
   const bows = [1.25, 1.85, 2.45].map((t, i) => {
     const a = f(-K * 0.12), b = f(K * 0.12), y1 = f(K * (t - 0.06)), y2 = f(K * (t + 0.06));
     return `<path d="M${a} ${y1} L${b} ${y2} L${b} ${y1} L${a} ${y2}Z" fill="${['#e8584e', '#5fb9de', '#f6c945'][i]}"/>`;
   }).join('');
-  return `<svg width="1" height="1" aria-hidden="true"><g class="kl"><g class="kr">
+  const rand = `box-sizing:content-box;padding:${R.t}px ${R.r}px ${R.b}px ${R.l}px;margin:-${R.t}px 0 0 -${R.l}px`;
+  return `<svg width="1" height="1" aria-hidden="true" style="${rand}"><g class="kl"><g class="kr">
       <path d="M0 0 Q${f(kx * 0.6)} ${f(ky * 0.3)} ${f(kx)} ${f(ky)}" stroke="rgba(255, 255, 255, .85)" stroke-width="1" fill="none"/>
       <g transform="translate(${f(kx)} ${f(ky)})"><g class="kb">
         <g class="kt">

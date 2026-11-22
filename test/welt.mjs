@@ -4,7 +4,9 @@
 // - mit eigener Uhr und eigenen Zeitgebern: Nichts läuft von selbst, vor(ms) stellt die Uhr vor und lässt alles
 //   Fällige der Reihe nach laufen (auch die Promise-Ketten dazwischen);
 // - mit einem nachgestellten HA: ein Speicher für die beiden Helfer, callService('input_text', 'set_value', …), das ihn
-//   beschreibt (sofort, verspätet, gar nicht oder mit Ablehnung), und ein Verlauf wie im Recorder;
+//   beschreibt (sofort, verspätet, gar nicht oder mit Ablehnung), und ein Verlauf wie im Recorder. Wie das echte HA
+//   vergibt es Kennungen: Jeder Aufruf bekommt eine (context.id), callService antwortet damit, sobald HA ihn
+//   ausgeführt hat, und der Stand, den der Aufruf erzeugt hat, trägt sie (states[…].context.id);
 // - mit Karten, die ihr hass über das echte `set hass` bekommen, jede mit eigener Verbindung.
 // Echt sind an der Karte Konstruktor, setConfig, set hass, _attach, _detach, _visSync, Zustand (_add, _save …) und
 // Tagesplan (_planOp, _planSaveNow …). Stillgelegt ist nur, was die Szene zeichnet oder die Lebensschleife treibt
@@ -45,7 +47,10 @@ const ATTRAPPEN = {
 // alt: Quelltext eines älteren Bündels (z. B. aus `git show b06aebc:pika-pet-card.js`). Es lebt in derselben Welt
 // (dieselbe Uhr, dasselbe HA); karte(name, cfg, { alt: true }) ist dann eine Karte dieser Version: ein Gerät, das
 // noch nicht aktualisiert ist.
-export const welt = ({ start = new Date(2026, 10, 21, 12).getTime(), laufzeit = 20, alt = null } = {}) => {
+// kontext: false stellt ein HA ohne Kennungen nach (ältere Version): Stände ohne context, callService antwortet leer.
+// speicher: true gibt der Welt ein localStorage (W.speicher ist die Map dahinter); ohne wirft jeder Zugriff, wie in
+// einem gesperrten Browser.
+export const welt = ({ start = new Date(2026, 10, 21, 12).getTime(), laufzeit = 20, alt = null, kontext = true, speicher = false } = {}) => {
   // ---------- Uhr und Zeitgeber ----------
   let jetzt = start;
   let lfd = 0;
@@ -77,10 +82,16 @@ export const welt = ({ start = new Date(2026, 10, 21, 12).getTime(), laufzeit = 
   const warnungen = [];
   const dok = { hidden: false, addEventListener: leer, removeEventListener: leer, createElement: () => new Att() };
   class Beobachter {
+    // cb: Der Test meldet selbst (K.c._ro.cb() ist eine Meldung des ResizeObservers)
+    constructor(cb) {
+      this.cb = cb;
+    }
+
     observe() {}
 
     disconnect() {}
   }
+  const lager = new Map();
   const WELT = {
     window: { matchMedia: () => ({ matches: false }), customCards: [], addEventListener: leer, removeEventListener: leer },
     document: dok,
@@ -98,6 +109,7 @@ export const welt = ({ start = new Date(2026, 10, 21, 12).getTime(), laufzeit = 
     ResizeObserver: Beobachter,
     IntersectionObserver: Beobachter,
     queueMicrotask, Date: Uhr, Math, JSON, Promise, Intl, AbortController, performance,
+    ...(speicher ? { localStorage: { getItem: (k) => (lager.has(k) ? lager.get(k) : null), setItem: (k, v) => void lager.set(k, String(v)), removeItem: (k) => void lager.delete(k) } } : {}),
     __pikaTest: (x) => (T = x),
   };
   vm.runInNewContext(fs.readFileSync(new URL('../pika-pet-card.js', import.meta.url), 'utf8'), WELT, { filename: 'pika-pet-card.js' });
@@ -106,6 +118,11 @@ export const welt = ({ start = new Date(2026, 10, 21, 12).getTime(), laufzeit = 
 
   // ---------- Home Assistant ----------
   const karten = [];
+  let kennungen = 0;
+  const neueKennung = () => `k${++kennungen}`;
+  // Die wievielte Fassung der Zustände ein states-Objekt ist (siehe liefere: Eine Karte bekommt nie eine ältere)
+  const folge = new WeakMap();
+  let fassung = 0;
   const ha = {
     // Die Zustände. Bei jeder Änderung ein neues Objekt, wie hass.states im Frontend: Daran erkennt die Karte einen
     // frischen Stand.
@@ -113,14 +130,21 @@ export const welt = ({ start = new Date(2026, 10, 21, 12).getTime(), laufzeit = 
     // Wie der Recorder: eine Zeile je tatsächlicher Änderung { t, id, s, von }. Derselbe Wert noch einmal gibt keine.
     verlauf: [],
     // Wert setzen (ein Schreiben kommt an, oder der Test stellt etwas ein). Meldet es allen verbundenen Karten, jede
-    // bekommt es nach ihrer Laufzeit. → ob sich etwas geändert hat
-    setze(id, s, von = 'ha', attributes = null) {
+    // bekommt es nach ihrer Laufzeit, und zwar die Zustände von diesem Augenblick: Ändert sich der Helfer zweimal kurz
+    // hintereinander, sieht eine Karte beide Stände der Reihe nach (wie die Meldungen von HA). Mit K.nurLetzter
+    // bekommt sie stattdessen jedes Mal den Stand von dann, wenn die Meldung ankommt (das Frontend fasst Meldungen
+    // zusammen, die in dasselbe Bild fallen: Zwischenstände sieht die Karte dann nicht). → ob sich etwas geändert hat
+    // kennung: die des Aufrufs, der den Wert setzt (sonst eine neue: irgendwer anders). Ändert sich nichts, bleibt der
+    // Stand samt seiner alten Kennung, wie in HA.
+    setze(id, s, von = 'ha', attributes = null, kennung = neueKennung()) {
       const alt = ha.zustand[id];
       if (alt && alt.state === s) return false;
       const t = new Date(jetzt).toISOString();
-      ha.zustand = { ...ha.zustand, [id]: { state: s, attributes: attributes || alt?.attributes || {}, last_changed: t, last_updated: t } };
+      ha.zustand = { ...ha.zustand, [id]: { state: s, attributes: attributes || alt?.attributes || {}, last_changed: t, last_updated: t, ...(kontext ? { context: { id: kennung, parent_id: null, user_id: null } } : {}) } };
       ha.verlauf.push({ t: jetzt, id, s, von });
-      for (const K of karten) if (K.verbunden) stellen(() => K.liefere(), K.laufzeit);
+      const bild = ha.zustand;
+      folge.set(bild, ++fassung);
+      for (const K of karten) if (K.verbunden) stellen(() => K.liefere({ bild }), K.laufzeit);
       return true;
     },
     wert: (id) => ha.zustand[id]?.state,
@@ -128,10 +152,17 @@ export const welt = ({ start = new Date(2026, 10, 21, 12).getTime(), laufzeit = 
     zeilen: (id) => ha.verlauf.filter((r) => r.id === id).map((r) => `${r.von}: ${r.s}`),
   };
 
-  // Ein Schreiben der Karte K. Was damit geschieht, bestimmen ihre Verbindung und K.leitung.
+  // Ein Schreiben der Karte K. Was damit geschieht, bestimmen ihre Verbindung und K.leitung. Die Antwort (das Promise
+  // von callService) kommt wie bei HA erst, wenn der Aufruf ausgeführt ist, nach der Laufzeit zurück zur Karte: um den
+  // Augenblick, in dem auch der neue Stand ankommt, je nach K.antwort 1 ms davor ('zuerst') oder danach ('danach').
+  // (HA schickt erst den Stand, dann die Antwort. Im Browser läuft die Antwort als Promise aber oft, bevor das neue
+  // hass durch die Elemente bis zur Karte gereicht ist: Beide Reihenfolgen kommen vor.) Ein verlorenes Schreiben
+  // bekommt nie eine Antwort, ein gehaltenes erst nach dem Freigeben. Ein gekapptes ('kappen') erreicht HA und wird
+  // ausgeführt, die Verbindung reißt aber vor der Antwort: Das Promise schlägt fehl, obwohl der Wert im Helfer steht.
   const ruf = (K, dom, dienst, daten) => {
-    const e = { t: jetzt, von: K.name, id: daten?.entity_id, s: daten?.value, weg: null };
+    const e = { t: jetzt, von: K.name, id: daten?.entity_id, s: daten?.value, weg: null, kennung: neueKennung(), karte: K, ja: null };
     K.aufrufe.push(e);
+    const antwort = new Promise((ja) => { e.ja = ja; });
     if (dom !== 'input_text' || dienst !== 'set_value') {
       e.weg = 'unbekannt';
       return Promise.reject(new Error(`${dom}.${dienst} gibt es in dieser Welt nicht`));
@@ -145,7 +176,7 @@ export const welt = ({ start = new Date(2026, 10, 21, 12).getTime(), laufzeit = 
       }
       e.weg = 'warteschlange';
       K.schlange.push(e);
-      return Promise.resolve();
+      return antwort;
     }
     const art = typeof K.leitung === 'function' ? K.leitung(e) : K.leitung;
     if (art === 'ablehnen') {
@@ -154,20 +185,30 @@ export const welt = ({ start = new Date(2026, 10, 21, 12).getTime(), laufzeit = 
     }
     if (art === 'verlieren') {
       e.weg = 'verloren';
-      return Promise.resolve();
+      return antwort;
+    }
+    if (art === 'kappen') {
+      e.weg = 'gekappt';
+      stellen(() => {
+        e.weg = 'angekommen-ohne-antwort';
+        ha.setze(e.id, e.s, e.von, null, e.kennung);
+      }, K.laufzeit);
+      return Promise.reject(new Error('Connection lost'));
     }
     if (art === 'halten') {
       e.weg = 'gehalten';
       K.stau.push(e);
-      return Promise.resolve();
+      return antwort;
     }
     e.weg = 'unterwegs';
     stellen(() => ankunft(e), K.laufzeit);
-    return Promise.resolve();
+    return antwort;
   };
   const ankunft = (e) => {
     e.weg = 'angekommen';
-    ha.setze(e.id, e.s, e.von);
+    const K = e.karte;
+    ha.setze(e.id, e.s, e.von, null, e.kennung);
+    stellen(() => e.ja(kontext ? { context: { id: e.kennung, parent_id: null, user_id: null } } : undefined), Math.max(0, K.laufzeit + (K.antwort === 'zuerst' ? -1 : 1)));
   };
 
   // ---------- Karten ----------
@@ -189,7 +230,9 @@ export const welt = ({ start = new Date(2026, 10, 21, 12).getTime(), laufzeit = 
       verbunden: true, // die Verbindung dieses Geräts zu HA steht
       phase: null, // getrennt: 'ruht' (Senden schlägt fehl) oder 'aufbau' (Senden wartet in der Schlange)
       beliefert: true, // HA setzt dieser Karte hass (einer abgehängten nicht)
-      leitung: 'sofort', // verbunden: 'sofort' | 'halten' | 'verlieren' | 'ablehnen', oder eine Funktion (Aufruf) → eins davon
+      leitung: 'sofort', // verbunden: 'sofort' | 'halten' | 'verlieren' | 'ablehnen' | 'kappen', oder eine Funktion (Aufruf) → eins davon
+      nurLetzter: false, // Meldungen von HA bringen den Stand von dann, wenn sie ankommen, statt den vom Absenden (siehe ha.setze)
+      antwort: 'zuerst', // die Antwort auf ein Schreiben erreicht die Karte 1 ms vor dem neuen Stand ('zuerst') oder 'danach'
       stau: [], // gehaltene Schreiben, siehe freigeben
       schlange: [], // während des Wiederverbindens gesendet
       aufrufe: [], // alles, was die Karte callService übergeben hat: { t, von, id, s, weg }
@@ -211,11 +254,16 @@ export const welt = ({ start = new Date(2026, 10, 21, 12).getTime(), laufzeit = 
           callWS: () => Promise.reject(new Error('unknown_command')),
         };
       },
-      // Eine Meldung von HA kommt an: die Zustände von jetzt. Getrennt kommt nichts an. neu: auch dann ein neues
-      // states-Objekt, wenn sich nichts geändert hat (nach dem Wiederverbinden schickt HA alle Zustände neu).
-      liefere({ neu = false } = {}) {
+      // Eine Meldung von HA kommt an: die Zustände aus bild (die von damals, als HA sie abschickte), ohne bild die von
+      // jetzt. Getrennt kommt nichts an. neu: auch dann ein neues states-Objekt, wenn sich nichts geändert hat (nach
+      // dem Wiederverbinden schickt HA alle Zustände neu). Eine ältere Fassung als die, die das Gerät schon hat, zählt
+      // nicht (sie wurde überholt: neu verbunden, oder der Test hat die Laufzeit verkürzt).
+      liefere({ neu = false, bild = null } = {}) {
         if (!K.verbunden) return;
-        K.bild = neu ? { ...ha.zustand } : ha.zustand;
+        const b = neu ? { ...ha.zustand } : (bild && !K.nurLetzter ? bild : ha.zustand);
+        if (neu) folge.set(b, folge.get(ha.zustand) || 0);
+        if ((folge.get(b) || 0) < (folge.get(K.bild) || 0)) return;
+        K.bild = b;
         K.setzeHass();
       },
       // Verbindung weg (Tab 5 Min im Hintergrund, WLAN weg). Eine eingehängte Karte erfährt es („connected: false“).
@@ -318,6 +366,9 @@ export const welt = ({ start = new Date(2026, 10, 21, 12).getTime(), laufzeit = 
       return T;
     },
     ha, karte, karten, vor, pruefe, warnungen, dok,
+    speicher: lager,
+    // So viele Zeitgeber stehen gerade (alles zusammen: die der Karten und Meldungen von HA, die noch unterwegs sind)
+    wecker: () => wecker.length,
     jetzt: () => jetzt,
     // Etwas anderes ändert sich in HA (irgendein Sensor): alle verbundenen Karten bekommen neue Zustände
     regung() {
@@ -371,17 +422,60 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
     // Getrennt schlägt das Senden fehl, im Aufbau wartet es, verbunden geht die Schlange als Erstes hinaus
     await assert.rejects(K.c._hass.callService('input_text', 'set_value', { entity_id: PLAN, value: 'x' }));
     K.aufbauen();
-    await K.c._hass.callService('input_text', 'set_value', { entity_id: PLAN, value: 'y' });
+    // (die Antwort kommt erst, wenn HA den Aufruf ausgeführt hat: mit der Kennung, die dann auch der Stand trägt)
+    let antwort = null;
+    K.c._hass.callService('input_text', 'set_value', { entity_id: PLAN, value: 'y' }).then((r) => { antwort = r; });
+    await W.vor(0);
     assert.notEqual(W.ha.wert(PLAN), 'y');
+    assert.equal(antwort, null);
     K.verbinden();
     assert.equal(W.ha.wert(PLAN), 'y');
     assert.deepEqual([K.c._hass.connected, K.c._hass.states === s1], [true, true], 'erst „verbunden“ mit den alten Zuständen');
     await W.vor(20);
     assert.equal(K.c._hass.states[PLAN].state, 'y');
-    assert.deepEqual(K.aufrufe.map((e) => e.weg), ['abgelehnt', 'angekommen']);
+    assert.ok(antwort.context.id && antwort.context.id === K.c._hass.states[PLAN].context.id, 'Antwort und Stand tragen dieselbe Kennung');
+    // derselbe Wert noch einmal ändert nichts: Der Stand behält die Kennung des ersten Aufrufs
+    let zweite = null;
+    K.c._hass.callService('input_text', 'set_value', { entity_id: PLAN, value: 'y' }).then((r) => { zweite = r; });
+    await W.vor(100);
+    assert.ok(zweite.context.id !== antwort.context.id && K.c._hass.states[PLAN].context.id === antwort.context.id);
+    assert.deepEqual(K.aufrufe.map((e) => e.weg), ['abgelehnt', 'angekommen', 'angekommen']);
     // (der Helfer enthält jetzt Unsinn: Die Karte warnt, statt ihn zu lesen)
     assert.equal(W.warnungen.length, 1);
     assert.match(W.warnungen[0], /enthält "y", der Tagesplan fängt neu an/);
+    // Zwei Änderungen kurz hintereinander: Die Karte sieht beide Stände der Reihe nach, jeden nach ihrer Laufzeit …
+    const gesehen = () => K.c._hass.states['sensor.x']?.state;
+    W.ha.setze('sensor.x', 'a');
+    await W.vor(5);
+    W.ha.setze('sensor.x', 'b');
+    await W.vor(15);
+    assert.equal(gesehen(), 'a');
+    await W.vor(5);
+    assert.equal(gesehen(), 'b');
+    // … mit nurLetzter bringt jede Meldung den Stand von dann, wenn sie ankommt: Den Zwischenstand sieht sie nie
+    K.nurLetzter = true;
+    W.ha.setze('sensor.x', 'c');
+    await W.vor(5);
+    W.ha.setze('sensor.x', 'd');
+    await W.vor(15);
+    assert.equal(gesehen(), 'd');
+    K.nurLetzter = false;
+    // Eine ältere Meldung, die von einer neueren überholt wurde (die Laufzeit wurde kürzer), zählt nicht mehr
+    K.laufzeit = 100;
+    W.ha.setze('sensor.x', 'e');
+    K.laufzeit = 10;
+    W.ha.setze('sensor.x', 'f');
+    await W.vor(200);
+    assert.equal(gesehen(), 'f');
+    K.laufzeit = 20;
+    // Gekappt: Der Aufruf erreicht HA und wird ausgeführt, das Promise schlägt trotzdem fehl
+    K.leitung = 'kappen';
+    await assert.rejects(K.c._hass.callService('input_text', 'set_value', { entity_id: 'input_text.anderes', value: 'z' }));
+    assert.equal(W.ha.wert('input_text.anderes'), undefined);
+    await W.vor(40);
+    assert.equal(K.c._hass.states['input_text.anderes'].state, 'z');
+    assert.deepEqual([K.aufrufe.at(-1).weg, K.c._hass.states['input_text.anderes'].context.id], ['angekommen-ohne-antwort', K.aufrufe.at(-1).kennung]);
+    assert.equal(W.warnungen.length, 1);
     W.pruefe();
   });
 }

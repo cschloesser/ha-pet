@@ -223,8 +223,10 @@ export class Flugzeuge {
 
   // Auch bei laufendem Takt gleich neu rechnen (neue Meldung): Jeder Schritt startet am gerade sichtbaren Punkt
   // und steuert den Punkt PLANE_STEP voraus an, ein früherer Schritt ändert also Weg und Tempo nicht
+  // Sieht keiner hin, läuft kein Takt (_planeTick stellt ihn ab); beim Wiedersehen stellt _visSync ihn über
+  // _planeSnap wieder an.
   _planeLoop() {
-    if (!this._planes.size || !this._attached) return;
+    if (!this._planes.size || !this._attached || this._away()) return;
     clearInterval(this._planeT);
     this._planeT = setInterval(() => this._planeTick(), PLANE_STEP * 1000);
     this._planeTick();
@@ -243,7 +245,15 @@ export class Flugzeuge {
       this._planeT = null;
       return;
     }
-    if (this._away() || !this._g) return;
+    // Karte nicht zu sehen (Tab im Hintergrund, Bildschirm aus): Takt abstellen, statt alle 5 s leer zu laufen. Die
+    // Flugzeuge bleiben in der Liste (aufgeräumt wird erst weiter unten), ohne das liefe er sonst die ganze Nacht.
+    // Wieder da, ruft _visSync _planeSnap: Die Flieger stehen gleich richtig, veraltete blenden aus, der Takt läuft.
+    if (this._away()) {
+      clearInterval(this._planeT);
+      this._planeT = null;
+      return;
+    }
+    if (!this._g) return;
     const now = Date.now();
     const W = this._W;
     const H = this._H;

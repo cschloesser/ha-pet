@@ -32,7 +32,10 @@ const STYLE_SIG = `
   @keyframes sig-blink { 50% { opacity: .2; } }
   .night .sig-bin svg, .night .sig-vac svg, .night .sig-wear svg { filter: brightness(.7) saturate(.8); }
   .paused .sig-vac, .paused .sig-vac * { animation-play-state: paused !important; }
-  @media (prefers-reduced-motion: reduce) { .sig-wear.hang, .sig-vac.drive .sig-brush, .sig-bin.in, .sig-wear.in { animation: none; } }
+  /* (das Störungslicht des Saugroboters blinkt dann nicht, es leuchtet rot) */
+  @media (prefers-reduced-motion: reduce) {
+    .sig-wear.hang, .sig-vac.drive .sig-brush, .sig-vac.stuck .sig-led, .sig-bin.in, .sig-wear.in { animation: none; }
+  }
   `;
 
 export { STYLE_SIG };

@@ -12,6 +12,9 @@ import {
 } from '../grafik/feste.js';
 import { RAND_SVG } from '../grafik/areale.js';
 
+// Die Gießkanne aus den Päckchen: Nummer des Schatzes und Breite in Kartenhöhen (Stil .gt-can; wie CAN_W in signale.js)
+const FEST_KANNE = { t: 6, w: 0.085 };
+
 export class Feste {
   // Welche Feste heute sind, bestimmt _festToday() aus der Ortszeit (Vorschau: _dbgDate). Der 20-s-Takt prüft
   // neu; ändert sich etwas, wird die Deko neu aufgebaut. Alles ist Zierde: nichts kostet Werte, nichts wird gesammelt.
@@ -21,6 +24,16 @@ export class Feste {
       this._festCfg = this._cfg;
       this._festEnsure();
       this._festUpdate();
+    } else if (this._fest?.birthday && this._festPos?.cake && !this._festKanneQ) {
+      // Geburtstag: Die Gießkanne aus den Päckchen kommt und geht mit dem Tagesplan, und den liest set hass erst nach
+      // diesem Teil (_hassPlan → _giftScene). Darum gleich nach dem ganzen Durchlauf nachsehen, ob der Kuchen ihr
+      // ausweichen muss oder zurück kann, nicht erst im nächsten Takt (bis 20 s).
+      this._festKanneQ = true;
+      queueMicrotask(() => {
+        this._festKanneQ = false;
+        // (im Fehlernetz: eine Ausnahme hier landete sonst ungefangen in der Konsole statt im Fuß des Tagebuchs)
+        this._guard('Feste', () => this._el && this._festUmKanne() && this._festUpdate());
+      });
     }
   }
 
@@ -257,7 +270,10 @@ export class Feste {
     this._festKey = key;
     this._fest = f;
     if (changed && !f.birthday) this._festCakeOut = false;
-    if (changed || force) {
+    // Die Gießkanne ist dazugekommen oder weg (ausgepackt, Schätze abgeschaltet; beim Laden wird die Deko vor den
+    // Schätzen aufgebaut): Der Kuchen weicht ihr aus bzw. kommt zurück (_festRender)
+    const umzug = this._festUmKanne();
+    if (changed || force || umzug) {
       const p = this._el.pika.classList;
       const hat = f.xmas ? 'xmas' : f.birthday ? 'party' : f.witch ? 'witch' : f.karneval ? 'party' : null;
       for (const h of ['witch', 'xmas', 'party']) p.toggle(`fest-${h}`, hat === h);
@@ -267,6 +283,27 @@ export class Feste {
     }
     this._festCandleSync();
     this._festFwSync();
+    // Der Kuchen ist umgezogen: Die Gummistiefel der Garderobe richten sich nach der Deko links der Tür
+    if (umzug) this._sigWearSync();
+  }
+
+  // Steht die Gießkanne (Schatz aus den Päckchen) in der Szene? → [linke, rechte Kante] in px, sonst null. Sie
+  // zählt, solange es ihr Element gibt (_giftScene), auch während er mit ihr gießt: wie für die Gummistiefel
+  // (_sigBootSpot).
+  _festKanne() {
+    if (!this._gtEls?.has(FEST_KANNE.t)) return null;
+    const x = this._giftX(FEST_KANNE.t);
+    return [x - (this._H * FEST_KANNE.w) / 2, x + (this._H * FEST_KANNE.w) / 2];
+  }
+
+  // Muss der Kuchen umziehen? Er steht links der Tür, wo jetzt die Kanne steht, oder ist ihr ausgewichen, und sie ist
+  // weg. Nur an Geburtstagen im Advent kommt es dazu (sonst steht der Kuchen rechts der Tür).
+  _festUmKanne() {
+    const k = this._festPos?.cake;
+    if (!this._fest?.birthday || !k || !this._g) return false;
+    const kanne = this._festKanne();
+    if (!kanne) return !!this._festKanneDa;
+    return !this._festKanneDa && k.l < kanne[1] && k.l + k.w > kanne[0];
   }
 
   // Deko aufbauen. Plätze: rechts und links neben der Tür, die Wiese zwischen Heu und Stein, die Bau-Oberkante,
@@ -333,7 +370,25 @@ export class Feste {
     if (f.advent) {
       ground(`fwreath${this._festCandleOff() ? ' unlit' : ''}`, ['R', 'L', 'M'], gy, H * 0.2, FEST_WREATH(f.advent.candles, !!f.advent.neu), 'wreath');
     }
-    if (f.birthday) ground(`fcake${this._festCakeOut ? ' out' : ''}`, ['R', 'L', 'M'], gy + 1, H * 0.14, FEST_CAKE, 'cake');
+    this._festKanneDa = false;
+    if (f.birthday) {
+      // Links neben der Tür (L) steht auch die Gießkanne aus den Päckchen (_giftX: Mitte hole.l − 0,07 H): Der Kuchen
+      // stand im Advent genau auf ihr. Steht sie da, kommt er auf die Wiese vor den Stein (M), wo sonst Kürbis und
+      // Stiefel stehen. Links neben der Kanne bliebe zwar meist Platz für einen etwas kleineren Kuchen, dort stehen
+      // dann aber die Gummistiefel der Garderobe (_sigBootSpot), die er aus dem Bild schöbe (sie stünden bei −9 bis
+      // −15 px). Nur wenn auch M besetzt ist (Nikolausstiefel am 6. 12., Baum am 24. 12.), rückt er links neben die
+      // Kanne, bis auf 70 % verkleinert; an diesen beiden Tagen haben Gummistiefel dann keinen Platz mehr im Bild.
+      let s = slot('R', 'L', 'M');
+      const kanne = s === slots.L ? this._festKanne() : null;
+      this._festKanneDa = !!kanne;
+      if (kanne && !used.has('M')) s = slot('M');
+      else if (kanne) {
+        const b = kanne[0] - H * 0.005;
+        s = { x: b - H * 0.07, a: 4, b: Math.max(4, b) };
+      }
+      const [x, w2] = fit(s, H * 0.14);
+      front.push(item(`fcake${this._festCakeOut ? ' out' : ''}`, x, gy + 1, w2, FEST_CAKE, 'cake'));
+    }
     if (f.lights) on.push(onBur('flights', FEST_LIGHTS(edge)));
     if (f.karneval) on.push(onBur('fstream', FEST_STREAMERS(edge)));
     if (f.martin) {

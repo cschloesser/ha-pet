@@ -60,7 +60,7 @@
  */
 (() => {
   // src/version.js
-  var VERSION = "0.43.0";
+  var VERSION = "0.43.1";
 
   // src/logik/hilfen.js
   var Cancel = class extends Error {
@@ -118,6 +118,7 @@
   var CLOCK_KEEP = 12;
   var CLOCK_STEP = 250;
   var GAIN = { feed: 25, pet: 8, clean: 10 };
+  var ECHO_JUDGE = 15e3;
   var SELF = { flower: 3, hay: 2 };
   var SELF_MAX = 25;
   var POOP = { every: 80, spread: 60, morning: [10, 20], max: 8, latrine: 3, idx: 24, fly: 4, live: 3 };
@@ -1586,7 +1587,10 @@
     uv: 5,
     doorGap: 2 * 6e4,
     doorFresh: 3e4,
-    rideGap: 5 * 6e4
+    doorTtl: 2e4,
+    rideGap: 5 * 6e4,
+    vacDead: 15 * 6e4,
+    fcRetry: [3e4, 30 * 6e4]
   };
   var sigTime = (v) => {
     const m = /^(\d{4})-(\d\d)-(\d\d)[ T](\d\d):(\d\d)(?::(\d\d))?$/.exec(String(v ?? "").trim());
@@ -1621,6 +1625,7 @@
     if (cute.m & bit & MEM_TONNE) return true;
     return (cute.m & bit & MEM_TONNE2) !== 0 && cute.d - 1 >= dFrom;
   };
+  var binTap = (today, dFrom) => today > dFrom ? MEM_TONNE2 : MEM_TONNE;
   var wardrobePick = (fc, day) => {
     const d = new Date(day);
     const a = new Date(d.getFullYear(), d.getMonth(), d.getDate(), SIG.wardFrom).getTime();
@@ -2581,6 +2586,8 @@
   /* Ruck: Die Pfote geht mit dem Pika nach hinten (.ktug), der Anfang der Schnur im selben Takt mit (--ktx, --kty) */
   .kite.kpull { transform: translate(var(--ktx, 0px), var(--kty, 0px)); transition: opacity .6s, transform .18s ease-out, filter 2.5s; }
   .kite.gone { opacity: 0; }
+  /* Das <svg> ist 1 × 1 groß und malt nach außen. Seine Box ist trotzdem so groß wie alles, was der Drachen je
+     bemalt (padding und margin setzt KITE_SVG, siehe kiteRand): Safari schneidet den Lichtfilter von .kite sonst ab. */
   .kite svg { position: absolute; left: 0; top: 0; overflow: visible; }
   .kite .kl { transform-box: view-box; transform-origin: 0 0; transform: rotate(var(--k0, 0deg)) scale(.25); transition: transform 3s ease-out; }
   .kite.up .kl { transform: none; }
@@ -2717,19 +2724,6 @@
     85% { transform: translateY(-10%) rotate(-3deg); }
     100% { transform: none; }
   }
-
-  .ff i {
-    position: absolute; width: 4px; height: 4px; border-radius: 50%; background: #fffbb0;
-    box-shadow: 0 0 6px 2px rgba(247, 240, 138, .8); opacity: 0; transition: opacity 3s;
-    animation: fly 9s ease-in-out infinite alternate, glow 1.8s ease-in-out infinite alternate;
-  }
-  .night.summer .ff i { opacity: 1; }
-  @keyframes fly {
-    33% { transform: translate(calc(var(--H) * .25), calc(var(--H) * -.12)); }
-    66% { transform: translate(calc(var(--H) * -.1), calc(var(--H) * -.22)); }
-    100% { transform: translate(calc(var(--H) * .15), calc(var(--H) * .05)); }
-  }
-  @keyframes glow { from { filter: brightness(.4); } }
 
   /* ---- Pika ---- */
   .pika {
@@ -3269,10 +3263,10 @@
   /* Ansagen für Bildschirmleser (nur Begrüßung, Wiedersehen, Geschenk, Hunger) */
   .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
   .pika:focus { outline: none; }
-  .pika:focus-visible { outline: 2px dashed rgba(255, 255, 255, .9); outline-offset: -2px; border-radius: 14px; }
+  .pika:focus-visible { outline: 2px solid #3b2d22; outline-offset: -4px; border-radius: 14px; box-shadow: inset 0 0 0 2px #fff; }
   /* Alles andere Antippbare (Häufchen, Geschenk, Pino, Besucher, Geräte, Flugzeuge) mit der Tastatur angewählt */
   .ktap:focus { outline: none; }
-  .ktap:focus-visible { outline: 2px dashed rgba(255, 255, 255, .9); outline-offset: 1px; border-radius: 10px; }
+  .ktap:focus-visible { outline: 2px solid #3b2d22; outline-offset: 1px; border-radius: 10px; box-shadow: 0 0 0 5px #fff; }
   .heart {
     position: absolute; width: calc(var(--ph) * .2); margin-left: calc(var(--ph) * -.1);
     animation: heart 1.5s ease-out forwards;
@@ -3589,6 +3583,11 @@
   .scene.night:not(.windy) .flower { animation-play-state: paused; }
   .scene.night:not(.windy) .flower.grow { animation-play-state: running, paused; }
   .scene.night:not(.windy) .flower.picked { animation-play-state: running; }
+  /* Unter der Schneedecke sind die Blumen nicht zu sehen (.snowcover .flower): Dann schaukeln sie auch nicht, sonst
+     hielten fünf Animationen den ganzen Wintertag die Bildwiederholung in Gang (wie ausgeblendete Wolken und Nebel).
+     Die Regel steht hier unten, weil .windy .flower und .flower.grow weiter oben mit der Kurzschreibweise animation
+     den Lauf wieder anstellten. */
+  .scene.snowcover .flower { animation-play-state: paused; }
   /* Weniger Bewegung gewünscht (Systemeinstellung): Wolken, Sterne, Blumen, Rauch, Niederschlag und Blinklichter ruhen */
   @media (prefers-reduced-motion: reduce) {
     .stars b, .flower, .smoke circle, .precip .pl, .precip .pw, .fog i, .lt.flk, .br, .brolly,
@@ -3608,6 +3607,26 @@
     .hb-bar.ind b, .hb-stick, .hb-ring, .hb-bbl, .hb-soap:not(.pop) i, .hb-carry.hb-shine > i,
     .plane .rotor, .plane .prop, .plane .trotor, .fly, .fly::after, .zzz span {
       animation: none !important;
+    }
+    /* Auch was am Rand von selbst läuft, ruht: Schmetterling und Vogel gleiten, ohne zu flattern, die Maus huscht
+       ohne Trippeln und Schnuppern, der Frosch zwinkert nicht, die Schnecke gleitet ohne Wellen und Fühlerspiel, die
+       Spielfigur im Gameboy steht. (Seifenblasen, Fledermaus, Kaffeedampf und das Störungslicht des Saugroboters
+       stehen bei ihrem eigenen Stil.) Der Körper des Pikas bewegt sich weiter: Hoppeln, Kauen, Putzen, Winken. */
+    .bfly .bwl, .bfly .bwr, .bird.flying .wu, .mouse.run .mb, .mouse.run .mtail, .mouse.sniff .mnose, .mouse.sniff .whisk,
+    .flid, .snail.crawl .sbody, .snail.crawl .sshell, .snail.crawl .sfeel, .snail.peer .sfeel,
+    .gaming .gbs rect:first-child, .gaming .gbs rect:last-child {
+      animation: none !important;
+    }
+    /* Der Schornsteinrauch ruht ohne Animation unsichtbar (seine Deckkraft kommt nur aus den Keyframes): Dann steht
+       ein Wölkchen aus drei versetzten Kringeln über dem Schornstein, in Windrichtung (--smx) geneigt */
+    .chilly .smoke circle, .dusk .smoke circle, .night .smoke circle {
+      opacity: .6; transform: translate(calc(var(--smx, -6px) * .12), -3px) scale(.9);
+    }
+    .chilly .smoke circle:nth-child(2), .dusk .smoke circle:nth-child(2), .night .smoke circle:nth-child(2) {
+      opacity: .45; transform: translate(calc(var(--smx, -6px) * .45), -8px) scale(1.45);
+    }
+    .chilly .smoke circle:nth-child(3), .dusk .smoke circle:nth-child(3), .night .smoke circle:nth-child(3) {
+      opacity: .3; transform: translate(calc(var(--smx, -6px) * .9), -13.5px) scale(2);
     }
     .tv-on .tvl .tvg, .tv .bk .rim { opacity: .6; }
     .zzz span { opacity: .9; }
@@ -3678,7 +3697,7 @@
   .ff.dim { opacity: .45; }
   .ff.rest { display: none; }
   .ff .fl {
-    left: 0; top: 0; width: 3.5px; height: 3.5px; margin: -1.75px; opacity: .2; transition: none;
+    position: absolute; left: 0; top: 0; width: 3.5px; height: 3.5px; margin: -1.75px; border-radius: 50%; opacity: .2;
     background: #f3ffa6; box-shadow: 0 0 6px 2px rgba(214, 240, 92, .8);
     animation: ff-drift var(--fd) ease-in-out var(--fdl) infinite, ff-pulse var(--fp) linear var(--fpl) infinite;
   }
@@ -3793,6 +3812,11 @@
   .fest-carry .lgl { opacity: .45; transition: opacity 2.5s; }
   .dusk .fest-carry .lgl { opacity: .8; }
   .night .fest-carry .lgl { opacity: 1; }
+  /* Der Lichtkern im Laternenkörper bleibt durchscheinend, sonst deckte er nachts die bunten Streifen zu (die
+     hängende Laterne hält ihren bei .45) */
+  .fest-carry .lgk { opacity: .45; transition: opacity 2.5s; }
+  .dusk .fest-carry .lgk { opacity: .5; }
+  .night .fest-carry .lgk { opacity: .55; }
   /* Zucken beim Knall */
   .pika.fest-zuck .hop { animation: fzuck .4s ease-out; }
   @keyframes fzuck { 25% { transform: translateY(-6%) scale(.96, 1.05); } 60% { transform: scale(1.04, .96); } }
@@ -3827,6 +3851,8 @@
   /* Weniger Bewegung gewünscht: Wimpel und Maibaum-Bänder hängen still (Teilchen spart das Skript, calmMotion) */
   @media (prefers-reduced-motion: reduce) {
     .fpn, .fmai .rb { animation: none !important; }
+    /* Fledermäuse kommen dann keine (_festBat); eine, die schon unterwegs ist, gleitet zu Ende, statt zu flattern */
+    .fbat .w { animation: none; }
     /* Advent: Die neue Flamme blendet nur ein, die Pfoten halten still */
     .fwreath.lit .fpop, .pika.fest-warm:not(.fest-reach) .paws { animation: none; }
   }
@@ -3850,6 +3876,9 @@
      sie bei Standardhöhe in 5,4 px und Rufus in 7,6 px. Der Innenabstand ist in em und wächst mit, die Spitze
      (.say::after) ist in px und hängt nicht an der Schrift. Die Blase des Pikas (.bubble in STYLE) bleibt, wie sie ist. */
   .frsay .bubble { font-size: max(10px, calc(var(--ph) * .15)); }
+  /* Auf der hinteren Spur (depth) ist .frsay samt Blase um LANE_S verkleinert (_frSetX setzt dort .lane1 auch an
+     die Hülle der Blase): Die Untergrenze wächst um so viel, damit auch dort 10 px auf dem Bildschirm stehen. */
+  .frsay.lane1 .bubble { font-size: max(${+(10 / LANE_S).toFixed(2)}px, calc(var(--ph) * .15)); }
   /* Kirbys Stummelärmchen (.karm, grafik/freunde.js) sind sonst immer zu sehen. Beim Putzen kommen die Pfoten ans
      Gesicht (.groom .paws in STYLE): Dann sind die Ärmchen dort, sonst hätte er vier. Putzen ist die einzige Haltung
      der Freunde (FRIEND_CLS), die Pfoten hervorholt. */
@@ -4074,6 +4103,17 @@
     100% { transform: translate(calc(var(--H) * .015), calc(var(--H) * -.1)) scale(1.3); opacity: 0; }
   }
   @media (prefers-reduced-motion: reduce) { .hb-sm i { animation: none; opacity: .6; } .hb-sm i:nth-child(2) { transform: translateY(-60%); } }
+  /* Bewegung reduzieren: Blasen, Tropfen, warme Luft und Dampf stehen still (animation: none in STYLE). Ihre
+     Deckkraft kommt aber nur aus den Keyframes, ohne Animation wären sie ganz weg. Darum ein fester Zustand: zwei
+     Blasen über dem Schaum, die Tropfen hängen an der Wäsche, Luft und Dampf stehen als versetzte Schlieren. Die
+     Regeln müssen hier stehen, hinter den Grundregeln oben (STYLE kommt im Stylesheet vor diesem Stil). */
+  @media (prefers-reduced-motion: reduce) {
+    .hb-bubs circle:nth-child(-n+2) { opacity: .9; transform: translate(.5px, -4px); }
+    .hb-bubs circle:nth-child(2) { transform: translate(1.5px, -8px) scale(.8); }
+    .hb-drip { opacity: .9; }
+    .hb-heat > g, .hb-steam > g { opacity: .75; }
+    .hb-heat > g:nth-child(2), .hb-steam > g:nth-child(2) { transform: translateY(-3px); }
+  }
 
   /* Fähnchen wie beim Flugzeug: Gerätename und Stand */
   .hb-tag {
@@ -4122,6 +4162,12 @@
     from { opacity: 0; transform: translateY(1.5px) scaleY(.8); }
     35% { opacity: .75; }
     to { opacity: 0; transform: translateY(-6px) scaleY(1.15); }
+  }
+  /* Bewegung reduzieren: Der Dampf steigt nicht, er steht als zwei Fahnen über dem Becher (ohne Animation ruhte er
+     bei opacity 0 und wäre weg) */
+  @media (prefers-reduced-motion: reduce) {
+    .coffee.hot .cup .cst path { animation: none; opacity: .6; }
+    .coffee.hot .cup .cst path + path { opacity: .4; transform: translateY(-1.5px); }
   }
   /* Bei Regen hält die rechte Pfote den Blattschirm */
   .pika.wet:not(.inside) .cup .cpr { display: none; }
@@ -4566,6 +4612,10 @@
     .ap-w, .ap-s { transform: none; }
     .sb-lean .jump, .sb-push .jump { transition: none; }
     .sb-pat .paws { animation: none; transform: translate(13px, 14px); }
+    /* Seifenblasen wabern nicht (sie schweben weiter, platzen wie sonst); die Regenringe in der Pfütze stehen still
+       da (ohne Animation ruhten sie bei opacity 0 und wären weg) */
+    .bub:not(.pop) i { animation: none; }
+    .pd-dot { opacity: .6; }
   }
   `;
 
@@ -5226,9 +5276,11 @@
   .gbtn.broken .gr1 { stroke: #b8b2a8; }
   .gbtn.empty .gico { opacity: .45; filter: grayscale(.7); }
   .gnum { position: absolute; right: -4px; top: -3px; min-width: 15px; height: 15px; padding: 0 3px; box-sizing: border-box;
-    border-radius: 8px; background: #e8584e; color: #fff; font: 700 10px/15px sans-serif; text-align: center; }
+    border-radius: 8px; background: #cf4037; color: #fff; font: 700 10px/15px sans-serif; text-align: center; }
   .gnum:empty { display: none; }
-  .gbtn.gold .gnum { background: #d99a12; }
+  /* Die Zahl ist 10 px klein: Weiß auf dem Rot hat 4,7 : 1 (bis 0.43.0 #e8584e: 3,5), auf Gold steht sie dunkel
+     (5,4 : 1; weiß waren es 2,5) */
+  .gbtn.gold .gnum { background: #d99a12; color: #3b2d22; }
   .gbtn.wig { animation: gwig .7s; }
   @keyframes gwig { 20% { transform: rotate(-12deg); } 40% { transform: rotate(10deg); } 60% { transform: rotate(-6deg); } 80% { transform: rotate(3deg); } }
   .gbtn.new { animation: gnew .9s cubic-bezier(.3, 1.6, .5, 1); }
@@ -5243,9 +5295,13 @@
     position: fixed; inset: 0; z-index: 9999; display: flex; align-items: center; justify-content: center; padding: 14px;
     box-sizing: border-box; background: rgba(40, 28, 18, .5); animation: tbin .2s; -webkit-tap-highlight-color: transparent;
     font-family: var(--ha-font-family-body, var(--paper-font-body1_-_font-family, Roboto, "Segoe UI", system-ui, sans-serif));
-    --pp: #fbf5e6; --ink: #4a3a2c; --soft: #8a7461; --line: rgba(90, 64, 48, .2); --rand: rgba(232, 88, 78, .32); --tab: rgba(90, 64, 48, .08); --acc: #c9853a;
+    /* Am Tag (seit 0.43.1 dunkler, damit kleine Schrift auf dem Papier lesbar ist, WCAG AA 4,5 : 1): --acc trägt
+       Überschriften und weiße Schrift auf Reitern und Knöpfen (vorher #c9853a: 2,8 und 3,0), --soft die kleine graue
+       Schrift, auch auf --tab (vorher #8a7461: 4,1 und 3,6), --warn die Warnung bei den Schätzen (vorher #d9622b: 3,4).
+       Die Nacht blieb, wie sie war. test/tagebuch-a11y.test.mjs rechnet nach. */
+    --pp: #fbf5e6; --ink: #4a3a2c; --soft: #75604e; --line: rgba(90, 64, 48, .2); --rand: rgba(232, 88, 78, .32); --tab: rgba(90, 64, 48, .08); --acc: #a2601b; --warn: #bd4c1b;
   }
-  .bd.night { --pp: #262d4a; --ink: #ecebf7; --soft: #a9add0; --line: rgba(255, 255, 255, .16); --rand: rgba(255, 150, 150, .3); --tab: rgba(255, 255, 255, .09); --acc: #f2c56b; }
+  .bd.night { --pp: #262d4a; --ink: #ecebf7; --soft: #a9add0; --line: rgba(255, 255, 255, .16); --rand: rgba(255, 150, 150, .3); --tab: rgba(255, 255, 255, .09); --acc: #f2c56b; --warn: #ea7a45; }
   .sheet {
     position: relative; display: flex; flex-direction: column; width: min(440px, 100%); height: min(640px, 100%);
     box-sizing: border-box; border-radius: 18px; background: var(--pp); color: var(--ink); outline: none;
@@ -5263,7 +5319,7 @@
   .ht b { display: block; font-size: 19px; font-weight: 800; line-height: 1.2; }
   .ht span { display: block; font-size: 13px; color: var(--soft); margin-top: 1px; }
   button { font: inherit; color: inherit; border: none; background: none; cursor: pointer; padding: 0; }
-  button:focus-visible, .page:focus-visible { outline: 2px solid var(--acc); outline-offset: 1px; }
+  button:focus-visible, .page:focus-visible, summary:focus-visible { outline: 2px solid var(--acc); outline-offset: 1px; }
   .x { flex: none; width: 40px; height: 40px; border-radius: 50%; font-size: 18px; color: var(--soft); }
   .x:hover { background: var(--tab); }
   .tabs { display: flex; gap: 6px; padding: 6px 16px 10px; }
@@ -5324,7 +5380,7 @@
   .t.gilt i svg { filter: ${GILT_F} drop-shadow(0 0 2px rgba(255, 214, 90, .9)); }
   .t.gilt i::after { background: #f2b632; }
   .row { display: grid; grid-template-columns: 38px minmax(0, 1fr); gap: 11px; align-items: center; padding: 10px 8px 0; }
-  .row .w { color: #d9622b; font-weight: 800; }
+  .row .w { color: var(--warn); font-weight: 800; }
   .dots { display: inline-flex; gap: 3px; margin-left: 6px; vertical-align: -1px; }
   .dots u { width: 9px; height: 9px; border-radius: 50%; box-shadow: inset 0 0 0 1px rgba(90, 64, 48, .35); }
   /* Gute Tage: sieben Punkte bis zum goldenen Päckchen */
@@ -5361,6 +5417,9 @@
     .bd { align-items: flex-end; padding: 0; }
     .sheet { width: 100%; height: min(640px, 90%); border-radius: 20px 20px 0 0; }
     .page { border-radius: 0; padding-bottom: 24px; }
+    /* iPhone: Das Blatt reicht bis zum unteren Rand, der Fuß (Version, Fehlerliste) läge im Streifen des Home-Balkens.
+       Die Seite darüber gibt den Platz her. */
+    .ft { padding-bottom: max(8px, env(safe-area-inset-bottom)); }
     .tre { grid-template-columns: 1fr; }
   }
   /* Sehr schmale Handys: Die vier Reiter rücken zusammen, damit „Entdeckungen“ ausgeschrieben bleibt */
@@ -5376,7 +5435,9 @@
   .stats.dia { cursor: pointer; }
   .stats.dia .tb { display: block; }
   .stats.dia:active { transform: scale(.97); }
-  .stats:focus-visible, .tbbtn:focus-visible { outline: 2px solid #fff; outline-offset: 1px; }
+  /* Fokusring in zwei Tönen: dunkle Linie innen, heller Rand außen. Bis 0.43.0 ein weißer Ring um die weiße Leiste,
+     vor dem Taghimmel kaum zu sehen (1,2 bis 1,7 : 1); so hebt sich immer einer der beiden Töne ab. */
+  .stats:focus-visible, .tbbtn:focus-visible { outline: 2px solid #3b2d22; outline-offset: 1px; box-shadow: 0 0 0 5px #fff; }
   .stats.neu .tb::after, .tbbtn.neu::after {
     content: ''; position: absolute; right: -3px; top: -3px; width: 7px; height: 7px; border-radius: 50%; background: #e8584e;
     box-shadow: 0 0 0 1.5px rgba(255, 255, 255, .9);
@@ -5386,6 +5447,7 @@
     cursor: pointer; background: rgba(255, 255, 255, .75); box-shadow: 0 2px 6px rgba(0, 0, 0, .18); transition: transform .15s, background 2.5s;
   }
   .tbbtn[hidden] { display: none; }
+  .tbbtn:focus-visible { box-shadow: 0 0 0 5px #fff, 0 2px 6px rgba(0, 0, 0, .18); }
   .tbbtn:active { transform: scale(.88); }
   .tbbtn svg { display: block; width: 100%; height: 100%; }
   .night .tbbtn { background: rgba(15, 22, 45, .55); }
@@ -5451,10 +5513,67 @@
   @keyframes sig-blink { 50% { opacity: .2; } }
   .night .sig-bin svg, .night .sig-vac svg, .night .sig-wear svg { filter: brightness(.7) saturate(.8); }
   .paused .sig-vac, .paused .sig-vac * { animation-play-state: paused !important; }
-  @media (prefers-reduced-motion: reduce) { .sig-wear.hang, .sig-vac.drive .sig-brush, .sig-bin.in, .sig-wear.in { animation: none; } }
+  /* (das Störungslicht des Saugroboters blinkt dann nicht, es leuchtet rot) */
+  @media (prefers-reduced-motion: reduce) {
+    .sig-wear.hang, .sig-vac.drive .sig-brush, .sig-vac.stuck .sig-led, .sig-bin.in, .sig-wear.in { animation: none; }
+  }
   `;
 
+  // src/grafik/fenster.js
+  var FEN = { cx: 80, cy: 33, r: 4.3, box: 14 };
+  var VB = `${-FEN.box} ${-FEN.box} ${FEN.box * 2} ${FEN.box * 2}`;
+  var OUT2 = "#5a4030";
+  var pk = (k, hex) => `var(--pk-${k}, ${hex})`;
+  var VORHANG = "M-.7 0 C-.3 1.2 -.9 2.6 -.5 4 C-.2 5 -.7 5.8 -.3 6.6 L-1.9 6.3 C-2.2 5.2 -1.6 4 -2 2.6 C-2.3 1.4 -1.9 .6 -2 0Z";
+  var VORHANG_P = `<path d="${VORHANG}" fill="#e58a7a" stroke="#b5604f" stroke-width=".2"/><path class="lt" d="${VORHANG}" fill="#d9705f"/>`;
+  var FEN_INNEN = `<svg viewBox="${VB}" aria-hidden="true">
+    <defs>
+      <radialGradient id="fen-raum" cx=".5" cy=".75" r=".8"><stop offset="0" stop-color="#3a2a1e"/><stop offset="1" stop-color="#120c08"/></radialGradient>
+      <radialGradient id="fen-schein"><stop offset="0" stop-color="#ffb347" stop-opacity=".7"/><stop offset="1" stop-color="#ffb347" stop-opacity="0"/></radialGradient>
+    </defs>
+    <ellipse class="lt fen-spill" cx="1.5" cy="7.5" rx="11" ry="7"/>
+    <circle cx="0" cy="0" r="${FEN.r}" fill="url(#fen-raum)"/>
+    <circle class="lt" cx="0" cy="0" r="${FEN.r}" fill="#ffcf70" fill-opacity=".9"/>
+    <circle class="tvw" cx="0" cy="0" r="${FEN.r}"/>
+    <g class="fen-v">
+      <g transform="translate(-1.4 -3.7)"><g class="fen-v1">${VORHANG_P}</g></g>
+      <g transform="translate(3.9 -3.2)"><g class="fen-v2">${VORHANG_P}</g></g>
+    </g>
+  </svg>`;
+  var FEN_KOPF = `<svg viewBox="${VB}" aria-hidden="true">
+    <defs><clipPath id="fen-rund"><circle cx="0" cy="0" r="${FEN.r}"/></clipPath></defs>
+    <g clip-path="url(#fen-rund)"><g class="fen-k pk">
+      <g stroke="${OUT2}" stroke-width=".35">
+        <circle cx="-2.25" cy="-1.5" r="1.4" fill="${pk("ear", "#efe3d3")}"/><circle cx="2.25" cy="-1.5" r="1.4" fill="${pk("ear", "#efe3d3")}"/>
+      </g>
+      <g fill="${pk("ein", "#e3a990")}"><ellipse cx="-2.25" cy="-1.35" rx=".65" ry=".75"/><ellipse cx="2.25" cy="-1.35" rx=".65" ry=".75"/></g>
+      <ellipse cx="0" cy="1" rx="3.25" ry="2.75" fill="${pk("fu1", "#d0ad8d")}" stroke="${OUT2}" stroke-width=".4"/>
+      <ellipse cx="0" cy="2.15" rx="1.6" ry="1.05" fill="${pk("mou", "#f4e8d8")}"/>
+      <g class="fen-aug" fill="#2a1a12"><ellipse cx="-1.2" cy=".55" rx=".42" ry=".5"/><ellipse cx="1.2" cy=".55" rx=".42" ry=".5"/></g>
+      <g fill="#fff"><circle cx="-1.05" cy=".38" r=".15"/><circle cx="1.35" cy=".38" r=".15"/></g>
+      <g class="fen-nase">
+        <ellipse cx="0" cy="1.62" rx=".42" ry=".3" fill="${OUT2}"/>
+        <path d="M-.6 2 l-1.9 -.35 M-.6 2.2 l-1.9 .3 M.6 2 l1.9 -.35 M.6 2.2 l1.9 .3" stroke="${OUT2}" stroke-width=".14" stroke-linecap="round" opacity=".7"/>
+      </g>
+      <g fill="${pk("paw", "#ecdcc6")}" stroke="${OUT2}" stroke-width=".3">
+        <ellipse cx="-1.7" cy="3.85" rx=".95" ry=".62"/><ellipse cx="1.7" cy="3.85" rx=".95" ry=".62"/>
+      </g>
+    </g></g>
+  </svg>`;
+  var SCHEIBE = (glas, vh, sp) => `<circle cx="0" cy="0" r="${FEN.r}" fill="${glas}"/>
+      <path d="M-3.7 -2.6 Q-1.4 -2 -.6 2.6 L-3.6 2.6Z M3.7 -2.6 Q1.4 -2 .6 2.6 L3.6 2.6Z" fill="${vh}" opacity=".85"/>
+      <path d="M0 -${FEN.r} V${FEN.r} M-${FEN.r} 0 H${FEN.r}" stroke="${sp}" stroke-width="1"/>`;
+  var FEN_FLUEGEL = `<svg viewBox="${VB}" aria-hidden="true">
+    <g class="fen-s">
+      ${SCHEIBE("#cfe6f2", "#e58a7a", "#9a6a45")}
+      <g class="lt">${SCHEIBE("#ffcf70", "#d9705f", "#7a5236")}</g>
+      <circle cx="0" cy="0" r="${FEN.r}" fill="none" stroke="#5e3d26" stroke-width=".5"/>
+    </g>
+  </svg>`;
+
   // src/stil/fenster.js
+  var FEN_RAND = "min(25%, calc(50% - 22px))";
+  var FEN_TUER = `${+(50 - (FEN.cx - AREALE.huegel.hole.x2) / (2 * FEN.box) * 100).toFixed(2)}%`;
   var STYLE_FEN = `
   /* Über dem Fensterlicht des Baus (Reihe bau, Rang fenster). Zu und fertig ist es nicht zu sehen: Dann zeigen Bau und
      Lichter das Fenster wie immer. Kein Lichtfilter: Was dämmert, hat seine warme Kopie (.lt) wie das Fensterlicht,
@@ -5463,9 +5582,11 @@
   .fenster.da { visibility: visible; }
   .fenster > div { position: absolute; inset: 0; pointer-events: none; }
   .fenster svg { display: block; width: 100%; height: 100%; overflow: visible; }
-  /* Trefferfläche: nur das offene Fenster samt Rahmen (Kreis), nicht das ganze Kästchen */
+  /* Trefferfläche: nur das offene Fenster samt Rahmen (Kreis), nicht das ganze Kästchen; auf kleinen Karten ragt sie
+     über das Kästchen hinaus (mindestens 44 px, siehe FEN_RAND und FEN_TUER) */
   .fenster::after {
-    content: ''; position: absolute; left: 25%; top: 25%; width: 50%; height: 50%; border-radius: 50%; pointer-events: none;
+    content: ''; position: absolute; left: max(${FEN_TUER}, ${FEN_RAND}); top: ${FEN_RAND}; right: ${FEN_RAND}; bottom: ${FEN_RAND};
+    border-radius: 50%; pointer-events: none;
   }
   .fenster.da.auf::after { pointer-events: auto; cursor: pointer; }
   /* Bei Wolken und in der Dämmerung dämmert der Fensterflügel mit dem Bau (Licht wie .burrow); nachts nicht, da
@@ -5612,7 +5733,7 @@
     urlaubTag: ["Ich bin bei {n}.", "Heute bin ich noch bei {n}."],
     heim: ["Wieder zu Hause! {d} war ich bei {n}. Hier ist meine Postkarte.", "Da bin ich wieder! {d} bei {n}, es war schön. Die Postkarte ist für euch."],
     mile: ["Das war mein {z}. Päckchen! Ich hab ein bisschen gefeiert."],
-    tonne: ["Die Tonne steht an der Straße. Danke fürs Rausstellen!", "Morgen kommt die Müllabfuhr. Die Tonne steht schon draußen."],
+    tonne: ["Die Tonne steht an der Straße. Danke fürs Rausstellen!", "Die Müllabfuhr kann kommen. Die Tonne steht schon draußen."],
     sauger: ["Der Saugroboter war unterwegs. Ich bin hinterhergehoppelt.", "Der Saugroboter hat geputzt. Vielleicht bin ich ein Stück mitgefahren!"],
     allGold: ["Jetzt sind alle meine Schätze golden. Was für ein Fest!"],
     flowerTaken: ["Ich hab dir eine Blume gepflückt und ins Gras gelegt. Du hast sie genommen!", "Für dich: eine Blume mit Schleife. Du hast sie angenommen, da hab ich mich gefreut."],
@@ -5743,7 +5864,7 @@
         petMax(c);
         const neu = c.m & ~(mem[c.d] || 0);
         mem[c.d] = (mem[c.d] || 0) | c.m;
-        MEM_BITS.forEach((name, bit) => neu & 1 << bit && add(t, "mem", { b: name }));
+        MEM_BITS.forEach((name, bit) => neu & 1 << bit && add(t, "mem", { b: name === "tonne2" && !((mem[c.d - 1] || 0) & 1 << MEM_BITS.indexOf("tonne")) ? "tonne" : name }));
       }
       urSee(b.ur);
       const g0 = a.gift;
@@ -6493,13 +6614,44 @@
 
   // src/grafik/beschaeftigungen.js
   var TV_COLORS = ["#9fd0ff", "#e8f4ff", "#a8f0c6", "#ffd59e", "#c8b6ff", "#ff9fb2", "#9fe7ff"];
+  var KITE_LAGE = { auf: 60, klein: 0.25, schwank: [-3, 4], ruck: [6, 1.03] };
+  var kiteRand = (kx, ky, K2) => {
+    const pts = [[0, 0]];
+    for (const t of [0.25, 0.5, 0.75]) pts.push([(2 * t * (1 - t) * 0.6 + t * t) * kx, (2 * t * (1 - t) * 0.3 + t * t) * ky]);
+    for (const [x, y] of [[-0.25, -0.65], [0.25, -0.65], [-0.55, -0.1], [0.55, -0.1], [-0.92, 2.3], [0.92, 2.3], [-0.92, 2.7], [0.92, 2.7]]) {
+      pts.push([kx + x * K2, ky + y * K2]);
+    }
+    const dir = kx < 0 ? -1 : 1;
+    const um = [];
+    const { auf, klein, schwank, ruck } = KITE_LAGE;
+    for (let i = 0; i <= 20; i++) {
+      const t = i / 20;
+      const g = klein + (1 - klein) * t;
+      for (const a of schwank) um.push([dir * auf * (1 - t) + a, g]);
+      for (const k of [0.5, 1]) um.push([dir * auf * (1 - t) + ruck[0] * k, g * (1 + (ruck[1] - 1) * k)]);
+    }
+    const E = { l: 0, t: 0, r: 1, b: 1 };
+    for (const [w, g] of um) {
+      const c = Math.cos(w * Math.PI / 180) * g;
+      const s = Math.sin(w * Math.PI / 180) * g;
+      for (const [x, y] of pts) {
+        E.l = Math.min(E.l, x * c - y * s);
+        E.r = Math.max(E.r, x * c - y * s);
+        E.t = Math.min(E.t, x * s + y * c);
+        E.b = Math.max(E.b, x * s + y * c);
+      }
+    }
+    return { t: Math.ceil(1 - E.t), r: Math.ceil(E.r), b: Math.ceil(E.b), l: Math.ceil(1 - E.l) };
+  };
   var KITE_SVG = (kx, ky, K2) => {
     const f2 = (n) => n.toFixed(1);
+    const R2 = kiteRand(kx, ky, K2);
     const bows = [1.25, 1.85, 2.45].map((t, i) => {
       const a = f2(-K2 * 0.12), b = f2(K2 * 0.12), y1 = f2(K2 * (t - 0.06)), y2 = f2(K2 * (t + 0.06));
       return `<path d="M${a} ${y1} L${b} ${y2} L${b} ${y1} L${a} ${y2}Z" fill="${["#e8584e", "#5fb9de", "#f6c945"][i]}"/>`;
     }).join("");
-    return `<svg width="1" height="1" aria-hidden="true"><g class="kl"><g class="kr">
+    const rand = `box-sizing:content-box;padding:${R2.t}px ${R2.r}px ${R2.b}px ${R2.l}px;margin:-${R2.t}px 0 0 -${R2.l}px`;
+    return `<svg width="1" height="1" aria-hidden="true" style="${rand}"><g class="kl"><g class="kr">
       <path d="M0 0 Q${f2(kx * 0.6)} ${f2(ky * 0.3)} ${f2(kx)} ${f2(ky)}" stroke="rgba(255, 255, 255, .85)" stroke-width="1" fill="none"/>
       <g transform="translate(${f2(kx)} ${f2(ky)})"><g class="kb">
         <g class="kt">
@@ -6714,10 +6866,6 @@
         { length: 8 },
         () => `<i style="left:${rnd(2, 98).toFixed(1)}%;top:${rnd(3, 55).toFixed(1)}%;transform:scale(${rnd(0.7, 1.3).toFixed(2)})"></i>`
       ).join("") + "</b>").join("");
-      const flies = Array.from(
-        { length: 6 },
-        () => `<i style="left:${rnd(25, 90).toFixed(1)}%;top:${rnd(45, 80).toFixed(1)}%;animation-delay:${rnd(-9, 0).toFixed(2)}s,${rnd(0, 1.8).toFixed(2)}s"></i>`
-      ).join("");
       const clouds = [
         [14, 1, 110, -45],
         [32, 0.72, 150, -100],
@@ -6768,7 +6916,7 @@
             <div class="gifts"></div>
             <div class="props"></div>
             <div class="friends"></div>
-            <div class="ff">${flies}</div>
+            <div class="ff"></div>
             <div class="acts"></div>
             <div class="pika" role="button" tabindex="0" aria-label="Streicheln">
               <div class="clipw">
@@ -7529,6 +7677,7 @@
     }
     async _step() {
       this._planWaiting = false;
+      this._forced = false;
       if (this._petHeld) {
         this._petHeld = false;
         this._el.pika.classList.remove(...PET_HOLD);
@@ -7540,6 +7689,7 @@
         return this._run(ur);
       }
       if (TOUCH_NEXT.has(this._next) && Date.now() - (this._nextAt || 0) > TOUCH_TTL) this._next = null;
+      this._sigDoorExpire();
       if (!(this._lift > 0)) this._onHam = false;
       if (this._lift > 0 && this._onHam) return this._run("giftHamDown");
       const cof = this._cof?.pend;
@@ -7582,7 +7732,6 @@
         this._forced = !TOUCH_NEXT.has(next);
         return this._run(next);
       }
-      this._forced = false;
       if (this._poopPending) {
         if (this._canPoopLive() && this._now() - this._poopPending.due < POOP.live * 6e4) return this._run("poop");
         this._layPending();
@@ -8180,7 +8329,10 @@
         f2.el.style.setProperty("--fm", dim(hexRgb(flowerMid(f2.color))));
       }
     }
+    // Alle 2,5 Minuten wächst eine Blume nach (bis sechs). Sieht keiner hin, wächst nichts: Es wäre Arbeit am DOM auf
+    // einer Karte im Hintergrund, und das Wachsen (.grow) sähe niemand.
     _regrow() {
+      if (this._away()) return;
       if (this._g && this._flowers.length < 6) this._addFlower(true);
     }
     _nearestFlower() {
@@ -9626,8 +9778,10 @@
     }
     // Auch bei laufendem Takt gleich neu rechnen (neue Meldung): Jeder Schritt startet am gerade sichtbaren Punkt
     // und steuert den Punkt PLANE_STEP voraus an, ein früherer Schritt ändert also Weg und Tempo nicht
+    // Sieht keiner hin, läuft kein Takt (_planeTick stellt ihn ab); beim Wiedersehen stellt _visSync ihn über
+    // _planeSnap wieder an.
     _planeLoop() {
-      if (!this._planes.size || !this._attached) return;
+      if (!this._planes.size || !this._attached || this._away()) return;
       clearInterval(this._planeT);
       this._planeT = setInterval(() => this._planeTick(), PLANE_STEP * 1e3);
       this._planeTick();
@@ -9644,7 +9798,12 @@
         this._planeT = null;
         return;
       }
-      if (this._away() || !this._g) return;
+      if (this._away()) {
+        clearInterval(this._planeT);
+        this._planeT = null;
+        return;
+      }
+      if (!this._g) return;
       const now = Date.now();
       const W = this._W;
       const H = this._H;
@@ -11909,78 +12068,78 @@
   };
 
   // src/grafik/signale.js
-  var OUT2 = "#5a4030";
+  var OUT3 = "#5a4030";
   var SIG_BIN = (color) => `<svg viewBox="0 0 30 40" aria-hidden="true">
     <ellipse cx="15" cy="38.6" rx="12" ry="1.4" fill="rgba(0,0,0,.18)"/>
-    <path d="M5.5 9 L7.5 36 H22.5 L24.5 9 Z" fill="${color}" stroke="${OUT2}" stroke-width="1"/>
+    <path d="M5.5 9 L7.5 36 H22.5 L24.5 9 Z" fill="${color}" stroke="${OUT3}" stroke-width="1"/>
     <path d="M5.5 9 L7.5 36 H11 L9.4 9 Z" fill="rgba(255,255,255,.18)"/>
     <path d="M9 15 V31 M15 15 V31 M21 15 V31" stroke="rgba(0,0,0,.18)" stroke-width="1.1" stroke-linecap="round"/>
-    <rect x="3.6" y="5.6" width="22.8" height="4" rx="1.4" fill="${color}" stroke="${OUT2}" stroke-width="1"/>
-    <rect x="11" y="3.6" width="8" height="2.4" rx="1" fill="${color}" stroke="${OUT2}" stroke-width=".8"/>
+    <rect x="3.6" y="5.6" width="22.8" height="4" rx="1.4" fill="${color}" stroke="${OUT3}" stroke-width="1"/>
+    <rect x="11" y="3.6" width="8" height="2.4" rx="1" fill="${color}" stroke="${OUT3}" stroke-width=".8"/>
     <rect x="3.6" y="5.6" width="22.8" height="1.5" rx=".7" fill="rgba(255,255,255,.3)"/>
-    <circle cx="9" cy="36.4" r="2.4" fill="#3a3a3a" stroke="${OUT2}" stroke-width=".7"/><circle cx="9" cy="36.4" r=".8" fill="#9a9a9a"/>
-    <circle cx="21" cy="36.4" r="2.4" fill="#3a3a3a" stroke="${OUT2}" stroke-width=".7"/><circle cx="21" cy="36.4" r=".8" fill="#9a9a9a"/>
+    <circle cx="9" cy="36.4" r="2.4" fill="#3a3a3a" stroke="${OUT3}" stroke-width=".7"/><circle cx="9" cy="36.4" r=".8" fill="#9a9a9a"/>
+    <circle cx="21" cy="36.4" r="2.4" fill="#3a3a3a" stroke="${OUT3}" stroke-width=".7"/><circle cx="21" cy="36.4" r=".8" fill="#9a9a9a"/>
   </svg>`;
   var SIG_VAC = `<svg viewBox="0 0 44 18" aria-hidden="true">
     <ellipse cx="22" cy="16.8" rx="19" ry="1.2" fill="rgba(0,0,0,.2)"/>
-    <path d="M3 9.5 Q3 6 8 6 H36 Q41 6 41 9.5 V12.5 Q41 15.5 36 15.5 H8 Q3 15.5 3 12.5 Z" fill="#eef1f4" stroke="${OUT2}" stroke-width="1"/>
+    <path d="M3 9.5 Q3 6 8 6 H36 Q41 6 41 9.5 V12.5 Q41 15.5 36 15.5 H8 Q3 15.5 3 12.5 Z" fill="#eef1f4" stroke="${OUT3}" stroke-width="1"/>
     <path d="M3.4 11.6 H40.6" stroke="#9aa6b2" stroke-width="1.2"/>
-    <path d="M15 6 Q15 2.2 22 2.2 Q29 2.2 29 6 Z" fill="#d7dde3" stroke="${OUT2}" stroke-width=".9"/>
+    <path d="M15 6 Q15 2.2 22 2.2 Q29 2.2 29 6 Z" fill="#d7dde3" stroke="${OUT3}" stroke-width=".9"/>
     <rect x="18.5" y="3.4" width="7" height="1.6" rx=".8" fill="#5a6470"/>
     <circle class="sig-led" cx="34" cy="8.6" r="1.2" fill="#5fd06a"/>
     <path class="sig-brush" d="M4 15.4 l-2.6 1.6 M5.6 15.6 l-1.2 2 M2.8 14 l-2.4 .4" stroke="#7a6a5a" stroke-width=".7" stroke-linecap="round"/>
   </svg>`;
   var SIG_WEAR = {
     boots: `<svg viewBox="0 0 26 20" aria-hidden="true">
-    <path d="M3 2 H9 V14 Q9 15 10 15 H13 Q14.5 15 14.5 16.6 V18.4 H3 Z" fill="#f2c230" stroke="${OUT2}" stroke-width="1"/>
-    <path d="M13 3 H19 V14 Q19 15 20 15 H23 Q24.5 15 24.5 16.6 V18.4 H13 Z" fill="#f2c230" stroke="${OUT2}" stroke-width="1"/>
+    <path d="M3 2 H9 V14 Q9 15 10 15 H13 Q14.5 15 14.5 16.6 V18.4 H3 Z" fill="#f2c230" stroke="${OUT3}" stroke-width="1"/>
+    <path d="M13 3 H19 V14 Q19 15 20 15 H23 Q24.5 15 24.5 16.6 V18.4 H13 Z" fill="#f2c230" stroke="${OUT3}" stroke-width="1"/>
     <path d="M3 4.2 H9 M13 5.2 H19" stroke="rgba(255,255,255,.55)" stroke-width="1.2"/>
     <path d="M3 17.2 H14.5 M13 17.2 H24.5" stroke="#b8860b" stroke-width="1"/>
   </svg>`,
     umbrella: `<svg viewBox="0 0 12 30" aria-hidden="true">
-    <path d="M6 1.5 V4" stroke="${OUT2}" stroke-width="1"/>
-    <path d="M6 3.5 L2.6 22 Q6 24 9.4 22 Z" fill="#e8584e" stroke="${OUT2}" stroke-width="1" stroke-linejoin="round"/>
+    <path d="M6 1.5 V4" stroke="${OUT3}" stroke-width="1"/>
+    <path d="M6 3.5 L2.6 22 Q6 24 9.4 22 Z" fill="#e8584e" stroke="${OUT3}" stroke-width="1" stroke-linejoin="round"/>
     <path d="M6 3.5 L5 22.6 M6 3.5 L7.4 22.6" stroke="rgba(255,255,255,.35)" stroke-width=".7"/>
-    <path d="M6 23 V27 Q6 29 4 29 Q2.4 29 2.4 27.4" stroke="${OUT2}" stroke-width="1.3" fill="none" stroke-linecap="round"/>
+    <path d="M6 23 V27 Q6 29 4 29 Q2.4 29 2.4 27.4" stroke="${OUT3}" stroke-width="1.3" fill="none" stroke-linecap="round"/>
   </svg>`,
     hat: `<svg viewBox="0 0 24 26" aria-hidden="true">
-    <circle cx="12" cy="3.4" r="2.6" fill="#fff6ea" stroke="${OUT2}" stroke-width=".8"/>
-    <path d="M4.4 13 Q4 5 12 5 Q20 5 19.6 13 Z" fill="#d9503f" stroke="${OUT2}" stroke-width="1"/>
-    <rect x="3.6" y="11.6" width="16.8" height="3.6" rx="1.4" fill="#f0eadc" stroke="${OUT2}" stroke-width=".9"/>
-    <path d="M7 15 V24 Q7 25 8 25 H11 Q12 25 12 24 V15" fill="#3f7fc4" stroke="${OUT2}" stroke-width=".9"/>
+    <circle cx="12" cy="3.4" r="2.6" fill="#fff6ea" stroke="${OUT3}" stroke-width=".8"/>
+    <path d="M4.4 13 Q4 5 12 5 Q20 5 19.6 13 Z" fill="#d9503f" stroke="${OUT3}" stroke-width="1"/>
+    <rect x="3.6" y="11.6" width="16.8" height="3.6" rx="1.4" fill="#f0eadc" stroke="${OUT3}" stroke-width=".9"/>
+    <path d="M7 15 V24 Q7 25 8 25 H11 Q12 25 12 24 V15" fill="#3f7fc4" stroke="${OUT3}" stroke-width=".9"/>
     <path d="M7 19 H12 M7 22 H12" stroke="#f0eadc" stroke-width="1"/>
   </svg>`,
     sunhat: `<svg viewBox="0 0 28 16" aria-hidden="true">
-    <ellipse cx="14" cy="11.4" rx="12.6" ry="3.6" fill="#e9cf8e" stroke="${OUT2}" stroke-width="1"/>
-    <path d="M7.6 11 Q7.6 3 14 3 Q20.4 3 20.4 11 Z" fill="#e9cf8e" stroke="${OUT2}" stroke-width="1"/>
+    <ellipse cx="14" cy="11.4" rx="12.6" ry="3.6" fill="#e9cf8e" stroke="${OUT3}" stroke-width="1"/>
+    <path d="M7.6 11 Q7.6 3 14 3 Q20.4 3 20.4 11 Z" fill="#e9cf8e" stroke="${OUT3}" stroke-width="1"/>
     <path d="M7.8 9.2 Q14 11 20.2 9.2" stroke="#e8584e" stroke-width="1.8" fill="none"/>
   </svg>`
   };
 
   // src/grafik/urlaub.js
-  var OUT3 = "#5a4030";
+  var OUT4 = "#5a4030";
   var URLAUB_SIGN = (name) => `<svg viewBox="0 0 60 34" aria-hidden="true">
-    <path d="M14 13 L30 1.5 L46 13" stroke="${OUT3}" stroke-width="1" fill="none"/>
-    <circle cx="30" cy="1.8" r="1.4" fill="${OUT3}"/>
-    <rect x="3" y="12" width="54" height="20" rx="3" fill="#d9a873" stroke="${OUT3}" stroke-width="1.1"/>
+    <path d="M14 13 L30 1.5 L46 13" stroke="${OUT4}" stroke-width="1" fill="none"/>
+    <circle cx="30" cy="1.8" r="1.4" fill="${OUT4}"/>
+    <rect x="3" y="12" width="54" height="20" rx="3" fill="#d9a873" stroke="${OUT4}" stroke-width="1.1"/>
     <path d="M6 18 h48 M6 25 h48" stroke="#c08a55" stroke-width=".7" opacity=".7"/>
-    <circle cx="7" cy="16" r=".9" fill="${OUT3}"/><circle cx="53" cy="16" r=".9" fill="${OUT3}"/>
+    <circle cx="7" cy="16" r=".9" fill="${OUT4}"/><circle cx="53" cy="16" r=".9" fill="${OUT4}"/>
     <text x="30" y="25.6" text-anchor="middle" font-family="Comic Sans MS, Chalkboard SE, system-ui, sans-serif" font-size="9"
       font-weight="700" fill="#4a2e1c"${String(name).length > 4 ? ' textLength="48" lengthAdjust="spacingAndGlyphs"' : ""}>Bin bei ${esc(name)}</text>
   </svg>`;
   var URLAUB_CARD = (sea = false) => `<svg viewBox="0 0 60 40" aria-hidden="true">
-    <rect x=".6" y=".6" width="58.8" height="38.8" rx="2" fill="#fffaf0" stroke="${OUT3}" stroke-width=".9"/>
+    <rect x=".6" y=".6" width="58.8" height="38.8" rx="2" fill="#fffaf0" stroke="${OUT4}" stroke-width=".9"/>
     <clipPath id="urp"><rect x="3" y="3" width="28" height="34" rx="1"/></clipPath>
     <g clip-path="url(#urp)">
       <rect x="3" y="3" width="28" height="34" fill="#9fd4f2"/>
       <circle cx="24" cy="10" r="3.4" fill="#ffd75a"/>
       ${sea ? '<rect x="3" y="24" width="28" height="13" fill="#4aa3d8"/><path d="M3 27 q3.5 -2 7 0 t7 0 t7 0 t7 0" stroke="#fff" stroke-width=".8" fill="none" opacity=".8"/><rect x="3" y="33" width="28" height="4" fill="#f2d8a0"/>' : '<path d="M3 30 L12 15 L18 24 L23 17 L31 30 Z" fill="#8aa0b8"/><path d="M12 15 l-2.6 4.4 h5.2 Z M23 17 l-2 3.3 h4 Z" fill="#fff"/><rect x="3" y="29" width="28" height="8" fill="#7cbf5e"/>'}
-      <circle cx="11" cy="31.5" r="2.6" fill="#c49a74" stroke="${OUT3}" stroke-width=".5"/><circle cx="17" cy="31.5" r="2.6" fill="#f2b36e" stroke="${OUT3}" stroke-width=".5"/>
+      <circle cx="11" cy="31.5" r="2.6" fill="#c49a74" stroke="${OUT4}" stroke-width=".5"/><circle cx="17" cy="31.5" r="2.6" fill="#f2b36e" stroke="${OUT4}" stroke-width=".5"/>
     </g>
-    <path d="M33.5 6 v28" stroke="${OUT3}" stroke-width=".5" opacity=".4"/>
-    <rect x="47" y="4" width="9.5" height="11" fill="#f28fb1" stroke="${OUT3}" stroke-width=".6" stroke-dasharray="1 .8"/>
+    <path d="M33.5 6 v28" stroke="${OUT4}" stroke-width=".5" opacity=".4"/>
+    <rect x="47" y="4" width="9.5" height="11" fill="#f28fb1" stroke="${OUT4}" stroke-width=".6" stroke-dasharray="1 .8"/>
     <path d="M49 12 q2.7 -5 5.5 0" stroke="#fff" stroke-width=".9" fill="none"/>
-    <path d="M37 20 h19 M37 25 h19 M37 30 h14" stroke="${OUT3}" stroke-width=".6" opacity=".55"/>
+    <path d="M37 20 h19 M37 25 h19 M37 30 h14" stroke="${OUT4}" stroke-width=".6" opacity=".55"/>
     <path d="M37 13 q2 -2.5 4 0 t4 0" stroke="#4a6fb0" stroke-width=".7" fill="none"/>
   </svg>`;
 
@@ -12069,12 +12228,11 @@
       } catch (e) {
       }
     }
-    // Beginn des Pika-Tags (4 Uhr nachts, wie pikaDay), back Tage zurück
+    // Beginn des Pika-Tags (4 Uhr nachts), back Tage zurück: derselbe Tag wie bei pikaDay und in der Chronik. Bis
+    // 0.43.0 rechnete das hier selbst („jetzt minus 4 Stunden“, dann 4 Uhr) und lag an den Tagen der Zeitumstellung
+    // eine Stunde lang daneben: im Frühjahr um 4:30 noch beim Vortag, im Herbst um 3:30 schon bei 4 Uhr desselben Tags.
     _diaryDay(back = 0) {
-      const d = new Date(this._haNow() - 4 * 36e5);
-      d.setHours(4, 0, 0, 0);
-      d.setDate(d.getDate() - back);
-      return d.getTime();
+      return chronikStart(pikaDay(this._haNow()) - back);
     }
     // Liegen Zustand (haS) und Tagesplan (haP) in HA? Dann steht ihr Verlauf im Recorder, sonst schreibt das Gerät
     // selbst mit (_diaryLog).
@@ -12206,7 +12364,7 @@
         const f2 = this._festToday(start + 8 * 36e5);
         const fl = ["witch", "martin", "xmas", "sticks", "karneval", "ostern", "maibaum", "sommer"].filter((k) => f2[k]).map((k) => T.fest[k]);
         if (f2.boot?.full) fl.push(T.fest.boot);
-        if (f2.advent && day.getDay() === 0) fl.push(`Der ${f2.advent.candles}. Advent! Am Kranz brennt eine Kerze mehr.`);
+        if (f2.advent && day.getDay() === 0) fl.push(`Der ${f2.advent.candles}. Advent! Heute kommt am Kranz eine Kerze dazu.`);
         if (f2.birthday) {
           const n = f2.birthday.names;
           fl.push(`Alles Gute, ${n.length > 1 ? `${n.slice(0, -1).join(", ")} und ${n.at(-1)}` : n[0]}! Es gibt Kuchen.`);
@@ -12449,10 +12607,11 @@
           e.stopPropagation();
           this._diaryClose();
         } else if (e.key === "Tab") {
-          const f2 = [...root.querySelectorAll("button, .page")];
-          const i = f2.indexOf(root.activeElement);
+          const f2 = [...root.querySelectorAll("button:not([disabled]), summary, .page")].filter((el) => el.getClientRects().length > 0);
           e.preventDefault();
-          f2[(i + (e.shiftKey ? -1 : 1) + f2.length) % f2.length].focus();
+          if (!f2.length) return;
+          const i = f2.indexOf(root.activeElement);
+          f2[e.shiftKey ? i <= 0 ? f2.length - 1 : i - 1 : (i + 1) % f2.length].focus();
         }
       });
       const poke = () => {
@@ -12472,7 +12631,10 @@
           D.urAsk = false;
           this._urlaubStart();
         } else if (a === "back") this._urlaubEnde();
+        const pg = root.querySelector(".page");
+        const key = pg.contains(root.activeElement);
         this._diaryRender(true);
+        if (key) pg.focus({ preventScroll: true });
       });
       this._diaryRender();
       root.querySelector(".sheet").focus();
@@ -13033,7 +13195,7 @@
       <circle class="lgl" cx="128" cy="27.6" r="21" fill="url(#fst-cg)"/>
       <g transform="translate(128 6) scale(1.35) translate(-13.5 -2)">
         <path d="M13.5 2 V8.6" stroke="${OUT}" stroke-width=".6"/>${FEST_LANTERN_BODY.replace("#e8584e", "#f28fb1").replace("#5fb9de", "#7cc35a")}
-        <ellipse class="lgl" cx="13.5" cy="18" rx="6" ry="5.6" fill="#fff1b8" opacity=".5"/>
+        <ellipse class="lgk" cx="13.5" cy="18" rx="6" ry="5.6" fill="#fff1b8" opacity=".45"/>
       </g>
     </g>
     <ellipse cx="101" cy="62.4" rx="4" ry="5" fill="#ecdcc6" stroke="${OUT}" stroke-width="1.4"/>
@@ -13165,6 +13327,7 @@
   </svg>`;
 
   // src/karte/feste.js
+  var FEST_KANNE = { t: 6, w: 0.085 };
   var Feste = class {
     // Welche Feste heute sind, bestimmt _festToday() aus der Ortszeit (Vorschau: _dbgDate). Der 20-s-Takt prüft
     // neu; ändert sich etwas, wird die Deko neu aufgebaut. Alles ist Zierde: nichts kostet Werte, nichts wird gesammelt.
@@ -13173,6 +13336,12 @@
         this._festCfg = this._cfg;
         this._festEnsure();
         this._festUpdate();
+      } else if (this._fest?.birthday && this._festPos?.cake && !this._festKanneQ) {
+        this._festKanneQ = true;
+        queueMicrotask(() => {
+          this._festKanneQ = false;
+          this._guard("Feste", () => this._el && this._festUmKanne() && this._festUpdate());
+        });
       }
     }
     _attachFest() {
@@ -13378,7 +13547,8 @@
       this._festKey = key;
       this._fest = f2;
       if (changed && !f2.birthday) this._festCakeOut = false;
-      if (changed || force) {
+      const umzug = this._festUmKanne();
+      if (changed || force || umzug) {
         const p = this._el.pika.classList;
         const hat = f2.xmas ? "xmas" : f2.birthday ? "party" : f2.witch ? "witch" : f2.karneval ? "party" : null;
         for (const h of ["witch", "xmas", "party"]) p.toggle(`fest-${h}`, hat === h);
@@ -13387,6 +13557,24 @@
       }
       this._festCandleSync();
       this._festFwSync();
+      if (umzug) this._sigWearSync();
+    }
+    // Steht die Gießkanne (Schatz aus den Päckchen) in der Szene? → [linke, rechte Kante] in px, sonst null. Sie
+    // zählt, solange es ihr Element gibt (_giftScene), auch während er mit ihr gießt: wie für die Gummistiefel
+    // (_sigBootSpot).
+    _festKanne() {
+      if (!this._gtEls?.has(FEST_KANNE.t)) return null;
+      const x = this._giftX(FEST_KANNE.t);
+      return [x - this._H * FEST_KANNE.w / 2, x + this._H * FEST_KANNE.w / 2];
+    }
+    // Muss der Kuchen umziehen? Er steht links der Tür, wo jetzt die Kanne steht, oder ist ihr ausgewichen, und sie ist
+    // weg. Nur an Geburtstagen im Advent kommt es dazu (sonst steht der Kuchen rechts der Tür).
+    _festUmKanne() {
+      const k = this._festPos?.cake;
+      if (!this._fest?.birthday || !k || !this._g) return false;
+      const kanne = this._festKanne();
+      if (!kanne) return !!this._festKanneDa;
+      return !this._festKanneDa && k.l < kanne[1] && k.l + k.w > kanne[0];
     }
     // Deko aufbauen. Plätze: rechts und links neben der Tür, die Wiese zwischen Heu und Stein, die Bau-Oberkante,
     // hinter dem Bau; Statusleiste links oben und die Knöpfe rechts oben bleiben frei.
@@ -13434,7 +13622,19 @@
       if (f2.advent) {
         ground(`fwreath${this._festCandleOff() ? " unlit" : ""}`, ["R", "L", "M"], gy, H * 0.2, FEST_WREATH(f2.advent.candles, !!f2.advent.neu), "wreath");
       }
-      if (f2.birthday) ground(`fcake${this._festCakeOut ? " out" : ""}`, ["R", "L", "M"], gy + 1, H * 0.14, FEST_CAKE, "cake");
+      this._festKanneDa = false;
+      if (f2.birthday) {
+        let s = slot("R", "L", "M");
+        const kanne = s === slots.L ? this._festKanne() : null;
+        this._festKanneDa = !!kanne;
+        if (kanne && !used.has("M")) s = slot("M");
+        else if (kanne) {
+          const b = kanne[0] - H * 5e-3;
+          s = { x: b - H * 0.07, a: 4, b: Math.max(4, b) };
+        }
+        const [x, w2] = fit(s, H * 0.14);
+        front.push(item(`fcake${this._festCakeOut ? " out" : ""}`, x, gy + 1, w2, FEST_CAKE, "cake"));
+      }
       if (f2.lights) on.push(onBur("flights", FEST_LIGHTS(edge)));
       if (f2.karneval) on.push(onBur("fstream", FEST_STREAMERS(edge)));
       if (f2.martin) {
@@ -14024,6 +14224,10 @@
   };
 
   // src/karte/zustand.js
+  var LS_KEYS = ["pika-pet-card", "pika-pet-plan", "pika-pet-gift", "pika-pet-diary", "pika-pet-diary-seen", "pika-pet-chronik", "pika-pet-finds", "pika-pet-post"];
+  var SENT_FIRST = 15e3;
+  var SENT_MAX = 3e5;
+  var SENT_END = 30 * 6e4;
   var Zustand = class {
     // Die gemeinsame Uhr wurde nachgestellt: wartende Besuche und den Beginn der nächsten Beschäftigung neu planen
     // (Vögelchen, Maus, Frosch und Schnecke, die gerade da sind, bleiben; danach wird ohnehin mit der neuen Uhr geplant).
@@ -14117,6 +14321,7 @@
       this._gain.s += e.gain.s;
       this._gain.g += e.gain.g;
       this._gain.c ||= e.gain.c;
+      this._gainOld = true;
       this._save();
     }
     // Gewinn g ist doch schon in HA: aus dem Ungesendeten und den unbestätigten Schreiben (neueste zuerst) nehmen
@@ -14133,6 +14338,161 @@
         }
       }
     }
+    // ---------- Echo oder fremder Stand? ----------
+    // Ein eigenes Schreiben kommt als neuer Stand des Helfers zurück (Echo). Erkannt wird es am Wortlaut. Das reicht nicht,
+    // wenn zwei Geräte im selben Augenblick dasselbe tun (beide füttern in derselben Sekunde, beide streicheln einmal):
+    // Beide senden denselben Text, das zweite Schreiben ändert in HA nichts mehr, und das zweite Gerät hielte den Stand
+    // des ersten für sein Echo: Eine Portion Futter, ein Streicheln wären weg. Darum zusätzlich die Kennung des Aufrufs:
+    // hass.callService antwortet mit { context: { id } }, und der Stand, den der Aufruf erzeugt hat, trägt dieselbe id
+    // (hass.states[…].context.id). Jedes gesendete Schreiben e merkt sich
+    //   e.ctx: undefined, solange die Antwort aussteht; die Kennung; oder null (Antwort ohne Kennung: ältere HA-Version)
+    //   e.seen: die Kennung des Stands, der nach dem Wortlaut als Echo angenommen wurde, als die Antwort noch ausstand
+    // Antwort und Stand kommen in beliebiger Reihenfolge (HA schickt erst den Stand, dann die Antwort; im Browser läuft
+    // die Antwort als Promise aber oft vor dem hass, das erst durch die Elemente gereicht wird):
+    //   - Antwort zuerst: Beim Eintreffen des Stands steht fest, ob es das eigene Schreiben war.
+    //   - Stand zuerst: wie bisher als Echo annehmen und die Kennung merken (seen); die Antwort entscheidet nachträglich.
+    // Als fremd gilt ein gleichlautender Stand nur, wenn beide Kennungen bekannt und verschieden sind. In jedem anderen
+    // Fall (HA ohne Kennungen, Antwort bleibt aus oder ist ein Fehler, Tests ohne context) gilt wie bis 0.43.0 der Wortlaut.
+    // Und er gilt auch dann, wenn die andere Kennung noch etwas anderes heißen kann als „ein anderes Gerät hat im selben
+    // Augenblick dasselbe getan“ (e.txt, nur der Wortlaut zählt). Geurteilt wird also nur, wenn diese Karte genau diesen
+    // Text genau einmal gesendet hat, seitdem lückenlos zugehört hat und der gleichlautende Stand der erste ist, den sie
+    // danach sieht:
+    //   - Der Text ging schon einmal hinaus (neuer Versuch nach einem Fehler oder ohne Echo, _sentLost; der Plan nach
+    //     _planRetry): War der erste Versuch doch angekommen, trägt der Stand dessen Kennung, und der zweite, der in HA
+    //     nichts mehr ändert, bekommt eine andere. Das Echo des eigenen Schreibens sähe fremd aus (Füttern zählte doppelt).
+    //   - Tagesplan: Die Karte war seit dem Senden abgehängt oder getrennt, ihr Echo kann sie verpasst haben. Ein anderes
+    //     Gerät kann den Plan inzwischen überschrieben und genau diesen Wortlaut wiederhergestellt haben (planKeep kopiert,
+    //     was fehlt), dann unter seiner Kennung: Das Streicheln steckt darin und zählte doppelt. Beim Zustand gibt es
+    //     kein solches Wiederherstellen: Wer dort denselben Text schreibt, hat selbst gefüttert, dem Stand fehlt dann
+    //     auch nach einer Lücke eine der beiden Portionen.
+    //   - Sie hat seit dem Senden einen anderen Stand des Helfers gesehen: Dann kann das eigene Echo in einer Meldung mit
+    //     ihm untergegangen sein, und was jetzt gleich lautet, kann wieder eine Wiederherstellung sein.
+    //   - Der Gewinn darin stammt aus einem früheren Schreiben, das vielleicht schon angekommen war (_gainOld).
+    // Das Schreiben in list, dessen Echo der Stand st mit der Kennung ctx ist (→ Index, -1: keins): das mit dieser
+    // Kennung, sonst das erste mit diesem Wortlaut
+    _echoFind(list, st, ctx) {
+      const i = ctx ? list.findIndex((e) => e.v === st && e.ctx === ctx) : -1;
+      return i >= 0 ? i : list.findIndex((e) => e.v === st);
+    }
+    // Ein Stand mit dem Wortlaut von e und der Kennung ctx wurde als Echo angenommen. War er es? → true: erwiesen nicht,
+    // es war der gleichlautende Stand eines anderen Geräts. Steht die Antwort noch aus, merkt sich e die Kennung (die
+    // Antwort entscheidet, siehe _saveNow und _planSaveNow). ms: wann e gesendet wurde (Gerätezeit); nach ECHO_JUDGE
+    // wird nicht mehr geurteilt.
+    _echoFremd(e, ctx, ms) {
+      if (!ctx || e.txt || Date.now() - ms >= ECHO_JUDGE) return false;
+      if (e.ctx === void 0) e.seen = ctx;
+      return !!e.ctx && e.ctx !== ctx;
+    }
+    // Der als Echo angenommene Stand war der gleichlautende eines anderen Geräts: Das eigene Schreiben e hat in HA nichts
+    // mehr geändert, sein Gewinn fehlt dort. Wie bei jedem fremden Stand obendrauf legen und schreiben. (Putzen braucht
+    // das nicht: Dasselbe Häufchen zweimal wegzumachen ändert nichts.)
+    _sentAgain(e) {
+      const g = e.gain;
+      if (!this._stats || !(g.s || g.g)) return;
+      e.gain = { s: 0, g: 0, c: false };
+      this._gain.s += g.s;
+      this._gain.g += g.g;
+      this._gain.c ||= g.c;
+      const cur = parseStats(this._hass?.states[this._cfg.entity]?.state);
+      if (cur) this._statsMerge(cur);
+      else this._save();
+      this._renderStats();
+    }
+    // Für alle Schreiben in list (unbestätigte des Zustands oder des Plans) zählt ab jetzt nur noch der Wortlaut
+    _echoTxt(list) {
+      for (const e of list) e.txt = true;
+    }
+    // Ein Schreiben mit dem Text v geht hinaus: Ging derselbe Text von dieser Karte schon einmal hinaus (seen: die
+    // letzten gesendeten Texte, wird fortgeschrieben)? Dann zählt für alle mit diesem Text nur der Wortlaut. → ob
+    _echoDup(list, seen, v) {
+      const dup = seen.includes(v);
+      if (dup) {
+        for (const e of list) if (e.v === v) e.txt = true;
+      }
+      seen.push(v);
+      if (seen.length > 8) seen.shift();
+      return dup;
+    }
+    // Fremden Stand (parsed, eben aus dem Helfer gelesen) mit dem eigenen zusammenführen: Alles, was hier noch offen ist
+    // (ungesendet oder unbestätigt), kommt obendrauf und geht mit dem nächsten Schreiben hinaus.
+    _statsMerge(parsed, gain = this._sentGain()) {
+      if (this._sent.some((e) => e.gain.s || e.gain.g)) this._gainOld = true;
+      this._stats = mergeStats(this._stats, parsed, gain, this._haNow(), (a, b) => this._decayH(a, b));
+      this._poopCache = null;
+      if (gain.c && this._stats.m && !this._poops().piles.length) {
+        const t = sec(this._now());
+        Object.assign(this._stats, { c: t, l: t, m: 0 });
+        this._poopCache = null;
+      }
+      this._sent.forEach((e) => e.gain = { s: 0, g: 0, c: false });
+      this._gain = gain;
+      this._save();
+    }
+    // Vor dem Zusammenführen mit einem fremden Stand: Ein unbestätigtes Schreiben, das HA ausgeführt hat (ok: die Antwort
+    // ist da, und HA antwortet erst nach dem Ausführen), dessen Echo diese Karte aber verpasst haben kann, weil sie seit
+    // dem Senden abgehängt oder getrennt war (gap), gilt als angekommen. Der fremde Stand ist dann nicht einer, der HA
+    // vor dem eigenen erreichte (das ist die Annahme beim Zusammenführen), sondern der letzte nach einer Lücke: Die
+    // anderen Geräte haben den eigenen längst gesehen und darauf aufgebaut, sein Gewinn steckt schon darin. Bis 0.43.0
+    // kam er ein zweites Mal obendrauf: füttern, gleich die Ansicht wechseln, ein anderes Gerät füttert – beim
+    // Zurückkommen zählte das eigene Füttern doppelt. Hat die Karte ohne Lücke zugehört, bleibt es bei der Annahme.
+    _sentSettle() {
+      const n = this._sent.length;
+      for (let i = n - 1; i >= 0; i--) if (this._sent[i].ok && this._sent[i].gap) this._sent.splice(i, 1);
+      if (this._sent.length !== n) this._sentArm();
+    }
+    // Ein Zeitgeber für alle unbestätigten Schreiben: Er läuft bis zum frühesten Termin (e.due), dann wird nachgesehen
+    // (_sentLook). Abgehängt läuft keiner (_sentPark): Bis 0.43.0 stellte sich die Prüfung ohne frisches hass alle 5 Min
+    // neu, ohne Ende, und eine weggeworfene Karte hielt so für immer einen Zeitgeber (und sich selbst) am Leben.
+    _sentArm() {
+      clearTimeout(this._sentT);
+      this._sentT = null;
+      if (this._sentOff) return;
+      const due = Math.min(...this._sent.map((e) => e.due ?? Infinity));
+      if (due < Infinity) this._sentT = setTimeout(() => this._sentLook(), Math.max(0, due - Date.now()));
+    }
+    // Kein Echo bis zum Termin: Steht der Wert doch in HA, gilt er als angekommen. Verloren ist er erst, wenn seit dem
+    // Senden ein frischer, verbundener Stand von HA kam (sonst bekommt die Karte gerade gar nichts mit und sendete endlos
+    // denselben Wert): dann neu senden, sonst später wieder schauen (nach 15 s, dann mit doppelter Pause bis 5 Min).
+    // Höchstens SENT_END lang: Danach ruht es, bis HA wieder liefert (_sentWake). Ein abgelehntes Schreiben (failed) geht
+    // nach seiner Pause neu hinaus.
+    _sentLook() {
+      this._sentT = null;
+      const now = Date.now();
+      for (const e of [...this._sent]) {
+        if (!this._sent.includes(e) || e.due == null || e.due > now) continue;
+        if (e.failed) {
+          this._sentLost(e);
+          continue;
+        }
+        if (this._hass?.states[this._cfg.entity]?.state === e.v) this._sent.splice(this._sent.indexOf(e), 1);
+        else if (this._hassN === e.n || this._hass?.connected === false) {
+          e.step = Math.min(e.step * 2, SENT_MAX);
+          e.due = now - e.at < SENT_END ? now + e.step : null;
+        } else this._sentLost(e);
+      }
+      this._sentArm();
+    }
+    // Karte wird abgehängt (ab hier kommt kein hass mehr): nicht weiter nach Echos schauen. Was jetzt noch unbestätigt
+    // ist, verpasst sein Echo vielleicht (siehe _sentSettle).
+    _sentPark() {
+      this._sentOff = true;
+      clearTimeout(this._sentT);
+      this._sentT = null;
+      this._sentGap();
+    }
+    // Ab jetzt kann diese Karte Stände verpassen (abgehängt, Verbindung weg)
+    _sentGap() {
+      for (const e of this._sent) e.gap = true;
+    }
+    // Wieder eingehängt, oder HA liefert wieder (set hass): nach dem, was noch unbestätigt ist, weiterschauen. Was längst
+    // fällig war, bekommt eine neue Frist, in der das Echo oder ein frischer Stand kommen kann.
+    _sentWake() {
+      if (!this._sentOff && (this._sentT || !this._sent.length)) return;
+      this._sentOff = false;
+      const now = Date.now();
+      for (const e of this._sent) if (!(e.due > now)) Object.assign(e, { due: now + (e.failed ? 5e3 : SENT_FIRST), step: SENT_FIRST });
+      this._sentArm();
+    }
     _save() {
       this._pendingWrite = true;
       this._saveWait = false;
@@ -14147,6 +14507,11 @@
       const v = serialize(this._stats);
       if (this._cfg.entity && !this._noEntity) {
         if (!this._synced || !this._hass) return;
+        if (this.preview === true) {
+          this._saveHeld = true;
+          return;
+        }
+        this._saveHeld = false;
         const id = this._cfg.entity;
         const st = this._hass.states[id]?.state;
         if (this._hass.connected === false || this._hass.connection?.connected === false || st === "unavailable") {
@@ -14154,16 +14519,24 @@
           return;
         }
         if (st !== v) {
-          const e = { v, gain: this._gain, at: Date.now(), n: this._hassN };
-          this._sent.push(e);
-          if (this._sent.length > 8) this._sent.shift();
-          this._hass.callService("input_text", "set_value", { entity_id: id, value: v }).catch((err) => {
+          const L = this._sent;
+          const now = Date.now();
+          const dup = this._echoDup(L, this._sentV ??= [], v);
+          const e = { v, gain: this._gain, at: now, n: this._hassN, step: SENT_FIRST, due: now + SENT_FIRST, gap: this._sentOff === true, txt: dup || !!this._gainOld };
+          L.push(e);
+          if (L.length > 8) L.shift();
+          this._hass.callService("input_text", "set_value", { entity_id: id, value: v }).then((r) => {
+            e.ok = true;
+            e.ctx = r?.context?.id || null;
+            if (this._sent === L && e.seen && e.ctx && e.seen !== e.ctx && Date.now() - e.at < ECHO_JUDGE) this._guard("Zustand", () => this._sentAgain(e));
+          }, (err) => {
             console.warn("pika-pet-card: Speichern fehlgeschlagen, neuer Versuch", err);
             this._saveFail = (this._saveFail || 0) + 1;
             e.failed = true;
-            setTimeout(() => this._sentLost(e), Math.min(5e3 * 2 ** (this._saveFail - 1), 3e5));
+            e.due = Date.now() + Math.min(5e3 * 2 ** (this._saveFail - 1), SENT_MAX);
+            if (this._sent === L) this._sentArm();
           });
-          this._sentCheck(e, 15e3);
+          this._sentArm();
         }
       } else {
         try {
@@ -14177,36 +14550,27 @@
         }
       }
       this._gain = { s: 0, g: 0, c: false };
+      this._gainOld = false;
       this._pendingWrite = false;
-    }
-    // Kein Echo nach ms: Steht der Wert doch in HA, gilt er als angekommen. Verloren ist er erst, wenn seit dem Senden
-    // ein frischer, verbundener Stand von HA kam (sonst bekommt die Karte gerade gar nichts mit, z. B. in einer
-    // abgehängten Ansicht, und sendete endlos denselben Wert): dann neu senden, sonst später wieder schauen.
-    _sentCheck(e, ms) {
-      setTimeout(() => {
-        if (!this._sent.includes(e) || e.failed) return;
-        if (this._hass?.states[this._cfg.entity]?.state === e.v) return void this._sent.splice(this._sent.indexOf(e), 1);
-        if (this._hassN === e.n || this._hass?.connected === false) return this._sentCheck(e, Math.min(ms * 2, 3e5));
-        this._sentLost(e);
-      }, ms);
     }
     _lsKey() {
       return `pika-pet-card:${this._cfg.name}`;
     }
     // Im Editor umbenannt: Der Name steckt in den Schlüsseln, unter denen ohne Helfer Zustand, Tagesplan (Vorrat, Serie,
     // Album) und „Päckchen-Knopf schon gesehen“ im Browser liegen (und mit Chronik, für welchen Tag sie schon geprüft
-    // ist). Den Stand unter den neuen Namen mitnehmen, sonst finge er von vorn an. Kopiert, nicht verschoben: Bricht
+    // ist; dazu die Entdeckungen im Tagebuch und die schon gesehene Postkarte aus dem Urlaub). Den Stand unter den neuen
+    // Namen mitnehmen, sonst finge er von vorn an. Kopiert, nicht verschoben: Bricht
     // man das Bearbeiten ab, gilt der alte Name weiter. Der Editor ruft setConfig bei jedem Tastendruck, Zwischenstände
-    // („Pik“, „Pi“ …) werden darum wieder entfernt.
-    _lsRename(from, to) {
+    // („Pik“, „Pi“ …) werden darum wieder entfernt. fest: Die Kopie bleibt auch dann (siehe setConfig: der bereinigte Name).
+    _lsRename(from, to, fest = false) {
       if (from == null || to == null || from === to) return;
       try {
         const mine = this._lsCopies ??= /* @__PURE__ */ new Set();
-        for (const p of ["pika-pet-card", "pika-pet-plan", "pika-pet-gift", "pika-pet-diary", "pika-pet-diary-seen", "pika-pet-chronik"]) {
+        for (const p of LS_KEYS) {
           const v = localStorage.getItem(`${p}:${from}`);
           if (v != null && localStorage.getItem(`${p}:${to}`) == null) {
             localStorage.setItem(`${p}:${to}`, v);
-            mine.add(`${p}:${to}`);
+            if (!fest) mine.add(`${p}:${to}`);
           }
           if (mine.delete(`${p}:${from}`)) localStorage.removeItem(`${p}:${from}`);
         }
@@ -14469,7 +14833,9 @@
     _frName() {
       return String(this._cfg.friend_name || "Pino");
     }
-    // Wer gerade zu Besuch ist (oder zuletzt war: Abschied, Fangen): Pino heißt wie in friend_name, die anderen fest
+    // Name des Besuchers, mit dem der Pika ihn begrüßt und verabschiedet („Kirby!“, „tschüss, Kirby!“; sonst braucht
+    // ihn niemand). _frWho setzt die Ankunft und bleibt über den Abschied hinaus stehen (er winkt ihm nach, wenn der
+    // Freund schon weg ist). Pino heißt wie in friend_name, die anderen fest.
     _frGuest() {
       return this._frWho || this._frName();
     }
@@ -14818,6 +15184,7 @@
         s.transform = `translate(${(x - this._g.pW * this._frSc() / 2).toFixed(1)}px, ${(-lift - dy).toFixed(1)}px)` + (sc !== 1 ? ` scale(${sc.toFixed(3)})` : "");
       }
       fr.el.classList.toggle("lane1", !!dy);
+      fr.sw.classList.toggle("lane1", !!dy);
       clearTimeout(fr.laneZT);
       if (ms > 0 && (lane || 0) !== (vor || 0)) {
         this._frZ(fr, vor);
@@ -15370,8 +15737,6 @@
         sc.remove("day", "dusk", "night");
         sc.add(mode);
       }
-      const month = new Date(this._dbgDate ?? Date.now()).getMonth();
-      sc.toggle("summer", month >= 4 && month <= 8);
       sc.toggle("sun-low", e != null && e < 8);
       sc.toggle("sun-down", e != null && e < -1);
       this._light(mode);
@@ -15486,7 +15851,7 @@
     }
     // Sternschnuppen (nur zum Anschauen, kein Zähler): ein Zeitgeber alle 1,5–5 Minuten, der nur nachts bei
     // klarem Himmel eine losschickt. Jede läuft als CSS-Animation in .meteors und entfernt sich danach selbst.
-    // Glühwürmchen: ersetzen die sechs Punkte aus _build durch 10–14 eigene; die Ebene .ff blendet je nach
+    // Glühwürmchen: 10–14 in der Ebene .ff (leer angelegt in _build, gefüllt von _ffBuild); sie blendet je nach
     // Lage (Sommernacht, späte Sommerdämmerung, trocken) ein oder aus.
     _hassSky(hass) {
       if (this._skyQ) return;
@@ -18839,6 +19204,7 @@
 
   // src/karte/tagesplan.js
   var PLAN_HOLD = 5e3;
+  var PLAN_HOLD_STALE = 500;
   var PLAN_DOUBT = 1e4;
   var PLAN_HEAL = 2e3;
   var PLAN_MEND = 30 * 6e4;
@@ -18853,6 +19219,7 @@
       this._planNewer = false;
       this._planOps = [];
       this._planSent = [];
+      this._planVs = [];
       this._planAck = 0;
       this._planKnown = null;
       this._planHeal = false;
@@ -18891,11 +19258,16 @@
       const st = hass.states[id]?.state;
       if (st === this._planSt) return;
       this._planSt = st;
-      const sent = this._planSent.findIndex((e) => e.v === st);
+      const ctx = hass.states[id]?.context?.id;
+      const sent = this._echoFind(this._planSent, st, ctx);
+      if (sent < 0) this._echoTxt(this._planSent);
+      let fremd = null;
       if (sent >= 0) {
-        this._planAck = Math.max(this._planAck, this._planSent[sent].at);
+        const e = this._planSent[sent];
+        this._planAck = Math.max(this._planAck, e.at);
         this._planSent.splice(0, sent + 1);
         this._planFail = 0;
+        if (this._echoFremd(e, ctx, e.ms)) fremd = e;
       }
       const P = this._planMax() < PLAN_MIN ? null : planParse(st);
       if (st !== void 0) this._planSeen = true;
@@ -18914,11 +19286,11 @@
           this._careHold = Date.now() + 1e4;
         }
         const alt = this._planKnown;
-        const old = sent < 0 && !!alt && (planOld(P, alt) || this._planMend());
+        const old = !!alt && (planOld(P, alt) || sent < 0 && this._planMend());
         const now = this._haNow();
         const Q = this._planOps.filter((o) => o.at <= this._planAck && now - o.at < 15e3).reduce((X, o) => planApply(X, o, o.at), P);
-        const K2 = sent < 0 ? planKeep(Q, alt, old) : Q;
-        this._planKnown = sent < 0 ? planKeep(P, alt, old) : P;
+        const K2 = planKeep(Q, alt, old);
+        this._planKnown = planKeep(P, alt, old);
         if (K2 !== Q && !this._planMend()) this._planHealAt = now;
         this._planHeal = K2 !== Q;
         this._planBase = this._planHeal ? K2 : P;
@@ -18947,6 +19319,20 @@
       }
       this._planCompose(true);
       if (this._planMend() && !this._planT && planSer(this._plan) !== st) this._planSave(PLAN_HEAL);
+      if (fremd) this._planAgain(fremd);
+    }
+    // Der als Echo angenommene Stand war der gleichlautende eines anderen Geräts (beide haben im selben Augenblick
+    // gestreichelt): Das eigene Schreiben e hat in HA nichts mehr geändert. Für fast alles ist das einerlei, die
+    // Änderungen sind wiederholbar und stehen ja im Helfer. Nur das Streicheln zählt: Was mit e zum ersten Mal
+    // hinausging (o.out === e.k), ist dort einmal zu wenig gezählt. Es gilt wieder als nie gesendet, zählt auf den
+    // Stand obendrauf (planRebase) und bleibt offen, bis HA es bestätigt.
+    _planAgain(e) {
+      const mine = this._planOps.filter((o) => o.t === "pet" && o.out === e.k);
+      if (!mine.length) return;
+      const now = this._haNow();
+      const rest = this._planOps.filter((o) => !mine.includes(o));
+      this._planOps = planRebase([...rest, ...mine.map((o) => ({ t: "pet", d: o.d, n: o.n, at: now }))], this._planBase);
+      if (this._planCompose(false)) this._planSave();
     }
     // Steht ein Retten aus (im Helfer fehlt etwas, das dort schon stand)? Höchstens PLAN_MEND lang: Lehnt HA das
     // Schreiben ab, versuchte die Karte es sonst ohne Ende.
@@ -19012,11 +19398,15 @@
     //   danach PLAN_DOUBT lang keine neuen, hat sich dort nichts geändert: Dann gilt der alte. Ohne ein einziges hass
     //   seit dem Zweifel endet er nie: Dass nichts ankommt, heißt nicht, dass nichts geschah (eine wieder eingehängte
     //   Karte hat alles verpasst, auch wenn die Verbindung steht).
+    // Und gar nicht schreibt die Vorschau-Karte im Editor von HA (preview = true, siehe _saveNow): Sie plant im Speicher,
+    // ihre Änderungen warten wie oben. Dafür läuft kein Zeitgeber; endet die Vorschau an derselben Karte, geht es mit dem
+    // nächsten hass weiter (_planHass).
     _planBlind() {
       const h = this._hass;
-      if (this._planOff || !h) return true;
+      if (this._planOff || !h || this.preview === true) return true;
       if (h.connected === false || h.connection?.connected === false) {
         this._planDoubt = { states: h.states, at: Date.now(), fed: false };
+        this._echoTxt(this._planSent);
         return true;
       }
       if (this._planStale) return true;
@@ -19032,14 +19422,34 @@
       const D = this._planDoubt;
       if (hass.connected === false || hass.connection?.connected === false) {
         this._planDoubt = { states: hass.states, at: Date.now(), fed: false };
+        this._echoTxt(this._planSent);
       } else if (D && fresh) {
         if (hass.states !== D.states) this._planDoubt = null;
         else if (!D.fed) Object.assign(D, { fed: true, at: Date.now() });
       }
-      if (this._planHeld && !this._planBlind()) {
-        this._planHeld = false;
-        this._planSave();
-      }
+      const pv = this.preview === true;
+      if (this._planPv && !pv && !this._planRT && !this._planOff && (this._planMend() || this._planOps.some((o) => o.at > this._planAck))) this._planRetry(PLAN_HOLD);
+      this._planPv = pv;
+      this._planRelease();
+    }
+    // Ein zurückgehaltenes Schreiben geht hinaus, wenn der eigene Stand wieder sicher ist. now: sofort statt gebündelt
+    // (die Seite geht zu, die Karte wird abgehängt, oder es hat ohnehin schon gewartet). → ob es hinausging
+    _planRelease(now = false) {
+      if (!this._planHeld || this._planBlind()) return false;
+      this._planHeld = false;
+      if (now) this._planSaveNow();
+      else this._planSave();
+      return true;
+    }
+    // So bald schaut ein zurückgehaltenes Schreiben wieder nach, ob es hinaus darf. Wartet es nur noch darauf, dass der
+    // Stand nach langer Pause als frisch gilt (_planStale: Das endet ohne neuen Stand nach 4 s von selbst, _planFresh,
+    // und kein hass muss dann folgen), in kurzen Schritten: Sonst käme ein Streicheln gleich nach dem Wiedersehen erst
+    // nach rund 6 s im Helfer an. Ohne Verbindung bleibt es bei PLAN_HOLD, und nach 10 s auch sonst (die Frist ist dann
+    // längst um; gilt der Stand immer noch als veraltet, hängt es an etwas anderem).
+    _planHoldMs() {
+      const h = this._hass;
+      const kurz = this._planHeld && this._planStale && Date.now() - this._planHeldAt < 1e4;
+      return kurz && h && h.connected !== false && h.connection?.connected !== false ? PLAN_HOLD_STALE : PLAN_HOLD;
     }
     // Karte wird abgehängt: Ungesendetes noch hinaus (bis eben kam hass, der Stand ist frisch), danach schreibt sie den
     // Plan nicht mehr, bis sie wieder eingehängt ist. Ohne das sendete eine abgehängte Karte, der noch eine Bestätigung
@@ -19048,7 +19458,9 @@
     _planPark() {
       if (this._planOff) return;
       if (this._planT) this._planSaveNow();
+      else this._planRelease(true);
       this._planOff = true;
+      this._echoTxt(this._planSent);
       clearTimeout(this._planRT);
       this._planRT = null;
     }
@@ -19081,20 +19493,37 @@
           this._planBase = P;
           return this._planRetry(15e3);
         }
+        if (v.length > this._planMax()) {
+          if (!this._planLongW) {
+            this._planLongW = true;
+            console.warn(`pika-pet-card: Der Tagesplan ist mit ${v.length} Zeichen zu lang für ${id} (max. Länge ${this._planMax()}) und wird nicht gesendet. Bitte die max. Länge des Helfers auf 255 stellen.`);
+          }
+          this._planBase = P;
+          this._planHeld = false;
+          this._planOps = this._planOps.filter((o) => !(o.t === "gather" && o.m == null));
+          return;
+        }
         const neu = v !== this._planSt && v !== this._planSent.at(-1)?.v;
+        const held = this._planHeld;
         this._planHeld = neu && this._planBlind();
         if (this._planHeld) {
+          if (!held) this._planHeldAt = Date.now();
           this._planBase = P;
           this._planOps = this._planOps.filter((o) => !(o.t === "gather" && o.m == null));
-          if (!this._planOff) this._planRetry(PLAN_HOLD);
+          if (!this._planOff && this.preview !== true) this._planRetry(this._planHoldMs());
           return;
         }
         if (neu) {
-          const e = { v, at: this._haNow(), n: this._hassN };
+          const key = this._planKey;
+          const dup = this._echoDup(this._planSent, this._planVs, v);
+          const e = { v, at: this._haNow(), ms: Date.now(), n: this._hassN, k: this._planSeq = (this._planSeq || 0) + 1, txt: dup || !!this._planOff };
           this._planSent.push(e);
           if (this._planSent.length > 8) this._planSent.shift();
-          for (const o of this._planOps) o.out = true;
-          this._hass.callService("input_text", "set_value", { entity_id: id, value: v }).catch((err) => {
+          for (const o of this._planOps) o.out ||= e.k;
+          this._hass.callService("input_text", "set_value", { entity_id: id, value: v }).then((r) => {
+            e.ctx = r?.context?.id || null;
+            if (this._planKey === key && e.seen && e.ctx && e.seen !== e.ctx && Date.now() - e.ms < ECHO_JUDGE) this._guard("Tagesplan", () => this._planAgain(e));
+          }, (err) => {
             console.warn("pika-pet-card: Tagesplan speichern fehlgeschlagen, neuer Versuch", err);
             e.failed = true;
             this._planFail++;
@@ -19119,6 +19548,7 @@
     _flush() {
       if (this._saveT) this._saveNow();
       if (this._planT) this._planSaveNow();
+      else this._planRelease(true);
     }
     // Max. Länge des Helfers (ohne Helfer: unbegrenzt, der Plan bleibt im Browser)
     _planMax() {
@@ -19148,7 +19578,7 @@
         if (!st || !this._planOk) return;
         const open = () => this._planHeld || this._planOps.some((o) => o.at > this._planAck) || this._planMend() && planSer(this._plan) !== st;
         if (this._planBlind()) {
-          if (open()) this._planRetry(PLAN_HOLD);
+          if (open() && this.preview !== true) this._planRetry(this._planHoldMs());
           return;
         }
         this._planCompose(false);
@@ -19160,7 +19590,10 @@
         const last = this._planSent.at(-1);
         if (last && !last.failed && last.n === this._hassN) return this._planRetry(15e3);
         this._planSent = [];
-        this._planSave();
+        if (this._planHeld) {
+          this._planHeld = false;
+          this._planSaveNow();
+        } else this._planSave();
       }, ms);
     }
   };
@@ -20549,8 +20982,13 @@
         this._urlaubWeg();
       }
     }
+    // Er ist fort. Stand er eben noch auf dem Stein oder lag in der Hängematte und der Abschied brach mitten im
+    // Sprung herunter ab, bliebe _lift über 0 stehen: Zurück hoppelte er dann in der Luft herein und spränge erst
+    // einmal „herunter“. Wer fort ist, steht nirgends.
     _urlaubWeg() {
       this._fort = true;
+      this._lift = 0;
+      this._onHam = false;
       this._el.pika.classList.add("fort");
       this._el.psay?.classList.add("fort");
       this._urlaubSchlaf();
@@ -20632,7 +21070,7 @@
     // Konfiguration `signals`: { waste: calendar.*, wardrobe: true, vacuum: vacuum.*, door: binary_sensor.*, window:
     // binary_sensor.* oder Liste (seit 0.40, karte/fenster.js) }. Alles ist
     // aus, solange nichts eingetragen ist. Was alle Geräte gleich zeigen sollen, folgt aus den Zuständen in HA; nur
-    // „Tonne steht draußen“ steht im Tagesplan (Bit MEM_TONNE, siehe logik/signale.js).
+    // „Tonne steht draußen“ steht im Tagesplan (Bits MEM_TONNE und MEM_TONNE2, siehe logik/signale.js).
     _sigCfg() {
       const s = this._cfg?.signals;
       return s && typeof s === "object" && !Array.isArray(s) ? s : {};
@@ -20641,6 +21079,7 @@
     _hassSig(hass) {
       const c = this._sigCfg();
       const S = hass.states;
+      this._sigDoorExpire();
       const w = c.waste ? S[c.waste] : void 0;
       if (w !== this._sigW) {
         this._sigW = w;
@@ -20673,8 +21112,9 @@
       this._winDetach();
     }
     _hiddenSig(hidden) {
-      if (hidden) clearTimeout(this._sigVacT);
-      else this._sigVacSync(true);
+      if (hidden) return void clearTimeout(this._sigVacT);
+      this._sigDoorExpire();
+      this._sigVacSync(true);
     }
     _layoutSig() {
       this._sigBinSync(true);
@@ -20685,6 +21125,8 @@
     _tickSig() {
       this._sigBinSync();
       this._sigWearSync();
+      if (this._sigVac && this._sigVDead != null) this._sigVacSync();
+      this._sigDoorExpire();
       this._winTick();
     }
     // Wach, zu sehen und nicht verreist: Dann erinnert er
@@ -20698,7 +21140,7 @@
       const acts = [];
       if (this._el.sigbin && now >= (this._sigBinAt || 0)) acts.push([6, "sigBinNudge"]);
       if (this._sigWearEls?.size && now >= (this._sigWearAt || 0)) acts.push([3, "sigWear"]);
-      const V = this._sigVac;
+      const V = this._sigVac?.dead ? null : this._sigVac;
       if (V?.mode === "drive" && !V.hold && now - (this._sigRideAt || 0) > SIG.rideGap) acts.push([4, "sigRide"]);
       if (V?.mode === "stuck" && now - (this._sigPushAt || 0) > SIG.rideGap) acts.push([5, "sigPush"]);
       return acts;
@@ -20709,7 +21151,8 @@
     }
     // ---------- Mülltonne ----------
     // Steht die Tonne heute da? → Abholung (binPlan) oder null. „Steht draußen“ von heute (MEM_TONNE) gilt immer, das
-    // vom Vortag übernommene (MEM_TONNE2) nur für die Tonne, die gestern schon stand (binDone).
+    // vom Vortag übernommene oder am Morgen der Abholung getippte (MEM_TONNE2) nur für die Tonne, die gestern schon
+    // stand (binDone, dort die Wahrheitstafel).
     _sigBin() {
       const st = this._sigW;
       if (!st || this._urlaubOn()) return null;
@@ -20761,11 +21204,16 @@
       this._sigBinW = w + 0.03 * H;
       this._boteLayout?.();
     }
-    // Angetippt: steht draußen. Gilt auf allen Geräten (Tagesplan), bis zur Abholung.
+    // Angetippt: steht draußen. Gilt auf allen Geräten (Tagesplan), bis zur Abholung. Am Vorabend merkt er sich
+    // MEM_TONNE, am Morgen der Abholung MEM_TONNE2 (binTap): MEM_TONNE von heute gälte sonst am Nachmittag und, vom
+    // nächsten Tag übernommen, am Morgen darauf für die Tonne des nächsten Tags.
     _sigBinOut() {
       const el = this._el?.sigbin;
       if (!el) return;
-      this._planOp({ t: "mem", d: pikaDay(this._haNow()), b: MEM_TONNE });
+      const P = this._sigBin();
+      if (!P) return void this._sigBinSync();
+      const d = pikaDay(this._haNow());
+      this._planOp({ t: "mem", d, b: binTap(d, pikaDay(P.from)) });
       this._sigBinSync();
       if (this._sigAwake() && this._running) this._say(pick(["danke!", "steht draußen!", "super!"]), 1300);
     }
@@ -20798,29 +21246,73 @@
     }
     // ---------- Garderobe ----------
     // Stündliche Vorhersage abonnieren (wie die Wetter-Karte von HA). Ohne Verbindung (Vorschau) bleibt _sigFc leer.
+    // Bei jedem hass: _sigFcId ist die Entität, für die das Abo gilt, _sigFcUn das Abo (ein Promise: es steht oder die
+    // Antwort steht noch aus), _sigFcT der Zeitgeber bis zum nächsten Versuch nach einer Ablehnung.
+    // Die Karte führt das Abo selbst (resubscribe: false, siehe _sigFcTry): Mit der Verbindung ist es weg, und kommt
+    // sie wieder (hass.connected, wie _wxConn in karte.js), abonniert sie neu. Abbestellt wird das alte dabei nicht:
+    // Seine Kennung gilt auf der neuen Verbindung nicht mehr (home-assistant-js-websocket zählt dort wieder ab 1, bis
+    // 9.7.1 konnte ein altes Abo so ein fremdes abbestellen).
     _sigFcSub(hass) {
       const id = this._cfg.weather_entity;
-      if (this._sigFcId === id) return;
-      this._sigFcStop();
-      this._sigFcId = id;
-      const conn = hass.connection;
-      if (!id || typeof conn?.subscribeMessage !== "function") return;
+      if (this._sigFcId !== id) {
+        this._sigFcStop();
+        this._sigFcId = id;
+      }
+      const conn = hass.connected !== false && hass.connection?.connected !== false;
+      const back = conn && this._sigFcConn === false;
+      this._sigFcConn = conn;
+      if (!conn) {
+        this._sigFcUn = null;
+        return;
+      }
+      if (back) this._sigFcN = 0;
+      if (!this._sigFcUn && (back || !this._sigFcT)) this._sigFcTry();
+    }
+    // Ein Versuch. Lehnt HA ab (die Wetter-Entität ist beim Start von HA noch nicht geladen, die Integration lädt
+    // neu), kommt der nächste nach SIG.fcRetry: nach 30 s, dann jedes Mal doppelt so spät, höchstens alle 30 Min.
+    // Bis 0.43.0 blieb es bei dem einen Versuch, die Garderobe blieb bis zum Neuladen der Seite leer.
+    // resubscribe: false: Sonst meldete die Bibliothek das Abo nach dem Wiederverbinden selbst wieder an. Scheitert
+    // das (HA ist neu gestartet, das Wetter fehlt noch), erfährt es niemand, und die Vorhersage bliebe die alte.
+    _sigFcTry() {
+      clearTimeout(this._sigFcT);
+      this._sigFcT = null;
+      const id = this._sigFcId;
+      const hass = this._hass;
+      const conn = hass?.connection;
+      if (!id || this._sigFcUn || typeof conn?.subscribeMessage !== "function") return;
+      if (hass.connected === false || conn.connected === false) return;
+      let p = null;
       try {
-        const p = conn.subscribeMessage((m) => {
+        p = Promise.resolve(conn.subscribeMessage((m) => {
+          if (this._sigFcUn !== p) return;
           this._sigFc = Array.isArray(m?.forecast) ? m.forecast : [];
           this._sigWearSync();
-        }, { type: "weather/subscribe_forecast", forecast_type: "hourly", entity_id: id });
-        this._sigFcUn = p;
-        Promise.resolve(p).catch((e) => console.debug("pika-pet-card: Vorhersage nicht abonnierbar", e));
+        }, { type: "weather/subscribe_forecast", forecast_type: "hourly", entity_id: id }, { resubscribe: false }));
       } catch (e) {
-        console.debug("pika-pet-card: Vorhersage nicht abonnierbar", e);
+        p = Promise.reject(e);
       }
+      this._sigFcUn = p;
+      p.then(() => {
+        if (this._sigFcUn === p) this._sigFcN = 0;
+      }, (e) => {
+        console.debug("pika-pet-card: Vorhersage nicht abonnierbar", e);
+        if (this._sigFcUn !== p) return;
+        this._sigFcUn = null;
+        const n = this._sigFcN || 0;
+        this._sigFcN = n + 1;
+        this._sigFcT = setTimeout(() => this._sigFcTry(), Math.min(SIG.fcRetry[1], SIG.fcRetry[0] * 2 ** n));
+      });
     }
+    // Abbestellen (Garderobe aus, andere Wetter-Entität, Karte abgehängt), auch ein Abo, dessen Antwort noch aussteht.
+    // Kein Versuch mehr.
     _sigFcStop() {
       const p = this._sigFcUn;
       this._sigFcUn = null;
       this._sigFcId = null;
-      if (p) Promise.resolve(p).then((u) => typeof u === "function" && u()).catch(() => {
+      clearTimeout(this._sigFcT);
+      this._sigFcT = null;
+      this._sigFcN = 0;
+      if (p) p.then((u) => typeof u === "function" && u()).catch(() => {
       });
     }
     // Was heute an der Tür hängt (SIG.ward von bis), oder nichts
@@ -20944,12 +21436,21 @@
       }
     }
     // ---------- Saugroboter ----------
-    // Zustand des Saugers → Roboter vorn auf der Wiese: fährt hin und her, fährt heim (aus dem Bild), steht, steckt fest
+    // Zustand des Saugers → Roboter vorn auf der Wiese: fährt hin und her, fährt heim (aus dem Bild), steht, steckt fest.
+    // Ohne Zustand (unavailable, unknown, die Entität fehlt) bleibt er zunächst, wie er war: Ein kurzer Ausfall (WLAN,
+    // Neustart von HA) soll ihn nicht verschwinden und wieder aus der Station kommen lassen. Nach SIG.vacDead (15 Min)
+    // ist er weg, wie die Geräte des Haus-Boten nach langem Ausfall neu gelesen werden: Bis 0.43.0 fuhr ein Roboter,
+    // dessen Sauger mitten im Putzen ausfiel, bis zum Neuladen der Seite, und der Pika ritt weiter auf ihm. Die Frist
+    // läuft ab dem Ausfall in HA (last_changed; fehlt die Entität, ab jetzt), nachgesehen wird im Takt (_tickSig).
+    // Kommt ein echter Zustand, gilt wieder der.
     _sigVacSync(relayout = false) {
       if (!this._el || !this._g) return;
       const st = this._sigV;
       const dead = !st || ["unavailable", "unknown"].includes(st.state);
-      const mode = dead ? this._sigVac?.mode ?? null : vacMode(st.state);
+      const now = this._haNow();
+      this._sigVDead = dead ? this._sigVDead ?? Math.min(now, Date.parse(st?.last_changed) || now) : null;
+      const lost = dead && now - this._sigVDead >= SIG.vacDead;
+      const mode = dead ? lost ? null : this._sigVac?.mode ?? null : vacMode(st.state);
       let V = this._sigVac;
       if (!mode) {
         if (V) {
@@ -20974,6 +21475,7 @@
         relayout = true;
       }
       V.w = w;
+      V.dead = dead;
       V.top = this._sigGround() - h * 0.95;
       V.el.style.width = `${w.toFixed(1)}px`;
       V.el.style.top = `${V.top.toFixed(1)}px`;
@@ -21031,7 +21533,7 @@
     async _sigRide() {
       const V = this._sigVac;
       this._sigRideAt = this._haNow();
-      if (!V || V.mode !== "drive") return;
+      if (!V || V.dead || V.mode !== "drive") return;
       const p = this._el.pika;
       const { pW, gy } = this._g;
       V.hold = true;
@@ -21066,11 +21568,15 @@
         this._say(pick(["nochmal!", "lustig!", "hihi"]), 1200);
         await this._wait(900);
       } finally {
-        this._reiter = false;
-        if (on) {
+        if (on || this._lift !== 0) {
+          const x = this._liveX();
+          this._reiter = false;
           this._lift = 0;
-          this._setX(this._x, true);
-        } else this._pikaZ();
+          this._setX(x, true);
+        } else {
+          this._reiter = false;
+          this._pikaZ();
+        }
         p.classList.remove("happy");
         V.hold = false;
         if (this._sigVac === V) this._sigVacMove();
@@ -21080,7 +21586,7 @@
     async _sigPush() {
       const V = this._sigVac;
       this._sigPushAt = this._haNow();
-      if (!V || V.mode !== "stuck") return;
+      if (!V || V.dead || V.mode !== "stuck") return;
       const vx = V.x + V.w / 2;
       const side = this._x < vx ? -1 : 1;
       await this._walkTo(vx + side * this._g.pW * 0.6, 1.3);
@@ -21104,10 +21610,27 @@
       if (this._asleep) return void this._cls("stw", 550, true);
       if (this._running && !this._next && ["idle", "look", "wander", "groom", "squeak", "curious", "nibble", "lookout"].includes(this._action)) {
         this._next = "sigDoor";
+        this._sigDoorDue = Date.now();
         this._interrupt();
       }
     }
+    // Die Reaktion auf die Tür gilt nur gleich danach (SIG.doorTtl, wie TOUCH_TTL bei Berührungen): Geht _step
+    // stattdessen schlafen oder Kaffee holen, bliebe _next sonst liegen, er riefe am nächsten Morgen „Hallo?“, und bis
+    // dahin hielte es alles auf, was auf ein freies _next wartet (Haus-Bote, Kaffee, Päckchen, Fenster). Aufgeräumt
+    // wird bei jedem hass, im Takt und beim Sichtbarwerden; _sigDoor prüft es selbst noch einmal.
+    _sigDoorExpire() {
+      const due = this._sigDoorDue;
+      if (!due) return;
+      if (this._next !== "sigDoor") this._sigDoorDue = 0;
+      else if (Math.abs(Date.now() - due) > SIG.doorTtl) {
+        this._next = null;
+        this._sigDoorDue = 0;
+      }
+    }
     async _sigDoor() {
+      const due = this._sigDoorDue;
+      this._sigDoorDue = 0;
+      if (due && Math.abs(Date.now() - due) > SIG.doorTtl) return;
       const p = this._el.pika;
       this._face(-1);
       this._cls("stw", 550, true);
@@ -21124,58 +21647,6 @@
       }
     }
   };
-
-  // src/grafik/fenster.js
-  var FEN = { cx: 80, cy: 33, r: 4.3, box: 14 };
-  var VB = `${-FEN.box} ${-FEN.box} ${FEN.box * 2} ${FEN.box * 2}`;
-  var OUT4 = "#5a4030";
-  var pk = (k, hex) => `var(--pk-${k}, ${hex})`;
-  var VORHANG = "M-.7 0 C-.3 1.2 -.9 2.6 -.5 4 C-.2 5 -.7 5.8 -.3 6.6 L-1.9 6.3 C-2.2 5.2 -1.6 4 -2 2.6 C-2.3 1.4 -1.9 .6 -2 0Z";
-  var VORHANG_P = `<path d="${VORHANG}" fill="#e58a7a" stroke="#b5604f" stroke-width=".2"/><path class="lt" d="${VORHANG}" fill="#d9705f"/>`;
-  var FEN_INNEN = `<svg viewBox="${VB}" aria-hidden="true">
-    <defs>
-      <radialGradient id="fen-raum" cx=".5" cy=".75" r=".8"><stop offset="0" stop-color="#3a2a1e"/><stop offset="1" stop-color="#120c08"/></radialGradient>
-      <radialGradient id="fen-schein"><stop offset="0" stop-color="#ffb347" stop-opacity=".7"/><stop offset="1" stop-color="#ffb347" stop-opacity="0"/></radialGradient>
-    </defs>
-    <ellipse class="lt fen-spill" cx="1.5" cy="7.5" rx="11" ry="7"/>
-    <circle cx="0" cy="0" r="${FEN.r}" fill="url(#fen-raum)"/>
-    <circle class="lt" cx="0" cy="0" r="${FEN.r}" fill="#ffcf70" fill-opacity=".9"/>
-    <circle class="tvw" cx="0" cy="0" r="${FEN.r}"/>
-    <g class="fen-v">
-      <g transform="translate(-1.4 -3.7)"><g class="fen-v1">${VORHANG_P}</g></g>
-      <g transform="translate(3.9 -3.2)"><g class="fen-v2">${VORHANG_P}</g></g>
-    </g>
-  </svg>`;
-  var FEN_KOPF = `<svg viewBox="${VB}" aria-hidden="true">
-    <defs><clipPath id="fen-rund"><circle cx="0" cy="0" r="${FEN.r}"/></clipPath></defs>
-    <g clip-path="url(#fen-rund)"><g class="fen-k pk">
-      <g stroke="${OUT4}" stroke-width=".35">
-        <circle cx="-2.25" cy="-1.5" r="1.4" fill="${pk("ear", "#efe3d3")}"/><circle cx="2.25" cy="-1.5" r="1.4" fill="${pk("ear", "#efe3d3")}"/>
-      </g>
-      <g fill="${pk("ein", "#e3a990")}"><ellipse cx="-2.25" cy="-1.35" rx=".65" ry=".75"/><ellipse cx="2.25" cy="-1.35" rx=".65" ry=".75"/></g>
-      <ellipse cx="0" cy="1" rx="3.25" ry="2.75" fill="${pk("fu1", "#d0ad8d")}" stroke="${OUT4}" stroke-width=".4"/>
-      <ellipse cx="0" cy="2.15" rx="1.6" ry="1.05" fill="${pk("mou", "#f4e8d8")}"/>
-      <g class="fen-aug" fill="#2a1a12"><ellipse cx="-1.2" cy=".55" rx=".42" ry=".5"/><ellipse cx="1.2" cy=".55" rx=".42" ry=".5"/></g>
-      <g fill="#fff"><circle cx="-1.05" cy=".38" r=".15"/><circle cx="1.35" cy=".38" r=".15"/></g>
-      <g class="fen-nase">
-        <ellipse cx="0" cy="1.62" rx=".42" ry=".3" fill="${OUT4}"/>
-        <path d="M-.6 2 l-1.9 -.35 M-.6 2.2 l-1.9 .3 M.6 2 l1.9 -.35 M.6 2.2 l1.9 .3" stroke="${OUT4}" stroke-width=".14" stroke-linecap="round" opacity=".7"/>
-      </g>
-      <g fill="${pk("paw", "#ecdcc6")}" stroke="${OUT4}" stroke-width=".3">
-        <ellipse cx="-1.7" cy="3.85" rx=".95" ry=".62"/><ellipse cx="1.7" cy="3.85" rx=".95" ry=".62"/>
-      </g>
-    </g></g>
-  </svg>`;
-  var SCHEIBE = (glas, vh, sp) => `<circle cx="0" cy="0" r="${FEN.r}" fill="${glas}"/>
-      <path d="M-3.7 -2.6 Q-1.4 -2 -.6 2.6 L-3.6 2.6Z M3.7 -2.6 Q1.4 -2 .6 2.6 L3.6 2.6Z" fill="${vh}" opacity=".85"/>
-      <path d="M0 -${FEN.r} V${FEN.r} M-${FEN.r} 0 H${FEN.r}" stroke="${sp}" stroke-width="1"/>`;
-  var FEN_FLUEGEL = `<svg viewBox="${VB}" aria-hidden="true">
-    <g class="fen-s">
-      ${SCHEIBE("#cfe6f2", "#e58a7a", "#9a6a45")}
-      <g class="lt">${SCHEIBE("#ffcf70", "#d9705f", "#7a5236")}</g>
-      <circle cx="0" cy="0" r="${FEN.r}" fill="none" stroke="#5e3d26" stroke-width=".5"/>
-    </g>
-  </svg>`;
 
   // src/karte/fenster.js
   var WIN_FREI = ["idle", "look", "wander", "groom", "squeak", "curious", "nibble", "lookout"];
@@ -21564,6 +22035,7 @@
   };
 
   // src/karte.js
+  var LAYOUT_GAP = 100;
   var PikaPetCard = class extends HTMLElement {
     constructor() {
       super();
@@ -21599,12 +22071,15 @@
     }
     setConfig(config) {
       const cfg = { ...DEFAULTS, ...config || {} };
+      const roh = String(cfg.name);
+      for (const k of ["name", "friend_name"]) cfg[k] = String(cfg[k] ?? "").trim() || DEFAULTS[k];
       for (const k of ["entity", "plan_entity"]) {
         if (cfg[k] && !/^input_text\.\w+$/.test(cfg[k])) throw new Error(`pika-pet-card: ${k} muss ein input_text-Helfer sein (ist "${cfg[k]}")`);
       }
       if (cfg.entity && cfg.entity === cfg.plan_entity) throw new Error("pika-pet-card: entity und plan_entity brauchen zwei verschiedene Helfer");
       if (cfg.chronicle_entity && !/^todo\.\w+$/.test(cfg.chronicle_entity)) throw new Error(`pika-pet-card: chronicle_entity muss eine To-do-Liste sein (ist "${cfg.chronicle_entity}")`);
       if (cfg.areal && !AREALE[cfg.areal]) console.warn(`pika-pet-card: areal "${cfg.areal}" gibt es nicht (${Object.keys(AREALE).join(", ")}), nehme huegel`);
+      if (roh !== cfg.name) this._lsRename(roh, cfg.name, true);
       this._lsRename(this._cfg?.name, cfg.name);
       this._cfg = cfg;
       if (!this._el) this._build();
@@ -21629,10 +22104,14 @@
         this._saveT = this._saveSince = null;
         clearTimeout(this._freshT);
         clearTimeout(this._unavT);
-        this._pendingWrite = this._synced = this._noEntity = this._saveWait = false;
+        clearTimeout(this._sentT);
+        this._sentT = null;
+        this._pendingWrite = this._synced = this._noEntity = this._saveWait = this._saveHeld = false;
         this._lostW = [];
         this._saveFail = 0;
         this._gain = { s: 0, g: 0, c: false };
+        this._gainOld = false;
+        this._sentV = [];
         this._sent = [];
         this._lastEntityState = null;
         this._stats = null;
@@ -21660,6 +22139,14 @@
       if (c.entity) {
         const st = hass.states[c.entity]?.state;
         if (this._saveWait && hass.connected !== false && st !== "unavailable") this._save();
+        if (this._saveHeld && this.preview !== true) {
+          this._saveHeld = false;
+          this._save();
+        }
+        if (this._sent.length) {
+          if (hass.connected === false) this._sentGap();
+          else if (fresh) this._sentWake();
+        }
         if (st !== this._lastEntityState) {
           this._lastEntityState = st;
           const parsed = parseStats(st);
@@ -21679,33 +22166,27 @@
               this._renderStats();
             }, 6e4);
           }
-          const own = parsed ? this._sent.findIndex((e) => e.v === st) : -1;
+          const ctx = hass.states[c.entity]?.context?.id;
+          const own = parsed ? this._echoFind(this._sent, st, ctx) : -1;
           const late = own < 0 && parsed ? this._lostW?.find((e) => e.v === st) : null;
+          if (own < 0) this._echoTxt(this._sent);
           if (own >= 0) {
+            const e = this._sent[own];
             this._sent.splice(0, own + 1);
-            this._lostW = this._lostW?.filter((e) => e.v !== st);
+            this._lostW = this._lostW?.filter((l) => l.v !== st);
             this._saveFail = 0;
+            this._sentArm();
+            if (this._echoFremd(e, ctx, e.at)) this._sentAgain(e);
           } else if (late) {
             this._lostW = this._lostW.filter((e) => e !== late);
             this._gainSub(late.gain);
             this._saveFail = 0;
           } else if (parsed) {
             this._synced = true;
+            this._sentSettle();
             const gain = this._sentGain();
-            if (this._stats && (this._pendingWrite || gain.s || gain.g || gain.c)) {
-              this._stats = mergeStats(this._stats, parsed, gain, this._haNow(), (a, b) => this._decayH(a, b));
-              this._poopCache = null;
-              if (gain.c && this._stats.m && !this._poops().piles.length) {
-                const t = sec(this._now());
-                Object.assign(this._stats, { c: t, l: t, m: 0 });
-                this._poopCache = null;
-              }
-              this._sent.forEach((e) => e.gain = { s: 0, g: 0, c: false });
-              this._gain = gain;
-              this._save();
-            } else {
-              this._stats = parsed;
-            }
+            if (this._stats && (this._pendingWrite || gain.s || gain.g || gain.c)) this._statsMerge(parsed, gain);
+            else this._stats = parsed;
           } else if (!this._synced && st !== void 0 && st !== "unavailable") {
             if (st !== "" && st !== "unknown") console.warn(`pika-pet-card: ${c.entity} enthält "${st}", fange neu an`);
             const fill = () => {
@@ -21773,7 +22254,8 @@
     _attach() {
       if (this._attached) return;
       this._attached = true;
-      this._ro = new ResizeObserver(() => this._layout());
+      this._layAt = 0;
+      this._ro = new ResizeObserver(() => this._resized());
       this._ro.observe(this._el.scene);
       this._onVis = () => this._visSync();
       document.addEventListener("visibilitychange", this._onVis);
@@ -21809,6 +22291,7 @@
       if (this._detachAt) {
         this._clkConn = false;
         this._planWake(Date.now() - this._detachAt > 2e3);
+        this._sentWake();
       }
       this._showReq();
       this._start();
@@ -21828,9 +22311,12 @@
       this._attached = false;
       this._detachAt = Date.now();
       this._guard("Tagesplan", () => this._planPark());
+      this._sentPark();
       this._stop();
       this._stopCritters();
       this._ro?.disconnect();
+      clearTimeout(this._layT);
+      this._layT = null;
       this._io?.disconnect();
       clearTimeout(this._staleT);
       document.removeEventListener("visibilitychange", this._onVis);
@@ -21850,6 +22336,26 @@
       this._detachSig();
       this._chronikStop();
       this._diaryClose();
+    }
+    // Der ResizeObserver meldet eine neue Größe der Szene. Beim Ziehen am Fenster, während die Seitenleiste von HA
+    // ein- oder ausfährt, im Editor und beim Drehen des iPads kommt das mit jedem Bild, und _layout rechnet jedes Mal die
+    // ganze Szene neu (Bau, Stein, Blumen, Häufchen, Geräte). Darum: die erste Meldung sofort (noch vor dem Zeichnen, so
+    // steht nach dem Einhängen und nach einem einzelnen Sprung nie ein Bild in alter Größe), weitere frühestens
+    // LAYOUT_GAP ms nach dem letzten Auslegen, die letzte Größe geht nie verloren (ein Nachlauf steht dann an). _layout
+    // selbst tut bei gleicher Größe nichts.
+    _resized() {
+      if (this._layT) return;
+      const since = Date.now() - (this._layAt || 0);
+      if (!this._g || since >= LAYOUT_GAP || since < 0) {
+        this._layAt = Date.now();
+        this._layout();
+        return;
+      }
+      this._layT = setTimeout(() => {
+        this._layT = null;
+        this._layAt = Date.now();
+        this._guard("Größe", () => this._layout());
+      }, LAYOUT_GAP - since);
     }
     // Fehler merken (die letzten 10, zu sehen im Fuß des Tagebuchs) und einmal je Stelle und Meldung in die Konsole
     // schreiben: Auf dem Wand-Tablet schaut niemand in die Konsole, und derselbe Fehler käme sonst alle paar Sekunden.

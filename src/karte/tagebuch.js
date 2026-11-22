@@ -15,6 +15,7 @@ import {
 } from '../logik/tagebuch.js';
 import { ICON_LEAF, ICON_HEART, ICON_SPARK } from '../grafik/szene.js';
 import { GIFT_ITEMS, giftItem, GIFT_TRICK, GIFT_GILT, GIFT_PARCEL } from '../grafik/paeckchen.js';
+import { chronikStart } from '../logik/chronik.js';
 import { DIARY_BOOK, DIARY_PAW, DIARY_ICON, diaryPainting } from '../grafik/tagebuch.js';
 import { STYLE_DIARY } from '../stil/tagebuch.js';
 import { URLAUB_SIGN, URLAUB_CARD } from '../grafik/urlaub.js';
@@ -110,12 +111,11 @@ export class Tagebuch {
     } catch (e) { /* kein Speicher: dann ohne Tagebuch */ }
   }
 
-  // Beginn des Pika-Tags (4 Uhr nachts, wie pikaDay), back Tage zurück
+  // Beginn des Pika-Tags (4 Uhr nachts), back Tage zurück: derselbe Tag wie bei pikaDay und in der Chronik. Bis
+  // 0.43.0 rechnete das hier selbst („jetzt minus 4 Stunden“, dann 4 Uhr) und lag an den Tagen der Zeitumstellung
+  // eine Stunde lang daneben: im Frühjahr um 4:30 noch beim Vortag, im Herbst um 3:30 schon bei 4 Uhr desselben Tags.
   _diaryDay(back = 0) {
-    const d = new Date(this._haNow() - 4 * 36e5);
-    d.setHours(4, 0, 0, 0);
-    d.setDate(d.getDate() - back);
-    return d.getTime();
+    return chronikStart(pikaDay(this._haNow()) - back);
   }
 
   // Liegen Zustand (haS) und Tagesplan (haP) in HA? Dann steht ihr Verlauf im Recorder, sonst schreibt das Gerät
@@ -264,7 +264,8 @@ export class Tagebuch {
       const f = this._festToday(start + 8 * 36e5);
       const fl = ['witch', 'martin', 'xmas', 'sticks', 'karneval', 'ostern', 'maibaum', 'sommer'].filter((k) => f[k]).map((k) => T.fest[k]);
       if (f.boot?.full) fl.push(T.fest.boot);
-      if (f.advent && day.getDay() === 0) fl.push(`Der ${f.advent.candles}. Advent! Am Kranz brennt eine Kerze mehr.`);
+      // (die neue Kerze zündet er seit 0.43.0 im Lauf des Tages selbst an: Morgens, wenn das hier steht, brennt sie noch nicht)
+      if (f.advent && day.getDay() === 0) fl.push(`Der ${f.advent.candles}. Advent! Heute kommt am Kranz eine Kerze dazu.`);
       if (f.birthday) {
         const n = f.birthday.names;
         fl.push(`Alles Gute, ${n.length > 1 ? `${n.slice(0, -1).join(', ')} und ${n.at(-1)}` : n[0]}! Es gibt Kuchen.`);
@@ -546,11 +547,15 @@ export class Tagebuch {
         e.stopPropagation();
         this._diaryClose();
       } else if (e.key === 'Tab') {
-        // der Fokus bleibt im Fenster
-        const f = [...root.querySelectorAll('button, .page')];
-        const i = f.indexOf(root.activeElement);
+        // Der Fokus bleibt im Fenster und läuft im Kreis: ✕, Reiter, Seite, ihre Knöpfe, die Fehlerliste im Fuß.
+        // Gesperrte Knöpfe („Zu Pino schicken“, solange ein Päckchen wartet) und Unsichtbares zählen nicht: .focus()
+        // tut dort nichts, bis 0.43.0 kam man mit Tab von der Seite nicht mehr weiter.
+        const f = [...root.querySelectorAll('button:not([disabled]), summary, .page')].filter((el) => el.getClientRects().length > 0);
         e.preventDefault();
-        f[(i + (e.shiftKey ? -1 : 1) + f.length) % f.length].focus();
+        if (!f.length) return;
+        const i = f.indexOf(root.activeElement);
+        // (vom Fenster selbst aus, i = -1: vorwärts zum ersten, rückwärts zum letzten)
+        f[e.shiftKey ? (i <= 0 ? f.length - 1 : i - 1) : (i + 1) % f.length].focus();
       }
     });
     // Wand-Tablet: nach DIARY.close ohne Berührung von selbst wieder zu
@@ -572,7 +577,12 @@ export class Tagebuch {
         D.urAsk = false;
         this._urlaubStart();
       } else if (a === 'back') this._urlaubEnde();
+      // Der Kasten wird neu gezeichnet, der gedrückte Knopf ist danach fort. Hatte er den Fokus (Tastatur), fiele
+      // der aus dem Fenster an die Seite dahinter: Dann bekommt ihn die Tagebuch-Seite, ein Tab weiter stehen die Knöpfe.
+      const pg = root.querySelector('.page');
+      const key = pg.contains(root.activeElement);
       this._diaryRender(true);
+      if (key) pg.focus({ preventScroll: true });
     });
     this._diaryRender();
     root.querySelector('.sheet').focus();

@@ -180,9 +180,11 @@ const STYLE_GIFT = `
   .gbtn.broken .gr1 { stroke: #b8b2a8; }
   .gbtn.empty .gico { opacity: .45; filter: grayscale(.7); }
   .gnum { position: absolute; right: -4px; top: -3px; min-width: 15px; height: 15px; padding: 0 3px; box-sizing: border-box;
-    border-radius: 8px; background: #e8584e; color: #fff; font: 700 10px/15px sans-serif; text-align: center; }
+    border-radius: 8px; background: #cf4037; color: #fff; font: 700 10px/15px sans-serif; text-align: center; }
   .gnum:empty { display: none; }
-  .gbtn.gold .gnum { background: #d99a12; }
+  /* Die Zahl ist 10 px klein: Weiß auf dem Rot hat 4,7 : 1 (bis 0.43.0 #e8584e: 3,5), auf Gold steht sie dunkel
+     (5,4 : 1; weiß waren es 2,5) */
+  .gbtn.gold .gnum { background: #d99a12; color: #3b2d22; }
   .gbtn.wig { animation: gwig .7s; }
   @keyframes gwig { 20% { transform: rotate(-12deg); } 40% { transform: rotate(10deg); } 60% { transform: rotate(-6deg); } 80% { transform: rotate(3deg); } }
   .gbtn.new { animation: gnew .9s cubic-bezier(.3, 1.6, .5, 1); }

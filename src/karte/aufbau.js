@@ -27,9 +27,6 @@ export class Aufbau {
     const stars = Array.from({ length: 3 }, () => '<b>' + Array.from({ length: 8 }, () =>
       `<i style="left:${rnd(2, 98).toFixed(1)}%;top:${rnd(3, 55).toFixed(1)}%;transform:scale(${rnd(0.7, 1.3).toFixed(2)})"></i>`
     ).join('') + '</b>').join('');
-    const flies = Array.from({ length: 6 }, () =>
-      `<i style="left:${rnd(25, 90).toFixed(1)}%;top:${rnd(45, 80).toFixed(1)}%;animation-delay:${rnd(-9, 0).toFixed(2)}s,${rnd(0, 1.8).toFixed(2)}s"></i>`
-    ).join('');
     // Sechs Wolken in verschiedenen Höhen, Größen und Geschwindigkeiten (Dauer --d, Versatz --dl)
     const clouds = [
       [14, 1, 110, -45], [32, 0.72, 150, -100], [8, 0.85, 130, -15],
@@ -78,7 +75,7 @@ export class Aufbau {
             <div class="gifts"></div>
             <div class="props"></div>
             <div class="friends"></div>
-            <div class="ff">${flies}</div>
+            <div class="ff"></div>
             <div class="acts"></div>
             <div class="pika" role="button" tabindex="0" aria-label="Streicheln">
               <div class="clipw">

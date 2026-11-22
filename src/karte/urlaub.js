@@ -274,8 +274,13 @@ export class Urlaub {
     }
   }
 
+  // Er ist fort. Stand er eben noch auf dem Stein oder lag in der Hängematte und der Abschied brach mitten im
+  // Sprung herunter ab, bliebe _lift über 0 stehen: Zurück hoppelte er dann in der Luft herein und spränge erst
+  // einmal „herunter“. Wer fort ist, steht nirgends.
   _urlaubWeg() {
     this._fort = true;
+    this._lift = 0;
+    this._onHam = false;
     this._el.pika.classList.add('fort');
     this._el.psay?.classList.add('fort');
     this._urlaubSchlaf();

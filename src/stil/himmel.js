@@ -55,7 +55,7 @@ const STYLE_SKY = `
   .ff.dim { opacity: .45; }
   .ff.rest { display: none; }
   .ff .fl {
-    left: 0; top: 0; width: 3.5px; height: 3.5px; margin: -1.75px; opacity: .2; transition: none;
+    position: absolute; left: 0; top: 0; width: 3.5px; height: 3.5px; margin: -1.75px; border-radius: 50%; opacity: .2;
     background: #f3ffa6; box-shadow: 0 0 6px 2px rgba(214, 240, 92, .8);
     animation: ff-drift var(--fd) ease-in-out var(--fdl) infinite, ff-pulse var(--fp) linear var(--fpl) infinite;
   }

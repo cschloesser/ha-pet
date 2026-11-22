@@ -1,6 +1,7 @@
 // Stil für Pino
 
 import { BZ } from '../logik/buehne.js';
+import { LANE_S } from '../logik/einstellungen.js';
 
 // Die Zustandsklassen (walking, blink, twitch-l, happy, groom, calling, look-f, left …) wirken über allgemeine
 // Regeln aus STYLE, die nicht an .pika hängen; Pino trägt sie an seinem eigenen .friend-Element. --ph/--pw
@@ -22,6 +23,9 @@ const STYLE_FRIEND = `
      sie bei Standardhöhe in 5,4 px und Rufus in 7,6 px. Der Innenabstand ist in em und wächst mit, die Spitze
      (.say::after) ist in px und hängt nicht an der Schrift. Die Blase des Pikas (.bubble in STYLE) bleibt, wie sie ist. */
   .frsay .bubble { font-size: max(10px, calc(var(--ph) * .15)); }
+  /* Auf der hinteren Spur (depth) ist .frsay samt Blase um LANE_S verkleinert (_frSetX setzt dort .lane1 auch an
+     die Hülle der Blase): Die Untergrenze wächst um so viel, damit auch dort 10 px auf dem Bildschirm stehen. */
+  .frsay.lane1 .bubble { font-size: max(${+(10 / LANE_S).toFixed(2)}px, calc(var(--ph) * .15)); }
   /* Kirbys Stummelärmchen (.karm, grafik/freunde.js) sind sonst immer zu sehen. Beim Putzen kommen die Pfoten ans
      Gesicht (.groom .paws in STYLE): Dann sind die Ärmchen dort, sonst hätte er vier. Putzen ist die einzige Haltung
      der Freunde (FRIEND_CLS), die Pfoten hervorholt. */

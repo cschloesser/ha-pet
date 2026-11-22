@@ -30,6 +30,12 @@ const STYLE_COFFEE = `
     35% { opacity: .75; }
     to { opacity: 0; transform: translateY(-6px) scaleY(1.15); }
   }
+  /* Bewegung reduzieren: Der Dampf steigt nicht, er steht als zwei Fahnen über dem Becher (ohne Animation ruhte er
+     bei opacity 0 und wäre weg) */
+  @media (prefers-reduced-motion: reduce) {
+    .coffee.hot .cup .cst path { animation: none; opacity: .6; }
+    .coffee.hot .cup .cst path + path { opacity: .4; transform: translateY(-1.5px); }
+  }
   /* Bei Regen hält die rechte Pfote den Blattschirm */
   .pika.wet:not(.inside) .cup .cpr { display: none; }
   `;
