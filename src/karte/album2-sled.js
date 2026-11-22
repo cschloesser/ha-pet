@@ -38,7 +38,7 @@ export class Album2Sled {
   // sich die Größe der Karte geändert, stehen Schlitten und Seil an alten Pixeln: abbrechen (wie _layout bei Requisiten)
   _a2SledScene(lv) {
     const S = this._a2SledS;
-    if (S && S.W !== this._W && this._a2SledBusy) this._interrupt();
+    if (S && (S.W !== this._W || S.H !== this._H) && this._a2SledBusy) this._interrupt();
     else if (!S || !(lv > 0)) this._a2SledEnd();
   }
 
@@ -67,7 +67,7 @@ export class Album2Sled {
     rope.style.background = SEIL;
     rope.hidden = true;
     this._el.gifts.appendChild(rope);
-    const S = { W: this._W, el, rope, x, fdir: 0, ang: 0, ride: false, tow: false, line: false, drive: null, ctl: false, u0: DRIFT_U0, drift: null, raf: 0, fx: new Set(), t: [] };
+    const S = { W: this._W, H: this._H, el, rope, x, fdir: 0, ang: 0, ride: false, tow: false, line: false, drive: null, ctl: false, u0: DRIFT_U0, drift: null, raf: 0, fx: new Set(), t: [] };
     this._a2SledS = S;
     this._a2SledFace(fdir, true);
     this._a2Scene(); // (golden: .gilt)

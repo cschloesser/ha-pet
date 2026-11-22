@@ -61,7 +61,7 @@
  */
 (() => {
   // src/version.js
-  var VERSION = "0.46.0";
+  var VERSION = "0.47.0";
 
   // src/logik/hilfen.js
   var Cancel = class extends Error {
@@ -126,8 +126,8 @@
   var POOP = { every: 80, spread: 60, morning: [10, 20], max: 8, latrine: 3, idx: 24, fly: 4, live: 3 };
   var sec = (ms) => Math.floor(ms / 1e3) * 1e3;
   var freshStats = (t = Date.now()) => {
-    const now = sec(t);
-    return { s: 80, st: now, g: 80, gt: now, c: now, m: 0, l: now };
+    const now2 = sec(t);
+    return { s: 80, st: now2, g: 80, gt: now2, c: now2, m: 0, l: now2 };
   };
   var serialize = (st) => [
     st.s.toFixed(1),
@@ -146,13 +146,13 @@
     const c = sec(Math.max(st.st, st.gt));
     return { ...st, c, m: 0, l: c };
   };
-  var mergeStats = (own, other, gain, now, decayH = (t1, t2) => (t2 - t1) / 36e5) => {
+  var mergeStats = (own, other, gain, now2, decayH = (t1, t2) => (t2 - t1) / 36e5) => {
     const out = { ...other };
     for (const k of ["s", "g"]) {
       if (!gain[k]) continue;
-      const v = clamp(other[k] - decayH(other[k + "t"], now) * RATE[k], 0, 100);
+      const v = clamp(other[k] - decayH(other[k + "t"], now2) * RATE[k], 0, 100);
       out[k] = clamp(v + gain[k], 0, 100);
-      out[k + "t"] = now;
+      out[k + "t"] = now2;
     }
     if (!gain.c) return out;
     if (own.c > other.c) Object.assign(out, { c: own.c, m: own.m, l: own.l });
@@ -346,12 +346,12 @@
     const gb = 1 - 0.1 * grey * (1 - d) * (1 - n) - 0.22 * storm * (1 - n);
     const gs = 1 - 0.2 * grey * (1 - d) * (1 - n) - 0.15 * storm * (1 - n);
     const h = ["h1", "h2", "h3"].map((k, i) => dimRgb(mixRgb(lit(P[k]), white(i), snow), gb, gs));
-    let sky = mixRgb(mixRgb(SKY_HOR.day, SKY_HOR.dusk, d), SKY_HOR.night, n);
-    if (grey || storm) sky = mixRgb(sky, mixRgb(mixRgb(SKY_HOR.gday, SKY_HOR.gdusk, d), SKY_HOR.gnight, n), 0.9);
+    let sky2 = mixRgb(mixRgb(SKY_HOR.day, SKY_HOR.dusk, d), SKY_HOR.night, n);
+    if (grey || storm) sky2 = mixRgb(sky2, mixRgb(mixRgb(SKY_HOR.gday, SKY_HOR.gdusk, d), SKY_HOR.gnight, n), 0.9);
     const lb = (1 - 0.15 * d - 0.35 * n) * gb;
     const far = (c) => rgbHex(dimRgb(mixRgb(mixRgb(c[0], c[1], d), c[2], n), gb, gs));
     return {
-      h0: rgbHex(mixRgb(h[0], sky, 0.5)),
+      h0: rgbHex(mixRgb(h[0], sky2, 0.5)),
       h1: rgbHex(h[0]),
       h2: rgbHex(h[1]),
       h3: rgbHex(h[2]),
@@ -370,8 +370,8 @@
   };
   var WX_KEEP = 72 * 36e5;
   var WX_GAP = "unavailable";
-  var wxLogAdd = (log, rows, now) => {
-    const all = [...log || [], ...rows || []].filter((r) => r && Number.isFinite(r.t) && typeof r.c === "string" && r.t <= now + 6e4).map((r) => {
+  var wxLogAdd = (log, rows, now2) => {
+    const all = [...log || [], ...rows || []].filter((r) => r && Number.isFinite(r.t) && typeof r.c === "string" && r.t <= now2 + 6e4).map((r) => {
       const gap = r.c === "unavailable" || r.c === "unknown";
       return { t: Math.floor(r.t / 1e3) * 1e3, c: gap ? WX_GAP : r.c, T: !gap && Number.isFinite(r.T) ? Math.round(r.T) + 0 : null };
     }).sort((a, b) => a.t - b.t);
@@ -388,18 +388,18 @@
       out.push(r);
     }
     let i = 0;
-    while (i < out.length - 1 && out[i + 1].t <= now - WX_KEEP) i++;
+    while (i < out.length - 1 && out[i + 1].t <= now2 - WX_KEEP) i++;
     return out.slice(i);
   };
   var wxRows = (list) => (Array.isArray(list) ? list : []).filter((r) => r && typeof r === "object").map((r) => {
     const s = numAttr(r.lu ?? r.lc);
     return { t: Number.isFinite(s) ? s * 1e3 : Date.parse(r.last_updated || r.last_changed), c: r.s ?? r.state, T: wxTemp(r.a || r.attributes) };
   });
-  var wxLogMerge = (own, rec, now) => {
-    const base = wxLogAdd([], rec, now);
-    if (!base.length) return wxLogAdd(own, [], now);
+  var wxLogMerge = (own, rec, now2) => {
+    const base = wxLogAdd([], rec, now2);
+    if (!base.length) return wxLogAdd(own, [], now2);
     const end = base[base.length - 1].t;
-    return wxLogAdd(base, (own || []).filter((r) => r && r.t > end), now);
+    return wxLogAdd(base, (own || []).filter((r) => r && r.t > end), now2);
   };
   var SNOW = { full: 10 * 6e4, show: 0.4 };
   var WX_RAIN = /* @__PURE__ */ new Set(["rainy", "pouring", "lightning-rainy", "hail", "snowy-rainy"]);
@@ -408,12 +408,12 @@
     return WX_RAIN.has(cond) ? h / 4 : cond === "sunny" ? h / 1.5 : h;
   };
   var wxSnows = (r) => r.c === "snowy" || r.c === "snowy-rainy" && r.T != null && r.T <= 0;
-  var snowDepth = (log, now) => {
+  var snowDepth = (log, now2) => {
     let d = 0;
     for (let i = 0; i < log.length; i++) {
       let a = log[i];
       const b = log[i + 1];
-      const dur = Math.min(b ? b.t : now, now) - a.t;
+      const dur = Math.min(b ? b.t : now2, now2) - a.t;
       if (!(dur > 0)) continue;
       const p = log[i - 1];
       if (a.c === WX_GAP && p && (!wxSnows(p) || !b && dur < WX_HOLD)) a = p;
@@ -434,16 +434,16 @@
   var WX_SHOWER = /* @__PURE__ */ new Set(["rainy", "pouring", "lightning-rainy", "hail"]);
   var WX_BRIGHT = /* @__PURE__ */ new Set(["sunny", "partlycloudy", "windy", "windy-variant"]);
   var BOW = { life: 20 * 6e4, in: 9e4, out: 5 * 6e4, rain: 3 * 6e4 };
-  var rainbow = (log, now, elev, cover = 0) => {
+  var rainbow = (log, now2, elev, cover = 0) => {
     let i = log.length - 1;
-    if (i >= 0 && log[i].c === WX_GAP && now - log[i].t < WX_HOLD) i--;
+    if (i >= 0 && log[i].c === WX_GAP && now2 - log[i].t < WX_HOLD) i--;
     if (i < 1 || !WX_BRIGHT.has(log[i].c)) return 0;
     while (i > 0 && WX_BRIGHT.has(log[i - 1].c)) i--;
     let j = i - 1;
     if (j < 0 || !WX_SHOWER.has(log[j].c)) return 0;
     while (j > 0 && WX_SHOWER.has(log[j - 1].c)) j--;
     if (log[i].t - log[j].t < BOW.rain) return 0;
-    const age = now - log[i].t;
+    const age = now2 - log[i].t;
     if (!(age >= 0 && age < BOW.life) || !(elev > 3 && elev < 40) || cover >= 70) return 0;
     return Math.min(ramp(0, BOW.in, age), ramp(BOW.life, BOW.life - BOW.out, age), ramp(3, 6, elev), ramp(40, 36, elev));
   };
@@ -514,12 +514,12 @@
     return clamp(((cur.e - nxt.e) * nxt.ve + (cur.n - nxt.n) * nxt.vn) / v2, 0, max);
   };
   var PLANE_OLD = 75;
-  var planeStale = (p, now) => (now - (p.tm ?? p.t0)) / 1e3 > PLANE_OLD;
-  var planeClock = (p, nxt, now, tm) => {
+  var planeStale = (p, now2) => (now2 - (p.tm ?? p.t0)) / 1e3 > PLANE_OLD;
+  var planeClock = (p, nxt, now2, tm) => {
     let lag = 0;
-    if (p && !planeStale(p, now)) {
-      const dt = (now - p.t0) / 1e3;
-      const dn = (now - tm) / 1e3;
+    if (p && !planeStale(p, now2)) {
+      const dt = (now2 - p.t0) / 1e3;
+      const dn = (now2 - tm) / 1e3;
       lag = planeLag({ e: p.e + p.ve * dt, n: p.n + p.vn * dt }, { e: nxt.e + nxt.ve * dn, n: nxt.n + nxt.vn * dn, ve: nxt.ve, vn: nxt.vn });
     }
     return { tm, t0: tm - lag * 1e3 };
@@ -578,7 +578,7 @@
     bell: { cd: 45e3 }
     // Glöckchen: Ein Vogel antwortet (das Glockenspiel bimmelt mehrmals: eine Antwort)
   };
-  var goldDue = (R2, last, now, u = 0) => (last == null || Math.abs(now - last) >= (R2?.cd || 0)) && u < (R2?.p ?? 1);
+  var goldDue = (R2, last, now2, u = 0) => (last == null || Math.abs(now2 - last) >= (R2?.cd || 0)) && u < (R2?.p ?? 1);
   var GOLD_BLOOM = ["#f6c945", "#e3b23c"];
   var goldHamGuest = (L) => !L.dark && L.mo >= 3 && L.mo <= 8 && !L.wet && !L.cold && (L.wind || 0) < 30 ? "bfly" : L.dark && L.summer && !L.wet && L.flies !== false ? "ff" : "shim";
   var GIFT_CLS = ["sling", "aim", "snap", "spy", "wcan", "pour", "shup", "wink", "hswing", "puffy", "gsheen", "gglow"];
@@ -617,7 +617,7 @@
   var HAY_MAX = 12;
   var PLAN_REC = 4;
   var PLAN_MIN = 180;
-  var planBlank = (now = Date.now()) => ({ hay: { n: 3, t: now, c: "", m: 0 }, sport: null, rec: [], cute: null, gift: null, fl: null, fd: [], ur: null });
+  var planBlank = (now2 = Date.now()) => ({ hay: { n: 3, t: now2, c: "", m: 0 }, sport: null, rec: [], cute: null, gift: null, fl: null, fd: [], ur: null });
   var FOOD_MAX = 3;
   var FOOD_KINDS = ["lz", "klee"];
   var FLGIFT = { gap: 90 * 6e4, life: 12 * 6e4 };
@@ -758,11 +758,11 @@
       if ("v" in op.f) delete G.nov;
     }
   };
-  var hayNow = (h, now) => {
-    const n = clamp(h.n - Math.floor(Math.max(0, now - h.t) / 864e5) * 2, 1, HAY_MAX);
+  var hayNow = (h, now2) => {
+    const n = clamp(h.n - Math.floor(Math.max(0, now2 - h.t) / 864e5) * 2, 1, HAY_MAX);
     return { n, c: h.c.slice(-n) };
   };
-  var planApply = (P, op, now) => {
+  var planApply = (P, op, now2) => {
     const out = { hay: { ...P.hay }, sport: P.sport, rec: P.rec.map((e) => [...e]), cute: P.cute, gift: P.gift && { ...P.gift }, fl: P.fl, fd: P.fd || [], fu: P.fu || 0, ur: P.ur || null };
     if (GIFT_OPS.has(op.t)) {
       giftApply(out, op);
@@ -806,9 +806,9 @@
       if (out.sport?.d !== op.d) out.sport = { d: op.d, k: op.k };
     } else if (op.t === "gather") {
       if (op.m != null && out.hay.m >= op.m) return out;
-      const { n, c } = hayNow(out.hay, now);
+      const { n, c } = hayNow(out.hay, now2);
       if (n >= HAY_MAX) return out;
-      const t = out.hay.t + Math.floor(Math.max(0, now - out.hay.t) / 864e5) * 864e5;
+      const t = out.hay.t + Math.floor(Math.max(0, now2 - out.hay.t) / 864e5) * 864e5;
       out.hay = { n: n + 1, t, c: (c + op.c).slice(-(n + 1)), m: op.m ?? out.hay.m };
     } else if (op.t === "fdrop") {
       const f2 = out.fl;
@@ -1110,18 +1110,18 @@
   };
   var boteEmptyOn = (c) => c?.door && c.empty_on !== "idle" ? "door" : "idle";
   var BOTE_HALT_LABEL = { pause: "Pause", delayedstart: "wartet", actionrequired: "Hilfe!", error: "Störung", aborting: "bricht ab" };
-  var boteLabel = (a, now) => {
+  var boteLabel = (a, now2) => {
     if (a.phase === "run") {
       if (hasKey(BOTE_HALT_LABEL, a.st)) return BOTE_HALT_LABEL[a.st];
       if (a.end != null) {
-        if (a.end <= now) return "gleich";
-        const m = Math.ceil((a.end - now) / 6e4);
+        if (a.end <= now2) return "gleich";
+        const m = Math.ceil((a.end - now2) / 6e4);
         return `${Math.floor(m / 60)}:${String(m % 60).padStart(2, "0")}`;
       }
       return a.pct != null ? `${Math.round(a.pct)} %` : null;
     }
     if (a.phase === "done") {
-      const m = Math.floor((now - (a.finAt ?? a.changed ?? now)) / 6e4);
+      const m = Math.floor((now2 - (a.finAt ?? a.changed ?? now2)) / 6e4);
       return m < 1 ? "fertig" : m < 60 ? `fertig ${m} Min` : `fertig ${Math.floor(m / 60)} Std.`;
     }
     return null;
@@ -1131,9 +1131,9 @@
     return ["none", "off", "false", "0", "aus", "keine"].includes(s) ? "none" : ["done", "1", "fertig"].includes(s) ? "done" : "all";
   };
   var BOTE_SMELL = [30, 120];
-  var boteSmell = (a, now) => {
+  var boteSmell = (a, now2) => {
     if (a.type !== "washer" || a.phase !== "done") return 0;
-    const m = (now - (a.finAt ?? a.changed ?? now)) / 6e4;
+    const m = (now2 - (a.finAt ?? a.changed ?? now2)) / 6e4;
     return m >= BOTE_SMELL[1] ? 2 : m >= BOTE_SMELL[0] ? 1 : 0;
   };
   var BOTE_TYPE = {
@@ -1540,7 +1540,7 @@
   var ACT_BIG = ["read", "game", "tablet", "kite", "tv", "music", "paint", "bubbles", "sport"];
   var ACT_MOOD = ["read", "game", "tablet", "music", "paint", "bubbles"];
   var POOP_GO = new Set(ACT_SMALL);
-  var poopClean = (piles, now) => clamp(100 - piles.reduce((d, p) => d + (10 + 2 * Math.min(20, (now - p.due) / 36e5)), 0), 0, 100);
+  var poopClean = (piles, now2) => clamp(100 - piles.reduce((d, p) => d + (10 + 2 * Math.min(20, (now2 - p.due) / 36e5)), 0), 0, 100);
   var poopWhen = (age, action, queued = false) => age >= POOP.live * 6e4 || action === "goSleep" ? "lay" : !queued && (action == null || POOP_GO.has(action)) ? "go" : "wait";
   var WALK_MAX = 2.6;
   var WALK_LATE = 2e3;
@@ -1778,10 +1778,10 @@
     const k = BIN_KINDS.find(([re]) => re.test(String(name || "")));
     return k ? { kind: k[1], color: k[2] } : { kind: "tonne", color: "#7d848c" };
   };
-  var binPlan = (st, now) => {
+  var binPlan = (st, now2) => {
     if (!st || st.state === "on") return null;
     const at = sigTime(st.attributes?.start_time);
-    if (at == null || at <= now) return null;
+    if (at == null || at <= now2) return null;
     const d = new Date(at);
     const from = new Date(d.getFullYear(), d.getMonth(), d.getDate() - 1, SIG.bin).getTime();
     const name = String(st.attributes?.message || st.attributes?.description || "Tonne");
@@ -1865,17 +1865,17 @@
     const kurz = fn.replace(/^(fenster|tür|tuer)?(kontakt|sensor)?\s+/i, "").replace(/\s+(kontakt|contact|sensor)$/i, "").trim();
     return kurz || fn || String(id).replace(/^[^.]*\./, "");
   };
-  var winLage = (rows, now, was) => {
+  var winLage = (rows, now2, was) => {
     const on = rows.filter((r) => r.state === "on");
     const names = on.map((r) => r.name);
     const first = on.length ? Math.min(...on.map((r) => r.t)) : null;
     if (was?.open) {
       if (on.length) return { open: true, since: Math.min(was.since, first), names, due: null };
       const zu = Math.max(0, ...rows.map((r) => r.t).filter(Number.isFinite));
-      if (now - zu < WIN.close) return { open: true, since: was.since, names: [], due: zu + WIN.close };
+      if (now2 - zu < WIN.close) return { open: true, since: was.since, names: [], due: zu + WIN.close };
       return { open: false, since: null, names: [], due: null };
     }
-    if (on.length && now - first >= WIN.open) return { open: true, since: first, names, due: null };
+    if (on.length && now2 - first >= WIN.open) return { open: true, since: first, names, due: null };
     return { open: false, since: null, names: [], due: on.length ? first + WIN.open : null };
   };
   var winSeit = (ms) => {
@@ -1885,11 +1885,11 @@
     const h = Math.floor(m / 60);
     return `seit ${h} Std${m % 60 ? ` ${m % 60} Min` : ""}`;
   };
-  var winText = (lage, now) => {
+  var winText = (lage, now2) => {
     const n = lage.names;
     if (!n.length) return "alle zu · gerade eben";
     const shown = n.slice(0, WIN.list).join(", ") + (n.length > WIN.list ? ` +${n.length - WIN.list}` : "");
-    return `offen: ${shown} · ${winSeit(now - lage.since)}`;
+    return `offen: ${shown} · ${winSeit(now2 - lage.since)}`;
   };
 
   // src/logik/urlaub.js
@@ -6450,13 +6450,268 @@
 `;
 
   // src/stil/album2-camera.js
-  var STYLE_A2_CAMERA = "";
+  var STYLE_A2_CAMERA = `
+  /* Kamera auf dem Stativ; spiegeln (.a2left) innen, damit das Aufploppen von unten bleibt */
+  .gifts > .a2-camera { bottom: calc(var(--gb) - 2px); transition: opacity .4s, filter 2.5s; }
+  .a2-camera.a2out { opacity: 0; }
+  .a2-camera .a2cmw { transform-origin: 50% 100%; }
+  .a2-camera.a2pop .a2cmw { animation: a2cmpop .6s cubic-bezier(.3, 1.6, .5, 1); }
+  @keyframes a2cmpop { from { transform: scale(.3, .2); opacity: 0; } 40% { opacity: 1; } }
+  .a2-camera .a2cmleg { transform-box: view-box; transform-origin: 18px 23px; }
+  .a2-camera.a2pop .a2cmleg { animation: a2cmleg .5s .15s cubic-bezier(.3, 1.4, .5, 1) backwards; }
+  @keyframes a2cmleg { from { transform: scaleY(.25); } }
+  .a2-camera.a2left .a2cmf { transform: scaleX(-1); }
+  /* Safari schneidet ein Element mit Filter (Licht der Dämmerung, golden) an der Box des <svg> ab (siehe 0.40.1): Der
+     schräg gestellte Kopf ragt hinten bis 4 Einheiten links und 1 oben aus der viewBox 40 × 40, das Bild mit den
+     Pfoten 2,6 seitlich aus 20. Rand als padding mit gleich großem negativem margin, die Zeichnung bleibt, wo sie war */
+  .a2-camera svg { padding: 5% 12% 0; margin: -5% -12% 0; pointer-events: none; }
+  .a2cmph svg { padding: 0 14%; margin: 0 -14%; }
+  /* Kopf neigt sich zum Motiv (--a2cmt), Knopf, Lämpchen des Selbstauslösers, Blitzfenster */
+  .a2-camera .a2cmh { transform-box: view-box; transform-origin: 18px 22px; transform: rotate(var(--a2cmt, 0deg)); transition: transform .7s ease-in-out; }
+  .a2-camera .a2cmb { transform-box: view-box; transition: transform .08s; }
+  .a2-camera.snap .a2cmb { transform: translateY(.9px); }
+  .a2-camera .a2cmt { fill: #8a3a34; }
+  .a2-camera.timer .a2cmt { animation: a2cmblink .75s steps(1) infinite; }
+  @keyframes a2cmblink { 0% { fill: #ff6b5e; } 50% { fill: #8a3a34; } }
+  .a2-camera .a2cmfw { transition: fill .12s; }
+  .a2-camera.glow .a2cmfw { fill: #fff; }
+  /* Bewegung reduzieren: kein Schwenk, das Lämpchen leuchtet still, das Blitzfenster glimmt langsam auf und ab */
+  .a2-camera.still .a2cmh { transition: none; }
+  .a2-camera.still.timer .a2cmt { animation: none; fill: #ff6b5e; }
+  .a2-camera.still .a2cmfw { transition: fill .8s ease-in-out; }
+  .a2-camera.still.glow .a2cmfw { fill: #fffbe6; }
+  /* Blitz: ein einzelner Lichtpuls am Fenster und ein schwacher über der Szene (kein Flackern) */
+  .a2cmbu { position: absolute; width: calc(var(--H) * .34); height: calc(var(--H) * .34); margin: calc(var(--H) * -.17);
+    border-radius: 50%; pointer-events: none; opacity: 0;
+    background: radial-gradient(circle, #fff 0, rgba(255, 252, 235, .9) 22%, rgba(255, 250, 225, 0) 68%); animation: a2cmbu .42s ease-out; }
+  @keyframes a2cmbu { from { transform: scale(.25); opacity: 1; } to { transform: scale(1.25); opacity: 0; } }
+  .a2cmov { position: absolute; inset: 0; background: #fffdf2; pointer-events: none; opacity: 0; animation: a2cmov .45s ease-out; }
+  @keyframes a2cmov { from { opacity: .28; } to { opacity: 0; } }
+  /* Sofortbild: aus dem Schlitz, in die Pfoten (Übergang von Platz und Größe), entwickelt sich, blendet aus */
+  .gifts > .a2cmph { position: absolute; transform-origin: 50% 100%; pointer-events: none;
+    transition: left .45s ease-out, top .45s ease-out, width .45s ease-out, transform .45s ease-out, opacity .5s, filter 2.5s; }
+  .gifts > .a2cmph.still { transition: opacity .5s, filter 2.5s; }
+  .a2cmph .a2cmpic { opacity: 0; transition: opacity 2.2s ease-in; }
+  .a2cmph.dev .a2cmpic { opacity: 1; }
+  .a2cmph .a2cmpw { display: none; }
+  .a2cmph.a2cmheld .a2cmpw { display: inline; }
+  .gifts > .a2cmph.away { opacity: 0; }
+  .a2cmph .a2cmgl path { transform-box: fill-box; transform-origin: center; animation: a2cmgl 1.4s ease-in-out infinite; }
+  .a2cmph .a2cmgl g:nth-child(2) path { animation-delay: -.5s; }
+  .a2cmph .a2cmgl g:nth-child(3) path { animation-delay: -.9s; }
+  .a2cmph .a2cmgl g:nth-child(4) path { animation-delay: -1.15s; }
+  @keyframes a2cmgl { 0%, 100% { transform: scale(.35); opacity: .35; } 50% { transform: scale(1); opacity: 1; } }
+  .a2cmph.still .a2cmgl path { animation: none; }
+  /* Er hält das Bild mit beiden Pfoten (die zeichnet das Bild): Blatt-Schirm und Maul sind solange leer */
+  .pika.a2cm-hold .brolly, .pika.a2cm-hold .mfood { display: none; }
+  /* Am Riemen im Maul: der Stiel des Blatt-Schirms stünde mitten durch die Kamera */
+  .pika.a2cm-carry .brolly { display: none; }
+  @media (prefers-reduced-motion: reduce) {
+    .a2-camera.a2pop .a2cmw, .a2-camera.a2pop .a2cmleg, .a2cmbu, .a2cmov, .a2cmph .a2cmgl path { animation: none !important; }
+    .a2cmbu, .a2cmov { display: none; }
+    .a2-camera .a2cmh { transition: none; }
+    .a2-camera.timer .a2cmt { animation: none; fill: #ff6b5e; }
+  }
+`;
+
+  // src/grafik/album2/radio.js
+  var GEH = "#4fa9a0";
+  var GEH_HELL = "#8fd3c8";
+  var FRONT = "#f3e6c8";
+  var GRILL = "#8a735b";
+  var GRILL_HELL = "#b29776";
+  var SKALA = "#fff7dc";
+  var ZEIGER = "#e8584e";
+  var KNOPF = "#c98e4e";
+  var HENKEL = "#6e4a30";
+  var ANT = "#cfd6dc";
+  var ICON3 = `<svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M17.6 9.6 L22 2.6" stroke="${OUT}" stroke-width="1.6" stroke-linecap="round"/>
+      <path d="M17.6 9.6 L22 2.6" stroke="${ANT}" stroke-width=".7" stroke-linecap="round"/>
+      <circle cx="22" cy="2.6" r=".9" fill="${ANT}" stroke="${OUT}" stroke-width=".5"/>
+      <path d="M7.4 9.8 V7.4 Q7.4 5.6 9.2 5.6 H14.8 Q16.6 5.6 16.6 7.4 V9.8" stroke="${OUT}" stroke-width="2.2" fill="none"/>
+      <path d="M7.4 9.8 V7.4 Q7.4 5.6 9.2 5.6 H14.8 Q16.6 5.6 16.6 7.4 V9.8" stroke="${HENKEL}" stroke-width="1" fill="none"/>
+      <rect x="1.6" y="9.4" width="20.8" height="12.6" rx="2.4" fill="${GEH}" stroke="${OUT}" stroke-width=".9"/>
+      <path d="M3.6 10.8 H20.4" stroke="${GEH_HELL}" stroke-width=".7" stroke-linecap="round"/>
+      <rect x="3" y="12" width="18" height="8.6" rx="1.4" fill="${FRONT}" stroke="${OUT}" stroke-width=".6"/>
+      <circle cx="8" cy="16.3" r="3.3" fill="${GRILL}" stroke="${OUT}" stroke-width=".6"/>
+      <circle cx="8" cy="16.3" r="1.6" fill="none" stroke="${GRILL_HELL}" stroke-width=".6"/>
+      <rect x="13" y="13.4" width="6.6" height="3" rx=".6" fill="${SKALA}" stroke="${OUT}" stroke-width=".5"/>
+      <path d="M16.4 13.6 V16.2" stroke="${ZEIGER}" stroke-width=".7"/>
+      <circle cx="14.6" cy="18.6" r="1.2" fill="${KNOPF}" stroke="${OUT}" stroke-width=".5"/>
+      <circle cx="18" cy="18.6" r="1.2" fill="${KNOPF}" stroke="${OUT}" stroke-width=".5"/></svg>`;
+  var RADIO_G = (cls = true, ant = true) => {
+    const c = (k) => cls ? ` class="${k}"` : "";
+    const a = ant ? "" : ' transform="translate(31 17) scale(.32) translate(-31 -17)"';
+    return `
+      <g${c("a2rant")}${a}>
+        <path d="M31 17 L38.4 2.2" stroke="${OUT}" stroke-width="2.2" stroke-linecap="round"/>
+        <path d="M31 17 L38.4 2.2" stroke="${ANT}" stroke-width="1" stroke-linecap="round"/>
+        <path d="M34.2 10.6 L35.4 8.2" stroke="${OUT}" stroke-width="2.8" stroke-linecap="round"/>
+        <circle cx="38.4" cy="2.2" r="1.3" fill="${ANT}" stroke="${OUT}" stroke-width=".7"/>
+      </g>
+      <path d="M11.6 17.6 V13 Q11.6 10.4 14.2 10.4 H25.8 Q28.4 10.4 28.4 13 V17.6" stroke="${OUT}" stroke-width="3" fill="none"/>
+      <path d="M11.6 17.6 V13 Q11.6 10.4 14.2 10.4 H25.8 Q28.4 10.4 28.4 13 V17.6" stroke="${HENKEL}" stroke-width="1.5" fill="none"/>
+      <rect x="6" y="40.4" width="5.4" height="3.4" rx="1" fill="${OUT}"/>
+      <rect x="28.6" y="40.4" width="5.4" height="3.4" rx="1" fill="${OUT}"/>
+      <rect x="1.6" y="16.8" width="36.8" height="24.4" rx="4" fill="${GEH}" stroke="${OUT}" stroke-width="1.1"/>
+      <path d="M5 19.2 H35" stroke="${GEH_HELL}" stroke-width="1" stroke-linecap="round"/>
+      <rect x="4.4" y="21.2" width="31.2" height="17.4" rx="2.4" fill="${FRONT}" stroke="${OUT}" stroke-width=".8"/>
+      <g${c("a2rsp")}>
+        <circle cx="13" cy="29.9" r="6.4" fill="${GRILL}" stroke="${OUT}" stroke-width=".8"/>
+        <circle cx="13" cy="29.9" r="4.4" fill="none" stroke="${GRILL_HELL}" stroke-width=".8"/>
+        <circle cx="13" cy="29.9" r="2.2" fill="none" stroke="${GRILL_HELL}" stroke-width=".8"/>
+        <circle cx="13" cy="29.9" r=".8" fill="${GRILL_HELL}"/>
+      </g>
+      <rect x="22.4" y="23.4" width="11.2" height="5.6" rx="1" fill="${SKALA}" stroke="${OUT}" stroke-width=".7"/>
+      <path d="M24 24.8 v1.6 M26 24.8 v1 M28 24.8 v1.6 M30 24.8 v1 M32 24.8 v1.6" stroke="#a8977b" stroke-width=".5"/>
+      <path${c("a2rnd")} d="M28 23.8 V28.6" stroke="${ZEIGER}" stroke-width="1" stroke-linecap="round"/>
+      <g${c("a2rkn")}>
+        <circle cx="25.2" cy="34.2" r="2.6" fill="${KNOPF}" stroke="${OUT}" stroke-width=".8"/>
+        <path d="M25.2 34.2 V31.9" stroke="${OUT}" stroke-width=".8" stroke-linecap="round"/>
+      </g>
+      <circle cx="31.4" cy="34.2" r="2.6" fill="${KNOPF}" stroke="${OUT}" stroke-width=".8"/>
+      <path d="M31.4 34.2 L33.1 32.6" stroke="${OUT}" stroke-width=".8" stroke-linecap="round"/>
+      ${cls ? `<g class="a2rst" fill="#7d7d84">
+        <rect x="7.6" y="24.6" width="2" height=".9"/><rect x="13.6" y="26.2" width="2.6" height=".9"/><rect x="9" y="31.4" width="1.6" height=".9"/>
+        <rect x="15.4" y="33" width="2.2" height=".9"/><rect x="11" y="28" width="1.4" height=".9"/><rect x="23.6" y="26.6" width="2" height=".8"/>
+        <rect x="29.4" y="25" width="2.4" height=".8"/><rect x="26.4" y="27.4" width="1.4" height=".8"/>
+        <path d="M2.6 12.6 L.4 10.8 L2.4 9.4 L.2 7.6 M37.4 12.4 L39.6 14.2 L37.8 15.6" stroke="#7d7d84" stroke-width="1" fill="none"
+          stroke-linecap="round" stroke-linejoin="round"/>
+      </g>` : ""}`;
+  };
+  var RADIO_SVG = `<svg viewBox="0 0 40 44" aria-hidden="true">${RADIO_G()}</svg>`;
+  var RADIO_W = 0.34;
+  var RADIO_H = RADIO_W * (44 / 40);
+  var RADIO_HANDLE = [20 / 40, 9.4 / 44];
+  var RADIO_SPEAKER = [13 / 40, 29.9 / 44];
+  var RADIO_SENDER = [
+    { nd: 0, beat: 520, col: ["#e8584e", "#5b97d8", "#f2b93a"], say: ["Musik!", "oh, Musik!", "mein Lied!"] },
+    { nd: -3.6, beat: 640, col: ["#7a68c9", "#5b97d8", "#4fa9a0"], say: ["Jazz!", "schubidu!", "so lässig!"] },
+    { nd: 3.8, beat: 430, col: ["#e2629b", "#6bab4c", "#f2b93a"], say: ["Disko!", "schneller!", "Party!"] }
+  ];
+  var CARRY_S2 = RADIO_W * 120 / (0.68 * 40);
+  var RADIO_CARRY = `<svg viewBox="0 0 24 24" aria-hidden="true"><g transform="translate(3 -1) rotate(-5)"><g transform="scale(${CARRY_S2.toFixed(3)}) translate(-20 -9.4)">${RADIO_G(false, false)}</g></g></svg>`;
+  var NOTE_SVG = [
+    `<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8.6 12 V2.2 Q13.6 3.6 12.8 8.4 Q11.8 5.6 8.6 5.4" fill="currentColor" stroke="${OUT}" stroke-width=".8" stroke-linejoin="round"/><ellipse cx="5.8" cy="12.4" rx="3.3" ry="2.5" transform="rotate(-22 5.8 12.4)" fill="currentColor" stroke="${OUT}" stroke-width=".8"/></svg>`,
+    `<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M5.6 12.6 V3.6 L14 1.6 V10.8" fill="none" stroke="${OUT}" stroke-width="2.2" stroke-linejoin="round"/><path d="M5.6 12.6 V3.6 L14 1.6 V10.8" fill="none" stroke="currentColor" stroke-width=".9" stroke-linejoin="round"/><ellipse cx="3.6" cy="13" rx="2.6" ry="2" transform="rotate(-22 3.6 13)" fill="currentColor" stroke="${OUT}" stroke-width=".8"/><ellipse cx="12" cy="11.2" rx="2.6" ry="2" transform="rotate(-22 12 11.2)" fill="currentColor" stroke="${OUT}" stroke-width=".8"/></svg>`
+  ];
+  var A2_RADIO = {
+    key: "radio",
+    name: "Radio",
+    say: "ein Radio!",
+    built: true,
+    mo: null,
+    icon: ICON3,
+    trick: "Drehtanz",
+    gilt: "ein goldenes %",
+    use: "Musik an, und ich tanze.",
+    gold: "goldene Noten, und ein Vögelchen wippt mit",
+    find: { t: "Radio", h: "Hör ich Radio, tipp es an. Es rauscht, und schon läuft ein anderer Sender." },
+    // Vorschau (Leiste „Päckchen“, Album 2): [Knopf, Aktion, Stufe, die der Schatz dafür bekommt]
+    dbg: [["Radio tanzen", "a2RadioPlay", 1], ["Drehtanz", "a2RadioSpin", 2], ["Goldene Noten (golden)", "a2RadioPlay", 3]]
+  };
 
   // src/stil/album2-radio.js
-  var STYLE_A2_RADIO = "";
+  var STYLE_A2_RADIO = `
+  .a2-radio { width: calc(var(--pw) * ${RADIO_W}); margin-left: calc(var(--pw) * ${-RADIO_W / 2}); bottom: calc(var(--gb) - 1px);
+    transition: opacity .4s, filter 2.5s; }
+  .a2-radio.a2out { opacity: 0; }
+  .a2-radio .a2rw { transform-origin: 50% 100%; }
+  /* (ploppt innen auf: so bleibt left/transform des Elements frei) */
+  .a2-radio .a2rw.pop { animation: grow .7s cubic-bezier(.3, 1.6, .5, 1); }
+  .a2-radio.on .a2rw { animation: a2rthump calc(var(--a2rbt, 1040ms) / 2) ease-out infinite; }
+  @keyframes a2rthump { 0% { transform: scale(1.045, .955); } 45%, 100% { transform: none; } }
+  .a2-radio .a2rsp { transform-box: view-box; transform-origin: 13px 29.9px; }
+  .a2-radio.on .a2rsp { animation: a2rsp calc(var(--a2rbt, 1040ms) / 2) ease-out infinite; }
+  @keyframes a2rsp { 0% { transform: scale(1.14); } 50%, 100% { transform: none; } }
+  /* Antenne: eingeschoben, ausgezogen (.ant), bei Musik wippt sie leicht */
+  .a2-radio .a2rant { transform-box: view-box; transform-origin: 31px 17px; transform: scale(.32);
+    transition: transform .45s cubic-bezier(.3, 1.4, .5, 1); }
+  .a2-radio.ant .a2rant { transform: none; }
+  .a2-radio.ant.on .a2rant { animation: a2rant var(--a2rbt, 1040ms) ease-in-out infinite alternate; }
+  @keyframes a2rant { from { transform: rotate(-4deg); } to { transform: rotate(4deg); } }
+  .a2-radio .a2rkn { transform-box: view-box; transform-origin: 25.2px 34.2px; transition: transform .6s ease-out; }
+  .a2-radio.knob .a2rkn { transform: rotate(140deg); }
+  /* Zeiger auf dem Sender (--a2rn, Einheiten des Bilds); beim Rauschen zittert er */
+  .a2-radio .a2rnd { transform: translateX(var(--a2rn, 0px)); transition: transform .5s cubic-bezier(.3, 1.5, .5, 1); }
+  .a2-radio.a2rtune .a2rnd { animation: a2rjit .18s steps(2) infinite; }
+  @keyframes a2rjit { from { transform: translateX(calc(var(--a2rn, 0px) - 1.6px)); } to { transform: translateX(calc(var(--a2rn, 0px) + 1.8px)); } }
+  /* Rauschen: graue Flocken auf der Front und Zickzack daneben, flimmernd */
+  .a2-radio .a2rst { opacity: 0; transition: opacity .15s; }
+  .a2-radio.a2rtune .a2rst { opacity: 1; animation: a2rst .14s steps(2) infinite; }
+  @keyframes a2rst { from { opacity: 1; transform: translateX(-.5px); } to { opacity: .45; transform: translateX(.6px); } }
+
+  /* Noten: steigen aus dem Lautsprecher, schwingen und verblassen (--dx, --dy, --nr setzt das Skript) */
+  .a2rn { position: absolute; width: calc(var(--H) * .075); margin: calc(var(--H) * -.0375); pointer-events: none;
+    animation: a2rnote 1.8s ease-out forwards; }
+  .a2rn svg { display: block; width: 100%; height: auto; overflow: visible; }
+  @keyframes a2rnote {
+    0% { transform: translate(0, 0) scale(.3); opacity: 0; }
+    15% { transform: translate(calc(var(--dx, 0px) * .1), calc(var(--dy, -30px) * .15)) scale(1); opacity: 1; }
+    50% { transform: translate(calc(var(--dx, 0px) * .55 + 4px), calc(var(--dy, -30px) * .55)) rotate(var(--nr, 10deg)); opacity: 1; }
+    100% { transform: translate(var(--dx, 0px), var(--dy, -30px)) rotate(calc(var(--nr, 10deg) * -.6)) scale(.9); opacity: 0; }
+  }
+  .a2rn.gold { color: #ffd34d; width: calc(var(--H) * .085); margin: calc(var(--H) * -.0425); animation-duration: 2.3s; }
+  .a2rn.gold svg { filter: drop-shadow(0 0 2.5px rgba(255, 214, 90, 1)); }
+  .a2rn.still { animation: gfx-still 1.8s ease-in-out both; }
+
+  /* Er tanzt: ein Wippen je Schlag, abwechselnd nach hinten und vorn geneigt, unten kurz gestaucht */
+  .pika.a2r-bop .hop { animation: a2rbop var(--a2rbt, 1040ms) ease-in-out infinite; }
+  @keyframes a2rbop {
+    0%, 50%, 100% { transform: scale(1.04, .96); }
+    25% { transform: translateY(-5%) rotate(-5deg); }
+    75% { transform: translateY(-5%) rotate(5deg); }
+  }
+  /* Drehtanz: Pirouette um die eigene Achse (von der Seite gesehen: schmal, gespiegelt, schmal, zurück), in der Luft */
+  .pika.a2r-spin .hop { animation: a2rspin var(--a2rsp, 900ms) cubic-bezier(.45, 0, .35, 1); }
+  @keyframes a2rspin {
+    0%, 100% { transform: none; }
+    12% { transform: scale(1.06, .92); }
+    30% { transform: translateY(-14%) scale(.25, 1.04); }
+    50% { transform: translateY(-18%) scale(-1, 1.02); }
+    70% { transform: translateY(-14%) scale(-.25, 1.04); }
+    88% { transform: scale(1.06, .93); }
+  }
+  .pika.a2r-spin .shadow { animation: a2rspsh var(--a2rsp, 900ms) ease-in-out; }
+  @keyframes a2rspsh { 50% { transform: scale(.7); opacity: .5; } }
+
+  /* Das Vögelchen auf dem Henkel (golden): kleiner als der Besuch, wippt im Takt mit */
+  .bird.a2rb { --bw: calc(var(--H) * .06); }
+  .bird.a2rb.bob .bb { animation: a2rbb var(--a2rbt, 1040ms) ease-in-out infinite; }
+  @keyframes a2rbb { 0%, 50%, 100% { transform: none; } 25% { transform: translateY(-14%) rotate(-7deg); } 75% { transform: translateY(-14%) rotate(7deg); } }
+
+  @media (prefers-reduced-motion: reduce) {
+    .a2-radio .a2rw.pop, .a2-radio.on .a2rw, .a2-radio.on .a2rsp, .a2-radio.ant.on .a2rant, .a2-radio.a2rtune .a2rnd,
+    .a2-radio.a2rtune .a2rst, .pika.a2r-bop .hop, .pika.a2r-spin .hop, .pika.a2r-spin .shadow, .bird.a2rb.bob .bb { animation: none !important; }
+    .a2-radio .a2rant, .a2-radio .a2rkn, .a2-radio .a2rnd { transition: none !important; }
+  }
+`;
 
   // src/stil/album2-tramp.js
-  var STYLE_A2_TRAMP = "";
+  var STYLE_A2_TRAMP = `
+  .a2-tramp, .a2-trampf { transition: opacity .4s, filter 2.5s; }
+  .a2-tramp.a2out, .a2-trampf.a2out { opacity: 0; }
+  .a2-tramp .a2trw, .a2-trampf .a2trw { transform-origin: 50% 97%; transition: transform .5s cubic-bezier(.3, 1.5, .5, 1); }
+  .a2-tramp.fold .a2trw, .a2-trampf.fold .a2trw { transform: scaleY(.16); transition: transform .45s ease-in; }
+  /* Auf dem Trampolin: Sein Schatten ist der auf dem Tuch. Im Tuch gestaucht, beim Absprung gestreckt, im Salto
+     zusammengerollt (um die Füße wie .crouch) */
+  .pika.a2tr .shadow { opacity: 0; transition: opacity .2s; }
+  .pika.a2tr .hop { transition: transform .16s ease-out; }
+  .pika.a2tr-sq .hop { transform: scale(1.1, .86); transition: transform .1s ease-out; }
+  .pika.a2tr-up .hop { transform: scale(.93, 1.08); transition: transform .12s ease-out; }
+  .pika.a2tr-tuck .hop { transform: scale(.92, .84); transition: transform .18s ease-out; }
+  /* Goldene Sternchen beim höchsten Sprung: stieben auseinander und verglimmen (ruhig: am Platz ein und aus) */
+  .gfx.a2trst { width: calc(var(--H) * .062); margin: calc(var(--H) * -.031); animation: a2trst 1.1s ease-out both; }
+  .gfx.a2trst path { fill: #fff2a8; stroke: #e0a91c; }
+  @keyframes a2trst {
+    0% { transform: scale(.2) rotate(0deg); opacity: 0; }
+    20% { transform: translate(calc(var(--dx, 0px) * .3), calc(var(--dy, 0px) * .3)) scale(1.15) rotate(35deg); opacity: 1; }
+    100% { transform: translate(var(--dx, 0px), var(--dy, 0px)) scale(.45) rotate(110deg); opacity: 0; }
+  }
+  .gfx.a2trst.still { animation: gfx-still 1.2s ease-in-out both; }
+  @media (prefers-reduced-motion: reduce) { .a2-tramp .a2trw, .a2-trampf .a2trw { transition: none !important; } }
+`;
 
   // src/stil/album2-picnic.js
   var STYLE_A2_PICNIC = "";
@@ -7194,7 +7449,7 @@
     const sn = Math.sin(a) * s;
     return `M${x.toFixed(1)} ${y.toFixed(1)} q${(c - sn).toFixed(1)} ${(sn + c).toFixed(1)} ${(2 * c).toFixed(1)} ${(2 * sn).toFixed(1)} t${(2 * c).toFixed(1)} ${(2 * sn).toFixed(1)}`;
   };
-  var FRONT = PIKA_SVG.split('<g class="bk">')[0];
+  var FRONT2 = PIKA_SVG.split('<g class="bk">')[0];
   var derive = (n, c) => [
     ['id="fur"', `id="fur${n}"`],
     ["url(#fur)", `url(#fur${n})`],
@@ -7204,7 +7459,7 @@
     ["#b08a68", c.fu2],
     ["#8a664b", c.fu3],
     ["#ecdcc6", c.paw]
-  ].reduce((svg, [a, b]) => svg.split(a).join(b), FRONT);
+  ].reduce((svg, [a, b]) => svg.split(a).join(b), FRONT2);
   var body = (svg, n, d, sw = "2.6") => svg.replace(/<clipPath id="bodyclip\d"><path d="[^"]+"\/>/, `<clipPath id="bodyclip${n}"><path d="${d}"/>`).replace(/(<g class="body">\s*<path d=")[^"]+"([^>]*)stroke-width="2.6"/, `$1${d}"$2stroke-width="${sw}"`);
   var BELLY = /<ellipse cx="82" cy="82"[^>]*\/>/;
   var EARS = /<g class="ear ear-(\w)">[\s\S]*?<\/g>/g;
@@ -7322,7 +7577,7 @@
         <ellipse class="bfoot" cx="50" cy="91" rx="0" ry="0"/>
         <ellipse class="ffoot" cx="83" cy="92" rx="4.6" ry="2.2"/>
         <ellipse class="ffoot" cx="99" cy="91.6" rx="4.6" ry="2.2"/>
-      </g>`).replace(/(<g class="eye eye-(l|r)">)([\s\S]*?)(<\/g>)/g, (m, a, s, inner, z) => `${a}<g transform="translate(${s === "l" ? cShift(0) : cShift(99)} 0)">${inner.replace('fill="#2a1a12"', `fill="#2a1a12" stroke="${C.rim}" stroke-width="1.3"`)}</g>${z}`).replace(/d="M([\d.]+) (46\.6|47\.6) q/g, (m, x, y) => `d="M${(+x + cShift(+x)).toFixed(1)} ${y} q`).replace(BROWS, "").replace(WHISKERS, `<path class="wsk" d="M70.4 48.6 l3.8 1.1 M70 51.2 l4 .3 M70.4 53.8 l3.8 -.6 M106.6 49.7 l3.8 -1.1 M106.4 51.5 l4 -.3 M106.6 53.2 l3.8 .6"
+      </g>`).replace(/(<g class="eye eye-(l|r)">)([\s\S]*?)(<\/g>)/g, (m, a, s, inner2, z) => `${a}<g transform="translate(${s === "l" ? cShift(0) : cShift(99)} 0)">${inner2.replace('fill="#2a1a12"', `fill="#2a1a12" stroke="${C.rim}" stroke-width="1.3"`)}</g>${z}`).replace(/d="M([\d.]+) (46\.6|47\.6) q/g, (m, x, y) => `d="M${(+x + cShift(+x)).toFixed(1)} ${y} q`).replace(BROWS, "").replace(WHISKERS, `<path class="wsk" d="M70.4 48.6 l3.8 1.1 M70 51.2 l4 .3 M70.4 53.8 l3.8 -.6 M106.6 49.7 l3.8 -1.1 M106.4 51.5 l4 -.3 M106.6 53.2 l3.8 .6"
               stroke="${C.whisk}" stroke-width="1" stroke-linecap="round"/>`).replace(SNOUT, "").replace(NOSE, `<path class="nose" d="M89.3 52.2 q1.7 -.9 3.4 0 q-.4 1.4 -1.7 1.8 q-1.3 -.4 -1.7 -1.8z" fill="${C.nose}" stroke="#b9646e" stroke-width=".5"/>`) + END;
   var cut = (svg, vb) => svg.replace('class="pk" viewBox="0 0 120 100"', `class="pk fri" viewBox="${vb}"`);
   var FRIEND_ICON = { kirby: cut(KIRBY_SVG, "33 8 88 88"), rufus: cut(RUFUS_SVG, "14 3 109 109"), katzumi: cut(KATZUMI_SVG, "37 16 82 82") };
@@ -7342,13 +7597,13 @@
     <path d="M12 5.4 Q18 8.4 17.4 14.6 Q16.6 19.6 12 21.2Z" fill="#d36a24"/>
     <path d="M12 2.6 V20 M12 10 l-3 2 M12 13.6 l-3.2 2 M12 10.6 l3 2 M12 14.2 l3.2 2" stroke="#8a4318" stroke-width=".7" fill="none" stroke-linecap="round"/>`;
   var TOY_S = { stick: 1.9, dangle: 1.6, reach: 0.56 };
-  var toy = (inner) => `<svg viewBox="0 0 24 24" aria-hidden="true">${inner}</svg>`;
-  var held = (inner, { dy = 0, s = 1, rot = 0, dx = 0 } = {}) => toy(`<g transform="translate(${(-5.6 + dx).toFixed(1)} ${(7.8 + dy).toFixed(1)}) scale(${s.toFixed(2)}) rotate(${rot}) translate(-12 -12)">${inner}</g>`);
+  var toy = (inner2) => `<svg viewBox="0 0 24 24" aria-hidden="true">${inner2}</svg>`;
+  var held = (inner2, { dy = 0, s = 1, rot = 0, dx = 0 } = {}) => toy(`<g transform="translate(${(-5.6 + dx).toFixed(1)} ${(7.8 + dy).toFixed(1)}) scale(${s.toFixed(2)}) rotate(${rot}) translate(-12 -12)">${inner2}</g>`);
   var DANGLE_X = 47.6;
-  var dangle = (inner) => toy(`<path d="M-6 8.2 Q14 7.4 30 -3.6 Q40 -11 ${DANGLE_X} -14" stroke="${OUT}" stroke-width="2.8" fill="none" stroke-linecap="round"/>
+  var dangle = (inner2) => toy(`<path d="M-6 8.2 Q14 7.4 30 -3.6 Q40 -11 ${DANGLE_X} -14" stroke="${OUT}" stroke-width="2.8" fill="none" stroke-linecap="round"/>
     <path d="M-6 8.2 Q14 7.4 30 -3.6 Q40 -11 ${DANGLE_X} -14" stroke="#7fbf5a" stroke-width="1.5" fill="none" stroke-linecap="round"/>
     <g class="fdangle"><path d="M${DANGLE_X} -14 V-4" stroke="#f3ead2" stroke-width=".9" fill="none"/>
-      <g transform="translate(${DANGLE_X} -5.6) scale(${TOY_S.dangle}) translate(-12 -3)">${inner}</g></g>`);
+      <g transform="translate(${DANGLE_X} -5.6) scale(${TOY_S.dangle}) translate(-12 -3)">${inner2}</g></g>`);
   var FRIEND_TOY = {
     stick: toy(STICK),
     stickPika: held(STICK, { s: TOY_S.stick }),
@@ -8416,14 +8671,14 @@
     // Denkblase nach Traum oder Kaffeeduft wieder mit dem Löwenzahn füllen (für „hat Hunger“): erst, wenn sie
     // ausgeblendet ist. Sofort getauscht, zeigte sie beim Abbruch (aufgeweckt) im Ausblenden kurz den Löwenzahn in der
     // bläulichen Traumblase. now: gleich (die Blase wird jetzt gebraucht).
-    _thinkReset(now = false) {
+    _thinkReset(now2 = false) {
       clearTimeout(this._thinkT);
       const think = this._el.think;
       const reset = () => {
         think.innerHTML = FOOD.lz.svg;
         think.classList.remove("dream");
       };
-      if (now) return reset();
+      if (now2) return reset();
       this._bubble(think, false);
       this._thinkT = setTimeout(reset, 350);
     }
@@ -9369,7 +9624,7 @@
     // liegt es schon da (Neuladen, Bildschirm war aus). Was dieses Gerät schon fressen sah, kommt nicht wieder.
     _foodFromPlan() {
       if (!this._el || !this._g) return;
-      const now = this._haNow();
+      const now2 = this._haNow();
       const done = this._foodDone ??= /* @__PURE__ */ new Set();
       for (const f2 of this._plan?.fd || []) {
         const have = this._foods.find((o) => o.t === f2.t);
@@ -9377,8 +9632,8 @@
           if (have && (this._asleep || !this._running)) this._removeFood(have);
           continue;
         }
-        if (have || done.has(f2.t) || now - f2.t > 864e5) continue;
-        this._foodAdd(f2, now - f2.t < 2500);
+        if (have || done.has(f2.t) || now2 - f2.t > 864e5) continue;
+        this._foodAdd(f2, now2 - f2.t < 2500);
       }
     }
     _foodAdd(f2, drop) {
@@ -9621,21 +9876,21 @@
     // Urlaub: Ab seinem Beginn kommt nichts dazu und nichts altert (bis der Zustand nach der Rückkehr neu angesetzt ist)
     _poops(at) {
       const st = this._stats;
-      let now = at ?? this._now();
+      let now2 = at ?? this._now();
       const ur = this._plan?.ur;
       if (st && ur && st.c < urlaubEnd(ur)) {
         const t0 = ur.t + (this._now() - this._haNow());
-        if (now > t0) now = t0;
+        if (now2 > t0) now2 = t0;
       }
-      const key = st && `${st.c},${st.m},${st.l},${Math.floor(now / 1e4)},${this._cfg.sleep_start},${this._cfg.sleep_end}`;
+      const key = st && `${st.c},${st.m},${st.l},${Math.floor(now2 / 1e4)},${this._cfg.sleep_start},${this._cfg.sleep_end}`;
       if (at == null && this._poopCache?.key === key) return this._poopCache;
       const res = { key, piles: [], clean: 100 };
       if (at == null) this._poopCache = res;
       if (!st) return res;
       const cs = st.c / 1e3;
       const lying = [];
-      for (const [k, due] of this._poopTimes(st.c, now).entries()) {
-        if (due > now || lying.length >= POOP.max) break;
+      for (const [k, due] of this._poopTimes(st.c, now2).entries()) {
+        if (due > now2 || lying.length >= POOP.max) break;
         const r = seeded(cs, k, 11);
         const taken = lying.filter((p) => p.slot != null).map((p) => p.slot);
         let pile;
@@ -9653,7 +9908,7 @@
         lying.push(pile);
       }
       res.piles = lying.filter((p) => !(st.m & 1 << p.k));
-      res.clean = poopClean(res.piles, now);
+      res.clean = poopClean(res.piles, now2);
       return res;
     }
     // Was davon auf diesem Gerät schon zu sehen ist. Ein zurückgehaltenes Häufchen (_poopPending: Er bringt erst zu
@@ -9707,14 +9962,14 @@
     _renderPiles() {
       if (!this._g || !this._stats) return;
       const { piles } = this._poops();
-      const now = this._now();
+      const now2 = this._now();
       const keep = /* @__PURE__ */ new Set();
       for (const p of piles) {
         const key = this._pileKey(p);
         keep.add(key);
         const el = this._pileEls.get(key);
         if (el) {
-          el.classList.toggle("old", now - p.due > POOP.fly * 36e5);
+          el.classList.toggle("old", now2 - p.due > POOP.fly * 36e5);
           if (el._pile.slot !== p.slot || el._pile.u !== p.u) {
             el._pile = p;
             el.style.setProperty("--px", `${this._pileX(p).toFixed(1)}px`);
@@ -9722,10 +9977,10 @@
           continue;
         }
         if (this._poopPending?.key === key) {
-          if (this._action !== "poop" && (now - p.due >= POOP.live * 6e4 || !this._canPoopLive())) this._layPending();
+          if (this._action !== "poop" && (now2 - p.due >= POOP.live * 6e4 || !this._canPoopLive())) this._layPending();
           continue;
         }
-        const how = this._pilesShown && !this._poopPending && this._canPoopLive() ? poopWhen(now - p.due, this._action, !!this._next) : "lay";
+        const how = this._pilesShown && !this._poopPending && this._canPoopLive() ? poopWhen(now2 - p.due, this._action, !!this._next) : "lay";
         if (how !== "lay") {
           this._poopPending = { ...p, key };
           if (how === "go") {
@@ -9795,13 +10050,13 @@
       setTimeout(() => this._sparkle(x, this._g.gy - this._H * 0.03, 3), 450);
       this._careEval();
       const st = this._stats;
-      const now = sec(this._now());
+      const now2 = sec(this._now());
       const rest = this._poops().piles.filter((o) => o.k !== p.k);
       if (rest.length) {
-        if (!st.m) st.l = now;
+        if (!st.m) st.l = now2;
         st.m = (st.m | 1 << p.k) >>> 0;
       } else {
-        st.c = st.l = now;
+        st.c = st.l = now2;
         st.m = 0;
       }
       this._gain.c = true;
@@ -9948,8 +10203,8 @@
       this._critLast ??= {};
       this._critT = {};
       const plan = (kind, after) => {
-        const now = this._visitNow();
-        const nx = this._critNext(kind, now, after);
+        const now2 = this._visitNow();
+        const nx = this._critNext(kind, now2, after);
         this._critT[kind] = setTimeout(async () => {
           if (id !== this._critId) return;
           this._critT[kind] = null;
@@ -9958,7 +10213,7 @@
           this._critLast[kind] = nx.at;
           if (late <= critJoin(kind, nx.pick)) await this._visit(kind, id, false, nx.pick, Math.max(0, late));
           if (id === this._critId) plan(kind, nx.at);
-        }, Math.max(0, nx.at - now));
+        }, Math.max(0, nx.at - now2));
       };
       this._critPlan = plan;
       for (const k of CRIT_KINDS) plan(k, this._critLast[k]);
@@ -9969,14 +10224,14 @@
     }
     // Nächster Besuch von kind (bird, mouse, frog, snail), der noch läuft (critJoin) und nach after liegt:
     // { at: Startzeit, pick: feste Entscheidungen }. Gleiche Uhr → gleiches Ergebnis auf allen Geräten.
-    _critNext(kind, now, after = -Infinity) {
+    _critNext(kind, now2, after = -Infinity) {
       const { win, p, room } = CRIT[kind];
-      for (let k = Math.floor(Math.max(now - CRIT_BACK, after + 1) / win); ; k++) {
+      for (let k = Math.floor(Math.max(now2 - CRIT_BACK, after + 1) / win); ; k++) {
         if (seedRnd(kind, k, 0) >= p) continue;
         const at = k * win + Math.floor(seedRnd(kind, k, 1) * (win - room));
         if (at <= after) continue;
         const pick2 = this._critPick(kind, (n) => seedRnd(kind, k, n));
-        if (at < now - critJoin(kind, pick2)) continue;
+        if (at < now2 - critJoin(kind, pick2)) continue;
         return { at, pick: pick2 };
       }
     }
@@ -10746,9 +11001,9 @@
     _readFlights(st) {
       const cfg = this._hass?.config;
       if (!this._el || !cfg || !Number.isFinite(cfg.latitude)) return;
-      const now = Date.now();
+      const now2 = Date.now();
       const lu = Date.parse(st?.last_updated);
-      const t0 = Number.isFinite(lu) ? Math.min(now, lu - (this._clockOff ?? lu - now)) : now;
+      const t0 = Number.isFinite(lu) ? Math.min(now2, lu - (this._clockOff ?? lu - now2)) : now2;
       if (!this._attached || this._away()) return;
       const kx = 111.32 * Math.cos(cfg.latitude * RAD);
       const R2 = Number(this._cfg.flight_radius) || 15;
@@ -10792,8 +11047,8 @@
         const had = p.t0 != null && !p.fresh && !p.snap;
         Object.assign(p, { f: s.f, gone: 0, dead: 0 });
         if (same && s.gs <= 30) {
-          p.still ||= now;
-          if (now - p.still < 6e5) p.t0 = p.tm = t0;
+          p.still ||= now2;
+          if (now2 - p.still < 6e5) p.t0 = p.tm = t0;
         } else p.still = 0;
         if (!same) {
           const v = s.gs * 1.852 / 3600;
@@ -10806,14 +11061,14 @@
             alt: s.alt,
             ve,
             vn,
-            ...planeClock(had ? p : null, { e: s.e, n: s.n, ve, vn }, now, t0),
+            ...planeClock(had ? p : null, { e: s.e, n: s.n, ve, vn }, now2, t0),
             vz: clamp(Number(s.f.vertical_speed) || 0, -6e3, 6e3) / 60
             // ft/s
           });
         }
         this._planeText(p);
       }
-      for (const [id, p] of this._planes) if (!keep.has(id) && !p.gone) p.gone = now;
+      for (const [id, p] of this._planes) if (!keep.has(id) && !p.gone) p.gone = now2;
       this._planeLoop();
     }
     // Was an dieser Stelle unter der Tippfläche eines Flugzeugs antippbar ist: Pika, Pino, Häufchen, Besucher, Geräte,
@@ -10926,7 +11181,7 @@
         return;
       }
       if (!this._g) return;
-      const now = Date.now();
+      const now2 = Date.now();
       const W = this._W;
       const H = this._H;
       const Hs = this._Hs;
@@ -10936,7 +11191,7 @@
       const fresh = [];
       const pos = [];
       for (const [id, p] of this._planes) {
-        const age = (now - p.t0) / 1e3;
+        const age = (now2 - p.t0) / 1e3;
         const dt = age + (p.fresh || p.snap ? 0 : PLANE_STEP);
         const e = p.e + p.ve * dt;
         const n = p.n + p.vn * dt;
@@ -10948,10 +11203,10 @@
         const sc = clamp(1.6 / slant, 0.1, 0.36) / 0.3 * p.size;
         Object.assign(p, { x, y, slant, altNow: alt });
         const out = x < -W * 0.2 || x > W * 1.2;
-        const ending = p.gone ? out || now - p.gone > 45e3 : planeStale(p, now);
+        const ending = p.gone ? out || now2 - p.gone > 45e3 : planeStale(p, now2);
         if (ending && !p.dead && !p.gone) (this._ghosts ??= /* @__PURE__ */ new Map()).set(id, { lat: Number(p.f.latitude), lon: Number(p.f.longitude) });
-        if (ending && !p.dead) p.dead = now;
-        if (p.dead && now - p.dead > 2500) {
+        if (ending && !p.dead) p.dead = now2;
+        if (p.dead && now2 - p.dead > 2500) {
           clearTimeout(p.openT);
           p.el.remove();
           p.tag.remove();
@@ -11154,13 +11409,13 @@
     // blinzelt er nur. Ist er mitten in einer Beschäftigung, ruft er nur kurz „Hallo!“ und macht weiter.
     _showReq() {
       if (!this._el) return;
-      const now = Date.now();
-      if (now - (this._showAt || 0) < ACT_SHOW_COOL) {
+      const now2 = Date.now();
+      if (now2 - (this._showAt || 0) < ACT_SHOW_COOL) {
         this._goneAt = null;
         return;
       }
-      this._showAt = now;
-      this._reunion = !!this._goneAt && now - this._goneAt > 3 * 36e5;
+      this._showAt = now2;
+      this._reunion = !!this._goneAt && now2 - this._goneAt > 3 * 36e5;
       this._goneAt = null;
       if (this._urlaubFern()) {
         this._reunion = this._greetDue = false;
@@ -11245,12 +11500,12 @@
     _slotNow() {
       if (!this._g || this._asleep || !this._watched() || !this._plan || !this._planOk || this._planStale) return null;
       this._slotsDone ??= /* @__PURE__ */ new Set();
-      const now = this._planNow();
-      for (const S of [this._bigAt(now), this._miniAt(now)]) {
+      const now2 = this._planNow();
+      for (const S of [this._bigAt(now2), this._miniAt(now2)]) {
         if (!S || this._slotsDone.has(S.id)) continue;
-        if (now > S.end - ACT_JOIN_END || ACT_NOJOIN.has(S.act) && now - S.start > 4e3) continue;
+        if (now2 > S.end - ACT_JOIN_END || ACT_NOJOIN.has(S.act) && now2 - S.start > 4e3) continue;
         if (!this._actOk(S.act)) continue;
-        if (S.kind === "mini" && now - S.start > 4e3 && !this._progSince(S)) continue;
+        if (S.kind === "mini" && now2 - S.start > 4e3 && !this._progSince(S)) continue;
         return S;
       }
       return null;
@@ -11267,10 +11522,10 @@
       });
     }
     // Große Beschäftigung, die im Fenster von now begonnen hat (oder null)
-    _bigAt(now) {
-      const k = Math.floor(now / ACT_WIN.big);
+    _bigAt(now2) {
+      const k = Math.floor(now2 / ACT_WIN.big);
       const start = bigStart(k);
-      if (now < start) return null;
+      if (now2 < start) return null;
       const act = this._bigAct(k, start);
       if (!act) return null;
       const r = (n) => seedRnd("big", k, n);
@@ -11321,11 +11576,11 @@
       return !wx.storm;
     }
     // Kleine Beschäftigung im Fenster von now (oder null): nicht in jedem Fenster und nie dicht an einer großen
-    _miniAt(now) {
-      const m = Math.floor(now / ACT_WIN.mini);
+    _miniAt(now2) {
+      const m = Math.floor(now2 / ACT_WIN.mini);
       if (!miniHas(m)) return null;
       const start = miniStart(m);
-      if (now < start || this._nearBig(start)) return null;
+      if (now2 < start || this._nearBig(start)) return null;
       const act = this._miniAct(m);
       if (!act) return null;
       const r = (n) => seedRnd("mini", m, 10 + n);
@@ -11362,10 +11617,10 @@
     // Beim Beginn der nächsten Beschäftigung (groß oder klein) die laufende Kleinigkeit abbrechen, damit alle
     // Geräte gleichzeitig anfangen
     _slotArm() {
-      const now = this._planNow();
-      const kb = Math.floor(now / ACT_WIN.big);
-      const km = Math.floor(now / ACT_WIN.mini);
-      const next = Math.min(...[bigStart(kb), bigStart(kb + 1), ...[km, km + 1].filter(miniHas).map(miniStart)].filter((t) => t > now));
+      const now2 = this._planNow();
+      const kb = Math.floor(now2 / ACT_WIN.big);
+      const km = Math.floor(now2 / ACT_WIN.mini);
+      const next = Math.min(...[bigStart(kb), bigStart(kb + 1), ...[km, km + 1].filter(miniHas).map(miniStart)].filter((t) => t > now2));
       if (next === this._slotNext && this._slotT) return;
       this._slotNext = next;
       clearTimeout(this._slotT);
@@ -11373,7 +11628,7 @@
         this._slotT = null;
         if (this._running && ACT_SMALL.includes(this._action) && this._slotNow()) this._interrupt();
         if (this._running) this._slotArm();
-      }, clamp(next - now + 50, 50, 2 ** 31 - 1));
+      }, clamp(next - now2 + 50, 50, 2 ** 31 - 1));
     }
     // Tagesform: aus dem Kalendertag gewürfelt, auf allen Geräten gleich
     _tagesform(t = this._haNow()) {
@@ -11443,8 +11698,8 @@
       this._dbgDoze = false;
       let dozed = false;
       while (this._planNow() < S.end) {
-        const now = this._planNow();
-        if (doze && !dozed && now >= doze[0] && now < doze[1]) {
+        const now2 = this._planNow();
+        if (doze && !dozed && now2 >= doze[0] && now2 < doze[1]) {
           dozed = true;
           p.classList.add("doze");
           while (this._planNow() < doze[1] && p.classList.contains("doze")) await this._wait(500);
@@ -11456,7 +11711,7 @@
           await this._wait(1200);
           continue;
         }
-        const ev = doze && !dozed && doze[0] > now ? doze[0] : S.end;
+        const ev = doze && !dozed && doze[0] > now2 ? doze[0] : S.end;
         await this._waitMax(rnd(2500, 5e3), ev);
         if (this._planNow() >= ev) continue;
         const r = Math.random();
@@ -12370,9 +12625,9 @@
     }
     // Höchstens alle 20 s etwas in die aria-live-Region, damit der Bildschirmleser nicht dauernd plappert
     _announce(text) {
-      const now = Date.now();
-      if (!this._el.sr || now - (this._srAt || 0) < 2e4) return;
-      this._srAt = now;
+      const now2 = Date.now();
+      if (!this._el.sr || now2 - (this._srAt || 0) < 2e4) return;
+      this._srAt = now2;
       this._el.sr.textContent = `${this._cfg?.name || "Pika"}: ${text}`;
     }
     _bubble(el, on) {
@@ -12536,9 +12791,9 @@
     }
     // Glück für diese Berührung (petGain): voll nach einer ruhigen Pause, schnell hintereinander nur anteilig
     _petGainNow() {
-      const now = Date.now();
-      const g = petGain(now - (this._petAt ?? -Infinity));
-      this._petAt = now;
+      const now2 = Date.now();
+      const g = petGain(now2 - (this._petAt ?? -Infinity));
+      this._petAt = now2;
       return g;
     }
     // Einmal streicheln. e: Zeiger- oder Mausereignis mit der Stelle (clientX/Y), null: ohne Stelle (Tastatur)
@@ -12553,9 +12808,9 @@
       }
       if (this._pout) return this._blush(1600);
       this._mimik(null);
-      const now = Date.now();
-      this._combo = (this._combo || []).filter((t) => now - t < 6e3);
-      this._combo.push(now);
+      const now2 = Date.now();
+      this._combo = (this._combo || []).filter((t) => now2 - t < 6e3);
+      this._combo.push(now2);
       const n = this._combo.length;
       this._blush(1600 + n * 250);
       if (this._petFree()) {
@@ -12594,9 +12849,9 @@
     // Viermal in 6 s: „noch fünf Minuten…“, und er dreht sich auf die andere Seite.
     _sleepTouch(kind) {
       const p = this._el.pika;
-      const now = Date.now();
-      this._zzCombo = (this._zzCombo || []).filter((t) => now - t < 6e3);
-      this._zzCombo.push(now);
+      const now2 = Date.now();
+      this._zzCombo = (this._zzCombo || []).filter((t) => now2 - t < 6e3);
+      this._zzCombo.push(now2);
       clearTimeout(this._peekT);
       if (this._zzCombo.length >= 4) {
         this._zzCombo = [];
@@ -12988,7 +13243,7 @@
     // mit ihrer gemalten Fläche (rect) an ihrem Platz in der Rangfolge, und ganz hinten noch einmal mit ihrem Hof
     // (worldHalo: mindestens 40 px, auch wo die Zeichnung kleiner ist). So nimmt der Hof keinem anderen Ziel einen Tipp
     // weg: Ein Stern neben dem Mond, eine Blume neben dem Stein behalten ihre Fläche.
-    _worldZones(sky) {
+    _worldZones(sky2) {
       const sc = this._el.scene;
       const sr = sc.getBoundingClientRect();
       const Z = [];
@@ -13029,14 +13284,14 @@
       if (C2 && g.bur) thing("chimney", g.bur.l + C2.x1 * g.bur.u, g.bur.base + C2.top * g.bur.u, g.bur.l + C2.x2 * g.bur.u, g.bur.base + C2.bot * g.bur.u);
       const { hole } = g;
       Z.push({ k: "door", l: hole.l, t: hole.top, r: hole.r, b: hole.lip, pad: 0 });
-      if (!sky) return Z.concat(halo);
-      if (sky !== 1) {
+      if (!sky2) return Z.concat(halo);
+      if (sky2 !== 1) {
         for (const k of ["sun", "moon"]) {
           const b = this._skyBody(k, sr);
           if (b) thing(k, ...b, this._el[k]);
         }
       }
-      if (sky !== 1 && (sc.classList.contains("night") || sc.classList.contains("dusk"))) {
+      if (sky2 !== 1 && (sc.classList.contains("night") || sc.classList.contains("dusk"))) {
         for (const el of this._el.starEls) if (!el._fell && Number(getComputedStyle(el).opacity) > 0.25) add("star", el, 13);
       }
       for (const el of this._el.clouds) if (el.classList.contains("on")) add("cloud", el, 5);
@@ -13066,10 +13321,10 @@
     }
     // z: Treffer aus _worldZones. Schläft er, bleibt es leise: Die Dinge antworten, er nicht.
     _worldTap(z) {
-      const now = Date.now();
+      const now2 = Date.now();
       const T = this._worldT ??= {};
-      if (now - (T[z.k] || 0) < 250) return;
-      T[z.k] = now;
+      if (now2 - (T[z.k] || 0) < 250) return;
+      T[z.k] = now2;
       const awake = !this._asleep;
       const p = this._el.pika;
       const calm = calmMotion();
@@ -13451,7 +13706,7 @@
   var KUFE = "#e8584e";
   var KUFE_HINTEN = "#b8443c";
   var SEIL = "#d8b98a";
-  var ICON3 = `<svg viewBox="0 0 24 24" aria-hidden="true">
+  var ICON4 = `<svg viewBox="0 0 24 24" aria-hidden="true">
       <path d="M19.4 13.4 Q15.4 6.2 8.6 8.4" stroke="${OUT}" stroke-width="1.7" fill="none" stroke-linecap="round"/>
       <path d="M19.4 13.4 Q15.4 6.2 8.6 8.4" stroke="${SEIL}" stroke-width=".9" fill="none" stroke-linecap="round"/>
       <path d="M5.6 14 V19.6 M11.4 14 V19.6 M17 14 V19.6" stroke="${OUT}" stroke-width="2.4"/>
@@ -13508,7 +13763,7 @@
     say: "ein Schlitten!",
     built: true,
     mo: [10, 11, 0, 1, 2],
-    icon: ICON3,
+    icon: ICON4,
     trick: "Bauchrutscher",
     gilt: "ein goldener %",
     use: "Für Tage, an denen Schnee liegt.",
@@ -13519,60 +13774,251 @@
     dbg: [["Rodeln", "a2SledPlay", 1], ["Bauchrutscher", "a2SledBelly", 2], ["Schneefunken (golden)", "a2SledPlay", 3]]
   };
 
+  // src/grafik/album2/camera.js
+  var BODY2 = "#6fb6c8";
+  var BODY_DUNKEL = "#4f93a6";
+  var BAND = "#f6efe0";
+  var LINSE = "#3a3f47";
+  var GLAS2 = "#8fd0f0";
+  var GLAS_HELL = "#e6f7ff";
+  var BLITZ = "#fff6d8";
+  var KNOPF2 = "#e8584e";
+  var BEIN = "#6b6f78";
+  var ICON5 = `<svg viewBox="0 0 24 24" aria-hidden="true">
+      <rect x="7.4" y="1.6" width="6.4" height="7" rx=".5" fill="#fbfaf6" stroke="${OUT}" stroke-width=".6"/>
+      <rect x="8.2" y="2.4" width="4.8" height="4" fill="#a8daf5"/>
+      <path d="M8.2 5.6 Q10.6 4.6 13 5.4 V6.4 H8.2Z" fill="#7cc35a"/>
+      <rect x="2.4" y="7" width="19.2" height="13.4" rx="2.6" fill="${BODY2}" stroke="${OUT}" stroke-width=".9"/>
+      <path d="M2.85 10.6 V9.4 Q2.85 7.45 4.8 7.45 H19.2 Q21.15 7.45 21.15 9.4 V10.6Z" fill="${BODY_DUNKEL}"/>
+      <rect x="2.85" y="16.2" width="18.3" height="1.4" fill="${BAND}"/>
+      <rect x="16.6" y="5.6" width="3" height="1.6" rx=".6" fill="${KNOPF2}" stroke="${OUT}" stroke-width=".6"/>
+      <rect x="4.3" y="8.3" width="4.6" height="2.1" rx=".6" fill="${BLITZ}" stroke="${OUT}" stroke-width=".6"/>
+      <rect x="15.4" y="8.3" width="3.6" height="2.1" rx=".6" fill="#2f3440"/>
+      <circle cx="12" cy="14" r="4.6" fill="${LINSE}" stroke="${OUT}" stroke-width=".9"/>
+      <circle cx="12" cy="14" r="3" fill="${GLAS2}"/>
+      <circle cx="10.9" cy="12.9" r="1" fill="${GLAS_HELL}"/></svg>`;
+  var CAMERA_SVG = `<svg viewBox="0 0 40 40" aria-hidden="true">
+      <g class="a2cmleg">
+        <path d="M18 23 L19.6 39.2" stroke="${OUT}" stroke-width="2.4" stroke-linecap="round"/>
+        <path d="M18 23 L19.6 39.2" stroke="#55595f" stroke-width="1.1" stroke-linecap="round"/>
+        <path d="M18 23 L9.4 39.4 M18 23 L27.2 39.4" stroke="${OUT}" stroke-width="2.8" stroke-linecap="round"/>
+        <path d="M18 23 L9.4 39.4 M18 23 L27.2 39.4" stroke="${BEIN}" stroke-width="1.4" stroke-linecap="round"/>
+        <rect x="15.4" y="21.2" width="5.2" height="2.8" rx=".8" fill="#55595f" stroke="${OUT}" stroke-width=".8"/>
+      </g>
+      <g class="a2cmh">
+        <rect x="6.6" y="3.6" width="5" height="4" rx=".8" fill="${BODY_DUNKEL}" stroke="${OUT}" stroke-width=".9"/>
+        <rect x="5.6" y="4.4" width="1.4" height="2.4" rx=".4" fill="#2f3440"/>
+        <rect class="a2cmb" x="18.6" y="5.4" width="3" height="1.9" rx=".5" fill="${KNOPF2}" stroke="${OUT}" stroke-width=".7"/>
+        <rect class="a2cmfw" x="23.4" y="3.4" width="6" height="4" rx=".8" fill="${BLITZ}" stroke="${OUT}" stroke-width=".9"/>
+        <path d="M24.6 4.8 H28.2" stroke="#fff" stroke-width=".7" stroke-linecap="round" opacity=".9"/>
+        <rect x="29.6" y="9.4" width="5.4" height="10" rx="1" fill="${LINSE}" stroke="${OUT}" stroke-width="1"/>
+        <path d="M32.2 9.6 V19.2" stroke="#59606c" stroke-width="1"/>
+        <ellipse cx="35.2" cy="14.4" rx="1.3" ry="4.1" fill="${GLAS2}" stroke="${OUT}" stroke-width=".7"/>
+        <ellipse cx="35.5" cy="12.8" rx=".45" ry="1.3" fill="${GLAS_HELL}"/>
+        <rect x="6" y="7" width="24" height="14.6" rx="2.8" fill="${BODY2}" stroke="${OUT}" stroke-width="1.1"/>
+        <path d="M6.55 10.8 V9.8 Q6.55 7.55 8.8 7.55 H27.2 Q29.45 7.55 29.45 9.8 V10.8Z" fill="${BODY_DUNKEL}"/>
+        <path d="M12.6 7.1 H22.6" stroke="#2f3440" stroke-width="1" stroke-linecap="round"/>
+        <rect x="6.55" y="16.2" width="22.9" height="1.8" fill="${BAND}"/>
+        <circle cx="11.4" cy="13.4" r="2.1" fill="${BODY_DUNKEL}" stroke="${OUT}" stroke-width=".6"/>
+        <path d="M11.4 11.9 V12.9" stroke="${BAND}" stroke-width=".6" stroke-linecap="round"/>
+        <circle class="a2cmt" cx="27.2" cy="12.6" r="1.1" stroke="${OUT}" stroke-width=".5"/>
+      </g></svg>`;
+  var CAM = { slot: [17.6, 7], flash: [26.4, 5.4], pivot: [18, 22], back: 6, tip: 36.5 };
+  var CAM_W = 0.56;
+  var CAMERA_MOUTH = `<svg viewBox="0 0 24 24" aria-hidden="true"><g transform="translate(-1 -2.6) scale(1.5)">
+      <path d="M1.4 9.8 Q4.6 2.6 10.6 8.2" stroke="${OUT}" stroke-width="1.9" fill="none" stroke-linecap="round"/>
+      <path d="M1.4 9.8 Q4.6 2.6 10.6 8.2" stroke="#3a3f47" stroke-width=".9" fill="none" stroke-linecap="round"/>
+      <rect x="15.6" y="5.6" width="3.6" height="2.4" rx=".5" fill="${BLITZ}" stroke="${OUT}" stroke-width=".6"/>
+      <rect x="19.8" y="9" width="3" height="5.6" rx=".7" fill="${LINSE}" stroke="${OUT}" stroke-width=".7"/>
+      <ellipse cx="22.9" cy="11.8" rx=".7" ry="2.3" fill="${GLAS2}"/>
+      <rect x="6.6" y="7.6" width="13.4" height="9" rx="1.8" fill="${BODY2}" stroke="${OUT}" stroke-width=".9"/>
+      <path d="M7.05 10 V9.4 Q7.05 8.05 8.4 8.05 H18.2 Q19.55 8.05 19.55 9.4 V10Z" fill="${BODY_DUNKEL}"/>
+      <rect x="7.05" y="13.4" width="12.5" height="1.2" fill="${BAND}"/></g></svg>`;
+  var HIMMEL = { tag: "#a8daf5", grau: "#c9d3dc", abend: "#f6c39a", nacht: "#2d3866" };
+  var wolke = (x, y, s, f2 = "#fff") => `<path transform="translate(${x} ${y}) scale(${s})" d="M-2.6 .9 a1.3 1.3 0 0 1 .6 -2.3 a1.9 1.9 0 0 1 3.5 -.4 a1.4 1.4 0 0 1 1.6 2.7Z" fill="${f2}"/>`;
+  var sky = (S) => {
+    const bg = S.night ? HIMMEL.nacht : S.dusk ? HIMMEL.abend : S.cover >= 70 ? HIMMEL.grau : HIMMEL.tag;
+    let h = `<rect width="16" height="16" fill="${bg}"/>`;
+    if (S.night) {
+      h += '<g fill="#fff"><circle cx="2.8" cy="2.6" r=".32"/><circle cx="6.4" cy="4.6" r=".26"/><circle cx="8.6" cy="1.8" r=".3"/><circle cx="14.2" cy="7" r=".26"/></g>';
+      h += `<circle cx="11.8" cy="3.8" r="2" fill="#f6e7a8"/><circle cx="12.8" cy="3.1" r="1.7" fill="${bg}"/>`;
+    } else {
+      if (S.cover < 70) {
+        h += '<path d="M12.4 .6 V1.2 M12.4 6 V6.6 M9.4 3.6 H10 M14.8 3.6 H15.4 M10.3 1.5 l.4 .4 M14.1 5.3 l.4 .4 M14.5 1.5 l-.4 .4 M10.7 5.3 l-.4 .4" stroke="#f0a02c" stroke-width=".45" stroke-linecap="round"/>';
+        h += `<circle cx="12.4" cy="3.6" r="1.9" fill="${S.dusk ? "#f7a55a" : "#ffd75a"}" stroke="#f0a02c" stroke-width=".4"/>`;
+      }
+      if (S.cover >= 30) h += wolke(4.6, 4.4, 1.1, S.cover >= 70 ? "#eef1f4" : "#fff");
+      if (S.cover >= 70) h += wolke(11, 6.4, 0.9, "#e2e7ec");
+      if (S.bow) {
+        h += '<g fill="none" stroke-width=".8" opacity=".85">' + ["#ef6b5b", "#f6c945", "#7cc35a", "#6aa8e8"].map((c, i) => `<path d="M${(1 + i * 0.8).toFixed(1)} 14 A${(7 - i * 0.8).toFixed(1)} ${(7 - i * 0.8).toFixed(1)} 0 0 1 ${(15 - i * 0.8).toFixed(1)} 14" stroke="${c}"/>`).join("") + "</g>";
+      }
+    }
+    return h;
+  };
+  var boden = (S, y) => {
+    const g = S.snowcover ? ["#f2f5fa", "#dfe6ef"] : S.night ? ["#3f6a3a", "#355a31"] : ["#86c962", "#6bab4c"];
+    return `<path d="M0 ${y} Q4 ${y - 2} 8.4 ${y - 0.8} T16 ${y - 1.2} V16 H0Z" fill="${g[1]}"/><path d="M0 ${y + 1.4} Q6 ${y} 16 ${y + 1} V16 H0Z" fill="${g[0]}"/>`;
+  };
+  var wetter = (S) => {
+    let h = "";
+    if (S.rain) h += '<g stroke="#5b8fc9" stroke-width=".4" stroke-linecap="round"><path d="M3 3 l-.5 1.4 M7.4 5.4 l-.5 1.4 M11.6 2.6 l-.5 1.4 M14 8 l-.5 1.4 M5 9.4 l-.5 1.4"/></g>';
+    if (S.snow) h += '<g fill="#fff"><circle cx="2.6" cy="3.6" r=".42"/><circle cx="7" cy="6.2" r=".36"/><circle cx="11.2" cy="2.4" r=".4"/><circle cx="14.2" cy="8.6" r=".36"/><circle cx="4.4" cy="10" r=".4"/><circle cx="9.8" cy="9.4" r=".34"/></g>';
+    if (S.fog) h += '<rect width="16" height="16" fill="#fff" opacity=".38"/>';
+    return h;
+  };
+  var FIG = {
+    pika: { fur: "#c09a76", ear: "#efe3d3", ein: "#e3a990", bel: "#f0e2cf", nose: "#7a4438" },
+    pino: { fur: "#e09a5a", ear: "#f8e4cc", ein: "#f0a184", bel: "#fbe7cb", nose: "#7a4438", scarf: "#22b5a6" }
+  };
+  var augen = (y, dx = 1.25, r = 0.42) => `<circle cx="${-dx}" cy="${y}" r="${r}" fill="#2a1a12"/><circle cx="${dx}" cy="${y}" r="${r}" fill="#2a1a12"/>`;
+  var backen = (y, dx = 2.2) => `<circle cx="${-dx}" cy="${y}" r=".6" fill="#f2998c" opacity=".6"/><circle cx="${dx}" cy="${y}" r=".6" fill="#f2998c" opacity=".6"/>`;
+  var pikaFig = (c) => `
+        <circle cx="-2.4" cy="-6.3" r="1.6" fill="${c.ear}" stroke="${OUT}" stroke-width=".4"/><circle cx="-2.4" cy="-6.3" r=".8" fill="${c.ein}"/>
+        <circle cx="2.4" cy="-6.3" r="1.6" fill="${c.ear}" stroke="${OUT}" stroke-width=".4"/><circle cx="2.4" cy="-6.3" r=".8" fill="${c.ein}"/>
+        <ellipse cy="-3.4" rx="3.8" ry="3.4" fill="${c.fur}" stroke="${OUT}" stroke-width=".45"/>
+        <ellipse cy="-1.6" rx="2.3" ry="1.4" fill="${c.bel}"/>
+        ${c.scarf ? `<path d="M-2.8 -1.3 Q0 .2 2.8 -1.3" stroke="${c.scarf}" stroke-width=".9" fill="none" stroke-linecap="round"/>` : ""}
+        ${augen(-4.3)}${backen(-3.2)}
+        <ellipse cy="-3.3" rx=".45" ry=".32" fill="${c.nose}"/>
+        <path d="M-.6 -2.8 q.6 .5 1.2 0" stroke="${OUT}" stroke-width=".3" fill="none" stroke-linecap="round"/>`;
+  var FIGS = {
+    pika: pikaFig(FIG.pika),
+    pino: pikaFig(FIG.pino),
+    kirby: `
+        <circle cx="-2.9" cy="-6.6" r="1.3" fill="#e4bf85" stroke="${OUT}" stroke-width=".4"/><circle cx="2.9" cy="-6.6" r="1.3" fill="#e4bf85" stroke="${OUT}" stroke-width=".4"/>
+        <circle cx="-2.9" cy="-6.6" r=".6" fill="#f2dcb4"/><circle cx="2.9" cy="-6.6" r=".6" fill="#f2dcb4"/>
+        <circle cy="-3.8" r="3.9" fill="#e2b673" stroke="${OUT}" stroke-width=".45" stroke-dasharray=".9 .35"/>
+        <ellipse cy="-2.8" rx="1.7" ry="1.2" fill="#e4cda7"/>
+        ${augen(-4.7, 1.35)}<circle cy="-3.3" r=".5" fill="#3b2218"/>`,
+    rufus: `
+        <ellipse cy="-3.4" rx="3.4" ry="3.2" fill="#fffaf0" stroke="${OUT}" stroke-width=".45"/>
+        <ellipse cx="-3.3" cy="-4" rx="1" ry="2" transform="rotate(18 -3.3 -4)" fill="#c9ad84" stroke="${OUT}" stroke-width=".35"/>
+        <ellipse cx="3.3" cy="-4" rx="1" ry="2" transform="rotate(-18 3.3 -4)" fill="#c9ad84" stroke="${OUT}" stroke-width=".35"/>
+        <ellipse cy="-2.4" rx="1.6" ry="1.1" fill="#f1e5cd"/>
+        ${augen(-4.4, 1.2)}<ellipse cy="-2.9" rx=".7" ry=".5" fill="#b38f74"/>`,
+    katzumi: `
+        <path d="M-3.4 -4.2 L-2.8 -8 L-.9 -6 Z M3.4 -4.2 L2.8 -8 L.9 -6 Z" fill="#f6c08a" stroke="${OUT}" stroke-width=".4" stroke-linejoin="round"/>
+        <path d="M-2.6 -5.4 L-2.5 -7 L-1.5 -6Z M2.6 -5.4 L2.5 -7 L1.5 -6Z" fill="#f2a6b4"/>
+        <ellipse cy="-3.4" rx="3.6" ry="3.2" fill="#f6c08a" stroke="${OUT}" stroke-width=".45"/>
+        <path d="M0 -6.5 V-5.4 M-1 -6.3 L-.8 -5.5 M1 -6.3 L.8 -5.5" stroke="#a9592b" stroke-width=".4" stroke-linecap="round"/>
+        ${augen(-4, 1.3, 0.45)}<path d="M-.4 -3 h.8 l-.4 .45Z" fill="#e9919c"/>
+        <path d="M-1.2 -2.6 L-3.6 -3 M-1.2 -2.2 L-3.6 -1.8 M1.2 -2.6 L3.6 -3 M1.2 -2.2 L3.6 -1.8" stroke="${OUT}" stroke-width=".2" opacity=".6"/>`
+  };
+  var fig = (k, x, y, s) => `<g transform="translate(${x} ${y}) scale(${s})">${FIGS[k] || FIGS.pika}</g>`;
+  var inner = (svg, x, y, s) => `<g transform="translate(${x} ${y}) scale(${s})">${svg.replace(/^\s*<svg[^>]*>|<\/svg>\s*$/g, "")}</g>`;
+  var GLITZER = `<g class="a2cmgl" fill="#fff6c8" stroke="#e8b52a" stroke-width=".2">
+          ${[[3.2, 3.4, 1], [13, 6, 0.8], [9.6, 12.6, 0.9], [6, 8, 0.6]].map(([x, y, s]) => `<g transform="translate(${x} ${y}) scale(${s})"><path d="M0 -1.7 L.4 -.4 L1.7 0 L.4 .4 L0 1.7 L-.4 .4 L-1.7 0 L-.4 -.4Z"/></g>`).join("")}
+        </g>`;
+  var PHOTO_PIC = (M) => {
+    const S = M.S || {};
+    if (M.k === "flower") {
+      return `${sky(S)}${boden(S, 12.4)}${wetter(S)}<circle cx="13" cy="12.6" r=".7" fill="${M.color2 || "#f6c945"}"/><path d="M13 13.3 V14.6" stroke="#4f8a3a" stroke-width=".4"/>` + inner(FLOWER_SVG(M.color || "#f28fb1"), 3.6, 2.6, 0.4);
+    }
+    if (M.k === "bird") {
+      return `${sky(S)}${boden(S, 13.6)}<path d="M-1 11.6 Q6 10.2 17 11.2" stroke="#8a5c30" stroke-width="1.2" fill="none" stroke-linecap="round"/><path d="M12.6 10.8 q1.2 -1.6 2.8 -1.4" stroke="#8a5c30" stroke-width=".6" fill="none"/><ellipse cx="15" cy="9.2" rx="1" ry=".55" fill="#6bab4c"/>` + (M.bird ? inner(BIRD_SVG(M.bird), 3.2, 2.6, 0.32) : '<g stroke="#4a3a2c" stroke-width=".35" stroke-linecap="round" opacity=".7"><path d="M9 5.6 q1.6 -1 3.4 -.6 M8.6 7.4 q1.8 -.7 3.6 -.2"/></g>') + wetter(S);
+    }
+    if (M.k === "self") {
+      const W = M.who || [];
+      const one = !W.length;
+      let h = `${sky(S)}${boden(S, 11.4)}`;
+      h += fig("pika", one ? 8 : 5.4, 15.3, 1);
+      if (!one) h += fig(W[0].k, 11, 15.3, W[0].s);
+      h += `<path transform="translate(${one ? 3.6 : 8.2} ${one ? 4 : 4.4}) scale(.9)" d="M0 1.6 C-2.2 0 -1.6 -1.6 0 -.7 C1.6 -1.6 2.2 0 0 1.6Z" fill="#f2607a"/>`;
+      return h + wetter(S);
+    }
+    return `${sky(S)}${boden(S, 12.8)}${wetter(S)}`;
+  };
+  var PHOTO_SVG = (M, gold = false) => `<svg viewBox="0 0 20 24" aria-hidden="true">
+      <g class="a2cmpw" fill="#ecdcc6" stroke="${OUT}" stroke-width=".7">
+        <ellipse cx="-.4" cy="17.6" rx="2" ry="2.5"/><ellipse cx="20.4" cy="17.6" rx="2" ry="2.5"/>
+      </g>
+      <rect x=".35" y=".35" width="19.3" height="23.3" rx="1" fill="${gold ? "#f2c94c" : "#fbfaf6"}" stroke="${gold ? "#a8781e" : "#4a3a2c"}" stroke-width=".7"/>
+      ${gold ? '<rect x="1.1" y="1.1" width="17.8" height="21.8" rx=".6" fill="none" stroke="#fff1b8" stroke-width=".4"/>' : ""}
+      <rect x="2" y="2" width="16" height="16" fill="#3a3f47"/>
+      <g transform="translate(2 2)"><g class="a2cmpic">${PHOTO_PIC(M)}${gold ? GLITZER : ""}</g></g>
+      <rect x="2" y="2" width="16" height="16" fill="none" stroke="rgba(0,0,0,.18)" stroke-width=".3"/>
+      <path d="M4.4 21 q1.6 -.9 3.2 0 t3.2 0 t3 -.2" stroke="${gold ? "#a8781e" : "#b9b0a0"}" stroke-width=".5" fill="none" stroke-linecap="round"/>
+      ${gold ? '<path transform="translate(16 21) scale(.5)" d="M0 1.6 C-2.2 0 -1.6 -1.6 0 -.7 C1.6 -1.6 2.2 0 0 1.6Z" fill="#e8584e"/>' : ""}</svg>`;
+  var PHOTO_SLOT = 0.25;
+  var PHOTO_HELD = 0.27;
+  var A2_CAMERA = {
+    key: "camera",
+    name: "Kamera",
+    say: "eine Kamera!",
+    built: true,
+    mo: null,
+    icon: ICON5,
+    trick: "Selfie",
+    gilt: "eine goldene %",
+    use: "Klick, Blitz, und ein Sofortbild kommt heraus.",
+    gold: "goldener Rahmen, das Bild glitzert",
+    find: { t: "Kamera", h: "Tipp meine Kamera an, wenn sie auf dem Stativ steht. Dann blitzt sie." },
+    // Vorschau (Leiste „Päckchen“, Album 2): [Knopf, Aktion, Stufe, die der Schatz dafür bekommt]. Die Knöpfe gehen auch
+    // nachts und bei Regen (_forced); das Selfie nimmt den Freund mit, wenn er gerade da ist.
+    dbg: [["Foto", "a2CameraPlay", 1], ["Selfie", "a2CameraSelfie", 2], ["Foto (golden)", "a2CameraPlay", 3], ["Selfie (golden)", "a2CameraSelfie", 3]]
+  };
+
+  // src/grafik/album2/tramp.js
+  var POLSTER = "#4f9fd8";
+  var POLSTER_HELL = "#9bd0f3";
+  var POLSTER_DUNKEL = "#3577b0";
+  var TUCH = "#353a46";
+  var TUCH_RAND = "#23262e";
+  var STAHL = "#8b95a1";
+  var ICON6 = `<svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M8 4.6 Q12 1.8 16 4.6 M9.6 7.2 Q12 5.6 14.4 7.2" stroke="${POLSTER}" stroke-width="1.1" fill="none" stroke-linecap="round"/>
+      <path d="M7.4 13 V19.6 M16.6 13 V19.6" stroke="${OUT}" stroke-width="1.9" stroke-linecap="round"/>
+      <path d="M7.4 13 V19.6 M16.6 13 V19.6" stroke="#6f7883" stroke-width=".9" stroke-linecap="round"/>
+      <path d="M3.6 13.4 L2.8 21 M12 15.4 V21.4 M20.4 13.4 L21.2 21" stroke="${OUT}" stroke-width="2.1" stroke-linecap="round"/>
+      <path d="M3.6 13.4 L2.8 21 M12 15.4 V21.4 M20.4 13.4 L21.2 21" stroke="${STAHL}" stroke-width="1.1" stroke-linecap="round"/>
+      <ellipse cx="12" cy="12" rx="10.4" ry="3.5" fill="none" stroke="${OUT}" stroke-width="2.9"/>
+      <ellipse cx="12" cy="12" rx="10.4" ry="3.5" fill="none" stroke="${POLSTER}" stroke-width="1.9"/>
+      <ellipse cx="12" cy="12" rx="8.3" ry="2.3" fill="${TUCH}"/>
+      <path d="M4 13.3 Q12 16.6 20 13.3" stroke="${POLSTER_HELL}" stroke-width=".7" fill="none" stroke-linecap="round" opacity=".85"/></svg>`;
+  var TRAMP_VB = [64, 23];
+  var TRAMP_FOOT = 21.4;
+  var TRAMP_MAT = 9;
+  var trampMat = (dip = 0) => `M7 9 A25 3 0 0 1 57 9 A25 ${(3 + Math.max(0, dip)).toFixed(2)} 0 0 1 7 9Z`;
+  var TRAMP_BACK = `<svg viewBox="0 0 64 23" aria-hidden="true">
+      <ellipse cx="32" cy="21.3" rx="29" ry="1.5" fill="#000" opacity=".14"/>
+      <path d="M20 6 V21 M44 6 V21" stroke="${OUT}" stroke-width="2.3" stroke-linecap="round"/>
+      <path d="M20 6 V21 M44 6 V21" stroke="#6f7883" stroke-width="1.2" stroke-linecap="round"/>
+      <ellipse cx="32" cy="9" rx="29" ry="4.4" fill="none" stroke="${OUT}" stroke-width="3.7"/>
+      <ellipse cx="32" cy="9" rx="29" ry="4.4" fill="none" stroke="${POLSTER_DUNKEL}" stroke-width="2.7"/>
+      <path d="M7.4 7.2 Q32 2.6 56.6 7.2" stroke="${POLSTER}" stroke-width="1" fill="none" stroke-linecap="round" opacity=".9"/>
+      <path class="a2trm" d="${trampMat(0)}" fill="${TUCH}" stroke="${TUCH_RAND}" stroke-width=".5"/>
+      <path d="M13 7.6 Q32 5.4 51 7.6" stroke="#4d5363" stroke-width=".6" fill="none" stroke-linecap="round"/>
+      <ellipse class="a2trs" cx="32" cy="9.4" rx="8" ry="1.3" fill="#000" opacity=".3"/></svg>`;
+  var TRAMP_FRONT = `<svg viewBox="0 0 64 23" aria-hidden="true">
+      <path d="M9.6 11.6 L8.2 21 M54.4 11.6 L55.8 21 M32 13.2 V21.2" stroke="${OUT}" stroke-width="2.5" stroke-linecap="round"/>
+      <path d="M9.6 11.6 L8.2 21 M54.4 11.6 L55.8 21 M32 13.2 V21.2" stroke="${STAHL}" stroke-width="1.4" stroke-linecap="round"/>
+      <path d="M6.2 21.1 H10.2 M53.8 21.1 H57.8 M30 21.3 H34" stroke="${OUT}" stroke-width="1.4" stroke-linecap="round"/>
+      <path d="M3 9 A29 4.4 0 0 0 61 9" stroke="${OUT}" stroke-width="3.7" fill="none"/>
+      <path d="M3 9 A29 4.4 0 0 0 61 9" stroke="${POLSTER}" stroke-width="2.7" fill="none"/>
+      <path d="M8 11.6 Q32 15.6 56 11.6" stroke="${POLSTER_HELL}" stroke-width=".8" fill="none" stroke-linecap="round" opacity=".9"/></svg>`;
+  var TRAMP_W = 1.2;
+  var A2_TRAMP = {
+    key: "tramp",
+    name: "Trampolin",
+    say: "ein Trampolin!",
+    built: true,
+    mo: null,
+    icon: ICON6,
+    trick: "Salto",
+    gilt: "ein goldenes %",
+    use: "Hüpf, hüpf, immer höher!",
+    gold: "Sternchen beim höchsten Sprung",
+    find: { t: "Trampolin", h: "Tipp mein Trampolin an, wenn es draußen steht. Das Tuch federt nach." },
+    // Vorschau (Leiste „Päckchen“, Album 2): [Knopf, Aktion, Stufe, die der Schatz dafür bekommt]
+    dbg: [["Trampolin springen", "a2TrampPlay", 1], ["Salto", "a2TrampFlip", 2], ["Sternchen (golden)", "a2TrampPlay", 3]]
+  };
+
   // src/grafik/album2/platzhalter.js
   var A2_PLATZHALTER = `<svg viewBox="0 0 24 24" aria-hidden="true">
       <rect x="3.6" y="9" width="16.8" height="12.6" rx="1.6" fill="#d8cbb4" stroke="${OUT}" stroke-width="1"/>
       <path d="M3.6 13 H20.4" stroke="${OUT}" stroke-width=".7" opacity=".5"/>
       <path d="M9.4 14.6 q0 -2.4 2.6 -2.4 q2.6 0 2.6 2 q0 1.4 -1.6 2 q-1 .4 -1 1.4" stroke="#8a6d4a" stroke-width="1.5" fill="none" stroke-linecap="round"/>
       <circle cx="12" cy="19.4" r=".95" fill="#8a6d4a"/></svg>`;
-
-  // src/grafik/album2/camera.js
-  var A2_CAMERA = {
-    key: "camera",
-    name: "Kamera",
-    say: "eine Kamera!",
-    built: false,
-    mo: null,
-    icon: A2_PLATZHALTER,
-    trick: "Selfie",
-    gilt: "eine goldene %",
-    use: "Klick! Ein Foto für dich.",
-    gold: "eine goldene Zugabe",
-    find: null,
-    dbg: []
-  };
-
-  // src/grafik/album2/radio.js
-  var A2_RADIO = {
-    key: "radio",
-    name: "Radio",
-    say: "ein Radio!",
-    built: false,
-    mo: null,
-    icon: A2_PLATZHALTER,
-    trick: "Drehtanz",
-    gilt: "ein goldenes %",
-    use: "Musik zum Tanzen.",
-    gold: "Noten fliegen",
-    find: null,
-    dbg: []
-  };
-
-  // src/grafik/album2/tramp.js
-  var A2_TRAMP = {
-    key: "tramp",
-    name: "Trampolin",
-    say: "ein Trampolin!",
-    built: false,
-    mo: null,
-    icon: A2_PLATZHALTER,
-    trick: "Salto",
-    gilt: "ein goldenes %",
-    use: "Hüpf, hüpf!",
-    gold: "Sternchen beim Sprung",
-    find: null,
-    dbg: []
-  };
 
   // src/grafik/album2/picnic.js
   var A2_PICNIC = {
@@ -13713,9 +14159,9 @@
         }
         const a = this._dlog[k] ||= [];
         if (a.at(-1)?.[1] === v) return;
-        const now = Math.round(this._haNow() / 1e3);
-        a.push([now, v]);
-        const i = a.findIndex((e) => e[0] >= now - DIARY.keep / 1e3);
+        const now2 = Math.round(this._haNow() / 1e3);
+        a.push([now2, v]);
+        const i = a.findIndex((e) => e[0] >= now2 - DIARY.keep / 1e3);
         if (i > 1) a.splice(0, i - 1);
         if (a.length > DIARY.max) a.splice(0, a.length - DIARY.max);
         localStorage.setItem(key, JSON.stringify(this._dlog));
@@ -13802,18 +14248,18 @@
     }
     // Beide Seiten (heute, gestern) aus dem Verlauf. Vorschau: _dbgDiary liefert fertige Roh-Ereignisse.
     async _diaryBuild() {
-      const now = this._haNow();
+      const now2 = this._haNow();
       const d0 = this._diaryDay(0);
       const d1 = this._diaryDay(1);
       let R2;
       let H = { bote: [], fail: false, none: false, S: [], P: [] };
-      if (this._dbgDiary) R2 = { stamps: [], pets: {}, ...this._dbgDiary(d0, d1, now), data: true };
+      if (this._dbgDiary) R2 = { stamps: [], pets: {}, ...this._dbgDiary(d0, d1, now2), data: true };
       else {
-        H = await this._diaryHist(d1, now + 6e4);
-        R2 = { ...diaryDerive(H.S, H.P, d1, { decayAt: (t, h) => this._decayAt(t, h), until: now }), data: H.S.length + H.P.length > 0 };
+        H = await this._diaryHist(d1, now2 + 6e4);
+        R2 = { ...diaryDerive(H.S, H.P, d1, { decayAt: (t, h) => this._decayAt(t, h), until: now2 }), data: H.S.length + H.P.length > 0 };
       }
       const page = (start, end, today) => this._diaryModel(start, end, R2, H.bote, today, H.fail, !!H.cof);
-      return { fail: H.fail, none: H.none, days: [page(d0, now + 1, true), page(d1, d0, false)] };
+      return { fail: H.fail, none: H.none, days: [page(d0, now2 + 1, true), page(d1, d0, false)] };
     }
     _diaryParcel(e, t) {
       const it = GIFT_ITEMS[e.it];
@@ -13835,7 +14281,7 @@
     // Eine Seite: Einträge { t, part, icon, text, … } in Reihenfolge, Zähler (chips) und der Satz oben. cof: Die Bezüge
     // des Kaffeeautomaten kommen aus seinem Verlauf (extra, k: 'kaffee'), das Bit „Kaffee“ im Tagesplan zählt dann nicht.
     _diaryModel(start, end, R2, extra, today, fail, cof = false) {
-      const now = this._haNow();
+      const now2 = this._haNow();
       const day = new Date(start);
       const [ws, we] = this._wakeDay(day);
       const fr = this._frName();
@@ -13849,7 +14295,7 @@
       const out = [];
       const put = (t, icon, text, x) => out.push({ t, icon, text, ...x });
       const house = this._cfg.diary_house !== false;
-      const until = Math.min(end, now);
+      const until = Math.min(end, now2);
       const U = [...R2.urlaub || []];
       const pu = this._plan?.ur;
       if (pu && !U.some(([a]) => a === pu.t)) U.push([pu.t, urlaubEnd(pu)]);
@@ -13914,7 +14360,7 @@
         else if (e.k === "streak") {
           if (once("streak")) put(t, "parcel", tx(T.streak, "streak", t), { dim: true });
         } else if (e.k === "flower") {
-          const wilt = !e.taken && now > e.id + FLGIFT.life;
+          const wilt = !e.taken && now2 > e.id + FLGIFT.life;
           if (!wilt || once("wilt")) put(t, "flower", tx(e.taken ? T.flowerTaken : wilt ? T.flowerWilt : T.flowerWait, "flower", t));
         } else if (e.k === "hungry") {
           if (once("hungry")) put(t, "hungry", tx(e.eaten ? T.hungry : T.hungryNow, "hungry", t));
@@ -13977,9 +14423,9 @@
         const c = this._poopsSeen().clean;
         fazit = this._urlaubOn() ? `Liebes Tagebuch, ich bin gerade bei ${fr}. Bis bald!` : this._sleepTime() ? "Psst, ich schlafe gerade. Blättere ruhig leise." : s < 30 ? "Liebes Tagebuch, mein Bauch knurrt gerade ein bisschen." : c < 30 ? "Liebes Tagebuch, auf meiner Wiese müsste mal jemand sauber machen." : g < 30 ? "Liebes Tagebuch, ich hätte gern ein paar Streicheleinheiten." : one.has("parcel") ? "Liebes Tagebuch, heute ist ein aufregender Tag: Es gab ein Päckchen!" : Math.min(s, g, c) >= 70 ? "Liebes Tagebuch, heute geht es mir richtig gut." : "Liebes Tagebuch, heute ist ein gemütlicher Tag.";
       } else {
-        fazit = inU(start) && inU(Math.min(end, now) - 1) ? `Liebes Tagebuch, gestern war ich bei ${fr}.` : !mine.length ? "Liebes Tagebuch, über gestern weiß ich leider nichts mehr." : one.has("parcel") ? "Liebes Tagebuch, gestern war ein aufregender Tag: Es gab ein Päckchen!" : one.has("hungry") && pet >= 10 ? "Liebes Tagebuch, gestern hat mein Bauch mal geknurrt. Aber gestreichelt wurde ich ganz viel." : one.has("hungry") ? "Liebes Tagebuch, gestern hat mein Bauch mal geknurrt. Sonst war es schön." : pet >= 10 ? "Liebes Tagebuch, gestern wurde ich ganz viel gestreichelt. Das war schön." : "Liebes Tagebuch, gestern war ein schöner Tag.";
+        fazit = inU(start) && inU(Math.min(end, now2) - 1) ? `Liebes Tagebuch, gestern war ich bei ${fr}.` : !mine.length ? "Liebes Tagebuch, über gestern weiß ich leider nichts mehr." : one.has("parcel") ? "Liebes Tagebuch, gestern war ein aufregender Tag: Es gab ein Päckchen!" : one.has("hungry") && pet >= 10 ? "Liebes Tagebuch, gestern hat mein Bauch mal geknurrt. Aber gestreichelt wurde ich ganz viel." : one.has("hungry") ? "Liebes Tagebuch, gestern hat mein Bauch mal geknurrt. Sonst war es schön." : pet >= 10 ? "Liebes Tagebuch, gestern wurde ich ganz viel gestreichelt. Das war schön." : "Liebes Tagebuch, gestern war ein schöner Tag.";
       }
-      return { start, entries: out, chips, fazit, early: today && ws > now };
+      return { start, entries: out, chips, fazit, early: today && ws > now2 };
     }
     _diaryPage(M, today, fail, none) {
       const box = today ? this._urlaubBox() : "";
@@ -14786,9 +15232,9 @@
       if (this._inside || this._lift > 0 || this._wx?.shelter || this._wx?.wet || this._urlaubFern()) return false;
       if (this._dbgRitual) return true;
       if (this._dbgSleep != null) return false;
-      const now = this._haNow();
-      const bed = this._bedOf(now);
-      return bed != null && this._ritNight !== bed && now - bed <= RITUAL.late;
+      const now2 = this._haNow();
+      const bed = this._bedOf(now2);
+      return bed != null && this._ritNight !== bed && now2 - bed <= RITUAL.late;
     }
     // Das Ritual. Füttern (das Futter landet) und Streicheln (_pet) brechen es ab: Dann räumt es auf, und der nächste
     // Schritt der Schleife bringt ihn wie sonst ins Bett (gähnen, in den Bau). Mit „Bewegung reduzieren“ ohne Strecken:
@@ -15212,11 +15658,11 @@
     // von HA aus; der Takt stellt nur rechtzeitig den Wecker. Nach einem Uhrenabgleich wird neu gestellt (_clockMoved),
     // der alte Wecker prüft die Uhr selbst und tut zur falschen Zeit nichts.
     _festArm() {
-      const now = this._festNow();
-      const M = festMoments(now);
+      const now2 = this._festNow();
+      const M = festMoments(now2);
       const A = this._festArmed ??= {};
       for (const [k, fn] of [["mid", () => this._festMidnight()], ["helau", () => this._festHelau()]]) {
-        const ms = M[k] - now;
+        const ms = M[k] - now2;
         if (ms <= 0 || ms > FEST_AHEAD || A[k] === M[k]) continue;
         A[k] = M[k];
         this._festLater(fn, ms + 30);
@@ -15286,19 +15732,19 @@
     // Beginn eines Abendfensters (Minuten nach Mitternacht): zur Uhrzeit at, bei früher Schlafenszeit (Standard:
     // Sonnenuntergang, im November gegen halb fünf) aber schon lead Minuten davor. Sonst verschliefe er Laternenumzug
     // und leeren Stiefel. Geht er erst nach Mitternacht schlafen, bleibt es bei at.
-    _festEve(now, at, lead) {
+    _festEve(now2, at, lead) {
       if (!this._cfg) return at;
-      const bed = (this._wakeDay(now)[1] - new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime()) / 6e4;
+      const bed = (this._wakeDay(now2)[1] - new Date(now2.getFullYear(), now2.getMonth(), now2.getDate()).getTime()) / 6e4;
       return Math.min(at, bed - lead);
     }
     // Aktive Feste am (Orts-)Datum. festive: false lässt nur die Geburtstage übrig.
     _festToday(at = this._festNow()) {
-      const now = new Date(at);
-      const y = now.getFullYear();
-      const mo = now.getMonth() + 1;
-      const d = now.getDate();
-      const h = now.getHours();
-      const hm = h * 60 + now.getMinutes();
+      const now2 = new Date(at);
+      const y = now2.getFullYear();
+      const mo = now2.getMonth() + 1;
+      const d = now2.getDate();
+      const h = now2.getHours();
+      const hm = h * 60 + now2.getMinutes();
       const md = mo * 100 + d;
       const day = festDay(y, mo, d);
       const f2 = { year: y };
@@ -15306,14 +15752,14 @@
         const hwNight = md === 1101 && h < 6;
         if (md >= 1024 && md <= 1031 || hwNight) f2.halloween = true;
         if (md === 1031 || hwNight) f2.witch = true;
-        if (md === 1111) f2.martin = { walk: hm >= this._festEve(now, 16 * 60, 90) };
+        if (md === 1111) f2.martin = { walk: hm >= this._festEve(now2, 16 * 60, 90) };
         const adv = festAdvent1(y);
         if (day >= adv && md <= 1224) {
           f2.advent = { candles: Math.min(4, 1 + Math.floor((day - adv) / 7)) };
           if ((day - adv) % 7 === 0) f2.advent.neu = day;
         }
         if (day >= adv || md <= 106) f2.lights = true;
-        if (md === 1205 && hm >= this._festEve(now, 18 * 60, 120) || md === 1206) f2.boot = { full: md === 1206 };
+        if (md === 1205 && hm >= this._festEve(now2, 18 * 60, 120) || md === 1206) f2.boot = { full: md === 1206 };
         if (md >= 1224 && md <= 1226) f2.xmas = true;
         if (md === 1231 && hm >= 23 * 60 + 55 || md === 101 && h < 1) f2.fireworks = true;
         if (md === 101 && h >= 1) f2.sticks = true;
@@ -15576,14 +16022,14 @@
     }
     // ---- Himmel: Fledermaus, Feuerwerk, Konfetti ----
     _festBat() {
-      const sky = this._festEls?.sky;
-      if (!sky || !this._g || calmMotion()) return;
+      const sky2 = this._festEls?.sky;
+      if (!sky2 || !this._g || calmMotion()) return;
       const W = this._W;
       const H = this._Hs;
       const el = document.createElement("div");
       el.className = "fbat";
       el.innerHTML = FEST_BAT;
-      sky.appendChild(el);
+      sky2.appendChild(el);
       const dir = pick([-1, 1]);
       const y0 = H * rnd(0.12, 0.4);
       const kf = [];
@@ -15620,8 +16066,8 @@
       }
     }
     _festRocket() {
-      const sky = this._festEls?.sky;
-      if (!sky || !this._g || this._away()) return;
+      const sky2 = this._festEls?.sky;
+      if (!sky2 || !this._g || this._away()) return;
       const W = this._W;
       const H = this._Hs;
       const x0 = rnd(0.3, 0.92) * W;
@@ -15632,7 +16078,7 @@
       r.className = "fwr";
       r.style.left = `${festF1(x0)}px`;
       r.style.top = `${festF1(y0)}px`;
-      sky.appendChild(r);
+      sky2.appendChild(r);
       const ang = Math.atan2(x1 - x0, y0 - y1) * 180 / Math.PI;
       const dur = rnd(900, 1400);
       r.animate([
@@ -15645,8 +16091,8 @@
       }, dur);
     }
     _festBurst(x, y) {
-      const sky = this._festEls?.sky;
-      if (!sky || this._away()) return;
+      const sky2 = this._festEls?.sky;
+      if (!sky2 || this._away()) return;
       const H = this._H;
       const calm = calmMotion();
       const c = pick(FEST_FW_COLORS);
@@ -15688,7 +16134,7 @@
           { transform: `translate(${festF1(Math.cos(a) * d)}px, ${festF1(Math.sin(a) * d + H * 0.13)}px)`, opacity: 0 }
         ], { duration: rnd(1600, 2300), delay: 250 + rnd(0, 300), easing: "ease-in", fill: "both" });
       }
-      sky.appendChild(box);
+      sky2.appendChild(box);
       this._festLater(() => box.remove(), 2900);
       const L = this._festEls.light;
       L.style.setProperty("--fx", `${festF1(x)}px`);
@@ -16077,11 +16523,11 @@
     _raw(k) {
       if (!this._stats) return 70;
       const t = this._stats[k + "t"];
-      const now = this._haNow();
+      const now2 = this._haNow();
       const ur = this._plan?.ur;
-      const key = `${t}|${Math.floor(now / 1e3)}|${this._wdSig}|${ur ? `${ur.t}.${ur.d}` : ""}`;
+      const key = `${t}|${Math.floor(now2 / 1e3)}|${this._wdSig}|${ur ? `${ur.t}.${ur.d}` : ""}`;
       const M = this._rawM ??= {};
-      if (M[k]?.key !== key) M[k] = { key, h: this._decayH(t, now) };
+      if (M[k]?.key !== key) M[k] = { key, h: this._decayH(t, now2) };
       return clamp(this._stats[k] - M[k].h * RATE[k], 0, 100);
     }
     // Abbau-Stunden zwischen t1 und t2: wach voll, im Schlaf SLEEP_DECAY (Wachfenster wie bei Schlafenszeit und Häufchen).
@@ -16137,8 +16583,8 @@
       const i = this._sent.indexOf(e);
       if (i < 0) return;
       this._sent.splice(i, 1);
-      const now = Date.now();
-      this._lostW = [...(this._lostW || []).filter((l) => now - l.at < 30 * 6e4), { v: e.v, gain: e.gain, at: now }].slice(-8);
+      const now2 = Date.now();
+      this._lostW = [...(this._lostW || []).filter((l) => now2 - l.at < 30 * 6e4), { v: e.v, gain: e.gain, at: now2 }].slice(-8);
       this._gain.s += e.gain.s;
       this._gain.g += e.gain.g;
       this._gain.c ||= e.gain.c;
@@ -16282,9 +16728,9 @@
     // nach seiner Pause neu hinaus.
     _sentLook() {
       this._sentT = null;
-      const now = Date.now();
+      const now2 = Date.now();
       for (const e of [...this._sent]) {
-        if (!this._sent.includes(e) || e.due == null || e.due > now) continue;
+        if (!this._sent.includes(e) || e.due == null || e.due > now2) continue;
         if (e.failed) {
           this._sentLost(e);
           continue;
@@ -16292,7 +16738,7 @@
         if (this._hass?.states[this._cfg.entity]?.state === e.v) this._sent.splice(this._sent.indexOf(e), 1);
         else if (this._hassN === e.n || this._hass?.connected === false) {
           e.step = Math.min(e.step * 2, SENT_MAX);
-          e.due = now - e.at < SENT_END ? now + e.step : null;
+          e.due = now2 - e.at < SENT_END ? now2 + e.step : null;
         } else this._sentLost(e);
       }
       this._sentArm();
@@ -16314,8 +16760,8 @@
     _sentWake() {
       if (!this._sentOff && (this._sentT || !this._sent.length)) return;
       this._sentOff = false;
-      const now = Date.now();
-      for (const e of this._sent) if (!(e.due > now)) Object.assign(e, { due: now + (e.failed ? 5e3 : SENT_FIRST), step: SENT_FIRST });
+      const now2 = Date.now();
+      for (const e of this._sent) if (!(e.due > now2)) Object.assign(e, { due: now2 + (e.failed ? 5e3 : SENT_FIRST), step: SENT_FIRST });
       this._sentArm();
     }
     // Zweifel am eigenen Stand nach dem Wiedereinhängen oder Trennen (gepflegt vom Tagesplan, _planDoubt/_planHass, auch
@@ -16365,9 +16811,9 @@
         }
         if (st !== v) {
           const L = this._sent;
-          const now = Date.now();
+          const now2 = Date.now();
           const dup = this._echoDup(L, this._sentV ??= [], v);
-          const e = { v, gain: this._gain, at: now, n: this._hassN, step: SENT_FIRST, due: now + SENT_FIRST, gap: this._sentOff === true, txt: dup || !!this._gainOld };
+          const e = { v, gain: this._gain, at: now2, n: this._hassN, step: SENT_FIRST, due: now2 + SENT_FIRST, gap: this._sentOff === true, txt: dup || !!this._gainOld };
           L.push(e);
           if (L.length > 8) L.shift();
           this._hass.callService("input_text", "set_value", { entity_id: id, value: v }).then((r) => {
@@ -16467,22 +16913,22 @@
     // Senden, lu − jetzt ist also etwas kleiner als der wahre Versatz (siehe _clockSample). Erste Sicht und die
     // Sekunden nach dem (Wieder-)Verbinden zählen nicht: Das sind alte Stände.
     _clockHass(hass) {
-      const now = Date.now();
+      const now2 = Date.now();
       const conn = hass.connected !== false;
-      if (conn && !this._clkConn) this._clkSkip = now + 5e3;
+      if (conn && !this._clkConn) this._clkSkip = now2 + 5e3;
       this._clkConn = conn;
       const c = this._cfg;
       const seen = this._clkSeen ??= {};
       for (const id of [c.sun_entity, c.entity, c.plan_entity, c.weather_entity, c.flight_entity]) {
         const o = id ? hass.states[id] : void 0;
-        if (o && seen[id] && o !== seen[id] && conn && now > this._clkSkip) this._clockSample(Date.parse(o.last_updated), now);
+        if (o && seen[id] && o !== seen[id] && conn && now2 > this._clkSkip) this._clockSample(Date.parse(o.last_updated), now2);
         if (id) seen[id] = o;
       }
     }
-    _clockSample(lu, now = Date.now()) {
+    _clockSample(lu, now2 = Date.now()) {
       if (!Number.isFinite(lu) || document.hidden) return;
       const S = this._clockS ??= [];
-      S.push(lu - now);
+      S.push(lu - now2);
       if (S.length > CLOCK_KEEP) S.shift();
       this._clockOff = Math.max(...S);
       const use = this._clockUse || 0;
@@ -16600,16 +17046,16 @@
     // Ob er wirklich kommt (Pika wach, Tag, trocken), prüft _friendDue; passt es gerade nicht, kommt er später
     // im selben Fenster. Ein Besuch, der mit Abschied endete, wird nicht wiederholt (_frUsed).
     _friendSchedule() {
-      const now = this._visitNow();
+      const now2 = this._visitNow();
       const { win, p, spread, stay: [s0, s1] } = FRIEND_WIN;
-      for (let k = Math.floor(now / win) - 1; ; k++) {
+      for (let k = Math.floor(now2 / win) - 1; ; k++) {
         const r = (n) => seedRnd("friend", k, n);
         if (r(0) >= p) continue;
         const at = k * win + Math.floor(r(1) * spread);
         const end = at + Math.round((s0 + r(2) * (s1 - s0)) * 6e4);
-        if (now >= end) continue;
-        const start = Math.max(now, at);
-        return { nextInMs: start - now, stayMs: end - start, side: r(3) < 0.5 ? -1 : 1, kind: friendKind(r(4)) };
+        if (now2 >= end) continue;
+        const start = Math.max(now2, at);
+        return { nextInMs: start - now2, stayMs: end - start, side: r(3) < 0.5 ? -1 : 1, kind: friendKind(r(4)) };
       }
     }
     _friendOn() {
@@ -16621,10 +17067,10 @@
       clearTimeout(this._frT);
       this._frT = null;
       if (!this._friendOn() || this._fr) return;
-      const now = this._visitNow();
+      const now2 = this._visitNow();
       const s = this._friendSchedule();
-      const end = now + s.nextInMs + s.stayMs;
-      if (end <= (this._frUsed || 0) + 500) this._frT = setTimeout(() => this._friendPlan(), this._frUsed - now + 1e3);
+      const end = now2 + s.nextInMs + s.stayMs;
+      if (end <= (this._frUsed || 0) + 500) this._frT = setTimeout(() => this._friendPlan(), this._frUsed - now2 + 1e3);
       else this._frT = setTimeout(() => this._friendDue(), s.nextInMs);
     }
     _friendDue() {
@@ -16831,15 +17277,15 @@
     }
     // Pino verabschiedet sich. now: gleich (Pika geht schlafen, Wetter schlägt um, Vorschau-Knopf).
     // sleep: der Pika geht schlafen und schaut ihm nicht nach.
-    _friendLeave(now = false, sleep = false) {
+    _friendLeave(now2 = false, sleep = false) {
       const fr = this._fr;
       if (!fr || fr.leaving) return;
       fr.leaving = true;
-      fr.hurry = now;
+      fr.hurry = now2;
       const s = this._friendSchedule();
       if (!s.nextInMs) {
         this._frUsed = Math.max(this._frUsed || 0, this._visitNow() + s.stayMs);
-        if (now) this._planOp({ t: "frgone", u: Math.ceil(this._frUsed / 1e3) * 1e3 });
+        if (now2) this._planOp({ t: "frgone", u: Math.ceil(this._frUsed / 1e3) * 1e3 });
       }
       this._frTake(fr);
       if (!sleep && !this._asleep) {
@@ -18155,14 +18601,14 @@
       const vn = this._viewN();
       const ridge = this._arealKey === "alpin";
       if (e != null && az != null) this._place(this._el.sun, skyPos(az, e, vn, ridge));
-      const now = this._dbgDate ?? Date.now();
+      const now2 = this._dbgDate ?? Date.now();
       const cfg = this._hass?.config;
       const size = `${this._W}x${this._Hs}`;
-      if (cfg && Number.isFinite(cfg.latitude) && (this._dbgDate || !this._moonT || now - this._moonT > 3e4 || this._moonRidge !== ridge)) {
-        this._moonT = now;
+      if (cfg && Number.isFinite(cfg.latitude) && (this._dbgDate || !this._moonT || now2 - this._moonT > 3e4 || this._moonRidge !== ridge)) {
+        this._moonT = now2;
         this._moonRidge = ridge;
-        const m = moonPosition(now, cfg.latitude, cfg.longitude);
-        const ph = moonPhase(now);
+        const m = moonPosition(now2, cfg.latitude, cfg.longitude);
+        const ph = moonPhase(now2);
         this._place(this._el.moon, skyPos(m.az, m.alt, vn, ridge));
         const d = moonPath(ph, vn);
         if (d !== this._moonD) this._el.moonLit.setAttribute("d", this._moonD = d);
@@ -18250,9 +18696,9 @@
       const prev = el._pos;
       if (prev && Math.abs(prev.x - x) < 0.05 && Math.abs(prev.y - y) < 0.05) return;
       el._pos = { x, y };
-      const now = Date.now();
-      if (prev && Math.hypot(prev.x - x, prev.y - y) > 1) el._glide = now + 9e4;
-      el.style.transition = !prev ? "none" : now < (el._glide || 0) ? "" : "opacity 2.5s, background 2.5s";
+      const now2 = Date.now();
+      if (prev && Math.hypot(prev.x - x, prev.y - y) > 1) el._glide = now2 + 9e4;
+      el.style.transition = !prev ? "none" : now2 < (el._glide || 0) ? "" : "opacity 2.5s, background 2.5s";
       el.style.left = `${x.toFixed(2)}%`;
       el.style.top = `${y.toFixed(2)}%`;
       if (!prev) {
@@ -18618,17 +19064,17 @@
         this._wxHistFail = 0;
         this._wxHistDue = 0;
       }
-      const now = this._haNow();
+      const now2 = this._haNow();
       const lu = Date.parse(w.last_updated);
       const lc = Date.parse(w.last_changed);
-      const t = Number.isFinite(lu) ? lu : Number.isFinite(lc) ? lc : now;
+      const t = Number.isFinite(lu) ? lu : Number.isFinite(lc) ? lc : now2;
       const row = { t, c: w.state, T: wxTemp(w.attributes) };
       const seen = this._wxCur;
       this._wxCur = row;
       const log = (this._wxLog || []).filter((r) => r.t <= t);
       const first = !log.length && Number.isFinite(lc) && lc < t ? [{ ...row, t: lc }] : [];
-      this._wxLog = wxLogAdd(log, [...first, row], Math.max(now, t));
-      if (seen && seen.t !== t && now - t > WX_LATE) this._wxHistAsk();
+      this._wxLog = wxLogAdd(log, [...first, row], Math.max(now2, t));
+      if (seen && seen.t !== t && now2 - t > WX_LATE) this._wxHistAsk();
       this._wxHist();
     }
     // Den Recorder (noch einmal) fragen, frühestens pause ms nach dem letzten Versuch (gegen Dauerabfragen): wenn die
@@ -18654,11 +19100,11 @@
       this._wxHistDue = Infinity;
       let rows = null;
       try {
-        const now = this._haNow();
+        const now2 = this._haNow();
         const res = await hass.callWS({
           type: "history/history_during_period",
-          start_time: new Date(now - WX_KEEP).toISOString(),
-          end_time: new Date(now + 6e4).toISOString(),
+          start_time: new Date(now2 - WX_KEEP).toISOString(),
+          end_time: new Date(now2 + 6e4).toISOString(),
           // auch Meldungen, bei denen sich nur ein Attribut geändert hat: Die Temperatur gehört zum Verlauf
           entity_ids: [id],
           minimal_response: false,
@@ -18675,8 +19121,8 @@
         if (rows) {
           this._wxHistFail = 0;
           this._guard("Wetterverlauf", () => {
-            const now = Math.max(this._haNow(), this._wxCur?.t || 0);
-            this._wxLog = wxLogMerge([...this._wxLog || [], this._wxCur], rows, now);
+            const now2 = Math.max(this._haNow(), this._wxCur?.t || 0);
+            this._wxLog = wxLogMerge([...this._wxLog || [], this._wxCur], rows, now2);
             this._applyWeather();
             this._bowSync();
           });
@@ -18793,8 +19239,8 @@
       el.innerHTML = durs.map((d, l) => {
         let h = "";
         for (let i = l; i < n; i += durs.length) h += one(i);
-        const inner = sways ? `<div class="pw" style="--pw:${sways[l]}s;animation-delay:${(-(t % sways[l])).toFixed(2)}s">${h}</div>` : h;
-        return `<div class="pl" style="--pd:${d}s;animation-delay:${(-((t + seeded(K2, l) * d) % d)).toFixed(2)}s">${inner}</div>`;
+        const inner2 = sways ? `<div class="pw" style="--pw:${sways[l]}s;animation-delay:${(-(t % sways[l])).toFixed(2)}s">${h}</div>` : h;
+        return `<div class="pl" style="--pd:${d}s;animation-delay:${(-((t + seeded(K2, l) * d) % d)).toFixed(2)}s">${inner2}</div>`;
       }).join("");
       this._el.precip.appendChild(el);
       void el.offsetWidth;
@@ -19025,13 +19471,13 @@
       const B = this._boteSync();
       if (!B.list.length) return;
       const S = hass.states;
-      const now = this._haNow();
+      const now2 = this._haNow();
       for (const a of B.list) {
         const c = a.cfg;
         const o = [S[c.state], c.progress && S[c.progress], c.end && S[c.end], c.door && S[c.door]];
         if (a.seen && o.every((v, i) => v === a.objs[i])) continue;
         a.objs = o;
-        this._boteRead(a, o, now);
+        this._boteRead(a, o, now2);
       }
       this._boteHist();
     }
@@ -19055,8 +19501,8 @@
     _tickBote() {
       const B = this._boteSync();
       if (!B.list.length) return;
-      const now = this._haNow();
-      for (const a of B.queue) if (now - a.liveAt > 18e4) a.live = false;
+      const now2 = this._haNow();
+      for (const a of B.queue) if (now2 - a.liveAt > 18e4) a.live = false;
       B.queue = B.queue.filter((a) => a.live);
       this._boteRefresh();
     }
@@ -19065,10 +19511,10 @@
       if (!B?.list.length || !this._g) return [];
       B.queue = B.queue.filter((a) => a.live && a.phase === "empty");
       if (B.queue.length) return [[1e3, "boteEmpty"]];
-      const now = this._haNow();
+      const now2 = this._haNow();
       const acts = [];
-      if (B.list.some((a) => a.phase === "done" && a.el && !a.live && now >= a.nudgeAt)) acts.push([8, "boteNudge"]);
-      if (now - B.runAt > 12e4) {
+      if (B.list.some((a) => a.phase === "done" && a.el && !a.live && now2 >= a.nudgeAt)) acts.push([8, "boteNudge"]);
+      if (now2 - B.runAt > 12e4) {
         for (const a of B.list) if (a.phase === "run" && a.el && !BOTE_HALT.has(a.st)) acts.push([0.6, BOTE_ACT[a.type]]);
       }
       return acts;
@@ -19149,23 +19595,23 @@
     // (unavailable, unknown) bleibt das Gerät, wie es war. Alle Fristen laufen ab dem Zeitpunkt des Ereignisses in HA,
     // nicht ab dem Eintreffen (ein Handy-Tab, der Stunden später aufwacht, räumt nicht mehr sichtbar auf).
     // replay: Stand aus dem Verlauf nachspielen (_boteHist): nichts zeigen, nicht melden, nicht unterbrechen.
-    _boteRead(a, [st, pr, en, dr], now, replay = false) {
+    _boteRead(a, [st, pr, en, dr], now2, replay = false) {
       const norm = (v) => String(v ?? "").split(".").pop().toLowerCase().replace(/[\s_-]/g, "");
-      const lc = (o) => Math.min(now, Date.parse(o?.last_changed) || Date.parse(o?.last_updated) || now);
+      const lc = (o) => Math.min(now2, Date.parse(o?.last_changed) || Date.parse(o?.last_updated) || now2);
       const raw = norm(st?.state);
       let s = boteState(raw, a.map);
       const dead = BOTE_DEAD.has(s);
-      const longDead = !dead && a.deadAt != null && now - a.deadAt > 15 * 6e4;
-      a.deadAt = dead ? a.deadAt ?? now : null;
+      const longDead = !dead && a.deadAt != null && now2 - a.deadAt > 15 * 6e4;
+      a.deadAt = dead ? a.deadAt ?? now2 : null;
       const first = !a.seen || longDead;
       a.seen = true;
       if (a.st === "finished" && s === "pause" && !first) s = "finished";
       if (!replay) this._boteWarn(a, st, s, dead, [pr, en, dr]);
       const pct = this._botePct(pr, a);
-      const end = this._boteEnd(en, now);
+      const end = this._boteEnd(en, now2);
       const doorDead = !dr || BOTE_DEAD.has(norm(dr.state));
       const door = doorDead ? !!a.door : BOTE_OPEN.has(norm(dr.state));
-      const doorAt = doorDead ? now : lc(dr);
+      const doorAt = doorDead ? now2 : lc(dr);
       const prevSt = a.st;
       const prevPct = a.pct;
       const prevEnd = a.end;
@@ -19176,7 +19622,7 @@
       Object.assign(a, {
         st: cur,
         door,
-        changed: stChanged && !dead ? lc(st) : a.changed ?? now,
+        changed: stChanged && !dead ? lc(st) : a.changed ?? now2,
         pct: pct ?? (dead ? prevPct : null),
         end: end ?? (dead ? prevEnd : null)
       });
@@ -19196,7 +19642,7 @@
       const emptied = (t) => {
         a.emptyUntil = t + BOTE_EMPTY_MS;
         a.wait = false;
-        live = !replay && now - t < BOTE_LIVE_MS;
+        live = !replay && now2 - t < BOTE_LIVE_MS;
       };
       const idle = BOTE_IDLE.has(cur);
       const byDoor = a.emptyOn === "door";
@@ -19232,25 +19678,25 @@
           a.emptyUntil = 0;
         }
       }
-      const ph = this._botePhase(a, now);
+      const ph = this._botePhase(a, now2);
       const from = a.phase;
       if (ph !== from) {
         a.phase = ph;
         if (ph !== "empty") a.live = false;
         if (!replay) {
-          if (ph === "done") a.nudgeAt = now + (first ? rnd(2e4, 6e4) : rnd(5e3, 12e3));
+          if (ph === "done") a.nudgeAt = now2 + (first ? rnd(2e4, 6e4) : rnd(5e3, 12e3));
           if (from === "run" && this._action === BOTE_ACT[a.type]) this._interrupt();
           if (live && (from === "done" || from === "run") && ph === "empty") this._boteLive(a);
         }
       }
       if (!replay) this._boteRender(a);
     }
-    _botePhase(a, now) {
-      if (a.deadAt != null && now - a.deadAt > 30 * 6e4) return null;
+    _botePhase(a, now2) {
+      if (a.deadAt != null && now2 - a.deadAt > 30 * 6e4) return null;
       if (BOTE_RUN.has(a.st)) return "run";
       if (a.st === "finished" && !a.opened) return "done";
-      if (a.wait && !a.opened) return now - (a.finAt ?? now) < BOTE_WAIT_MS ? "done" : null;
-      return a.emptyUntil && now < a.emptyUntil ? "empty" : null;
+      if (a.wait && !a.opened) return now2 - (a.finAt ?? now2) < BOTE_WAIT_MS ? "done" : null;
+      return a.emptyUntil && now2 < a.emptyUntil ? "empty" : null;
     }
     // Beim Laden: Zustand und Tür der letzten 24 Stunden aus dem Recorder nachspielen. Erst damit weiß ein frisch
     // geladenes Gerät, ob ein „ready“ ein Programmende war und ob die Tür danach wirklich aufging (ein kurzes
@@ -19331,10 +19777,10 @@
     }
     // Endzeit: Zeitstempel, oder Restzeit als Zahl (Einheit s/min/h aus unit_of_measurement, sonst Minuten) bzw.
     // als h:mm(:ss). Nur Werte von jetzt −1 h bis +24 h zählen, alles andere (z. B. "83" als Jahr) wird ignoriert.
-    _boteEnd(en, now) {
+    _boteEnd(en, now2) {
       const v = String(en?.state ?? "").trim();
       if (BOTE_DEAD.has(v.toLowerCase())) return null;
-      const base = Math.min(now, Date.parse(en.last_changed) || Date.parse(en.last_updated) || now);
+      const base = Math.min(now2, Date.parse(en.last_changed) || Date.parse(en.last_updated) || now2);
       let t;
       if (/^-?\d+(\.\d+)?$/.test(v)) {
         const u = String(en.attributes?.unit_of_measurement || "min").toLowerCase();
@@ -19343,16 +19789,16 @@
         const [h, m, sec2 = 0] = v.split(":").map(Number);
         t = base + ((h * 60 + m) * 60 + sec2) * 1e3;
       } else t = Date.parse(v);
-      return Number.isFinite(t) && t >= now - 36e5 && t <= now + 864e5 ? t : null;
+      return Number.isFinite(t) && t >= now2 - 36e5 && t <= now2 + 864e5 ? t : null;
     }
     // Zeitabhängiges neu bewerten (Frist abgelaufen, "fertig seit …"), Wind für die Wäscheleine
     _boteRefresh() {
       const B = this._bote;
       if (!B?.list.length) return;
-      const now = this._haNow();
+      const now2 = this._haNow();
       for (const a of B.list) {
         if (!a.seen) continue;
-        const ph = this._botePhase(a, now);
+        const ph = this._botePhase(a, now2);
         if (ph !== a.phase) {
           a.phase = ph;
           if (ph !== "empty") a.live = false;
@@ -19477,10 +19923,10 @@
       const halt = view === "run" && BOTE_HALT.has(a.st);
       cl.toggle("hb-pause", halt);
       cl.toggle("hb-alert", view === "run" && (a.st === "error" || a.st === "actionrequired"));
-      const now = this._haNow();
-      const smell = a.live ? 0 : boteSmell(a, now);
+      const now2 = this._haNow();
+      const smell = a.live ? 0 : boteSmell(a, now2);
       const night = this._el.scene.classList.contains("night");
-      const still = !!this._asleep || view !== "run" && night || view === "done" && !smell && now - (a.finAt || 0) > 60 * 6e4;
+      const still = !!this._asleep || view !== "run" && night || view === "done" && !smell && now2 - (a.finAt || 0) > 60 * 6e4;
       cl.toggle("hb-still", still);
       cl.toggle("hb-smell", smell > 0 && !this._asleep && !night);
       cl.toggle("hb-smell2", smell > 1 && !this._asleep && !night);
@@ -19494,7 +19940,7 @@
       bar.classList.toggle("pause", halt);
       bar.classList.toggle("hb-still", still);
       if (a.pct != null) bar.style.setProperty("--p", `${a.pct.toFixed(1)}%`);
-      const lt = mode === "none" || a.live || mode === "done" && view !== "done" ? null : boteLabel(a, now);
+      const lt = mode === "none" || a.live || mode === "done" && view !== "done" ? null : boteLabel(a, now2);
       if (a.lab.textContent !== (lt || "")) {
         a.lab.textContent = lt || "";
         if (a.spec && a.k) this._boteLabPos(a);
@@ -20098,11 +20544,11 @@
       const prevSt = C2.st;
       C2.st = a?.state;
       const prog = String(a?.state || "").toLowerCase();
-      const now = this._haNow();
+      const now2 = this._haNow();
       if (COFFEE_PROG.test(prog)) {
         if (C2.brew?.prog !== prog) {
-          C2.brew = { prog, at: Date.parse(a.last_changed) || now, sniffed: false };
-          if (this._asleep && this._el && now - C2.brew.at < 6e4) {
+          C2.brew = { prog, at: Date.parse(a.last_changed) || now2, sniffed: false };
+          if (this._asleep && this._el && now2 - C2.brew.at < 6e4) {
             this._el.pika.classList.add("peek");
             setTimeout(() => this._el.pika.classList.remove("peek"), 900);
           } else if (["idle", "look", "wander", "groom"].includes(this._action)) this._interrupt();
@@ -20112,7 +20558,7 @@
       if (!a || a.state === "unavailable") return;
       const brew = C2.brew;
       C2.brew = null;
-      const end = Date.parse(a.last_changed) || now;
+      const end = Date.parse(a.last_changed) || now2;
       let key = null;
       const t0 = n && n.state !== "unavailable" && n.state !== "unknown" && Date.parse(n.last_changed);
       const used = (k) => C2.done.includes(k) || C2.pend?.key === k || C2.next?.key === k;
@@ -20141,7 +20587,7 @@
         j: 0
       };
       if (C2.pend) P = coffeeQueue(C2.pend.end, P);
-      if (now > P.end - 3e3) return this._coffeeMark(key);
+      if (now2 > P.end - 3e3) return this._coffeeMark(key);
       if (C2.pend) {
         if (C2.next) this._coffeeMark(C2.next.key);
         C2.next = P;
@@ -20153,12 +20599,12 @@
     _tickCoffee() {
       const C2 = this._cof;
       if (!C2) return;
-      const now = this._haNow();
-      if (C2.pend?.stage === "fetch" && now > C2.pend.end - 3e3) {
+      const now2 = this._haNow();
+      if (C2.pend?.stage === "fetch" && now2 > C2.pend.end - 3e3) {
         this._coffeeMark(C2.pend.key);
         C2.pend = null;
       }
-      if (C2.pend && C2.pend.stage !== "fetch" && now > C2.pend.end + COFFEE_LATE && this._action !== "coffee") {
+      if (C2.pend && C2.pend.stage !== "fetch" && now2 > C2.pend.end + COFFEE_LATE && this._action !== "coffee") {
         this._coffeeMark(C2.pend.key);
         C2.pend = null;
       }
@@ -20166,7 +20612,7 @@
         C2.pend = C2.next;
         C2.next = null;
       }
-      if (C2.brew && now - C2.brew.at > 10 * 6e4) C2.brew.sniffed = true;
+      if (C2.brew && now2 - C2.brew.at > 10 * 6e4) C2.brew.sniffed = true;
     }
     _coffeeDue() {
       const P = this._cof?.pend;
@@ -20379,12 +20825,12 @@
       if (!this._giftOn() || !this._stats || !this._plan || !this._planOk || this._planStale) return null;
       if (this._cfg.entity && !this._noEntity && !this._synced) return null;
       if (this._urlaubOn() || this._urlaubStale()) return null;
-      const now = this._haNow();
-      if (!this._plan.gift) this._planOp({ t: "gstart", k: sec(now) });
+      const now2 = this._haNow();
+      if (!this._plan.gift) this._planOp({ t: "gstart", k: sec(now2) });
       let G = this._plan.gift;
       if (!G) return null;
       if (G.f == null) {
-        this._planOp({ t: "gmig", k: G.k, f: Math.max(0, Math.floor((now - G.k) / 864e5)) });
+        this._planOp({ t: "gmig", k: G.k, f: Math.max(0, Math.floor((now2 - G.k) / 864e5)) });
         G = this._plan.gift;
       }
       const min = GIFT.min;
@@ -20397,9 +20843,9 @@
         for (const k of lowS) low.push(st[k] > min ? this._decayAt(st[k + "t"], (st[k] - min) / RATE[k]) : st[k + "t"]);
       }
       if (lowC && bad && G.b == null) {
-        const sh = this._now() - now;
-        let lo = Math.max(G.k, now - 2 * 864e5) + sh;
-        let hi = now + sh;
+        const sh = this._now() - now2;
+        let lo = Math.max(G.k, now2 - 2 * 864e5) + sh;
+        let hi = now2 + sh;
         if (this._poops(lo).clean < min) hi = lo;
         else {
           for (let i = 0; i < 16; i++) {
@@ -20410,21 +20856,21 @@
         }
         low.push(hi - sh);
       }
-      if (low.length && Date.now() >= (this._careHold || 0)) this._planOp({ t: "gbad", k: G.k, b: sec(clamp(Math.min(...low), G.k, now)) });
+      if (low.length && Date.now() >= (this._careHold || 0)) this._planOp({ t: "gbad", k: G.k, b: sec(clamp(Math.min(...low), G.k, now2)) });
       G = this._plan.gift;
-      const over = G.b != null && this._awakeMs(G.b, now) > GIFT.grace;
-      const end = G.b == null ? now : Math.min(now, this._awakeAdd(G.b, GIFT.grace));
+      const over = G.b != null && this._awakeMs(G.b, now2) > GIFT.grace;
+      const end = G.b == null ? now2 : Math.min(now2, this._awakeAdd(G.b, GIFT.grace));
       const p = G.p ?? this._awakeAdd(G.k, G.a * GIFT.every);
       const awake = Math.max(0, this._awakeMs(p, end));
       const de = Math.floor(awake / GIFT.every);
       if (de > 0 || G.p == null) this._planOp({ t: "gearn", k: G.k, e: G.a + de, p: sec(this._awakeAdd(p, de * GIFT.every)) });
-      const grace = G.b != null && !over ? Math.max(0, GIFT.grace - this._awakeMs(G.b, now)) : GIFT.grace;
+      const grace = G.b != null && !over ? Math.max(0, GIFT.grace - this._awakeMs(G.b, now2)) : GIFT.grace;
       let res = { frac: awake % GIFT.every / GIFT.every, left: GIFT.every - awake % GIFT.every, warn: G.b != null && !over, broken: over, grace };
       if (!bad && user && G.b != null) {
-        this._planOp({ t: "gok", k: G.k, b: G.b, brk: over, nk: sec(now) });
+        this._planOp({ t: "gok", k: G.k, b: G.b, brk: over, nk: sec(now2) });
         res = over ? { frac: 0, left: GIFT.every, warn: false, broken: false } : { ...res, warn: false };
       }
-      if (!bad) this._careGood(now);
+      if (!bad) this._careGood(now2);
       res.G = this._plan.gift;
       this._care = res;
       this._giftRender();
@@ -20433,8 +20879,8 @@
     // Was heute für einen guten Tag fehlt: gefüttert (Futter von heute im Plan), gestreichelt (Zähler von heute) und einmal
     // alle drei Werte zugleich über GIFT.min. Gezählt wird, sobald alles zusammenkommt, nicht erst am Ende des Tags; ein
     // Riss der Pflege-Serie ist dafür egal. → { fed, pet, ok, good }
-    _careToday(now = this._haNow()) {
-      const d = pikaDay(now);
+    _careToday(now2 = this._haNow()) {
+      const d = pikaDay(now2);
       const c = this._cuteToday();
       return {
         fed: (this._plan?.fd || []).some((x) => pikaDay(x.t) === d),
@@ -20444,11 +20890,11 @@
       };
     }
     // Ein guter Tag: einmal je Pika-Tag ein Freundschaftstag mehr, jeder siebte bringt ein goldenes Päckchen (ggood)
-    _careGood(now) {
+    _careGood(now2) {
       const G = this._plan?.gift;
       if (!G || G.f == null) return;
-      const T = this._careToday(now);
-      if (!T.good && T.fed && T.pet && T.ok) this._planOp({ t: "ggood", d: pikaDay(now) });
+      const T = this._careToday(now2);
+      if (!T.good && T.fed && T.pet && T.ok) this._planOp({ t: "ggood", d: pikaDay(now2) });
     }
     // Bis der Fortschritt einmal berechnet ist, alle 0,5 s versuchen (_careEval braucht Plan, Zustand aus HA und
     // abgeglichenen Stand). Unsichtbar übernimmt das der Tick beim Sichtbarwerden.
@@ -21708,9 +22154,9 @@
       if (!(giftLvs(this._plan?.gift, this._giftHide)[t] >= 3)) return false;
       if (!k || this._dbgGold) return true;
       const at = this._goldAt ??= {};
-      const now = Date.now();
-      if (!goldDue(GOLD[k], at[k], now, Math.random())) return false;
-      at[k] = now;
+      const now2 = Date.now();
+      if (!goldDue(GOLD[k], at[k], now2, Math.random())) return false;
+      at[k] = now2;
       return true;
     }
     // Ein Gold-Teilchen in die Effekt-Ebene (Stil .gfx.<kind>, src/stil/paeckchen.js) an die Stelle x/y (px der Szene).
@@ -22037,11 +22483,11 @@
         }
         const alt = this._planKnown;
         const old = !!alt && (planOld(P, alt) || sent < 0 && this._planMend());
-        const now = this._haNow();
-        const Q = this._planOps.filter((o) => o.at <= this._planAck && now - o.at < 15e3).reduce((X, o) => planApply(X, o, o.at), P);
+        const now2 = this._haNow();
+        const Q = this._planOps.filter((o) => o.at <= this._planAck && now2 - o.at < 15e3).reduce((X, o) => planApply(X, o, o.at), P);
         const K2 = planKeep(Q, alt, old);
         this._planKnown = planKeep(P, alt, old);
-        if (K2 !== Q && !this._planMend()) this._planHealAt = now;
+        if (K2 !== Q && !this._planMend()) this._planHealAt = now2;
         this._planHeal = K2 !== Q;
         this._planBase = this._planHeal ? K2 : P;
         if (sent < 0) this._planOps = planRebase(this._planOps, K2);
@@ -22079,9 +22525,9 @@
     _planAgain(e) {
       const mine = this._planOps.filter((o) => o.t === "pet" && o.out === e.k);
       if (!mine.length) return;
-      const now = this._haNow();
+      const now2 = this._haNow();
       const rest = this._planOps.filter((o) => !mine.includes(o));
-      this._planOps = planRebase([...rest, ...mine.map((o) => ({ t: "pet", d: o.d, n: o.n, at: now }))], this._planBase);
+      this._planOps = planRebase([...rest, ...mine.map((o) => ({ t: "pet", d: o.d, n: o.n, at: now2 }))], this._planBase);
       if (this._planCompose(false)) this._planSave();
     }
     // Steht ein Retten aus (im Helfer fehlt etwas, das dort schon stand)? Höchstens PLAN_MEND lang: Lehnt HA das
@@ -22100,8 +22546,8 @@
     // noch nicht bestätigt (Verbindung weg, Fehler), bleibt sie länger (höchstens 30 Min) und wird erneut gesendet.
     // Behalten wird immer ein zusammenhängendes jüngstes Stück, so bleibt die Reihenfolge beim Wiederholen gleich.
     _planCompose(incoming) {
-      const now = this._haNow();
-      this._planOps = this._planOps.filter((o) => now - o.at < 15e3 || o.at > this._planAck && o.t !== "gdbg" && o.t !== "gbad" && now - o.at < 30 * 6e4);
+      const now2 = this._haNow();
+      this._planOps = this._planOps.filter((o) => now2 - o.at < 15e3 || o.at > this._planAck && o.t !== "gdbg" && o.t !== "gbad" && now2 - o.at < 30 * 6e4);
       let P = this._planBase;
       for (const o of this._planOps) P = planApply(P, o, o.at);
       const keep = this._giftKeep && this._planKeyGift === this._planKey ? this._giftKeep : null;
@@ -22184,10 +22630,10 @@
     }
     // Ein zurückgehaltenes Schreiben geht hinaus, wenn der eigene Stand wieder sicher ist. now: sofort statt gebündelt
     // (die Seite geht zu, die Karte wird abgehängt, oder es hat ohnehin schon gewartet). → ob es hinausging
-    _planRelease(now = false) {
+    _planRelease(now2 = false) {
       if (!this._planHeld || this._planBlind()) return false;
       this._planHeld = false;
-      if (now) this._planSaveNow();
+      if (now2) this._planSaveNow();
       else this._planSave();
       return true;
     }
@@ -22544,13 +22990,13 @@
         await this._at(T0 + 1300);
         await this._propOff("boating");
       }
-      const now = this._planNow();
-      sail(boatPos(now - T0, K2), 0, "linear");
+      const now2 = this._planNow();
+      sail(boatPos(now2 - T0, K2), 0, "linear");
       void boat.offsetWidth;
       boat.classList.add("afloat");
       await this._waitMax(400, T0 + BOAT_T.launch);
       p.classList.remove("sniff");
-      for (let k = clamp(Math.floor((now - T0 - BOAT_T.launch) / BOAT_T.puff), 0, K2); k < K2; k++) {
+      for (let k = clamp(Math.floor((now2 - T0 - BOAT_T.launch) / BOAT_T.puff), 0, K2); k < K2; k++) {
         const tk = T0 + BOAT_T.launch + k * BOAT_T.puff;
         const tb = tk + BOAT_T.blow;
         await this._at(tk);
@@ -22774,14 +23220,14 @@
       let st = 0;
       for (const [i, R2] of twirlRings(S.r).entries()) {
         await this._at(T0 + R2.t);
-        const now = this._planNow() < T0 + R2.t + 300;
+        const now2 = this._planNow() < T0 + R2.t + 300;
         const first = R2.st !== st || i === 0;
         if (R2.st !== st) {
           st = R2.st;
           p.classList.add(st === 1 ? "tw-2" : "tw-3");
-          if (now) this._say(st === 1 ? line(41, ["schneller!", "und schneller!", "hui!"]) : line(42, ["huiii!", "noch schneller!", "wusch!"]), 900);
+          if (now2) this._say(st === 1 ? line(41, ["schneller!", "und schneller!", "hui!"]) : line(42, ["huiii!", "noch schneller!", "wusch!"]), 900);
         }
-        if (now && (!calm || first)) this._twRing(4 + R2.st, 1 + R2.st * 0.3, (j) => S.r(100 + i * 16 + j));
+        if (now2 && (!calm || first)) this._twRing(4 + R2.st, 1 + R2.st * 0.3, (j) => S.r(100 + i * 16 + j));
       }
       await this._at(tEnd);
       p.classList.remove("tw-go", "tw-2", "tw-3");
@@ -22999,7 +23445,7 @@
       const rad = (s) => snowballR(s) * pH;
       const rMax = rad(SNOWBALL_BIG);
       const line = (i, list) => list[Math.floor(S.r(i) * list.length)];
-      const now = () => this._planNow() - T0;
+      const now2 = () => this._planNow() - T0;
       const lo = hayR + H * 0.03;
       const U = groundSpot(S.r(2), pW * 1.5 + rad(1) + rMax, lo, Math.max(lo, rock.l - rock.w * 0.08 - H * 0.04), this._groundBlocks(), 0.2);
       const still = calmMotion() || U.w - rad(1) - rMax < pW * 0.35;
@@ -23042,19 +23488,19 @@
         set(track, `scaleX(${f2.toFixed(3)})`);
       };
       const roll = (a, b, t0, ms, ease = "linear") => {
-        const late = now() - t0;
+        const late = now2() - t0;
         if (late >= ms) return put(...b);
         put(...a);
         void ball.offsetWidth;
         put(...b, ms, ease, Math.max(0, late));
       };
-      const P0 = snowballPos(Math.max(0, now()), run);
-      const chasing = run && now() > t4 && now() < t4 + SNOWBALL_T.gasp + SNOWBALL_T.chase - 600;
+      const P0 = snowballPos(Math.max(0, now2()), run);
+      const chasing = run && now2() > t4 && now2() < t4 + SNOWBALL_T.gasp + SNOWBALL_T.chase - 600;
       put(P0.f, P0.s);
       await this._goSpot(S, chasing ? xAt(fb, 3) : xAt(P0.f, Math.max(1, P0.s)), 0.9);
       this._face(dir);
-      if (now() < SNOWBALL_T.scrape - 300) {
-        if (now() < 300) this._say(line(20, ["Ein Schneeball!", "Rollen!", "Eine Kugel!"]), 1200);
+      if (now2() < SNOWBALL_T.scrape - 300) {
+        if (now2() < 300) this._say(line(20, ["Ein Schneeball!", "Rollen!", "Eine Kugel!"]), 1200);
         await this._at(T0 + 150);
         p.classList.add("sniff");
         await this._at(T0 + SNOWBALL_T.dig);
@@ -23066,7 +23512,7 @@
       }
       for (const [i, ts, a, b] of [[0, SNOWBALL_T.scrape, [0, 1], [fa, 2]], [1, t3, [fa, 2], [fb, 3]]]) {
         const te = ts + SNOWBALL_T.leg;
-        if (now() >= te - HOP_MS.trip) {
+        if (now2() >= te - HOP_MS.trip) {
           put(...b);
           continue;
         }
@@ -23085,19 +23531,19 @@
           await this._wait(ms);
           p.classList.remove("walking", "trip", "sb-push");
         }
-        if (i === 0 && now() < te + 300) this._say(line(21, ["uff!", "sie wächst!", "noch ein Stück!"]), 900);
+        if (i === 0 && now2() < te + 300) this._say(line(21, ["uff!", "sie wächst!", "noch ein Stück!"]), 900);
       }
       await this._at(T0 + t4);
       if (run) {
         const t5 = t4 + SNOWBALL_T.gasp;
         const t6 = t5 + SNOWBALL_T.chase;
         roll([fb, 3], [1, SNOWBALL_BIG], t4, SNOWBALL_T.away, `cubic-bezier(${SNOWBALL_EASE.join(", ")})`);
-        if (now() < t5 - 200) {
+        if (now2() < t5 - 200) {
           this._mimik("awe", 1500);
           this._say(line(22, ["oh!", "huch!", "oh, oh!"]), 500);
         }
         await this._at(T0 + t5);
-        if (now() < t6 - 600) {
+        if (now2() < t6 - 600) {
           this._say(line(23, ["halt!", "Halt!", "bleib hier!"]), 1e3);
           const to = xAt(1, SNOWBALL_BIG);
           await this._hopTo((this._x + to) / 2, 0, false);
@@ -23106,7 +23552,7 @@
         }
         await this._at(T0 + t6);
         p.classList.add("spat");
-        if (now() < t6 + 400) this._say(line(24, ["hab dich!", "gefangen!", "puh!"]), 1e3);
+        if (now2() < t6 + 400) this._say(line(24, ["hab dich!", "gefangen!", "puh!"]), 1e3);
         await this._at(T0 + t6 + SNOWBALL_T.hold);
       } else {
         p.classList.add("spat");
@@ -23518,8 +23964,8 @@
       if (!ent || ent.state === "unavailable" || ent.state === "unknown" || !(Number(ent.attributes?.supported_features) & 1)) return false;
       const { haS, haP } = this._diaryHa();
       if (!haS || !haP) return false;
-      const now = this._haNow();
-      return chronikZoneOk(hass.config?.time_zone, [now, chronikStart(pikaDay(now) - CHRONIK.back)]);
+      const now2 = this._haNow();
+      return chronikZoneOk(hass.config?.time_zone, [now2, chronikStart(pikaDay(now2) - CHRONIK.back)]);
     }
     _chronikLsKey() {
       return `pika-pet-chronik:${this._cfg.name}`;
@@ -23554,10 +24000,10 @@
         this._chronikPause();
       }
       if (!this._synced || !this._planOk || this._planStale || Date.now() < (this._chronikNext || 0)) return;
-      const now = this._haNow();
-      const heute = pikaDay(now);
+      const now2 = this._haNow();
+      const heute = pikaDay(now2);
       this._chronikJit ??= Math.random() * CHRONIK.jitter;
-      if (now < chronikStart(heute) + CHRONIK.wait + this._chronikJit || this._chronikDone(heute)) return;
+      if (now2 < chronikStart(heute) + CHRONIK.wait + this._chronikJit || this._chronikDone(heute)) return;
       if (!(this._chronikStempel() >= chronikStart(heute))) return;
       this._chronikRun(heute);
     }
@@ -23630,12 +24076,12 @@
       const fehlt = chronikFehlt(items, heute, CHRONIK.back);
       const soll = /* @__PURE__ */ new Map();
       if (fehlt.length) {
-        const now = this._haNow();
+        const now2 = this._haNow();
         const from = chronikStart(fehlt[0]);
-        const H = await this._diaryHist(from, now + 6e4, true);
+        const H = await this._diaryHist(from, now2 + 6e4, true);
         if (!live()) return null;
         if (H.fail || H.none || !H.ha) return false;
-        const R2 = diaryDerive(H.S, H.P, from, { decayAt: () => Infinity, until: now });
+        const R2 = diaryDerive(H.S, H.P, from, { decayAt: () => Infinity, until: now2 });
         for (const tag of fehlt) {
           const a = chronikStart(tag);
           const b = chronikStart(tag + 1);
@@ -23799,13 +24245,13 @@
     _urlaubEnde() {
       const P = this._plan;
       if (!this._urlaubOn()) return false;
-      const now = sec(this._haNow());
+      const now2 = sec(this._haNow());
       const t0 = P.ur.t;
-      const d = Math.max(0, now - t0);
-      const op = { t: "voff", t0, d, ht: P.hay.t < t0 ? Math.min(now, P.hay.t + d) : P.hay.t };
+      const d = Math.max(0, now2 - t0);
+      const op = { t: "voff", t0, d, ht: P.hay.t < t0 ? Math.min(now2, P.hay.t + d) : P.hay.t };
       const G = P.gift;
-      if (G?.p != null) op.gp = sec(this._awakeBack(now, this._awakeMs(G.p, t0)));
-      if (G?.b != null) op.gb = sec(this._awakeBack(now, this._awakeMs(G.b, t0)));
+      if (G?.p != null) op.gp = sec(this._awakeBack(now2, this._awakeMs(G.p, t0)));
+      if (G?.b != null) op.gb = sec(this._awakeBack(now2, this._awakeMs(G.b, t0)));
       this._planOp(op);
       this._urlaubRebase();
       this._urlaubFromPlan();
@@ -24147,13 +24593,13 @@
     // Zusatz-Aktionen für die Auswahl in _step
     _sigActs() {
       if (!this._sigAwake()) return [];
-      const now = this._haNow();
+      const now2 = this._haNow();
       const acts = [];
-      if (this._el.sigbin && now >= (this._sigBinAt || 0)) acts.push([6, "sigBinNudge"]);
-      if (this._sigWearEls?.size && now >= (this._sigWearAt || 0)) acts.push([3, "sigWear"]);
+      if (this._el.sigbin && now2 >= (this._sigBinAt || 0)) acts.push([6, "sigBinNudge"]);
+      if (this._sigWearEls?.size && now2 >= (this._sigWearAt || 0)) acts.push([3, "sigWear"]);
       const V = this._sigVac?.dead ? null : this._sigVac;
-      if (V?.mode === "drive" && !V.hold && now - (this._sigRideAt || 0) > SIG.rideGap) acts.push([4, "sigRide"]);
-      if (V?.mode === "stuck" && now - (this._sigPushAt || 0) > SIG.rideGap) acts.push([5, "sigPush"]);
+      if (V?.mode === "drive" && !V.hold && now2 - (this._sigRideAt || 0) > SIG.rideGap) acts.push([4, "sigRide"]);
+      if (V?.mode === "stuck" && now2 - (this._sigPushAt || 0) > SIG.rideGap) acts.push([5, "sigPush"]);
       return acts;
     }
     // Bodenlinie vorn (wie die Haushaltsgeräte)
@@ -24167,9 +24613,9 @@
     _sigBin() {
       const st = this._sigW;
       if (!st || this._urlaubOn()) return null;
-      const now = this._haNow();
-      const P = binPlan(st, now);
-      if (!P || now < P.from) return null;
+      const now2 = this._haNow();
+      const P = binPlan(st, now2);
+      if (!P || now2 < P.from) return null;
       return binDone(this._plan?.cute, pikaDay(P.from), pikaDay(P.at), MEM_TONNE | MEM_TONNE2) ? null : P;
     }
     _sigBinSync(relayout = false) {
@@ -24329,10 +24775,10 @@
     // Was heute an der Tür hängt (SIG.ward von bis), oder nichts
     _sigWearNow() {
       if (!this._sigCfg().wardrobe || this._urlaubOn()) return [];
-      const now = this._haNow();
-      const h = new Date(now).getHours();
+      const now2 = this._haNow();
+      const h = new Date(now2).getHours();
       if (h < SIG.ward[0] || h >= SIG.ward[1]) return [];
-      return wardrobePick(this._dbgForecast || this._sigFc, now);
+      return wardrobePick(this._dbgForecast || this._sigFc, now2);
     }
     _sigWearSync(relayout = false) {
       if (!this._el || !this._g) return;
@@ -24458,9 +24904,9 @@
       if (!this._el || !this._g) return;
       const st = this._sigV;
       const dead = !st || ["unavailable", "unknown"].includes(st.state);
-      const now = this._haNow();
-      this._sigVDead = dead ? this._sigVDead ?? Math.min(now, Date.parse(st?.last_changed) || now) : null;
-      const lost = dead && now - this._sigVDead >= SIG.vacDead;
+      const now2 = this._haNow();
+      this._sigVDead = dead ? this._sigVDead ?? Math.min(now2, Date.parse(st?.last_changed) || now2) : null;
+      const lost = dead && now2 - this._sigVDead >= SIG.vacDead;
       const mode = dead ? lost ? null : this._sigVac?.mode ?? null : vacMode(st.state);
       let V = this._sigVac;
       if (!mode) {
@@ -24613,10 +25059,10 @@
     // Die Haustür ging auf: Ohren spitzen, zum Bildrand schauen. Schläft er, zuckt nur ein Ohr. Höchstens alle
     // SIG.doorGap, nur bei einem frischen Öffnen, nicht im Urlaub.
     _sigDoorOpen(d) {
-      const now = this._haNow();
-      const t = Date.parse(d.last_changed) || now;
-      if (this._urlaubOn() || this._fort || !this._g || now - t > SIG.doorFresh || now - (this._sigDoorAt || 0) < SIG.doorGap) return;
-      this._sigDoorAt = now;
+      const now2 = this._haNow();
+      const t = Date.parse(d.last_changed) || now2;
+      if (this._urlaubOn() || this._fort || !this._g || now2 - t > SIG.doorFresh || now2 - (this._sigDoorAt || 0) < SIG.doorGap) return;
+      this._sigDoorAt = now2;
       if (this._away()) return;
       if (this._asleep) return void this._cls("stw", 550, true);
       if (this._running && !this._next && ["idle", "look", "wander", "groom", "squeak", "curious", "nibble", "lookout"].includes(this._action)) {
@@ -24687,23 +25133,23 @@
         this._winShow(false, false);
         return;
       }
-      const now = this._haNow();
+      const now2 = this._haNow();
       const rows = this._winIds.map(({ id, name }, i) => {
         const s = this._winSt?.[i];
         return { id, name: winName(s, id, name), state: s?.state, t: Date.parse(s?.last_changed) || 0 };
       });
       const was = this._winL;
-      const L = winLage(rows, now, was);
+      const L = winLage(rows, now2, was);
       this._winL = L;
-      if (L.due != null) this._winT = setTimeout(() => this._winEval(), clamp(L.due - now + 60, 60, 2 ** 31 - 1));
+      if (L.due != null) this._winT = setTimeout(() => this._winEval(), clamp(L.due - now2 + 60, 60, 2 ** 31 - 1));
       this._winTagSync();
       if (!this._g || !this._el) return;
       if (was == null) {
-        this._winFresh = now;
+        this._winFresh = now2;
         return this._winShow(L.open, false);
       }
       if (L.open === !!was.open) return;
-      if (now - (this._winFresh || 0) < WIN.open + WIN.close) return this._winShow(L.open, true);
+      if (now2 - (this._winFresh || 0) < WIN.open + WIN.close) return this._winShow(L.open, true);
       if (L.open) this._winOpened();
       else this._winClosed();
     }
@@ -24992,10 +25438,10 @@
           });
         };
         const notbremse = setTimeout(ende, ms + 2e3);
-        const takt = (now) => {
+        const takt = (now2) => {
           if (aus) return;
-          t.push(now);
-          if (now - t[0] < ms) requestAnimationFrame(takt);
+          t.push(now2);
+          if (now2 - t[0] < ms) requestAnimationFrame(takt);
           else ende();
         };
         requestAnimationFrame(takt);
@@ -25084,9 +25530,9 @@
       if (!R2 || this._dbgGold) return true;
       const at = this._goldAt ??= {};
       const k = `a2:${name}`;
-      const now = Date.now();
-      if (!goldDue(R2, at[k], now, Math.random())) return false;
-      at[k] = now;
+      const now2 = Date.now();
+      if (!goldDue(R2, at[k], now2, Math.random())) return false;
+      at[k] = now2;
       return true;
     }
     // Dauerhaftes Element des Schatzes key in der Szene (Ebene .gifts), html beim Anlegen. → das Element
@@ -26038,7 +26484,7 @@
     // sich die Größe der Karte geändert, stehen Schlitten und Seil an alten Pixeln: abbrechen (wie _layout bei Requisiten)
     _a2SledScene(lv) {
       const S = this._a2SledS;
-      if (S && S.W !== this._W && this._a2SledBusy) this._interrupt();
+      if (S && (S.W !== this._W || S.H !== this._H) && this._a2SledBusy) this._interrupt();
       else if (!S || !(lv > 0)) this._a2SledEnd();
     }
     // Maße des Schlittens (px): Breite, Höhe, Sitzhöhe über dem Schnee (um die Kufendicke tiefer: Er sitzt im Schlitten,
@@ -26065,7 +26511,7 @@
       rope.style.background = SEIL;
       rope.hidden = true;
       this._el.gifts.appendChild(rope);
-      const S = { W: this._W, el, rope, x, fdir: 0, ang: 0, ride: false, tow: false, line: false, drive: null, ctl: false, u0: DRIFT_U0, drift: null, raf: 0, fx: /* @__PURE__ */ new Set(), t: [] };
+      const S = { W: this._W, H: this._H, el, rope, x, fdir: 0, ang: 0, ride: false, tow: false, line: false, drive: null, ctl: false, u0: DRIFT_U0, drift: null, raf: 0, fx: /* @__PURE__ */ new Set(), t: [] };
       this._a2SledS = S;
       this._a2SledFace(fdir, true);
       this._a2Scene();
@@ -26157,11 +26603,11 @@
     _a2SledRun() {
       const S = this._a2SledS;
       if (!S || S.raf || typeof requestAnimationFrame !== "function") return;
-      const frame = (now) => {
+      const frame = (now2) => {
         if (this._a2SledS !== S) return;
         S.raf = 0;
         try {
-          if (S.drive) S.drive.step(clamp((now - S.drive.t0) / S.drive.ms, 0, 1));
+          if (S.drive) S.drive.step(clamp((now2 - S.drive.t0) / S.drive.ms, 0, 1));
           if (S.tow) this._a2SledTow();
           this._a2SledPlace();
         } catch (e) {
@@ -26595,15 +27041,1654 @@
   };
 
   // src/karte/album2-camera.js
+  var CAM_Z = () => buehneZ(REIHE.vorn, "vogel");
+  var PHOTO_Z = () => buehneZ(REIHE.vorn, "requisit");
+  var HELD_Z = () => buehneZ(REIHE.vorn, "arm");
+  var CAMERA_GOLD = { cd: 2 * 6e4, p: 0.6 };
+  var FLASH_GAP = 1200;
+  var CAM_SINK = 2;
+  var CAM_FARBE = "#6fb6c8";
+  var CAMERA_CLS = ["a2cm-hold", "a2cm-carry"];
   var Album2Camera = class {
+    // ---------- Szene ----------
+    // Szene (Hook): Sie steht nie dauerhaft. Nur, solange er sie benutzt, bleibt das Element. Hat sich die Größe der
+    // Karte geändert, stehen Kamera und Bild an alten Pixeln: abbrechen (wie _layout bei Requisiten)
+    _a2CameraScene(lv) {
+      const S = this._a2CameraS;
+      if (!S) return;
+      if ((S.W !== this._W || S.H !== this._H) && this._a2CameraBusy) this._interrupt();
+      else if (!(lv > 0) || !this._a2CameraBusy) this._a2CameraEnd();
+    }
+    // Breite der Kamera (px) und Maßstab der viewBox (px je Einheit)
+    _a2CameraDim() {
+      const w = this._g.pW * CAM_W;
+      return { w, k: w / 40 };
+    }
+    // Punkt (lx, ly) der viewBox der Kamera in Szene-Pixeln, mit Neigung des Kopfs und Spiegelung (S: der Zustand)
+    _a2CameraPt(lx, ly, S = this._a2CameraS) {
+      const { k } = this._a2CameraDim();
+      const [px, py] = CAM.pivot;
+      const a = (S?.tilt || 0) * Math.PI / 180;
+      const dx = lx - px;
+      const dy = ly - py;
+      const rx = px + dx * Math.cos(a) - dy * Math.sin(a);
+      const ry = py + dx * Math.sin(a) + dy * Math.cos(a);
+      return { x: (S?.x ?? this._x) + (S?.d ?? 1) * (rx - 20) * k, y: this._g.gy + CAM_SINK - (40 - ry) * k };
+    }
+    // Kamera aufstellen (Element aus _a2El: Tippfläche, Licht, golden): Mitte x, Linse nach d. pop: ploppt auf
+    _a2CameraMake(x, d, pop = true) {
+      if (this._a2CameraS) this._a2CameraEnd(true);
+      const { w } = this._a2CameraDim();
+      const el = this._a2El("camera", `<div class="a2cmw"><div class="a2cmf">${CAMERA_SVG}</div></div>`);
+      el.classList.remove("a2out", "glow", "snap", "timer");
+      el.classList.toggle("a2left", d < 0);
+      el.classList.toggle("still", calmMotion());
+      el.style.left = `${(x - w / 2).toFixed(1)}px`;
+      el.style.width = `${w.toFixed(1)}px`;
+      el.style.zIndex = String(CAM_Z());
+      el.style.setProperty("--a2cmt", "0deg");
+      const S = { W: this._W, H: this._H, el, x, d, tilt: 0, ph: null, fx: /* @__PURE__ */ new Set(), t: [] };
+      this._a2CameraS = S;
+      this._a2Scene();
+      if (pop && !calmMotion()) {
+        el.classList.add("a2pop");
+        S.t.push(setTimeout(() => el.classList.remove("a2pop"), 800));
+      } else el.animate?.([{ opacity: 0 }, { opacity: 1 }], { duration: 500, fill: "backwards" });
+      return S;
+    }
+    // Kopf neigen (Grad, negativ: Linse nach oben)
+    _a2CameraTilt(deg) {
+      const S = this._a2CameraS;
+      if (!S) return;
+      S.tilt = deg;
+      S.el.style.setProperty("--a2cmt", `${deg.toFixed(1)}deg`);
+    }
+    // Kamera am Riemen im Maul (an) oder abgesetzt
+    _a2CameraCarry(on) {
+      this._a2CameraCarrying = on;
+      this._el.pika.classList.toggle("carry", on);
+      this._el.pika.classList.toggle("a2cm-carry", on);
+      if (on) this._mouth(CAM_FARBE, CAMERA_MOUTH);
+    }
+    // ---------- Platz ----------
+    // Wo cx (Mitte der Kamera, Linse nach d) liegen darf, damit jedes Stück F ([Abstand von cx in Richtung d, halbe
+    // Breite, Art]) auf die Wiese passt: rechts vom Heu (.fore verdeckte, was dahinter steht), im Bild; der Pika bis xR,
+    // der Freund in seinem Bereich (_frRange). → [kleinstes, größtes cx] oder null
+    _a2CameraRoom(d, F) {
+      const { pW, hayR, xR } = this._g;
+      let lo = -Infinity;
+      let hi = Infinity;
+      for (const [off, half, kind] of F) {
+        const o = d * off;
+        let a = hayR + half * (kind === "cam" ? 1 : 0.6);
+        let b = this._W - half;
+        if (kind === "pika") {
+          a = Math.max(a, pW * 0.45);
+          b = Math.min(b, xR);
+        } else if (kind === "fr") {
+          const [fl, fh] = this._frRange();
+          a = Math.max(a, fl);
+          b = Math.min(b, fh);
+        }
+        lo = Math.max(lo, a - o);
+        hi = Math.min(hi, b - o);
+      }
+      return lo <= hi + 0.01 ? [lo, Math.max(lo, hi)] : null;
+    }
+    // Abstände (px) von der Mitte der Kamera: er hinter ihr am Sucher (behind), vor der Linse beim Knopf (front), auf
+    // dem Platz fürs Selfie (pose), Spitze der Linse (tip), Höhe der Linse über dem Boden (lensY)
+    _a2CameraOff() {
+      const { pW } = this._g;
+      const { w, k } = this._a2CameraDim();
+      const tip = (CAM.tip - 20) * k;
+      return { w, tip, behind: (20 - CAM.back) * k + pW * 0.44, front: tip + pW * 0.26, pose: tip + pW * 0.74, lensY: (40 - 14.4) * k };
+    }
+    // Für ein Foto: er hinter der Kamera, danach dreht er sich um, das Bild in seinen Pfoten auf der anderen Seite
+    _a2CameraShotRoom(d) {
+      const { pW } = this._g;
+      const O = this._a2CameraOff();
+      return this._a2CameraRoom(d, [[0, O.w / 2, "cam"], [-O.behind, pW * 0.4, "pika"], [-O.behind - pW * 0.2, pW * PHOTO_HELD * 0.55, "cam"]]);
+    }
+    // Himmel für das Bild (wie er gerade ist)
+    _a2CameraSky() {
+      const sc = this._el.scene.classList;
+      const wx = this._wx || {};
+      const night = sc.contains("night");
+      return {
+        night,
+        dusk: !night && sc.contains("dusk"),
+        cover: wx.cover ?? 20,
+        bow: !night && !!this._bowKey && this._bowKey !== "0",
+        rain: !!wx.wet,
+        snow: (wx.snow || 0) > 0,
+        fog: !!wx.fog,
+        snowcover: !!wx.snowcover
+      };
+    }
+    // Motiv Vogel: der Besuch sitzt (auf dem Bau oder dem Stein). Kamera mit Abstand davor, Linse hinauf zu ihm
+    _a2CameraAimBird(b) {
+      const { pW, gy } = this._g;
+      const O = this._a2CameraOff();
+      const name = b.el?.querySelector?.(".bw")?.getAttribute?.("aria-label");
+      const v = BIRDS.find((x) => x.name === name) || BIRDS[0];
+      for (const d of [b.x >= this._x ? 1 : -1, b.x >= this._x ? -1 : 1]) {
+        const R2 = this._a2CameraShotRoom(d);
+        if (!R2) continue;
+        const cx = clamp(b.x - d * (O.tip + pW * 0.9), R2[0], R2[1]);
+        const dx = d * (b.x - (cx + d * O.tip));
+        if (dx < pW * 0.3) continue;
+        const dy = gy - O.lensY - (b.y - this._H * 0.04);
+        const tilt = clamp(-Math.atan2(dy, dx) * 180 / Math.PI, -48, 0);
+        return { d, cx, tilt, M: { k: "bird", bird: v, b } };
+      }
+      return null;
+    }
+    // Motiv Blume: die nächste, die mit Platz für ihn und die Kamera erreichbar ist (die Linse kurz vor der Blüte)
+    _a2CameraAimFlower() {
+      const { pW } = this._g;
+      const O = this._a2CameraOff();
+      const F = (this._flowers || []).filter((f2) => !f2.el?.classList?.contains("picked")).map((f2) => ({ f: f2, x: f2.xf * this._W })).sort((a, b) => Math.abs(a.x - this._x) - Math.abs(b.x - this._x));
+      for (const { f: f2, x } of F) {
+        for (const d of [x >= this._x ? 1 : -1, x >= this._x ? -1 : 1]) {
+          const R2 = this._a2CameraShotRoom(d);
+          const cx = x - d * (O.tip + pW * 0.4);
+          if (R2 && cx >= R2[0] - 0.01 && cx <= R2[1] + 0.01) {
+            const o = (this._flowers || []).find((g) => g !== f2 && Math.abs(g.xf - f2.xf) * this._W < pW * 0.8);
+            return { d, cx, tilt: 8, M: { k: "flower", color: f2.color, color2: o?.color } };
+          }
+        }
+      }
+      return null;
+    }
+    // Motiv Himmel (gibt es immer): wo er gerade steht, Linse schräg nach oben
+    _a2CameraAimSky() {
+      const O = this._a2CameraOff();
+      const pref = this._x + this._dir * this._g.pW * 1.2 <= this._g.xR ? this._dir || 1 : -(this._dir || 1);
+      for (const d of [pref, -pref]) {
+        const R2 = this._a2CameraShotRoom(d);
+        if (R2) return { d, cx: clamp(this._x + d * O.behind, R2[0], R2[1]), tilt: -30, M: { k: "sky" } };
+      }
+      return { d: -1, cx: Math.max(this._g.hayR + O.w / 2, this._W - O.behind - this._g.pW * 0.45), tilt: -30, M: { k: "sky" } };
+    }
+    // Was er fotografiert: der Vogel vom Besuch am liebsten, dann eine Blume, sonst der Himmel (mit Regenbogen gern).
+    // want: dieses Motiv, wenn es geht (Tests, Vorschau: this._a2CameraDbgMotif)
+    _a2CameraPick(want = null) {
+      const C2 = [];
+      const b = this._bird;
+      if (b?.sitting && !b.scared) {
+        const L = this._a2CameraAimBird(b);
+        if (L) C2.push([3, L]);
+      }
+      if (!this._wx?.snowcover) {
+        const L = this._a2CameraAimFlower();
+        if (L) C2.push([2, L]);
+      }
+      const sky2 = this._a2CameraAimSky();
+      C2.push([this._a2CameraSky().bow ? 5 : 1, sky2]);
+      if (want) return C2.find(([, L]) => L.M.k === want)?.[1] || sky2;
+      return weighted(C2);
+    }
+    // Für ein Selfie: Kamera, er am Knopf (vor der Linse), sein Platz, der des Freunds (fr) dahinter. → Plan oder null
+    _a2CameraSelfPlan(fr) {
+      const { pW } = this._g;
+      const O = this._a2CameraOff();
+      const sc = fr ? FRIENDS[fr.kind]?.scale ?? 0.92 : 0;
+      const ff = O.pose + pW * (0.4 + 0.32 * sc);
+      const F = [[0, O.w / 2, "cam"], [O.front, pW * 0.4, "pika"], [O.pose, pW * 0.4, "pika"], [O.front + pW * 0.2, pW * PHOTO_HELD * 0.55, "cam"]];
+      if (fr) F.push([ff, pW * 0.45 * sc, "fr"]);
+      const pref = fr ? fr.x >= this._x ? 1 : -1 : this._x < this._W * 0.55 ? 1 : -1;
+      for (const d of [pref, -pref]) {
+        const R2 = this._a2CameraRoom(d, F);
+        if (!R2) continue;
+        const cx = clamp(fr ? fr.x - d * ff : this._x - d * O.front, R2[0], R2[1]);
+        return { d, cx, front: cx + d * O.front, pose: cx + d * O.pose, ffx: cx + d * ff };
+      }
+      return null;
+    }
+    // ---------- Was er damit tut ----------
+    // Fotowetter: bei Tag (die Dämmerung zählt mit, das Gewicht ist dann kleiner), kein starker Regen, kein Gewitter,
+    // kein Sturm, kaum Wind. Normaler Regen (rainy, 40) und Schneeregen gehen: Er hat dann sein Blatt als Schirm, die
+    // Tropfen kommen mit aufs Bild. Starkregen, Hagel und Gewitter (pouring, hail, lightning: storm/flash) nicht.
+    _a2CameraWeather(wx = this._wx || {}) {
+      return !wx.storm && !wx.shelter && !wx.flash && !wx.hail && !((wx.rain || 0) > 40) && !this._el.scene.classList.contains("night") && (this._wind || 0) < 40;
+    }
+    // Der Freund, der mit aufs Selfie darf: da, begrüßt, nicht im Gehen und nicht in den letzten Sekunden des Besuchs
+    _a2CameraFriend() {
+      const fr = this._fr;
+      return fr && fr.arrived && !fr.leaving && fr.greeted && !fr.busy && Date.now() < (fr.until ?? Infinity) - FRIEND_LAST ? fr : null;
+    }
+    // Hook: Fotos mag er ab und zu; das Selfie selten allein, oft, wenn der Freund da ist (dessen Spiele wiegen 3,5–7)
+    _a2CameraActs({ wx }, lv) {
+      if (!this._a2CameraWeather(wx)) return [];
+      const k = this._el.scene.classList.contains("dusk") ? 0.3 : 1;
+      return [[0.3 * k, "a2CameraPlay"], [lv >= 2 ? (this._a2CameraFriend() ? 1.5 : 0.15) * k : 0, "a2CameraSelfie"]];
+    }
+    // Stufe 1 (Aktion 'a2CameraPlay'). o: { short: nach dem Auspacken (die Kamera kommt gleich neben ihn, auch bei
+    // jedem Wetter), gold: goldener Rahmen sicher, motif: dieses Motiv, wenn es geht }
+    async _a2CameraPlay(o = {}) {
+      const lv = this._a2Lv("camera");
+      if (!lv || !this._a2CameraWeather() && !this._forced && !o.short) return;
+      const gold = !!o.gold || lv >= 3 && this._a2GoldOk("camera", CAMERA_GOLD);
+      this._a2CameraBusy = true;
+      try {
+        const L = this._a2CameraPick(o.motif ?? this._a2CameraDbgMotif ?? null);
+        const O = this._a2CameraOff();
+        await this._a2CameraSetUp(L.cx, L.d, L.cx - L.d * O.behind, o.short);
+        await this._a2CameraShoot(L, gold);
+      } finally {
+        this._a2CameraBusy = false;
+        this._a2CameraEnd(true);
+      }
+    }
+    // Stufe 2, der Trick (Aktion 'a2CameraSelfie'): mit dem Freund, wenn er da ist (o.solo: allein)
+    async _a2CameraSelfie(o = {}) {
+      const lv = this._a2Lv("camera");
+      if (lv < 2 || !this._a2CameraWeather() && !this._forced && !o.short) return;
+      const gold = !!o.gold || lv >= 3 && this._a2GoldOk("camera", CAMERA_GOLD);
+      let fr = o.solo ? null : this._a2CameraFriend();
+      if (fr && !this._a2CameraSelfPlan(fr)) fr = null;
+      this._a2CameraBusy = true;
+      try {
+        if (fr) await this._withFriend((f2, w) => this._a2CameraSelf(f2, w, gold, o));
+        else await this._a2CameraSelf(null, (ms) => this._wait(ms), gold, o);
+      } finally {
+        this._a2CameraBusy = false;
+        this._a2CameraEnd(true);
+      }
+    }
+    // Nach dem Auspacken (Hook): Stufe 1 gleich ein Foto, 2 das Selfie, 3 ein Foto im goldenen Rahmen
+    async _a2CameraStow(lv) {
+      if (lv === 2) return this._a2CameraSelfie({ short: true });
+      this._say(lv >= 3 ? pick(["goldig!", "die glänzt!"]) : pick(["Fotozeit!", "ein Foto!"]), 1300);
+      await this._wait(900);
+      return this._a2CameraPlay({ short: true, gold: lv >= 3 });
+    }
+    // Holen und aufstellen: zum Bau, Kamera am Riemen ins Maul, zum Platz (x), absetzen; die Kamera steht bei cx, Linse
+    // nach d. short (nach dem Auspacken) und Bewegung reduzieren: kein Holen, sie kommt neben ihm (ruhig: blendet ein)
+    async _a2CameraSetUp(cx, d, x, short = false) {
+      const p = this._el.pika;
+      const { hole, pW } = this._g;
+      const calm = calmMotion();
+      if (!short && !calm) {
+        await this._walkTo(hole.cx + pW * 0.75, 1.1);
+        this._face(-1);
+        this._say(pick(["Kamera holen!", "wo ist sie…", "Fotozeit!"]), 1300);
+        await this._wait(700);
+        p.classList.add("crouch");
+        await this._wait(260);
+        p.classList.remove("crouch");
+        this._a2CameraCarry(true);
+        await this._wait(300);
+      }
+      await this._walkTo(x, 1);
+      this._face(cx >= this._x ? 1 : -1);
+      if (this._a2CameraCarrying) {
+        p.classList.add("crouch");
+        await this._wait(260);
+        p.classList.remove("crouch");
+        this._a2CameraCarry(false);
+      }
+      this._a2CameraMake(cx, d, !calm);
+      await this._wait(calm ? 600 : 700);
+    }
+    // Auslösen: Knopf, Blitz (ein Lichtpuls), er blinzelt. → true, wenn es geblitzt hat
+    _a2CameraSnap() {
+      const S = this._a2CameraS;
+      if (!S) return false;
+      const F = this._a2CameraPt(...CAM.flash, S);
+      this._peep(F.x, F.y - this._H * 0.03, "klick!");
+      const on = this._a2CameraFlash(S);
+      if (!this._asleep) this._cls("blink", 260);
+      return on;
+    }
+    // Knopf und Blitz. Der Knopf klickt immer; Licht höchstens alle FLASH_GAP. Bewegung reduzieren: nur das Blitzfenster
+    // leuchtet langsam auf und ab, kein Lichtpuls
+    _a2CameraFlash(S = this._a2CameraS) {
+      if (!S) return false;
+      const el = S.el;
+      el.classList.add("snap");
+      S.t.push(setTimeout(() => el.classList.remove("snap"), 220));
+      const now2 = Date.now();
+      if (now2 - (this._a2CameraFlashAt ?? -Infinity) < FLASH_GAP) return false;
+      this._a2CameraFlashAt = now2;
+      const calm = calmMotion();
+      el.classList.add("glow");
+      S.t.push(setTimeout(() => el.classList.remove("glow"), calm ? 900 : 240));
+      if (calm) return true;
+      const F = this._a2CameraPt(...CAM.flash, S);
+      const b = document.createElement("span");
+      b.className = "a2cmbu";
+      b.style.left = `${F.x.toFixed(1)}px`;
+      b.style.top = `${F.y.toFixed(1)}px`;
+      const o = document.createElement("span");
+      o.className = "a2cmov";
+      for (const e of [o, b]) {
+        this._el.fx.appendChild(e);
+        S.fx.add(e);
+      }
+      S.t.push(setTimeout(() => {
+        for (const e of [o, b]) {
+          e.remove();
+          S.fx.delete(e);
+        }
+      }, 600));
+      return true;
+    }
+    // Das Sofortbild zum Motiv M (golden: Rahmen und Glitzer)
+    _a2CameraPhoto(M, gold) {
+      const S = this._a2CameraS;
+      const ph = document.createElement("div");
+      ph.className = `a2cmph${gold ? " gold" : ""}${calmMotion() ? " still" : ""}`;
+      ph.innerHTML = PHOTO_SVG(M, gold);
+      this._el.gifts.appendChild(ph);
+      if (S) S.ph = ph;
+      return ph;
+    }
+    // Stellung des Bilds: Mitte x, Unterkante y, Breite w (px), gedreht um rot Grad (um die Unterkante)
+    _a2CameraPhotoAt(ph, x, y, w, rot = 0) {
+      ph.style.left = `${(x - w / 2).toFixed(1)}px`;
+      ph.style.top = `${(y - w * 1.2).toFixed(1)}px`;
+      ph.style.width = `${w.toFixed(1)}px`;
+      ph.style.transform = rot ? `rotate(${rot.toFixed(1)}deg)` : "none";
+    }
+    // Oben aus dem Schlitz schiebt es sich heraus (surrend)
+    async _a2CameraEject(ph) {
+      const S = this._a2CameraS;
+      const { w } = this._a2CameraDim();
+      const pw = w * PHOTO_SLOT;
+      const P = this._a2CameraPt(...CAM.slot, S);
+      const rot = (S?.tilt || 0) * (S?.d || 1);
+      ph.style.zIndex = String(PHOTO_Z());
+      this._a2CameraPhotoAt(ph, P.x, P.y + pw * 0.1, pw, rot);
+      ph.animate?.([{ transform: `rotate(${rot.toFixed(1)}deg) translateY(100%)` }, { transform: `rotate(${rot.toFixed(1)}deg)` }], { duration: 1100, easing: "ease-out", fill: "backwards" });
+      this._peep(P.x, P.y - pw * 1.6, "surr…");
+      await this._wait(1200);
+    }
+    // In die Pfoten: vor ihm, auf der Seite, zu der er schaut (ruhig: blendet dort ein). Die Klasse heißt a2cmheld, nicht
+    // held: .held ist die Ebene des Plüsch-Pinos im Arm (STYLE_GIFT, inset: 0), das Bild reichte sonst bis zum Boden
+    // der Szene, und es drehte sich um deren Unterkante statt um seine eigene
+    _a2CameraHold(ph) {
+      const { pW, pH, gy } = this._g;
+      const first = !ph.classList.contains("a2cmheld");
+      ph.style.zIndex = String(HELD_Z());
+      ph.classList.add("a2cmheld");
+      this._a2CameraPhotoAt(ph, this._x + this._dir * pW * 0.2, gy - pH * 0.04, pW * PHOTO_HELD, -this._dir * 5);
+      this._el.pika.classList.add("a2cm-hold");
+      if (first && calmMotion()) ph.animate?.([{ opacity: 0 }, { opacity: 1 }], { duration: 600, fill: "backwards" });
+    }
+    // Nehmen (er steht an der Kamera, Gesicht zu ihr): hochrecken, das Bild in die Pfoten, umdrehen (weg von der Kamera),
+    // dann entwickelt es sich
+    async _a2CameraTake(ph, w) {
+      const p = this._el.pika;
+      if (!calmMotion()) {
+        p.classList.add("look-up");
+        await w(350);
+        p.classList.remove("look-up");
+      }
+      this._face(-this._dir);
+      this._a2CameraHold(ph);
+      await w(400);
+      ph.classList.add("dev");
+    }
+    // Zielen, auslösen, Bild nehmen und anschauen (Stufe 1; L: Motiv und Platz aus _a2CameraPick)
+    async _a2CameraShoot(L, gold) {
+      const p = this._el.pika;
+      const M = L.M;
+      const S = this._a2CameraS;
+      if (!S) return;
+      this._a2CameraTilt(L.tilt);
+      const sk = this._a2CameraSky();
+      this._say(M.k === "bird" ? pick(["pssst…", "nicht wegfliegen…", "stillhalten…"]) : M.k === "flower" ? pick(["bitte lächeln!", "schön stillhalten!", "hübsch so!"]) : sk.bow ? "ein Regenbogen!" : pick(["so ein Himmel!", "da oben…", "schau mal!"]), 1300);
+      await this._wait(1300);
+      const shot = { ...M, S: sk };
+      if (M.k === "bird") shot.bird = M.b && this._bird === M.b && M.b.sitting && !M.b.scared ? M.bird : null;
+      delete shot.b;
+      this._a2CameraSnap();
+      await this._wait(600);
+      const ph = this._a2CameraPhoto(shot, gold);
+      if (!calmMotion()) await this._a2CameraEject(ph);
+      await this._a2CameraTake(ph, (ms) => this._wait(ms));
+      p.classList.add("tilt");
+      this._say(pick(["mal sehen…", "oh…", "gleich…"]), 1300);
+      await this._wait(1900);
+      p.classList.remove("tilt");
+      p.classList.add("look-f");
+      this._say(shot.k === "bird" ? shot.bird ? `${shot.bird.name === "Blaumeise" ? "eine" : "ein"} ${shot.bird.name}!` : pick(["weggeflogen!", "zu spät…"]) : shot.k === "flower" ? pick(["meine Blume!", "so hübsch!", "eine Blume!"]) : sk.bow ? "mit Regenbogen!" : sk.night ? "der Mond!" : sk.snow ? "Schneeflocken!" : sk.cover >= 70 ? "Wolken!" : pick(["der Himmel!", "schön blau!"]), 1600);
+      if (shot.k === "bird" && !shot.bird) this._emote("drop", 1400);
+      else this._happy(1400);
+      await this._wait(1400);
+      if (gold) await this._a2CameraGold(ph);
+      this._say(pick(["fürs Album!", "schön!", "♥"]), 1200);
+      await this._wait(1300);
+      p.classList.remove("look-f");
+    }
+    // Golden: Funkeln ums Bild, er staunt
+    async _a2CameraGold(ph, w = (ms) => this._wait(ms)) {
+      const { pW, pH, gy } = this._g;
+      const x = this._x + this._dir * pW * 0.2;
+      for (let i = 0; i < 3; i++) setTimeout(() => this._g && ph.isConnected && this._sparkle(x, gy - pH * 0.35, 1), i * 300);
+      this._mimik("awe", 1400);
+      this._say(pick(["es glitzert!", "goldig!", "im Goldrahmen!"]), 1500);
+      await w(1600);
+    }
+    // Das Selfie (Stufe 2): aufstellen, Selbstauslöser, vor die Linse (der Freund kommt mit), Blitz, Bild holen,
+    // anschauen (mit dem Freund). w: warten (mit dem Freund bricht es ab, wenn er gehen muss)
+    async _a2CameraSelf(fr, w, gold, o) {
+      const p = this._el.pika;
+      const calm = calmMotion();
+      const L = this._a2CameraSelfPlan(fr) || this._a2CameraSelfPlan(null) || (() => {
+        const O = this._a2CameraOff();
+        const cx = this._g.hayR + O.w / 2;
+        return { d: 1, cx, front: cx + O.front, pose: Math.min(this._g.xR, cx + O.pose), ffx: cx + O.pose };
+      })();
+      await this._a2CameraSetUp(L.cx, L.d, L.front, o.short);
+      const S = this._a2CameraS;
+      if (!S) return;
+      const who = fr ? FRIENDS[fr.kind]?.name || this._frName() : null;
+      this._say(fr ? `${who}, ein Foto!` : pick(["ein Selfie!", "jetzt ich!"]), 1400);
+      if (fr) {
+        this._frFace(fr, this._x >= fr.x ? 1 : -1);
+        this._frCall(fr, pick(["mip!", "oh!"]));
+      }
+      await w(1e3);
+      if (!calm) {
+        p.classList.add("look-up");
+        await w(300);
+        p.classList.remove("look-up");
+      }
+      S.el.classList.add("snap", "timer");
+      S.t.push(setTimeout(() => S.el.classList.remove("snap"), 220));
+      const T = this._a2CameraPt(27.2, 12.6, S);
+      for (let i = 0; i < 4; i++) S.t.push(setTimeout(() => this._a2CameraS === S && this._peep(T.x, T.y - this._H * 0.04, "piep"), 200 + i * 750));
+      this._say(pick(["schnell!", "los, los!"]), 900);
+      const go = [this._walkTo(L.pose, calm ? 1.2 : 1.8)];
+      if (fr) go.push(this._friendWalkTo(fr, L.ffx, 1.4, w));
+      await Promise.all(go);
+      this._face(-L.d);
+      if (fr) this._frFace(fr, -L.d);
+      p.classList.add("happy");
+      if (fr) this._frHappy(fr, 1800);
+      this._say(pick(["cheese!", "Spaghetti!", "lächeln!"]), 1200);
+      await w(1300);
+      S.el.classList.remove("timer");
+      this._a2CameraSnap();
+      if (fr && fr.el) {
+        const fe = fr.el;
+        fe.classList.add("blink");
+        setTimeout(() => fe.classList.remove("blink"), 260);
+      }
+      const shot = { k: "self", S: this._a2CameraSky(), who: fr ? [{ k: fr.kind, s: FRIENDS[fr.kind]?.scale ?? 0.92 }] : [] };
+      await w(600);
+      p.classList.remove("happy");
+      const ph = this._a2CameraPhoto(shot, gold);
+      if (!calm) await this._a2CameraEject(ph);
+      await this._walkTo(L.front, 1.1);
+      this._face(-L.d);
+      await this._a2CameraTake(ph, w);
+      if (fr && this._fr === fr) {
+        this._say(pick([`schau mal, ${who}!`, "schau!"]), 1300);
+        await this._friendWalkTo(fr, this._x + L.d * this._g.pW * 0.72, 1, w);
+        this._frFace(fr, -L.d);
+        this._frLook(fr, "look-f", 1600);
+        await w(1200);
+        p.classList.add("look-f");
+        this._say(pick(["wir zwei!", "das sind wir!"]), 1500);
+        this._frSay(fr, pick(["♥", "mip!"]), 1300);
+        this._hearts(2);
+        this._frHearts(fr, 2);
+        await w(1500);
+      } else {
+        p.classList.add("tilt");
+        await w(1500);
+        p.classList.remove("tilt");
+        p.classList.add("look-f");
+        this._say(pick(["das bin ich!", "hübsch!", "ich!"]), 1500);
+        this._happy(1400);
+        await w(1500);
+      }
+      if (gold) await this._a2CameraGold(ph, w);
+      this._say(pick(["fürs Album!", "♥"]), 1100);
+      await w(1200);
+      p.classList.remove("look-f");
+    }
+    // ---------- Hooks: Tipp, Aufräumen, Abhängen ----------
+    // Tipp auf die Kamera (nur, solange sie steht): Sie blitzt (höchstens alle FLASH_GAP, sonst klickt sie nur)
+    _a2CameraTap() {
+      const S = this._a2CameraS;
+      if (!S) return false;
+      const on = this._a2CameraFlash(S);
+      const F = this._a2CameraPt(...CAM.flash, S);
+      this._peep(F.x, F.y - this._H * 0.03, on ? "blitz!" : "klick!");
+      return true;
+    }
+    // Ende der Aktion oder Abbruch (auch aus _cleanup nach jeder Aktion): Kamera, Bild, Teilchen, Zeitgeber, Riemen im
+    // Maul weg (force: aus der eigenen Aktion. Sonst, mitten in ihr, aus Szene oder Aufräumen: nichts, sie räumt in
+    // ihrem finally selbst auf; nur nach einem Abbruch gleich). now: sofort, ohne Ausblenden (Karte aus dem DOM)
+    _a2CameraEnd(force = false, now2 = false) {
+      if (!force && this._a2CameraBusy && !this._ac?.signal?.aborted) return;
+      if (this._a2CameraCarrying) this._a2CameraCarry(false);
+      this._el.pika.classList.remove(...CAMERA_CLS);
+      const S = this._a2CameraS;
+      if (!S) return;
+      this._a2CameraS = null;
+      for (const t of S.t) clearTimeout(t);
+      for (const e of S.fx) e.remove();
+      const ph = S.ph;
+      if (ph) {
+        if (now2 || !ph.isConnected) ph.remove();
+        else {
+          ph.classList.add("away");
+          setTimeout(() => ph.remove(), 550);
+        }
+      }
+      const el = S.el;
+      el.classList.remove("timer", "glow", "snap", "a2pop");
+      if (!now2 && el.isConnected && this._a2Els?.get("camera") === el) {
+        el.classList.add("a2out");
+        setTimeout(() => !this._a2CameraS && this._a2Drop("camera"), 450);
+      } else this._a2Drop("camera");
+    }
+    _a2CameraCleanup() {
+      this._a2CameraEnd();
+    }
+    // Karte aus dem DOM: alles sofort weg
+    _a2CameraDetach() {
+      this._a2CameraBusy = false;
+      this._a2CameraEnd(true, true);
+    }
   };
 
   // src/karte/album2-radio.js
+  var RADIO_GOLD = { cd: 3 * 6e4, p: 0.5 };
+  var RADIO_Z = () => buehneZ(REIHE.vorn, "schatz");
+  var RADIO_BZ = () => buehneZ(REIHE.vorn, "vogel");
+  var RADIO_CLS = ["a2r-bop", "a2r-spin"];
+  var RADIO_FAR = 0.7;
+  var RADIO_TOUCH = 0.56;
+  var RADIO_NEAR = 0.28;
   var Album2Radio = class {
+    // ---------- Szene ----------
+    // Szene (Hook): Es steht nie dauerhaft. Nur, solange er es benutzt (_a2RadioS), bleibt das Element. Hat sich die
+    // Größe der Karte geändert, steht es an alten Pixeln: abbrechen (wie _layout bei Requisiten)
+    _a2RadioScene(lv) {
+      const S = this._a2RadioS;
+      if (S && (S.W !== this._W || S.H !== this._H) && this._a2RadioBusy) this._interrupt();
+      else if (!S || !(lv > 0)) this._a2RadioEnd();
+    }
+    // Maße in der Szene (px)
+    _a2RadioDim() {
+      const w = this._g.pW * RADIO_W;
+      return { w, h: this._g.pW * RADIO_H };
+    }
+    // Wo es steht und wo er tanzt: { px: Mitte des Radios, x: sein Platz, dir: sein Blick zum Radio }. Ein Platz auf der
+    // Wiese wie für die Requisiten (_besideSpot: zwischen Vorrat und Stein, neben dem, was dort steht), so breit, dass
+    // zwischen ihm und dem Radio RADIO_FAR bleibt
+    _a2RadioSpot() {
+      const { pW, hayR, xR } = this._g;
+      const { w } = this._a2RadioDim();
+      const B = this._besideSpot(Math.random(), Math.random(), (RADIO_FAR - 0.45) * pW * 2);
+      const px = clamp(B.px, hayR + w * 0.6, xR + pW * 0.3);
+      const x = clamp(px - B.dir * pW * RADIO_FAR, pW * 0.45, xR);
+      return { px, x, dir: px >= x ? 1 : -1 };
+    }
+    // Radio hinstellen (Element aus _a2El: Tippfläche, Licht, golden) mit der Mitte bei px. pop: ploppt auf, sonst blendet
+    // es ein (reduzierte Bewegung) oder ist einfach da (aus dem Maul abgestellt: fade = false)
+    _a2RadioMake(px, pop = false, fade = false) {
+      if (this._a2RadioS) this._a2RadioEnd(true);
+      const el = this._a2El("radio", `<div class="a2rw">${RADIO_SVG}</div>`);
+      el.classList.remove("a2out", "on", "ant", "knob", "a2rtune");
+      el.style.left = `${px.toFixed(1)}px`;
+      el.style.zIndex = String(RADIO_Z());
+      el.style.setProperty("--a2rn", "0px");
+      const S = { W: this._W, H: this._H, el, x: px, st: 0, on: false, gold: false, dance: false, bird: null, t: [] };
+      this._a2RadioS = S;
+      this._a2Scene();
+      const w = el.querySelector(".a2rw");
+      if (pop && !calmMotion()) {
+        w?.classList.add("pop");
+        S.t.push(setTimeout(() => w?.classList.remove("pop"), 800));
+      } else if ((pop || fade) && el.animate) el.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 500, fill: "backwards" });
+      return S;
+    }
+    // Ins Maul nehmen (am Henkel) oder loslassen
+    _a2RadioHold(on) {
+      this._el.pika.classList.toggle("carry", on);
+      this._mouth(on ? "#4fa9a0" : null, on ? RADIO_CARRY : null);
+    }
+    // Stellen am Radio (Szene-Pixel): Henkel oben, Mitte des Lautsprechers
+    _a2RadioAt([fx, fy]) {
+      const S = this._a2RadioS;
+      const { w, h } = this._a2RadioDim();
+      return { x: (S?.x ?? this._x) + (fx - 0.5) * w, y: this._g.gy + 1 - h * (1 - fy) };
+    }
+    // Schriftzug über dem Radio („krrz…“), über der Antenne, damit er es nicht verdeckt
+    _a2RadioPeep(text) {
+      const T = this._a2RadioAt(RADIO_HANDLE);
+      this._peep(T.x, T.y - this._a2RadioDim().h * 0.55, text);
+    }
+    // ---------- Was er damit tut ----------
+    // Radiowetter: nicht bei Regen, Schnee aus den Wolken, Gewitter oder Sturm (Nebel, Wolken, Schnee am Boden gehen)
+    _a2RadioWeather(wx = this._wx || {}) {
+      return !wx.wet && !wx.storm && !wx.shelter && !wx.hail && !(wx.snow > 0);
+    }
+    // Hook: ab und zu bei Radiowetter, bei Tag und in der Dämmerung; ist es schon dunkel (er ist noch wach), seltener.
+    // Der Drehtanz ab Stufe 2 etwas seltener als der Tanz
+    _a2RadioActs({ wx }, lv) {
+      if (!this._a2RadioWeather(wx)) return [];
+      const w = 0.3 * (this._el.scene.classList.contains("night") ? 0.5 : 1);
+      return [[w, "a2RadioPlay"], [lv >= 2 ? w * 0.6 : 0, "a2RadioSpin"]];
+    }
+    // Stufe 1 (Aktion 'a2RadioPlay'). o: { short: nach dem Auspacken (das Radio kommt gleich neben ihm, kein Weg in den
+    // Bau), gold: goldene Noten sicher, bird: das Vögelchen kommt sicher }
+    async _a2RadioPlay(o = {}) {
+      return this._a2RadioGo("dance", o);
+    }
+    // Stufe 2, der Trick (Aktion 'a2RadioSpin')
+    async _a2RadioSpin(o = {}) {
+      if (this._a2Lv("radio") < 2) return;
+      return this._a2RadioGo("spin", o);
+    }
+    async _a2RadioGo(mode, o) {
+      const lv = this._a2Lv("radio");
+      if (!lv || !this._a2RadioWeather() && !this._forced && !o.short) return;
+      const gold = !!o.gold || lv >= 3 && this._a2GoldOk("radio");
+      const bird = !!o.bird || lv >= 3 && this._a2GoldOk("radio", RADIO_GOLD, "radio-bird");
+      this._a2RadioBusy = true;
+      try {
+        if (calmMotion()) await this._a2RadioCalm(mode, gold, bird, o);
+        else await this._a2RadioMove(mode, gold, bird, o);
+      } finally {
+        this._a2RadioBusy = false;
+        this._a2RadioEnd(true);
+      }
+    }
+    // Mit Bewegung: holen, hinstellen, einschalten, zurücktreten, tanzen, ausschalten, wegbringen
+    async _a2RadioMove(mode, gold, bird, o) {
+      const { pW } = this._g;
+      let P;
+      if (o.short) {
+        const d = this._x < this._W / 2 ? 1 : -1;
+        const px = clamp(this._x + d * pW * RADIO_FAR, pW * 0.5, this._g.xR + pW * 0.3);
+        P = { px, x: this._x, dir: d };
+        this._face(d);
+        this._a2RadioMake(px, true);
+        await this._wait(700);
+        await this._walkTo(px - d * pW * RADIO_TOUCH, 0.8);
+      } else {
+        await this._a2RadioFetch();
+        P = this._a2RadioSpot();
+        await this._walkTo(P.px - P.dir * pW * RADIO_NEAR, 0.9);
+        this._face(P.dir);
+        await this._wait(200);
+        const p2 = this._el.pika;
+        p2.classList.add("crouch");
+        await this._wait(320);
+        this._a2RadioHold(false);
+        this._a2RadioMake(P.px);
+        p2.classList.remove("crouch");
+        await this._wait(250);
+        await this._walkTo(P.px - P.dir * pW * RADIO_TOUCH, 0.6, true, 0, true);
+      }
+      this._face(P.dir);
+      await this._a2RadioOn(gold);
+      await this._walkTo(P.px - P.dir * pW * RADIO_FAR, 0.8, true, 0, true);
+      this._face(P.dir);
+      if (bird) this._a2RadioBird();
+      await this._a2RadioDance(mode, gold, o);
+      await this._walkTo(P.px - P.dir * pW * RADIO_TOUCH, 0.8);
+      this._face(P.dir);
+      await this._a2RadioOff();
+      if (o.short) return;
+      await this._walkTo(P.px - P.dir * pW * RADIO_NEAR, 0.6);
+      this._face(P.dir);
+      const p = this._el.pika;
+      p.classList.add("crouch");
+      await this._wait(320);
+      p.classList.remove("crouch");
+      this._a2RadioEnd(true, true);
+      this._a2RadioHold(true);
+      await this._wait(250);
+      await this._enterBurrow(0.9);
+      this._a2RadioHold(false);
+      await this._wait(rnd(500, 900));
+      await this._comeOut();
+    }
+    // Aus dem Bau holen: Er kramt drinnen und kommt mit dem Radio im Maul heraus
+    async _a2RadioFetch() {
+      await this._enterBurrow(1);
+      const { home, hole } = this._g;
+      this._peep(home, hole.top, pick(["kram, kram…", "wo ist es…", "raschel…"]));
+      await this._wait(rnd(800, 1200));
+      this._a2RadioHold(true);
+      await this._comeOut();
+    }
+    // Einschalten (er steht dicht davor): Antenne ausziehen, am Knopf drehen, es rauscht, dann Musik
+    async _a2RadioOn(gold) {
+      const S = this._a2RadioS;
+      if (!S) return;
+      const p = this._el.pika;
+      const el = S.el;
+      p.classList.add("crouch");
+      await this._wait(260);
+      el.classList.add("ant");
+      this._a2RadioPeep(pick(["zieh!", "Antenne!"]));
+      await this._wait(450);
+      el.classList.add("knob", "a2rtune");
+      this._a2RadioPeep(pick(["krrz…", "kschhh…", "krrrk…"]));
+      await this._wait(800);
+      el.classList.remove("a2rtune");
+      p.classList.remove("crouch");
+      S.on = true;
+      S.gold = gold;
+      el.classList.add("on");
+      el.style.setProperty("--a2rbt", `${RADIO_SENDER[S.st].beat * 2}ms`);
+      this._a2RadioNote(gold);
+      this._say(pick(RADIO_SENDER[S.st].say), 1300);
+      p.classList.add("happy");
+      await this._wait(600);
+      p.classList.remove("happy");
+    }
+    // Ausschalten (er steht dicht davor): Knopf zurück, Musik aus, Antenne ein
+    async _a2RadioOff() {
+      const S = this._a2RadioS;
+      if (!S) return;
+      const p = this._el.pika;
+      p.classList.add("crouch");
+      await this._wait(260);
+      S.on = false;
+      S.el.classList.remove("on", "knob");
+      this._a2RadioBirdGo();
+      await this._wait(300);
+      S.el.classList.remove("ant");
+      p.classList.remove("crouch");
+      this._say(pick(["schön war's!", "Musik aus!", "♪ ♥"]), 1200);
+      await this._wait(700);
+    }
+    // Tanzen im Takt des Senders (Wippen über .a2r-bop, ein Wippen je Schlag), mit Umdrehen, Hüpfern und Mitsingen.
+    // spin: in der Mitte der Drehtanz. Am Ende golden ein Schwarm goldener Noten.
+    async _a2RadioDance(mode, gold, o) {
+      const S = this._a2RadioS;
+      if (!S) return;
+      const p = this._el.pika;
+      S.dance = true;
+      p.style.setProperty("--a2rbt", `${RADIO_SENDER[S.st].beat * 2}ms`);
+      p.classList.add("a2r-bop");
+      const d0 = this._dir;
+      await this._a2RadioBeats(o.short ? 4 : 6, (i) => {
+        if (i === 3) this._jump("hop1");
+      });
+      if (mode === "spin") {
+        await this._a2RadioPirouette();
+        p.classList.add("a2r-bop");
+        await this._a2RadioBeats(4);
+      } else {
+        this._face(-d0);
+        await this._a2RadioBeats(o.short ? 2 : 4, (i) => {
+          if (i === 1) this._jump("hop1");
+        });
+        this._face(d0);
+      }
+      if (!o.short) {
+        p.classList.add("sing");
+        this._say(pick(["la-la-la ♪", "♪ dum-di-dum ♪", "tralala!", "♪ mip-mip ♪"]), 1800);
+        if (this._bird?.sitting) this._tweet(this._bird);
+        await this._a2RadioBeats(4);
+        p.classList.remove("sing");
+        await this._a2RadioBeats(2, (i) => {
+          if (i === 0) this._jump("hop1");
+        });
+      }
+      p.classList.remove("a2r-bop");
+      if (gold) this._a2RadioGoldBurst();
+      this._happy(1200);
+      S.dance = false;
+      await this._wait(900);
+    }
+    // n Schläge: Jeden zweiten steigt eine Note auf (golden: jede vierte golden), fn(i) zu jedem Schlag. Gezählt, nicht
+    // nach der Uhr (ein Tipp kann den Sender und damit den Takt wechseln)
+    async _a2RadioBeats(n, fn = null) {
+      for (let i = 0; i < n; i++) {
+        const S = this._a2RadioS;
+        if (!S) return;
+        if (i % 2 === 0) this._a2RadioNote(S.gold && (S.nt = (S.nt || 0) + 1) % 2 === 0);
+        fn?.(i);
+        await this._wait(RADIO_SENDER[S.st].beat);
+      }
+    }
+    // Der Drehtanz: in die Knie, zwei Pirouetten (die zweite schneller), Glitzer, „Ta-da!“, Verbeugung
+    async _a2RadioPirouette() {
+      const p = this._el.pika;
+      p.classList.remove("a2r-bop");
+      this._say(pick(["Drehtanz!", "und… dreh!", "Pirouette!"]), 1300);
+      p.classList.add("crouch");
+      await this._wait(300);
+      p.classList.remove("crouch");
+      for (const ms of [900, 700]) {
+        p.style.setProperty("--a2rsp", `${ms}ms`);
+        p.classList.remove("a2r-spin");
+        void p.offsetWidth;
+        p.classList.add("a2r-spin");
+        this._a2RadioNote(this._a2RadioS?.gold);
+        await this._wait(ms);
+      }
+      p.classList.remove("a2r-spin");
+      const { pH, gy } = this._g;
+      this._sparkle(this._x, gy - pH * 0.6, 3);
+      this._say(pick(["Ta-da!", "tadaa!", "hui!"]), 1200);
+      p.classList.add("bowing");
+      await this._wait(1600);
+      p.classList.remove("bowing");
+    }
+    // Reduzierte Bewegung: hingehen, das Radio blendet neben ihm ein, es rauscht, Musik (Noten blenden am Platz ein), er
+    // freut sich und singt; Drehtanz: nach links und rechts schauen, verbeugen. Am Ende blendet es aus.
+    async _a2RadioCalm(mode, gold, bird, o) {
+      const p = this._el.pika;
+      const { pW } = this._g;
+      let P;
+      if (o.short) {
+        const d = this._x < this._W / 2 ? 1 : -1;
+        P = { x: this._x, px: clamp(this._x + d * pW * RADIO_FAR, pW * 0.5, this._g.xR + pW * 0.3), dir: d };
+      } else {
+        P = this._a2RadioSpot();
+        await this._walkTo(P.x, 0.9);
+      }
+      this._face(P.dir);
+      const S = this._a2RadioMake(P.px, false, true);
+      await this._wait(700);
+      S.el.classList.add("ant", "knob", "a2rtune");
+      this._a2RadioPeep(pick(["krrz…", "kschhh…"]));
+      await this._wait(900);
+      S.el.classList.remove("a2rtune");
+      S.on = true;
+      S.gold = gold;
+      S.el.classList.add("on");
+      this._say(pick(RADIO_SENDER[S.st].say), 1300);
+      if (bird) this._a2RadioBird();
+      S.dance = true;
+      p.classList.add("content");
+      await this._a2RadioBeats(6);
+      if (mode === "spin") {
+        this._say(pick(["Drehtanz!", "und… dreh!"]), 1200);
+        for (const d of [-P.dir, P.dir, -P.dir, P.dir]) {
+          this._face(d);
+          await this._a2RadioBeats(1);
+        }
+        p.classList.add("bowing");
+        this._say("Ta-da!", 1200);
+        await this._wait(1600);
+        p.classList.remove("bowing");
+      } else {
+        p.classList.add("sing");
+        this._say(pick(["la-la-la ♪", "tralala!"]), 1600);
+        await this._a2RadioBeats(4);
+        p.classList.remove("sing");
+      }
+      await this._a2RadioBeats(2);
+      p.classList.remove("content");
+      if (gold) this._a2RadioGoldBurst();
+      this._happy(1e3);
+      S.dance = false;
+      await this._wait(900);
+      S.on = false;
+      S.el.classList.remove("on", "knob", "ant");
+      this._a2RadioBirdGo();
+      await this._wait(500);
+    }
+    // Nach dem Auspacken (Hook): gleich ausprobieren (Stufe 1 tanzen, 2 Drehtanz, 3 mit goldenen Noten und Vögelchen).
+    // Regnet es, nur kurz zeigen: Es ploppt neben ihm auf, rauscht, eine Note, „bei Regen lieber nicht“, weg.
+    async _a2RadioStow(lv) {
+      if (this._a2RadioWeather()) return lv === 2 ? this._a2RadioSpin({ short: true }) : this._a2RadioPlay({ short: true, gold: lv >= 3, bird: lv >= 3 });
+      this._a2RadioBusy = true;
+      try {
+        const { pW } = this._g;
+        const d = this._x < this._W / 2 ? 1 : -1;
+        const S = this._a2RadioMake(clamp(this._x + d * pW * RADIO_FAR, pW * 0.5, this._g.xR + pW * 0.3), true);
+        this._face(d);
+        this._say(lv >= 3 ? pick(["goldig!", "es glänzt!"]) : pick(["Musik!", "ein Radio!"]), 1300);
+        await this._wait(900);
+        S.el.classList.add("ant", "a2rtune");
+        this._a2RadioPeep("krrz…");
+        await this._wait(700);
+        S.el.classList.remove("a2rtune");
+        S.on = true;
+        S.gold = lv >= 3;
+        S.el.classList.add("on");
+        this._a2RadioNote(lv >= 3);
+        await this._wait(800);
+        this._el.pika.classList.add("look-up");
+        this._say(pick(["bei Regen lieber nicht…", "zu nass zum Tanzen!"]), 1600);
+        await this._wait(1700);
+        this._el.pika.classList.remove("look-up");
+        S.on = false;
+        S.el.classList.remove("on", "ant");
+        this._say(pick(["wenn die Sonne scheint!", "bald!"]), 1300);
+        this._happy(1e3);
+        await this._wait(1300);
+      } finally {
+        this._a2RadioBusy = false;
+        this._a2RadioEnd(true);
+      }
+    }
+    // ---------- Noten ----------
+    // Eine Note steigt aus dem Lautsprecher (gold: golden, weiter und höher). Bewegung reduzieren: Sie blendet über dem
+    // Radio am Platz ein und aus.
+    _a2RadioNote(gold = false) {
+      const S = this._a2RadioS;
+      if (!S?.on || !this._el?.fx) return null;
+      const calm = calmMotion();
+      const { w, h } = this._a2RadioDim();
+      const L = this._a2RadioAt(RADIO_SPEAKER);
+      const H = this._H;
+      const n = document.createElement("span");
+      n.className = `a2rn${gold ? " gold" : ""}${calm ? " still" : ""}`;
+      n.innerHTML = pick(NOTE_SVG);
+      if (!gold) n.style.color = pick(RADIO_SENDER[S.st].col);
+      const x = calm ? S.x + rnd(-0.6, 0.6) * w : L.x;
+      const y = calm ? L.y - h * rnd(0.9, 1.6) : L.y - h * 0.1;
+      n.style.left = `${x.toFixed(1)}px`;
+      n.style.top = `${y.toFixed(1)}px`;
+      const k = gold ? 1.5 : 1;
+      n.style.setProperty("--dx", `${(rnd(-0.5, 1) * H * 0.1 * k).toFixed(1)}px`);
+      n.style.setProperty("--dy", `${(-H * rnd(0.17, 0.25) * k).toFixed(1)}px`);
+      n.style.setProperty("--nr", `${Math.round(rnd(-25, 25))}deg`);
+      this._el.fx.appendChild(n);
+      const F = this._a2RadioFx ??= /* @__PURE__ */ new Set();
+      F.add(n);
+      setTimeout(() => {
+        n.remove();
+        F.delete(n);
+      }, gold ? 2400 : 1900);
+      return n;
+    }
+    // Golden zum Schluss: ein Schwarm goldener Noten fächert aus dem Lautsprecher, dazu Glitzer
+    _a2RadioGoldBurst() {
+      const S = this._a2RadioS;
+      if (!S?.on) return;
+      for (let i = 0; i < 5; i++) {
+        S.t.push(setTimeout(() => {
+          const n = this._a2RadioNote(true);
+          if (n && !calmMotion()) n.style.setProperty("--dx", `${((i - 2) * this._H * 0.07).toFixed(1)}px`);
+        }, i * 140));
+      }
+      const L = this._a2RadioAt(RADIO_SPEAKER);
+      this._sparkle(L.x, L.y - this._H * 0.08, 2);
+    }
+    // ---------- Das Vögelchen (Stufe 3) ----------
+    // Ein Vögelchen fliegt auf den Henkel und wippt im Takt mit, bis die Musik aus ist (_a2RadioBirdGo)
+    _a2RadioBird() {
+      const S = this._a2RadioS;
+      if (!S || S.bird || !this._el?.birds) return;
+      const v = pick(BIRDS);
+      const T = this._a2RadioAt(RADIO_HANDLE);
+      const calm = calmMotion();
+      const el = document.createElement("div");
+      el.className = `bird a2rb${calm ? "" : " flying"}`;
+      el.innerHTML = `<div class="bw" role="button" aria-label="${v.name}"><div class="bf"><div class="bb">${BIRD_SVG(v)}</div></div></div>`;
+      el.style.left = `${T.x.toFixed(1)}px`;
+      el.style.top = `${T.y.toFixed(1)}px`;
+      el.style.zIndex = String(RADIO_BZ());
+      el.style.setProperty("--a2rbt", `${RADIO_SENDER[S.st].beat * 2}ms`);
+      const dir = this._x >= T.x ? 1 : -1;
+      const b = { el, v, x: T.x, y: T.y, dir, sitting: false, gone: false, t: null, fly: null };
+      S.bird = b;
+      el.classList.toggle("left", dir < 0);
+      el.querySelector(".bw")?.addEventListener("click", (e) => {
+        e.stopPropagation();
+        this._found("visitor");
+        this._a2RadioBirdGo(true);
+      });
+      this._keyTap?.(el.querySelector(".bw"));
+      this._el.birds.appendChild(el);
+      const land = () => {
+        if (b.gone) return;
+        b.fly = null;
+        el.classList.remove("flying");
+        if (!calmMotion()) el.classList.add("land");
+        b.sitting = true;
+        b.t = setTimeout(() => {
+          el.classList.remove("land");
+          if (!calmMotion()) el.classList.add("bob");
+          this._tweet?.(b);
+        }, 320);
+      };
+      if (calm || !el.animate) {
+        el.animate?.([{ opacity: 0 }, { opacity: 1 }], { duration: 500, fill: "backwards" });
+        b.t = setTimeout(land, 500);
+        return;
+      }
+      const dx = -dir * this._W * rnd(0.3, 0.45);
+      const dy = -T.y - this._H * 0.1;
+      const dur = rnd(1300, 1700);
+      b.fly = el.animate([
+        { transform: `translate(${dx.toFixed(1)}px, ${dy.toFixed(1)}px)` },
+        { transform: `translate(${(dx * 0.4).toFixed(1)}px, ${(dy * 0.3).toFixed(1)}px)`, offset: 0.55 },
+        { transform: `translate(${(dx * 0.08).toFixed(1)}px, ${(-this._H * 0.04).toFixed(1)}px)`, offset: 0.88 },
+        { transform: "translate(0, 0)" }
+      ], { duration: dur, easing: "ease-out" });
+      b.t = setTimeout(land, dur);
+    }
+    // Das Vögelchen fliegt weg (fast: erschrocken); now: sofort weg (Karte aus dem DOM)
+    _a2RadioBirdGo(fast = false, now2 = false, S = this._a2RadioS) {
+      const b = S?.bird;
+      if (!b || b.gone) return;
+      b.gone = true;
+      b.sitting = false;
+      clearTimeout(b.t);
+      b.fly?.cancel?.();
+      const el = b.el;
+      el.classList.remove("land", "bob");
+      if (now2) return el.remove();
+      if (calmMotion() || !el.animate) {
+        el.animate?.([{ opacity: 1 }, { opacity: 0 }], { duration: 400, fill: "forwards" });
+        setTimeout(() => el.remove(), 420);
+        return;
+      }
+      el.classList.add("flying");
+      const out = b.x > this._W / 2 ? 1 : -1;
+      el.classList.toggle("left", out < 0);
+      const dur = fast ? 800 : rnd(1100, 1500);
+      el.animate([
+        { transform: "translate(0, 0)" },
+        { transform: `translate(${(out * this._W * 0.06).toFixed(1)}px, ${(-this._H * 0.07).toFixed(1)}px)`, offset: 0.25 },
+        { transform: `translate(${(out * this._W * 0.55).toFixed(1)}px, ${(-b.y - this._H * 0.2).toFixed(1)}px)` }
+      ], { duration: dur, easing: "ease-in", fill: "forwards" });
+      setTimeout(() => el.remove(), dur + 40);
+    }
+    // ---------- Hooks: Tipp, Aufräumen, Abhängen ----------
+    // Tipp aufs Radio (nur, solange es steht): Es rauscht (Bild über der Front), der Zeiger springt, ein anderer Sender
+    // kommt: neue Farben der Noten, anderer Takt. Tanzt er gerade, sagt er etwas dazu.
+    _a2RadioTap() {
+      const S = this._a2RadioS;
+      if (!S) return false;
+      const el = S.el;
+      el.classList.remove("a2rtune");
+      void el.offsetWidth;
+      el.classList.add("a2rtune");
+      this._a2RadioPeep(pick(["krrz…", "kschhh…", "krrrk…", "fiiiep…"]));
+      clearTimeout(this._a2RadioTapT);
+      this._a2RadioTapT = setTimeout(() => {
+        if (this._a2RadioS !== S) return;
+        el.classList.remove("a2rtune");
+        S.st = (S.st + 1) % RADIO_SENDER.length;
+        const R2 = RADIO_SENDER[S.st];
+        el.style.setProperty("--a2rn", `${R2.nd}px`);
+        const bt = `${R2.beat * 2}ms`;
+        el.style.setProperty("--a2rbt", bt);
+        if (S.dance) this._el.pika.style.setProperty("--a2rbt", bt);
+        S.bird?.el.style.setProperty("--a2rbt", bt);
+        if (!S.on) return;
+        this._a2RadioNote(S.gold);
+        if (S.dance && !this._asleep) this._say(pick(R2.say), 1100);
+      }, 650);
+      return true;
+    }
+    // Ende der Aktion oder Abbruch (auch aus _cleanup nach jeder Aktion): Radio, Vögelchen, Zeitgeber weg, eigene Klassen
+    // am Pika ab. force: aus der eigenen Aktion; sonst, mitten in ihr (Szene, Aufräumen), nichts: Sie räumt in ihrem
+    // finally selbst auf, nur nach einem Abbruch gleich. now: sofort weg (er nimmt es ins Maul), sonst blendet es aus
+    _a2RadioEnd(force = false, now2 = false) {
+      const S = this._a2RadioS;
+      if (!S) return;
+      if (!force && this._a2RadioBusy && !this._ac?.signal?.aborted) return;
+      this._a2RadioS = null;
+      for (const t of S.t) clearTimeout(t);
+      clearTimeout(this._a2RadioTapT);
+      this._a2RadioBirdGo(false, false, S);
+      const p = this._el.pika;
+      p.classList.remove(...RADIO_CLS);
+      p.style.removeProperty?.("--a2rbt");
+      const el = S.el;
+      el.classList.remove("on", "a2rtune");
+      if (!now2 && el.isConnected && !calmMotion() && this._a2Els?.get("radio") === el) {
+        el.classList.add("a2out");
+        setTimeout(() => !this._a2RadioS && this._a2Els?.get("radio") === el && this._a2Drop("radio"), 450);
+      } else if (!now2 && el.isConnected && el.animate && this._a2Els?.get("radio") === el) {
+        el.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 450, fill: "forwards" });
+        setTimeout(() => !this._a2RadioS && this._a2Els?.get("radio") === el && this._a2Drop("radio"), 460);
+      } else this._a2Drop("radio");
+    }
+    _a2RadioCleanup() {
+      this._a2RadioEnd();
+      if (!this._a2RadioBusy) this._el?.pika?.classList.remove(...RADIO_CLS);
+    }
+    // Karte aus dem DOM: alles sofort weg
+    _a2RadioDetach() {
+      clearTimeout(this._a2RadioTapT);
+      const S = this._a2RadioS;
+      if (S) {
+        this._a2RadioBirdGo(false, true, S);
+        this._a2RadioS = null;
+        for (const t of S.t) clearTimeout(t);
+      }
+      this._a2Drop("radio");
+      for (const n of this._a2RadioFx || []) n.remove();
+      this._a2RadioFx?.clear();
+      this._a2RadioBusy = false;
+    }
   };
 
   // src/karte/album2-tramp.js
+  var TRAMP_GOLD = { cd: 2 * 6e4, p: 0.6 };
+  var TRAMP_Z = () => buehneZ(REIHE.vorn, "vogel");
+  var TRAMP_FZ = () => buehneZ(REIHE.vorn, "requisitVorn");
+  var TRAMP_AIR = 920;
+  var TRAMP_DOWN = 200;
+  var TRAMP_DIP = 3.4;
+  var TRAMP_PIVOT = 0.58;
+  var TRAMP_CLS = ["a2tr", "a2tr-sq", "a2tr-up", "a2tr-tuck"];
+  var now = () => typeof performance !== "undefined" ? performance.now() : Date.now();
+  var smooth = (f2) => f2 * f2 * (3 - 2 * f2);
   var Album2Tramp = class {
+    // ---------- Szene ----------
+    // Szene (Hook): Es steht nie dauerhaft. Nur, solange er es benutzt (_a2TrampS), bleibt es; sonst weg. Hat sich die
+    // Größe der Karte geändert, steht es an alten Pixeln: abbrechen (wie der Schlitten)
+    _a2TrampScene(lv) {
+      const S = this._a2TrampS;
+      if (S && (S.W !== this._W || S.H !== this._H) && this._a2TrampBusy) this._interrupt();
+      else if (!S || !(lv > 0)) this._a2TrampEnd();
+      if (S && this._a2TrampS === S) S.front.classList.toggle("gilt", lv >= 3);
+    }
+    // Wo es steht: auf der Wiese zwischen Vorrat und Stein, neben allem, was dort schon steht (_groundSpot, bevor es selbst
+    // dort steht). Auf schmalen Karten, wo die Wiese nicht reicht, bis auf drei Viertel kleiner. → { x: Mitte, w: Breite }
+    _a2TrampSpot() {
+      const { pW } = this._g;
+      const U = this._groundSpot(Math.random(), pW * TRAMP_W * 1.06, 0.75);
+      return { x: U.x, w: U.w / 1.06 };
+    }
+    // Wie hoch er über dem Tuch höchstens springt (px): Der Kopf bleibt im Bild, auch quer im Salto (dann ragt er um
+    // etwa 0,13 Pika-Höhen weiter hinauf), mit einem Rand oben; höchstens 0,8 Pika-Höhen
+    _a2TrampTop(mat) {
+      const { gy, pH } = this._g;
+      const free = gy - pH * 0.945 - mat - Math.max(6, (this._Hs || this._H) * 0.04) - pH * 0.13;
+      return clamp(free, pH * 0.2, pH * 0.8);
+    }
+    // Trampolin anlegen (Element aus _a2El: Tippfläche, Licht, golden; dazu der vordere Bogen) mit Mitte x, Breite w.
+    // Es liegt zusammengeklappt da (fold) bzw. ist bei reduzierter Bewegung noch ausgeblendet. → der Zustand
+    _a2TrampMake(x, w) {
+      if (this._a2TrampS) this._a2TrampEnd(true);
+      const s = w / TRAMP_VB[0];
+      const h = TRAMP_VB[1] * s;
+      const sink = (TRAMP_VB[1] - TRAMP_FOOT) * s;
+      const box = (el2) => {
+        el2.style.left = `${(x - w / 2).toFixed(1)}px`;
+        el2.style.width = `${w.toFixed(1)}px`;
+        el2.style.height = `${h.toFixed(1)}px`;
+        el2.style.bottom = `calc(var(--gb) - ${sink.toFixed(1)}px)`;
+      };
+      const el = this._a2El("tramp", `<div class="a2trw">${TRAMP_BACK}</div>`);
+      el.classList.remove("a2out", "fold");
+      box(el);
+      el.style.zIndex = String(TRAMP_Z());
+      const front = document.createElement("div");
+      front.className = "gt a2-trampf";
+      front.innerHTML = `<div class="a2trw">${TRAMP_FRONT}</div>`;
+      box(front);
+      front.style.zIndex = String(TRAMP_FZ());
+      this._el.gifts.appendChild(front);
+      const S = {
+        W: this._W,
+        H: this._H,
+        el,
+        front,
+        x,
+        w,
+        s,
+        mat: (TRAMP_FOOT - TRAMP_MAT) * s,
+        mpath: el.querySelector(".a2trm"),
+        msh: el.querySelector(".a2trs"),
+        mode: "off",
+        y: 0,
+        air: 0,
+        dip: 0,
+        rot: 0,
+        ctl: false,
+        spring: null,
+        drive: null,
+        raf: 0,
+        F: [],
+        t: [],
+        hp: 0,
+        folded: false
+      };
+      S.top = this._a2TrampTop(S.mat);
+      this._a2TrampS = S;
+      this._a2Scene();
+      for (const e of [el, front]) e.classList.add(calmMotion() ? "a2out" : "fold");
+      void el.offsetWidth;
+      this._a2TrampPlace();
+      this._a2TrampRun();
+      return S;
+    }
+    // Aufklappen (bzw. einblenden) und zusammenklappen (bzw. ausblenden)
+    _a2TrampFold(on) {
+      const S = this._a2TrampS;
+      if (!S) return;
+      const k = calmMotion() ? "a2out" : "fold";
+      for (const e of [S.el, S.front]) e.classList.toggle(k, on);
+      S.folded = on;
+    }
+    // ---------- Takt ----------
+    // Bild für Bild: laufender Abschnitt (drive), dann Pika, Tuch und Schatten stellen
+    _a2TrampRun() {
+      const S = this._a2TrampS;
+      if (!S || S.raf || typeof requestAnimationFrame !== "function") return;
+      const frame = (t) => {
+        if (this._a2TrampS !== S) return;
+        S.raf = 0;
+        try {
+          if (S.drive) S.drive.step(clamp((t - S.drive.t0) / S.drive.ms, 0, 1));
+          this._a2TrampPlace();
+        } catch (e) {
+          this._err?.("Album 2 tramp", e);
+          return;
+        }
+        S.raf = requestAnimationFrame(frame);
+      };
+      S.raf = requestAnimationFrame(frame);
+    }
+    // Ein Abschnitt von ms Dauer: step(f) mit f von 0 bis 1 stellt alles; am Ende gilt step(1) sicher
+    async _a2TrampDrive(ms, step) {
+      const S = this._a2TrampS;
+      if (!S) return;
+      S.drive = { t0: now(), ms, step };
+      step(0);
+      try {
+        await this._wait(ms);
+      } finally {
+        if (S.drive?.step === step) S.drive = null;
+      }
+      step(1);
+      this._a2TrampPlace();
+    }
+    // Wie weit das Tuch gerade nachfedert (nach einem Tipp): gedämpfte Schwingung, ruhig nur ein sanftes Nachgeben
+    _a2TrampSpring(S, t = now()) {
+      const P = S.spring;
+      if (!P) return 0;
+      const d = t - P.t0;
+      if (d > 1500 || d < 0) {
+        S.spring = null;
+        return 0;
+      }
+      if (P.calm) return P.amp * Math.sin(Math.PI * Math.min(1, d / 900));
+      return Math.max(-1, P.amp * Math.exp(-d / 380) * Math.sin(2 * Math.PI * d / 280));
+    }
+    // Pika (Höhe und Drehung in .depth), Tuch und Schatten auf dem Tuch stellen. Auf dem Tuch (mode 'mat') stehen seine
+    // Füße, solange er nicht in der Luft ist, dort, wo es gerade ist; sonst (mode 'off', beim Hinauf- und Herunterhüpfen)
+    // in der Höhe S.y
+    _a2TrampPlace() {
+      const S = this._a2TrampS;
+      if (!S) return;
+      const dip = S.dip + this._a2TrampSpring(S);
+      const y = S.mode === "mat" ? S.mat + S.air - (S.air > 0 ? 0 : dip * S.s) : S.y;
+      if (S.ctl) {
+        const d = this._el.depth;
+        d.style.transformOrigin = `50% ${(TRAMP_PIVOT * 100).toFixed(0)}%`;
+        d.style.transform = `translateY(${(-y).toFixed(1)}px)${S.rot ? ` rotate(${(S.rot * this._dir).toFixed(1)}deg)` : ""}`;
+      }
+      S.mpath?.setAttribute?.("d", trampMat(dip));
+      const up = S.mode === "mat" ? S.air : Math.max(0, y - S.mat);
+      const near = S.ctl && Math.abs(this._x - S.x) < S.w * 0.3;
+      const k = near ? 1 / (1 + up / (this._g.pH * 0.5)) : 0;
+      S.msh?.setAttribute?.("transform", `translate(32 ${(9.4 + dip * 0.8).toFixed(2)}) scale(${k.toFixed(3)}) translate(-32 -9.4)`);
+    }
+    // Er übernimmt (an) bzw. gibt ab: eigene Klasse am Pika (sein Schatten ist der auf dem Tuch), Sprechblase mit der Höhe
+    // des Tuchs (an) bzw. wieder normal
+    _a2TrampCtl(on) {
+      const S = this._a2TrampS;
+      const p = this._el.pika;
+      const d = this._el.depth.style;
+      if (S) S.ctl = on;
+      p.classList.toggle("a2tr", on);
+      if (on) {
+        this._a2TrampDtr ??= d.transition || "";
+        d.transition = "none";
+        return;
+      }
+      p.classList.remove(...TRAMP_CLS);
+      d.transform = "";
+      d.transformOrigin = "";
+      void this._el.depth.offsetWidth;
+      if (this._a2TrampDtr != null) d.transition = this._a2TrampDtr;
+      this._a2TrampDtr = null;
+    }
+    // Sprechblase auf die Höhe des Tuchs (er steht darauf) bzw. wieder auf den Boden
+    _a2TrampSay(onMat) {
+      const S = this._a2TrampS;
+      const t = this._el.psay.style;
+      const { pW } = this._g;
+      t.transform = `translate(${(this._x - pW / 2).toFixed(1)}px, ${(onMat && S ? -S.mat : 0).toFixed(1)}px)`;
+    }
+    // ---------- Was er damit tut ----------
+    // Trampolinwetter: trocken (kein Regen, kein Schnee, keiner liegt), kein Sturm, kein starker Wind, Tag (nicht in
+    // der Dämmerung, nicht nachts)
+    _a2TrampWeather(wx = this._wx || {}) {
+      const sc = this._el.scene.classList;
+      return !wx.wet && !(wx.snow > 0) && !wx.snowcover && !wx.storm && !wx.shelter && !wx.hail && !sc.contains("night") && !sc.contains("dusk") && (this._wind || 0) < 40;
+    }
+    // Hook: nur bei Trampolinwetter; der Salto erst ab Stufe 2
+    _a2TrampActs({ wx }, lv) {
+      if (!this._a2TrampWeather(wx)) return [];
+      return [[0.35, "a2TrampPlay"], [lv >= 2 ? 0.25 : 0, "a2TrampFlip"]];
+    }
+    // Stufe 1 (Aktion 'a2TrampPlay'): springen, immer höher. o: { short: nach dem Auspacken (weniger Sprünge), gold:
+    // Sternchen sicher }
+    async _a2TrampPlay(o = {}) {
+      return this._a2TrampGo(false, o);
+    }
+    // Stufe 2, der Trick (Aktion 'a2TrampFlip'): Salto beim höchsten Sprung
+    async _a2TrampFlip(o = {}) {
+      if (this._a2Lv("tramp") < 2) return;
+      return this._a2TrampGo(true, o);
+    }
+    async _a2TrampGo(flip, o) {
+      const lv = this._a2Lv("tramp");
+      if (!lv || !this._a2TrampWeather() && !this._forced && !o.short) return;
+      const gold = !!o.gold || lv >= 3 && this._a2GoldOk("tramp", TRAMP_GOLD);
+      this._a2TrampBusy = true;
+      try {
+        await this._a2TrampOut();
+        if (calmMotion()) await this._a2TrampCalm(flip, gold);
+        else await this._a2TrampJump(flip, gold, o);
+        await this._a2TrampAway();
+      } finally {
+        this._a2TrampBusy = false;
+        this._a2TrampEnd(true);
+      }
+    }
+    // Holen: neben die Stelle, es liegt zusammengeklappt da, er klappt es auf (bzw. es blendet ein). Er steht auf der
+    // Seite, von der er kommt, außer dort ist kein Platz (Kartenrand). → der Zustand
+    async _a2TrampOut() {
+      const { pW, xR } = this._g;
+      const T = this._a2TrampSpot();
+      const off = T.w / 2 + pW * 0.38;
+      const ok = (x) => x >= pW * 0.45 && x <= xR;
+      let side = this._x < T.x ? -1 : 1;
+      if (!ok(T.x + side * off) && ok(T.x - side * off)) side = -side;
+      await this._walkTo(clamp(T.x + side * off, pW * 0.45, xR), 1);
+      this._face(T.x >= this._x ? 1 : -1);
+      this._say(pick(["Trampolin!", "aufklappen…", "Zeit zum Hüpfen!"]), 1200);
+      await this._wait(500);
+      const S = this._a2TrampMake(T.x, T.w);
+      const p = this._el.pika;
+      p.classList.add("crouch");
+      await this._wait(250);
+      this._a2TrampFold(false);
+      if (!calmMotion()) {
+        this._puff(T.x - T.w * 0.42, this._g.gy, 1);
+        this._puff(T.x + T.w * 0.42, this._g.gy, 1);
+      }
+      await this._wait(600);
+      p.classList.remove("crouch");
+      this._peep(T.x + T.w * 0.3, this._g.gy - S.mat - 6, "klack!");
+      await this._wait(400);
+      return S;
+    }
+    // Hinauf (Hüpfer aufs Tuch, bzw. ruhig: hinaufsteigen) und herunter, auf die Seite, auf der er stand
+    async _a2TrampOn() {
+      const S = this._a2TrampS;
+      if (!S) return;
+      const p = this._el.pika;
+      const { pH } = this._g;
+      S.from = this._x;
+      const calm = calmMotion();
+      const ms = calm ? 700 : 560;
+      if (!calm) {
+        p.classList.add("crouch");
+        await this._wait(180);
+        p.classList.remove("crouch");
+      }
+      p.style.transition = `transform ${ms}ms ${calm ? "ease-in-out" : "linear"}`;
+      this._setX(S.x);
+      this._a2TrampCtl(true);
+      S.mode = "off";
+      S.y = 0;
+      this._a2TrampSay(true);
+      if (!calm) this._earSwing?.(p, "hop1");
+      await this._a2TrampDrive(ms, (f2) => {
+        S.y = calm ? S.mat * smooth(f2) : S.mat * f2 + pH * 0.3 * 4 * f2 * (1 - f2);
+      });
+      S.mode = "mat";
+      S.air = 0;
+      S.y = S.mat;
+      S.hp = pH * 0.3;
+      this._a2TrampPlace();
+    }
+    async _a2TrampOff() {
+      const S = this._a2TrampS;
+      if (!S) return;
+      const p = this._el.pika;
+      const { pW, pH, xR } = this._g;
+      const calm = calmMotion();
+      const ms = calm ? 700 : 520;
+      const x = clamp(S.from ?? S.x - S.w / 2 - pW * 0.38, pW * 0.45, xR);
+      S.mode = "off";
+      S.dip = 0;
+      p.classList.remove("a2tr-sq", "a2tr-up", "a2tr-tuck");
+      p.style.transition = `transform ${ms}ms ${calm ? "ease-in-out" : "linear"}`;
+      this._setX(x);
+      if (!calm) this._earSwing?.(p, "hop1");
+      await this._a2TrampDrive(ms, (f2) => {
+        S.y = calm ? S.mat * (1 - smooth(f2)) : S.mat * (1 - f2) + pH * 0.25 * 4 * f2 * (1 - f2);
+      });
+      this._a2TrampCtl(false);
+      this._setX(this._x, true);
+      if (!calm) this._puff(this._x, this._g.gy, 2);
+    }
+    // Ein Sprung: erst ins Tuch (es gibt nach, um so mehr, je höher er herkam), dann hinauf auf h px über dem Tuch.
+    // flip: Salto; gold: Sternchen oben
+    async _a2TrampBounce(h, flip = false, gold = false) {
+      const S = this._a2TrampS;
+      if (!S) return;
+      const p = this._el.pika;
+      const D = TRAMP_DIP * clamp(0.35 + 0.65 * (Math.max(S.hp, h) / S.top), 0.3, 1);
+      S.mode = "mat";
+      S.air = 0;
+      p.classList.remove("a2tr-up", "a2tr-tuck");
+      p.classList.add("a2tr-sq");
+      await this._a2TrampDrive(TRAMP_DOWN, (f2) => {
+        S.dip = D * Math.sin(Math.PI * f2);
+      });
+      S.dip = 0;
+      if (!(h > 0)) {
+        p.classList.remove("a2tr-sq");
+        return;
+      }
+      p.classList.remove("a2tr-sq");
+      p.classList.add("a2tr-up");
+      this._earSwing?.(p, "hop1");
+      const ms = Math.max(300, TRAMP_AIR * Math.sqrt(h / S.top));
+      let top = false;
+      await this._a2TrampDrive(ms, (f2) => {
+        S.air = 4 * h * f2 * (1 - f2);
+        if (f2 > 0.3) p.classList.remove("a2tr-up");
+        if (flip) {
+          S.rot = 360 * smooth(clamp((f2 - 0.12) / 0.74, 0, 1));
+          p.classList.toggle("a2tr-tuck", f2 > 0.14 && f2 < 0.82);
+        }
+        if (!top && f2 >= 0.5) {
+          top = true;
+          if (gold) this._a2TrampStars(h);
+        }
+      });
+      S.air = 0;
+      S.rot = 0;
+      S.hp = h;
+      p.classList.remove("a2tr-up", "a2tr-tuck");
+    }
+    // Springen mit Bewegung: hinauf, ein paarmal immer höher, oben (beim höchsten) Salto und Sternchen, ausfedern,
+    // herunter
+    async _a2TrampJump(flip, gold, o) {
+      const S = this._a2TrampS;
+      if (!S) return;
+      await this._a2TrampOn();
+      await this._a2TrampBounce(0);
+      this._say(flip ? pick(["jetzt ein Salto!", "aufgepasst!", "Salto, los!"]) : pick(["hüpf!", "los geht's!", "boing, boing!"]), 1100);
+      await this._wait(700);
+      const ks = o.short ? [0.42, 0.72, 1] : [0.26, 0.46, 0.7, 1];
+      const bx = (side) => S.x + side * Math.max(S.w * 0.46, this._g.pW * 0.56);
+      this._peep(bx(1), this._g.gy - S.mat * 0.6, "boing!");
+      for (let i = 0; i < ks.length; i++) {
+        const last = i === ks.length - 1;
+        await this._a2TrampBounce(S.top * ks[i], flip && last, gold && last);
+        if (last) this._peep(bx(-1), this._g.gy - S.mat * 0.6, "boing!");
+      }
+      await this._a2TrampBounce(S.top * 0.28);
+      await this._a2TrampBounce(S.top * 0.09);
+      await this._a2TrampBounce(0);
+      this._say(flip ? pick(["tadaa!", "Salto!", "geschafft!"]) : pick(["juhuu!", "so hoch!", "hui!"]), 1200);
+      await this._wait(900);
+      await this._a2TrampOff();
+      this._happy(1100);
+      await this._wait(800);
+    }
+    // Reduzierte Bewegung: hinaufsteigen, sanft wippen (das Tuch gibt ein wenig nach, er mit), golden blenden Sternchen
+    // am Platz ein und aus; statt des Saltos ein Gedanke daran
+    async _a2TrampCalm(flip, gold) {
+      const S = this._a2TrampS;
+      if (!S) return;
+      await this._a2TrampOn();
+      this._say(flip ? pick(["stell dir einen Salto vor!", "Salto – in Gedanken!"]) : pick(["wipp, wipp…", "schön federnd!"]), 1500);
+      for (let i = 0; i < 4; i++) {
+        await this._a2TrampDrive(900, (f2) => {
+          S.dip = 1.1 * Math.sin(Math.PI * f2);
+        });
+        if (i === 1 && gold) this._a2TrampStars(0);
+      }
+      S.dip = 0;
+      await this._wait(500);
+      await this._a2TrampOff();
+      this._happy(1e3);
+      await this._wait(800);
+    }
+    // Wegräumen: zusammenklappen (bzw. ausblenden), dann ist es weg
+    async _a2TrampAway() {
+      const S = this._a2TrampS;
+      if (!S) return;
+      const p = this._el.pika;
+      this._face(S.x >= this._x ? 1 : -1);
+      p.classList.add("crouch");
+      await this._wait(250);
+      this._a2TrampFold(true);
+      await this._wait(520);
+      p.classList.remove("crouch");
+      if (calmMotion()) return;
+      this._puff(S.x, this._g.gy, 2);
+      await this._wait(250);
+      for (const e of [S.el, S.front]) e.classList.add("a2out");
+      await this._wait(420);
+    }
+    // Nach dem Auspacken (Hook): Bei Trampolinwetter gleich ein paar Sprünge (Stufe 1 springen, 2 Salto, 3 mit
+    // Sternchen). Sonst nur zeigen: Es klappt neben ihm auf, er drückt mit den Pfoten aufs Tuch, es federt, er vertröstet.
+    async _a2TrampStow(lv) {
+      if (this._a2TrampWeather()) return lv === 2 ? this._a2TrampFlip({ short: true }) : this._a2TrampPlay({ short: true, gold: lv >= 3 });
+      this._a2TrampBusy = true;
+      const p = this._el.pika;
+      try {
+        const S = await this._a2TrampOut();
+        if (lv >= 3) this._a2TrampStars(-1);
+        this._say(lv >= 3 ? pick(["goldig!", "das glänzt!"]) : lv === 2 ? pick(["für den Salto!", "damit geht ein Salto!"]) : pick(["zum Hüpfen!", "ein Trampolin!"]), 1300);
+        await this._wait(900);
+        p.classList.add("crouch");
+        this._a2TrampTap(null);
+        await this._wait(500);
+        p.classList.remove("crouch");
+        p.classList.add("look-up");
+        const sc = this._el.scene.classList;
+        this._say(sc.contains("night") || sc.contains("dusk") ? pick(["morgen hüpf ich!", "wenn's hell ist!"]) : pick(["wenn's trocken ist!", "bald hüpf ich!"]), 1500);
+        await this._wait(1600);
+        p.classList.remove("look-up");
+        this._happy(1e3);
+        await this._wait(700);
+        if (S) await this._a2TrampAway();
+      } finally {
+        this._a2TrampBusy = false;
+        this._a2TrampEnd(true);
+      }
+    }
+    // ---------- Sternchen ----------
+    // Goldene Sternchen um ihn, h px über dem Tuch (oben im Sprung; −1: um das Tuch, er steht daneben). Ruhig blenden sie
+    // am Platz ein und aus (_goldFx). Sie räumen sich selbst weg; bricht die Aktion ab, gleich (S.F).
+    _a2TrampStars(h) {
+      const S = this._a2TrampS;
+      if (!S) return;
+      const { gy, pH, pW } = this._g;
+      const H = this._H;
+      const n = calmMotion() ? 3 : 6;
+      const cy = h < 0 ? gy - S.mat - H * 0.04 : gy - S.mat - h - pH * (1 - TRAMP_PIVOT) * 0.95;
+      for (let i = 0; i < n; i++) {
+        const a = Math.PI * 2 * (i + rnd(-0.2, 0.2)) / n - Math.PI / 2;
+        const rx = (h < 0 ? S.w * 0.45 : pW * 0.5) * rnd(0.9, 1.1);
+        const ry = (h < 0 ? H * 0.04 : pH * 0.48) * rnd(0.9, 1.1);
+        const x = S.x + Math.cos(a) * rx;
+        const y = Math.max(H * 0.03, cy + Math.sin(a) * ry);
+        S.F.push(this._goldFx("a2trst", x, y, {
+          html: GOLD_STAR,
+          ms: 1150,
+          delay: i * 45,
+          vars: { "--dx": `${(Math.cos(a) * rx * 0.45).toFixed(1)}px`, "--dy": `${Math.max(-y + H * 0.03, Math.sin(a) * ry * 0.45).toFixed(1)}px` }
+        }));
+      }
+    }
+    // ---------- Hooks: Tipp, Aufräumen, Abhängen ----------
+    // Tipp aufs Trampolin (nur, solange es draußen steht): Das Tuch federt nach, steht er darauf, wippt er mit
+    _a2TrampTap(z) {
+      const S = this._a2TrampS;
+      if (!S) return false;
+      const calm = calmMotion();
+      S.spring = { t0: now(), amp: calm ? 1 : 2.6, calm };
+      this._a2TrampPlace();
+      const off = Math.max(S.w * 0.46, this._g.pW * 0.56);
+      if (z) this._peep(S.x + (S.x + off < this._W - 30 ? off : -off), this._g.gy - S.mat * 0.6, pick(["boing!", "federt!", "bouing!"]));
+      return true;
+    }
+    // Ende der Aktion oder Abbruch (auch aus _cleanup nach jeder Aktion): Trampolin, Sternchen, Zeitgeber weg; stellte
+    // er den Pika selbst, steht der wieder am Boden (_lift ist ohnehin 0; die Höhe in .depth gleitet kurz nach unten aus)
+    // (force: aus der eigenen Aktion. Sonst, mitten in ihr, aus Szene oder Aufräumen: nichts, sie räumt in ihrem finally
+    // selbst auf; nur nach einem Abbruch gleich)
+    _a2TrampEnd(force = false) {
+      const S = this._a2TrampS;
+      if (!S) return;
+      if (!force && this._a2TrampBusy && !this._ac?.signal?.aborted) return;
+      this._a2TrampS = null;
+      if (S.raf && typeof cancelAnimationFrame === "function") cancelAnimationFrame(S.raf);
+      for (const t of S.t) clearTimeout(t);
+      this._goldDrop?.(S.F);
+      const p = this._el.pika;
+      if (S.ctl) {
+        const d = this._el.depth;
+        const cur = d.style.transform;
+        this._a2TrampCtl(false);
+        if (cur && !calmMotion()) d.animate?.([{ transform: cur, transformOrigin: `50% ${TRAMP_PIVOT * 100}%` }, { transform: "none", transformOrigin: `50% ${TRAMP_PIVOT * 100}%` }], { duration: 220, easing: "ease-in" });
+        this._lift = 0;
+        this._setX(S.mode === "off" && typeof getComputedStyle === "function" ? this._liveX() : this._x, true);
+      }
+      p.classList.remove(...TRAMP_CLS);
+      const el = S.el;
+      const front = S.front;
+      if (!S.folded && el.isConnected && !calmMotion() && this._a2Els?.get("tramp") === el) {
+        el.classList.add("a2out");
+        front.classList.add("a2out");
+        setTimeout(() => {
+          front.remove();
+          if (!this._a2TrampS) this._a2Drop("tramp");
+        }, 450);
+      } else {
+        front.remove();
+        this._a2Drop("tramp");
+      }
+    }
+    _a2TrampCleanup() {
+      this._a2TrampEnd();
+    }
+    // Karte aus dem DOM: alles sofort weg
+    _a2TrampDetach() {
+      this._a2TrampBusy = false;
+      const S = this._a2TrampS;
+      this._a2TrampEnd(true);
+      if (S) {
+        S.front.remove();
+        this._a2Drop("tramp");
+      }
+    }
   };
 
   // src/karte/album2-picnic.js
