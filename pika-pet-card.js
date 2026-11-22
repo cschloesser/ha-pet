@@ -61,7 +61,7 @@
  */
 (() => {
   // src/version.js
-  var VERSION = "0.47.0";
+  var VERSION = "0.48.0";
 
   // src/logik/hilfen.js
   var Cancel = class extends Error {
@@ -495,19 +495,19 @@
     Frankfurt: "Frankfurt"
   };
   var cityDe = (c) => CITY_DE[c] || c || "";
-  var flightNo = (f2) => {
-    const n = String(f2.flight_number || "").toUpperCase();
+  var flightNo = (f3) => {
+    const n = String(f3.flight_number || "").toUpperCase();
     const m = n.match(/^([A-Z0-9]{2})(\d{1,4}[A-Z]?)$/);
-    return m ? `${m[1]} ${m[2]}` : n || f2.callsign || f2.aircraft_registration || "✈";
+    return m ? `${m[1]} ${m[2]}` : n || f3.callsign || f3.aircraft_registration || "✈";
   };
-  var planeKind = (f2) => {
-    const t = `${f2.aircraft_category || ""} ${f2.aircraft_model || ""}`;
+  var planeKind = (f3) => {
+    const t = `${f3.aircraft_category || ""} ${f3.aircraft_model || ""}`;
     if (/heli|rotor|Eurocopter|Airbus Helicopters|Robinson|Agusta|Sikorsky|\bBell [24]\d\d|\bEC ?1\d\d|\bH1[2-6]\d|BK.?117|AW1\d\d/i.test(t)) return "heli";
     if (/Cessna|Piper|Cirrus|Diamond|Robin|Beech|Mooney|Socata|Aquila|Extra|Ultralight|Glider|Grob|Tecnam|Zlin|Aeroprakt|Ikarus|Pilatus PC-6|light/i.test(t) && !/Citation|Jet|King Air|Pilatus PC-12|Phenom/i.test(t)) return "prop";
     return "jet";
   };
-  var flightAloft = (f2, kind = planeKind(f2)) => !f2.on_ground && Number(f2.altitude) > 80 && (Number(f2.ground_speed) > 30 || kind === "heli");
-  var flightGhost = (g, f2) => !!g && g.lat === Number(f2.latitude) && g.lon === Number(f2.longitude);
+  var flightAloft = (f3, kind = planeKind(f3)) => !f3.on_ground && Number(f3.altitude) > 80 && (Number(f3.ground_speed) > 30 || kind === "heli");
+  var flightGhost = (g, f3) => !!g && g.lat === Number(f3.latitude) && g.lon === Number(f3.longitude);
   var planeLag = (cur, nxt, max = 30) => {
     const v2 = nxt.ve * nxt.ve + nxt.vn * nxt.vn;
     if (!(v2 > 1e-9)) return 0;
@@ -635,15 +635,15 @@
   var planSer = (P) => {
     const h = P.hay;
     const w = P.gift?.w > 0 ? P.gift.w & A2_FULL : 0;
-    const f2 = P.fl;
-    const fs = f2 ? `_${Math.round(f2.t / 1e3).toString(36)}_${f2.c}${f2.x.toString(36).padStart(2, "0")}${f2.k ? 1 : 0}` : "";
+    const f3 = P.fl;
+    const fs = f3 ? `_${Math.round(f3.t / 1e3).toString(36)}_${f3.c}${f3.x.toString(36).padStart(2, "0")}${f3.k ? 1 : 0}` : "";
     return [
       "p1",
       [h.n, Math.round(h.t / 1e3).toString(36), h.c || "-", h.m.toString(36) + fs].join("."),
-      (P.sport ? `${P.sport.d.toString(36)}.${P.sport.k.toString(36)}` : "-") + (P.fd || []).map((f3) => `_${Math.round(f3.t / 1e3).toString(36)}-${f3.x.toString(36).padStart(2, "0")}${(f3.k ? 1 : 0) + (f3.e ? 2 : 0)}`).join(""),
+      (P.sport ? `${P.sport.d.toString(36)}.${P.sport.k.toString(36)}` : "-") + (P.fd || []).map((f4) => `_${Math.round(f4.t / 1e3).toString(36)}-${f4.x.toString(36).padStart(2, "0")}${(f4.k ? 1 : 0) + (f4.e ? 2 : 0)}`).join(""),
       P.rec.map(([k, a, v]) => v ? `${k.toString(36)}:${a}:${v}` : `${k.toString(36)}:${a}`).join(",") || "-",
       (P.cute ? [P.cute.d, P.cute.n, P.cute.m].map((x) => x.toString(36)).join(".") : "-") + (P.fu ? `_${Math.round(P.fu / 1e3).toString(36)}` : ""),
-      ...P.gift ? [GIFT_F.map((f3) => P.gift[f3] == null ? "-" : (f3 === "u" ? giftU(P.gift) : Math.round(GIFT_T.has(f3) ? P.gift[f3] / 1e3 : P.gift[f3])).toString(36) + (f3 === "a" && P.gift.p != null ? `_${Math.round(P.gift.p / 1e3).toString(36)}` : "") + (f3 === "u" && P.gift.v != null ? `_${P.gift.v.toString(36)}` : "") + (f3 === "x" && P.gift.r != null ? `_${P.gift.r.toString(36)}` : "")).join(".")] : P.ur ? ["-"] : [],
+      ...P.gift ? [GIFT_F.map((f4) => P.gift[f4] == null ? "-" : (f4 === "u" ? giftU(P.gift) : Math.round(GIFT_T.has(f4) ? P.gift[f4] / 1e3 : P.gift[f4])).toString(36) + (f4 === "a" && P.gift.p != null ? `_${Math.round(P.gift.p / 1e3).toString(36)}` : "") + (f4 === "u" && P.gift.v != null ? `_${P.gift.v.toString(36)}` : "") + (f4 === "x" && P.gift.r != null ? `_${P.gift.r.toString(36)}` : "")).join(".")] : P.ur ? ["-"] : [],
       ...P.ur ? [`u${Math.round(P.ur.t / 1e3).toString(36)}${P.ur.d != null ? `.${Math.round(P.ur.d / 6e4).toString(36)}` : ""}`] : w ? ["-"] : [],
       ...w ? [`a${w.toString(36)}`] : []
     ].join("|");
@@ -678,7 +678,7 @@
     const gq = (p[5] || "").split(".");
     if (gq.length === GIFT_F.length) {
       const G = {};
-      GIFT_F.forEach((f2, i) => G[f2] = gq[i] === "-" ? null : parseInt(gq[i], 36) * (GIFT_T.has(f2) ? 1e3 : 1));
+      GIFT_F.forEach((f3, i) => G[f3] = gq[i] === "-" ? null : parseInt(gq[i], 36) * (GIFT_T.has(f3) ? 1e3 : 1));
       const gp = parseInt(gq[1].split("_")[1] ?? "", 36) * 1e3;
       G.p = Number.isFinite(gp) ? gp : null;
       const gv = parseInt(gq[3].split("_")[1] ?? "", 36);
@@ -691,7 +691,7 @@
       const gr = parseInt(gq[7].split("_")[1] ?? "", 36);
       G.r = Number.isFinite(gr) ? gr : null;
       G.w = w;
-      if (GIFT_F.every((f2) => f2 === "b" || Number.isFinite(G[f2]))) P.gift = G;
+      if (GIFT_F.every((f3) => f3 === "b" || Number.isFinite(G[f3]))) P.gift = G;
     }
     const [cq, fuq] = (p[4] || "-").split("_");
     const fu = parseInt(fuq ?? "", 36) * 1e3;
@@ -811,14 +811,14 @@
       const t = out.hay.t + Math.floor(Math.max(0, now2 - out.hay.t) / 864e5) * 864e5;
       out.hay = { n: n + 1, t, c: (c + op.c).slice(-(n + 1)), m: op.m ?? out.hay.m };
     } else if (op.t === "fdrop") {
-      const f2 = out.fl;
-      if (!f2 || f2.t !== op.f.t && Math.abs(op.f.t - f2.t) >= FLGIFT.gap) out.fl = { ...op.f };
+      const f3 = out.fl;
+      if (!f3 || f3.t !== op.f.t && Math.abs(op.f.t - f3.t) >= FLGIFT.gap) out.fl = { ...op.f };
     } else if (op.t === "frgone") {
       out.fu = Math.max(out.fu, op.u);
     } else if (op.t === "feed") {
-      if (!out.fd.some((f2) => f2.t === op.f.t)) out.fd = [...out.fd, { ...op.f }].sort((a, b) => a.t - b.t).slice(-FOOD_MAX);
+      if (!out.fd.some((f3) => f3.t === op.f.t)) out.fd = [...out.fd, { ...op.f }].sort((a, b) => a.t - b.t).slice(-FOOD_MAX);
     } else if (op.t === "fate") {
-      out.fd = out.fd.map((f2) => f2.t === op.ft ? { ...f2, e: true } : f2);
+      out.fd = out.fd.map((f3) => f3.t === op.ft ? { ...f3, e: true } : f3);
     } else if (op.t === "ftake") {
       if (out.fl?.t === op.ft) out.fl = { ...out.fl, k: true };
     } else if (op.t === "pet" || op.t === "mem") {
@@ -873,12 +873,12 @@
       g.v = (G.v || 0) | (A.v || 0);
       if (g.v !== G.v) g.nov = void 0;
       g.w = (G.w || 0) | (A.w || 0);
-      const gold = (f2) => Math.floor((f2 ?? -1) / GIFT.goldDays);
+      const gold = (f3) => Math.floor((f3 ?? -1) / GIFT.goldDays);
       if (A.f != null && (G.f == null || G.f < A.f)) {
         g.f = A.f;
         if (gold(A.f) > gold(G.f)) g.y = Math.max(G.y, A.y);
       }
-      if (GIFT_F.some((f2) => g[f2] !== G[f2]) || g.v !== G.v || g.f !== G.f || g.r !== G.r || g.w !== (G.w || 0)) {
+      if (GIFT_F.some((f3) => g[f3] !== G[f3]) || g.v !== G.v || g.f !== G.f || g.r !== G.r || g.w !== (G.w || 0)) {
         out.gift = g;
         diff = true;
       }
@@ -907,7 +907,7 @@
   var festDay = (y, m, d) => Math.round(Date.UTC(y, m - 1, d) / 864e5);
   var festEaster = (y) => {
     const a = y % 19, b = Math.floor(y / 100), c = y % 100, d = Math.floor(b / 4), e = b % 4;
-    const f2 = Math.floor((b + 8) / 25), g = Math.floor((b - f2 + 1) / 3);
+    const f3 = Math.floor((b + 8) / 25), g = Math.floor((b - f3 + 1) / 3);
     const h = (19 * a + b - d - g + 15) % 30, i = Math.floor(c / 4), k = c % 4;
     const l = (32 + 2 * e + 2 * i - h - k) % 7, m = Math.floor((a + 11 * h + 22 * l) / 451);
     const n = h + l - 7 * m + 114;
@@ -1332,15 +1332,15 @@
   var bezAt = (x1, y1, x2, y2, x) => {
     if (!(x > 0)) return 0;
     if (x >= 1) return 1;
-    const f2 = (a, b, t) => 3 * a * t * (1 - t) ** 2 + 3 * b * t * t * (1 - t) + t ** 3;
+    const f3 = (a, b, t) => 3 * a * t * (1 - t) ** 2 + 3 * b * t * t * (1 - t) + t ** 3;
     let lo = 0;
     let hi = 1;
     for (let i = 0; i < 30; i++) {
       const t = (lo + hi) / 2;
-      if (f2(x1, x2, t) < x) lo = t;
+      if (f3(x1, x2, t) < x) lo = t;
       else hi = t;
     }
-    return f2(y1, y2, (lo + hi) / 2);
+    return f3(y1, y2, (lo + hi) / 2);
   };
   var boatPos = (t, K2) => {
     const t1 = BOAT_T.launch + K2 * BOAT_T.puff;
@@ -6714,10 +6714,125 @@
 `;
 
   // src/stil/album2-picnic.js
-  var STYLE_A2_PICNIC = "";
+  var STYLE_A2_PICNIC = `
+  /* Decke: die Vorderkante liegt etwas unter der Bodenlinie (--a2pks, px), so steht er mitten darauf */
+  .gifts > .a2-picnic { bottom: calc(var(--gb) - var(--a2pks, 4px)); transition: opacity .4s, filter 2.5s; }
+  .a2-picnic.a2out { opacity: 0; }
+  .a2-picnic .a2pkd { position: absolute; left: 0; bottom: 0; width: 100%; }
+  .a2-picnic .a2pkk, .a2-picnic .a2pkr, .a2-picnic .a2pkbu { position: absolute; }
+  .a2-picnic .a2pkr, .a2-picnic .a2pkbu { display: none; }
+  .a2-picnic.a2roll .a2pkr { display: block; }
+  /* Safari schneidet ein Element mit Filter (Licht der Dämmerung, golden) an der Box des <svg> ab (siehe 0.40.1): Der
+     Schatten unter der Decke reicht 0,4 Einheiten unter die viewBox 100 × 18, der Korb wackelt beim Antippen um seinen
+     Boden. Rand als padding mit gleich großem negativem margin, die Zeichnung bleibt, wo sie war */
+  .a2-picnic .a2pkd svg { padding: 0 1% 2%; margin: 0 -1% -2%; }
+  .a2-picnic .a2pkk svg, .a2-picnic .a2pkbu svg { padding: 10%; margin: -10%; pointer-events: none; }
+  /* Der Korb öffnet sich zum Pika hin: links von ihm gespiegelt */
+  .a2-picnic.a2left .a2pkk > div { transform: scaleX(-1); }
+  .a2-picnic .a2pkk > div { transform-origin: 50% 100%; }
+  .a2-picnic .a2pkk.pop > div { animation: a2pkpop .55s cubic-bezier(.3, 1.6, .5, 1); }
+  .a2-picnic.a2left .a2pkk.pop > div { animation-name: a2pkpopl; }
+  @keyframes a2pkpop { from { transform: scale(.3, .2); opacity: 0; } 40% { opacity: 1; } }
+  @keyframes a2pkpopl { from { transform: scale(-.3, .2); opacity: 0; } 40% { opacity: 1; } }
+  /* Deckel hebt sich am Scharnier (20,4/11,6 der viewBox), die Serviette schaut heraus */
+  .a2-picnic .a2pkl { transform-box: view-box; transform-origin: 20.4px 11.6px; transition: transform .35s cubic-bezier(.3, 1.5, .5, 1); }
+  .a2-picnic.open .a2pkl { transform: rotate(32deg); }
+  .a2-picnic .a2pkn { opacity: 0; transition: opacity .2s; }
+  .a2-picnic.open .a2pkn { opacity: 1; }
+  /* Antippen: der Korb hüpft kurz */
+  .a2-picnic.a2tap .a2pkk { animation: a2pkwob .5s ease-out; }
+  @keyframes a2pkwob { 25% { transform: translateY(-14%) rotate(-5deg); } 55% { transform: rotate(3deg); } 80% { transform: rotate(-1deg); } }
+  /* Das Bündel (vorzeigen, wenn kein Picknickwetter ist): nur Korb mit Rolle */
+  .a2-picnic.rolled .a2pkd, .a2-picnic.rolled .a2pkk { display: none; }
+  .a2-picnic.rolled .a2pkbu { display: block; left: 0; bottom: 0; width: 100%; }
+  .a2-picnic.rolled.pop .a2pkbu { transform-origin: 50% 100%; animation: a2pkpop .55s cubic-bezier(.3, 1.6, .5, 1); }
+  /* Er sitzt auf der Decke */
+  .pika.a2pk-sit .hop { transform: scale(1.05, .93); }
+  /* Leckerli für später, neben dem Korb */
+  .gifts > .a2pkt { position: absolute; pointer-events: none; transition: opacity .5s, transform .5s ease-in, filter 2.5s; }
+  .gifts > .a2pkt svg { padding: 6%; margin: -6%; }
+  .gifts > .a2pkt.away { opacity: 0; transform: translateY(-40%) scale(.5); }
+  .gifts > .a2pkt.still.away { transform: none; }
+  /* Schmetterlinge (BFLY_SVG): fliegen per Web Animations heran, sitzen mit langsamem Flügelschlag */
+  .a2pkb { position: absolute; width: calc(var(--H) * .075); pointer-events: none; }
+  .a2pkb svg { display: block; width: 100%; height: auto; overflow: visible; }
+  .a2pkb .bwl, .a2pkb .bwr { transform-box: view-box; transform-origin: 10px 8px; animation: a2pkbw .15s ease-in-out infinite alternate; }
+  .a2pkb.rest .bwl, .a2pkb.rest .bwr { animation-duration: 1.3s; }
+  .a2pkb.still .bwl, .a2pkb.still .bwr { animation: none; }
+  @keyframes a2pkbw { to { transform: scaleX(.2); } }
+  .a2pkb.off { transition: opacity .6s; opacity: 0; }
+  /* Krümel und das geworfene Stück */
+  .a2pkc { position: absolute; width: calc(var(--H) * .022); margin: calc(var(--H) * -.011); pointer-events: none; z-index: 1; }
+  .a2pkc svg, .a2pkf svg { display: block; width: 100%; height: auto; }
+  .a2pkc.still { animation: gfx-still 1.2s ease-in-out both; }
+  .a2pkf { position: absolute; pointer-events: none; transition: opacity .6s; }
+  .a2pkf.away { opacity: 0; }
+  @media (prefers-reduced-motion: reduce) {
+    .a2-picnic .a2pkk.pop > div, .a2-picnic.rolled.pop .a2pkbu, .a2-picnic.a2tap .a2pkk, .a2pkb .bwl, .a2pkb .bwr { animation: none !important; }
+    .a2-picnic .a2pkl { transition: none; }
+  }
+`;
 
   // src/stil/album2-pool.js
-  var STYLE_A2_POOL = "";
+  var GOLD2 = "#f2c94c";
+  var STYLE_A2_POOL = `
+  .gifts > .a2-pool, .gifts > .a2plf { position: absolute; transition: opacity .45s, filter 2.5s; }
+  .gifts > .a2-pool.a2out, .gifts > .a2plf.a2out { opacity: 0; }
+  .gifts > .a2plf.new { animation: grow .7s cubic-bezier(.3, 1.6, .5, 1); transform-origin: 50% 100%; }
+  /* Safari schneidet ein Element mit Filter (Licht der Dämmerung) an der Box des <svg> ab (siehe 0.40.1): Der dicke
+     Rand ragt seitlich knapp aus der viewBox 160 × 64. Rand als padding mit gleich großem negativem margin, die
+     Zeichnung bleibt, wo sie war (gilt auch für die Ente) */
+  .a2-pool svg, .a2plf svg { padding: 4% 3% 0; margin: -4% -3% 0; pointer-events: none; }
+  /* Aufblasen (--a2plf von 0 bis 1): richtet sich von unten auf; Luft heraus (.deflate) langsamer */
+  .a2-pool .a2plb, .a2plf .a2plb { transform-box: view-box; transform-origin: 80px 56px;
+    transform: scale(calc(.94 + .06 * var(--a2plf, 1)), calc(.14 + .86 * var(--a2plf, 1)));
+    transition: transform .45s cubic-bezier(.3, 1.5, .5, 1); }
+  .a2-pool.deflate .a2plb, .a2plf.deflate .a2plb { transition: transform .9s ease-in; }
+  /* Wasser: leer sinkt es zum Boden und blendet aus; beim Füllen steigt es langsam */
+  .a2-pool .a2plwa, .a2plf .a2plwa { transform-box: view-box; transform-origin: 80px 40px; transition: transform 2.4s ease-in-out, opacity 1.4s; }
+  .a2-pool.leer .a2plwa, .a2plf.leer .a2plwa { transform: translateY(8px) scale(.86, .5); opacity: 0; }
+  /* Ringe auf dem Wasser (.rip, groß .rip2), hinten ganz, vorn ihre vordere Hälfte */
+  .a2plrp > * { opacity: 0; transform-box: view-box; transform-origin: 80px 29px; }
+  .rip .a2plr1 { animation: a2plrip .7s ease-out; }
+  .rip2 .a2plr2 { animation: a2plrip2 .9s .12s ease-out backwards; }
+  @keyframes a2plrip { from { opacity: .95; transform: scale(.25); } to { opacity: 0; transform: scale(1.45); } }
+  @keyframes a2plrip2 { from { opacity: .9; transform: scale(.4); } to { opacity: 0; transform: scale(2); } }
+  /* Arschbombe: das Wasser schwappt */
+  .wave .a2plwa { animation: a2plwave .9s ease-out; }
+  @keyframes a2plwave { 25% { transform: translateY(-1.5px) scale(1.02, 1.22); } 55% { transform: translateY(1px) scale(.99, .86); } }
+  /* Golden: Rand und Tupfen in Gold, das Wasser bleibt blau (darum ohne den Goldfilter der Schätze) */
+  .gifts > .gt.a2-pool.gilt { filter: none; }
+  .shade .gifts > .gt.a2-pool.gilt { filter: ${LICHT_P}; }
+  .a2-pool.gilt .a2plr, .a2plf.gilt .a2plr { stroke: ${GOLD2}; }
+  .a2plf.gilt .a2plst { fill: ${GOLD2}; }
+  /* Die goldene Gummiente: treibt vor ihm hin und her, schaukelt; hüpft bei jedem Spritzer (.bob) */
+  .a2pld { position: absolute; left: 58%; top: 29%; width: 15%; opacity: 0; transition: opacity .8s; }
+  .a2pld.on { opacity: 1; animation: a2pldrift 11s ease-in-out infinite alternate; }
+  .a2pld svg { transform-origin: 50% 80%; animation: a2plsway 1.8s ease-in-out infinite alternate; }
+  .a2pld.bob svg { animation: a2plbob .6s ease-out; }
+  @keyframes a2pldrift { from { transform: translateX(0); } to { transform: translateX(-210%); } }
+  @keyframes a2plsway { from { transform: rotate(-5deg); } to { transform: rotate(5deg) translateY(4%); } }
+  @keyframes a2plbob { 35% { transform: translateY(-34%) rotate(-10deg); } 70% { transform: translateY(6%) rotate(4deg); } }
+  .a2pld.still, .a2pld.still svg { animation: none; }
+  /* Im Becken: Blatt weg (bei Regen); zusammengerollt im Sprung, Wackeln auf dem Rand, Schütteln danach */
+  .pika.a2pl-in .brolly { display: none; }
+  .pika.a2pl-ball .hop { transform: scale(.9, .8) rotate(-10deg); transition: transform .14s ease-out; }
+  .pika.a2pl-wob .hop { animation: a2plwob .45s ease-in-out infinite alternate; }
+  @keyframes a2plwob { from { transform: rotate(-4deg); } to { transform: rotate(4deg); } }
+  .pika.a2pl-shake .hop { animation: a2plshk .6s linear; }
+  @keyframes a2plshk { 15% { transform: rotate(-7deg); } 30% { transform: rotate(7deg); } 45% { transform: rotate(-6deg); }
+    60% { transform: rotate(5deg); } 75% { transform: rotate(-3deg); } }
+  /* Tropfen aus dem Fell */
+  .a2pldrip { position: absolute; width: calc(var(--ph) * .045); margin-left: calc(var(--ph) * -.022); pointer-events: none;
+    animation: a2pldrip .85s ease-in forwards; }
+  .a2pldrip svg { display: block; width: 100%; height: auto; }
+  @keyframes a2pldrip { from { opacity: 0; transform: translateY(0) scale(.6); } 20% { opacity: 1; transform: scale(1); }
+    to { opacity: 0; transform: translateY(calc(var(--ph) * .22)); } }
+  @media (prefers-reduced-motion: reduce) {
+    .a2pld, .a2pld svg, .wave .a2plwa, .pika.a2pl-wob .hop, .pika.a2pl-shake .hop { animation: none !important; }
+    .a2-pool .a2plb, .a2plf .a2plb { transition: none; }
+  }
+`;
 
   // src/stil/album2.js
   var STYLE_A2 = [STYLE_A2_FEEDER, STYLE_A2_LANTERN, STYLE_A2_SLED, STYLE_A2_CAMERA, STYLE_A2_RADIO, STYLE_A2_TRAMP, STYLE_A2_PICNIC, STYLE_A2_POOL].join("");
@@ -6761,7 +6876,7 @@
     { k: "plane", g: 2, t: "Flugzeug", h: "Tipp ein Flugzeug an. Ein Fähnchen zeigt, wohin es fliegt.", need: "flight" },
     { k: "device", g: 2, t: "Haushaltsgerät", h: "Tipp ein Gerät am Bau an. Ein Fähnchen zeigt, wie weit es ist.", need: "bote" }
   ];
-  var FIND_KEYS = [...FINDS.map((f2) => f2.k), ...A2_KEYS];
+  var FIND_KEYS = [...FINDS.map((f3) => f3.k), ...A2_KEYS];
   var FIND_IDS = new Set(FIND_KEYS);
   var findsParse = (s) => new Set(String(s || "").split(",").filter((k) => FIND_IDS.has(k)));
   var findsSer = (set) => FIND_KEYS.filter((k) => set.has(k)).join(",");
@@ -6927,7 +7042,7 @@
     const pets = {};
     const add = (t, k, x) => t >= from && ev.push({ t, k, ...x });
     const acts = /* @__PURE__ */ new Map();
-    const fed = new Set((P[0]?.v.fd || []).map((f2) => f2.t));
+    const fed = new Set((P[0]?.v.fd || []).map((f3) => f3.t));
     let pend = null;
     const petMax = (c) => c && (pets[c.d] = Math.max(pets[c.d] || 0, c.n));
     petMax(P[0]?.v.cute);
@@ -6972,10 +7087,10 @@
         if (e) e.taken = true;
         else add(t, "flower", { id: b.fl.t, taken: true });
       }
-      for (const f2 of b.fd) {
-        if (fed.has(f2.t)) continue;
-        fed.add(f2.t);
-        add(f2.t, "feed");
+      for (const f3 of b.fd) {
+        if (fed.has(f3.t)) continue;
+        fed.add(f3.t);
+        add(f3.t, "feed");
       }
       const c = b.cute;
       if (c) {
@@ -7109,11 +7224,11 @@
     return i >= 0 && j >= 0 ? i - j : i >= 0 ? -1 : j >= 0 ? 1 : a < b ? -1 : a > b ? 1 : 0;
   });
   var chronikKod = (e) => {
-    const f2 = [];
-    for (const k of CHRONIK_NUM) if (e[k] != null) f2.push(`${k}=${e[k]}`);
-    if (e.besuch) f2.push(`besuch=${gastSort(e.besuch).join(",") || "-"}`);
-    for (const k of Object.keys(e.x || {}).sort()) f2.push(`${k}=${e.x[k]}`);
-    return `${CHRONIK.kopf}${e.d}${f2.length ? ` · ${f2.join(" ")}` : ""}`;
+    const f3 = [];
+    for (const k of CHRONIK_NUM) if (e[k] != null) f3.push(`${k}=${e[k]}`);
+    if (e.besuch) f3.push(`besuch=${gastSort(e.besuch).join(",") || "-"}`);
+    for (const k of Object.keys(e.x || {}).sort()) f3.push(`${k}=${e.x[k]}`);
+    return `${CHRONIK.kopf}${e.d}${f3.length ? ` · ${f3.join(" ")}` : ""}`;
   };
   var chronikLies = (titel) => {
     if (typeof titel !== "string" || !titel.startsWith(CHRONIK.kopf)) return null;
@@ -7991,26 +8106,26 @@
     return { t: Math.ceil(1 - E.t), r: Math.ceil(E.r), b: Math.ceil(E.b), l: Math.ceil(1 - E.l) };
   };
   var KITE_SVG = (kx, ky, K2) => {
-    const f2 = (n) => n.toFixed(1);
+    const f3 = (n) => n.toFixed(1);
     const R2 = kiteRand(kx, ky, K2);
     const bows = [1.25, 1.85, 2.45].map((t, i) => {
-      const a = f2(-K2 * 0.12), b = f2(K2 * 0.12), y1 = f2(K2 * (t - 0.06)), y2 = f2(K2 * (t + 0.06));
+      const a = f3(-K2 * 0.12), b = f3(K2 * 0.12), y1 = f3(K2 * (t - 0.06)), y2 = f3(K2 * (t + 0.06));
       return `<path d="M${a} ${y1} L${b} ${y2} L${b} ${y1} L${a} ${y2}Z" fill="${["#e8584e", "#5fb9de", "#f6c945"][i]}"/>`;
     }).join("");
     const rand = `box-sizing:content-box;padding:${R2.t}px ${R2.r}px ${R2.b}px ${R2.l}px;margin:-${R2.t}px 0 0 -${R2.l}px`;
     return `<svg width="1" height="1" aria-hidden="true" style="${rand}"><g class="kl"><g class="kr">
-      <path d="M0 0 Q${f2(kx * 0.6)} ${f2(ky * 0.3)} ${f2(kx)} ${f2(ky)}" stroke="rgba(255, 255, 255, .85)" stroke-width="1" fill="none"/>
-      <g transform="translate(${f2(kx)} ${f2(ky)})"><g class="kb">
+      <path d="M0 0 Q${f3(kx * 0.6)} ${f3(ky * 0.3)} ${f3(kx)} ${f3(ky)}" stroke="rgba(255, 255, 255, .85)" stroke-width="1" fill="none"/>
+      <g transform="translate(${f3(kx)} ${f3(ky)})"><g class="kb">
         <g class="kt">
-          <path d="M0 ${f2(K2 * 0.8)} q${f2(K2 * 0.18)} ${f2(K2 * 0.3)} 0 ${f2(K2 * 0.6)} t0 ${f2(K2 * 0.6)} t0 ${f2(K2 * 0.6)}" stroke="#5a4030" stroke-width="1" fill="none"/>
+          <path d="M0 ${f3(K2 * 0.8)} q${f3(K2 * 0.18)} ${f3(K2 * 0.3)} 0 ${f3(K2 * 0.6)} t0 ${f3(K2 * 0.6)} t0 ${f3(K2 * 0.6)}" stroke="#5a4030" stroke-width="1" fill="none"/>
           ${bows}
         </g>
-        <path d="M0 ${f2(-K2 * 0.6)} L${f2(K2 * 0.42)} 0 L0 ${f2(K2 * 0.8)} L${f2(-K2 * 0.42)} 0Z" fill="#f6c945" stroke="#5a4030" stroke-width="1.2" stroke-linejoin="round"/>
-        <path d="M0 ${f2(-K2 * 0.6)} L${f2(K2 * 0.42)} 0 L0 0Z M0 0 L${f2(-K2 * 0.42)} 0 L0 ${f2(K2 * 0.8)}Z" fill="#e8584e"/>
-        <path d="M0 ${f2(-K2 * 0.6)} V${f2(K2 * 0.8)} M${f2(-K2 * 0.42)} 0 H${f2(K2 * 0.42)}" stroke="#7a5236" stroke-width=".8" opacity=".7"/>
-        <circle cx="${f2(-K2 * 0.13)}" cy="${f2(-K2 * 0.14)}" r="${f2(K2 * 0.035)}" fill="#2a1a12"/>
-        <circle cx="${f2(K2 * 0.13)}" cy="${f2(-K2 * 0.14)}" r="${f2(K2 * 0.035)}" fill="#2a1a12"/>
-        <path d="M${f2(-K2 * 0.1)} ${f2(K2 * 0.03)} q${f2(K2 * 0.1)} ${f2(K2 * 0.09)} ${f2(K2 * 0.2)} 0" stroke="#2a1a12" stroke-width="1" fill="none" stroke-linecap="round"/>
+        <path d="M0 ${f3(-K2 * 0.6)} L${f3(K2 * 0.42)} 0 L0 ${f3(K2 * 0.8)} L${f3(-K2 * 0.42)} 0Z" fill="#f6c945" stroke="#5a4030" stroke-width="1.2" stroke-linejoin="round"/>
+        <path d="M0 ${f3(-K2 * 0.6)} L${f3(K2 * 0.42)} 0 L0 0Z M0 0 L${f3(-K2 * 0.42)} 0 L0 ${f3(K2 * 0.8)}Z" fill="#e8584e"/>
+        <path d="M0 ${f3(-K2 * 0.6)} V${f3(K2 * 0.8)} M${f3(-K2 * 0.42)} 0 H${f3(K2 * 0.42)}" stroke="#7a5236" stroke-width=".8" opacity=".7"/>
+        <circle cx="${f3(-K2 * 0.13)}" cy="${f3(-K2 * 0.14)}" r="${f3(K2 * 0.035)}" fill="#2a1a12"/>
+        <circle cx="${f3(K2 * 0.13)}" cy="${f3(-K2 * 0.14)}" r="${f3(K2 * 0.035)}" fill="#2a1a12"/>
+        <path d="M${f3(-K2 * 0.1)} ${f3(K2 * 0.03)} q${f3(K2 * 0.1)} ${f3(K2 * 0.09)} ${f3(K2 * 0.2)} 0" stroke="#2a1a12" stroke-width="1" fill="none" stroke-linecap="round"/>
       </g></g>
     </g></g></svg>`;
   };
@@ -8446,7 +8561,7 @@
       if (this._g) {
         this._stop();
         this._g = null;
-        this._flowers.forEach((f2) => f2.el.remove());
+        this._flowers.forEach((f3) => f3.el.remove());
         this._flowers = [];
         this._asleep = this._inside = false;
         this._lift = 0;
@@ -9078,7 +9193,7 @@
       }
       if (!sleepy && this._asleep) return this._run("wakeUp");
       if (this._asleep) return this._run("dream");
-      const food = this._foods.find((f2) => f2.landed);
+      const food = this._foods.find((f3) => f3.landed);
       const next = this._next;
       this._slot = null;
       this._slotArm();
@@ -9176,7 +9291,7 @@
     _tick() {
       if (this._away()) return this._tickCoffee();
       this._watchdog();
-      for (const f2 of [
+      for (const f3 of [
         this._tickCore,
         this._tickSky,
         this._tickFest,
@@ -9188,7 +9303,7 @@
         this._tickSig,
         this._diaryDot
       ]) {
-        this._guard(f2.name, () => f2.call(this));
+        this._guard(f3.name, () => f3.call(this));
       }
       this._guard("Chronik", () => this._chronikTick());
     }
@@ -9496,11 +9611,11 @@
       await this._wait(rnd(300, 900));
     }
     async _nibble() {
-      const f2 = this._nearestFlower();
-      if (!f2) return;
-      await this._approach(f2.xf * this._W);
-      await this._sniffPick(f2);
-      await this._eat(f2.color, rnd(2500, 4e3));
+      const f3 = this._nearestFlower();
+      if (!f3) return;
+      await this._approach(f3.xf * this._W);
+      await this._sniffPick(f3);
+      await this._eat(f3.color, rnd(2500, 4e3));
       this._selfFed(SELF.flower);
       if (Math.random() < 0.4) this._cls("mlem", 950, true);
       await this._wait(rnd(300, 900));
@@ -9515,10 +9630,10 @@
       const ci = Math.floor(S.r(2) * pal.length);
       const color = pal[ci];
       if (this._inside) await this._comeOut();
-      const f2 = this._flowers.filter((o) => o.color === color).sort((a, b) => Math.abs(a.xf * this._W - this._x) - Math.abs(b.xf * this._W - this._x))[0] || this._nearestFlower();
-      if (f2) {
-        await this._approach(f2.xf * this._W);
-        await this._sniffPick(f2);
+      const f3 = this._flowers.filter((o) => o.color === color).sort((a, b) => Math.abs(a.xf * this._W - this._x) - Math.abs(b.xf * this._W - this._x))[0] || this._nearestFlower();
+      if (f3) {
+        await this._approach(f3.xf * this._W);
+        await this._sniffPick(f3);
       }
       this._mouth(color);
       this._el.pika.classList.add("carry");
@@ -9616,7 +9731,7 @@
       const { fMin, fMax } = this._g;
       let xf = rnd(fMin, fMax);
       if (Math.abs(xf * this._W - this._x) < this._g.pW * 0.6) xf = clamp(xf + 0.25 * pick([-1, 1]), fMin, fMax);
-      const t = Math.max(sec(this._haNow()), ...(this._plan.fd || []).map((f2) => f2.t + 1e3));
+      const t = Math.max(sec(this._haNow()), ...(this._plan.fd || []).map((f3) => f3.t + 1e3));
       const x = clamp(Math.round((xf - fMin) / Math.max(1e-6, fMax - fMin) * 99), 0, 99);
       this._planOp({ t: "feed", f: { t, x, k: Math.random() < 0.6 ? 0 : 1, e: false } });
     }
@@ -9626,26 +9741,26 @@
       if (!this._el || !this._g) return;
       const now2 = this._haNow();
       const done = this._foodDone ??= /* @__PURE__ */ new Set();
-      for (const f2 of this._plan?.fd || []) {
-        const have = this._foods.find((o) => o.t === f2.t);
-        if (f2.e) {
+      for (const f3 of this._plan?.fd || []) {
+        const have = this._foods.find((o) => o.t === f3.t);
+        if (f3.e) {
           if (have && (this._asleep || !this._running)) this._removeFood(have);
           continue;
         }
-        if (have || done.has(f2.t) || now2 - f2.t > 864e5) continue;
-        this._foodAdd(f2, now2 - f2.t < 2500);
+        if (have || done.has(f3.t) || now2 - f3.t > 864e5) continue;
+        this._foodAdd(f3, now2 - f3.t < 2500);
       }
     }
-    _foodAdd(f2, drop) {
+    _foodAdd(f3, drop) {
       const { fMin, fMax } = this._g;
-      const xf = fMin + f2.x / 99 * (fMax - fMin);
-      const kind = FOOD_KINDS[f2.k] || "lz";
+      const xf = fMin + f3.x / 99 * (fMax - fMin);
+      const kind = FOOD_KINDS[f3.k] || "lz";
       const el = document.createElement("div");
       el.className = drop ? "food drop" : "food";
       el.style.setProperty("--xf", xf.toFixed(4));
       el.innerHTML = FOOD[kind].svg;
       this._el.foods.appendChild(el);
-      const food = { xf, kind, el, landed: !drop, t: f2.t };
+      const food = { xf, kind, el, landed: !drop, t: f3.t };
       this._foods.push(food);
       const land = () => {
         food.landed = true;
@@ -9670,7 +9785,7 @@
       let xf = at == null ? null : clamp(at, fMin, fMax);
       for (let tries = 0; xf == null || at == null && tries < 12; tries++) {
         xf = rnd(fMin, fMax);
-        if (this._flowers.every((f3) => Math.abs(f3.xf - xf) * this._W > 26)) break;
+        if (this._flowers.every((f4) => Math.abs(f4.xf - xf) * this._W > 26)) break;
       }
       const color = pick(this._flowerPal());
       const el = document.createElement("div");
@@ -9679,9 +9794,9 @@
       el.style.animationDelay = grow ? "" : `${rnd(-3.6, 0).toFixed(2)}s`;
       el.innerHTML = FLOWER_SVG(color);
       this._el.flowers.appendChild(el);
-      const f2 = { xf, color, el };
-      this._flowers.push(f2);
-      this._flowerTint(f2);
+      const f3 = { xf, color, el };
+      this._flowers.push(f3);
+      this._flowerTint(f3);
     }
     // Die fünf Blumenfarben dieses Areals in dieser Jahreszeit. Im Tagesplan stehen nur ihre Nummern (Vorrat,
     // Blumengeschenk): Frühling und Sommer malen sie wie bis 0.30, Herbst und Winter in ihren eigenen Farben.
@@ -9701,9 +9816,9 @@
         fs.setProperty("--fst", dim(L.pal.stem));
         fs.setProperty("--flf", dim(L.pal.leaf));
       }
-      for (const f2 of only ? [only] : this._flowers) {
-        f2.el.style.setProperty("--fc", dim(hexRgb(f2.color)));
-        f2.el.style.setProperty("--fm", dim(hexRgb(flowerMid(f2.color))));
+      for (const f3 of only ? [only] : this._flowers) {
+        f3.el.style.setProperty("--fc", dim(hexRgb(f3.color)));
+        f3.el.style.setProperty("--fm", dim(hexRgb(flowerMid(f3.color))));
       }
     }
     // Alle 2,5 Minuten wächst eine Blume nach (bis sechs). Sieht keiner hin, wächst nichts: Es wäre Arbeit am DOM auf
@@ -9714,23 +9829,23 @@
     }
     _nearestFlower() {
       let best = null;
-      for (const f2 of this._flowers) {
-        if (!best || Math.abs(f2.xf * this._W - this._x) < Math.abs(best.xf * this._W - this._x)) best = f2;
+      for (const f3 of this._flowers) {
+        if (!best || Math.abs(f3.xf * this._W - this._x) < Math.abs(best.xf * this._W - this._x)) best = f3;
       }
       return best;
     }
     // Erst an der Blüte schnuppern (Nase wackelt, Kopf tief), dann pflücken
-    async _sniffPick(f2) {
+    async _sniffPick(f3) {
       const p = this._el.pika;
       p.classList.add("sniff");
       await this._wait(rnd(600, 900));
       p.classList.remove("sniff");
-      this._pickFlower(f2);
+      this._pickFlower(f3);
     }
-    _pickFlower(f2) {
-      this._flowers = this._flowers.filter((o) => o !== f2);
-      f2.el.classList.add("picked");
-      setTimeout(() => f2.el.remove(), 400);
+    _pickFlower(f3) {
+      this._flowers = this._flowers.filter((o) => o !== f3);
+      f3.el.classList.add("picked");
+      setTimeout(() => f3.el.remove(), 400);
     }
     _removeFood(food) {
       this._foods = this._foods.filter((o) => o !== food);
@@ -9761,10 +9876,10 @@
         const n = this._blooms.length;
         const top = F - 2.2 - Math.max(Math.ceil(n / 5.5), this._hay / 3) * 1.7;
         const cx = (S.x1 + S.x2) / 2;
-        const f2 = (v) => +v.toFixed(2);
-        sb.innerHTML = `<path d="M${S.x1 + 0.8} ${F + 1} V${F - 1.4} Q${cx} ${f2(top)} ${S.x2 - 0.8} ${F - 1.4} V${F + 1}Z" fill="#dcbc6a" stroke="#a9853a" stroke-width=".45"/><path d="M${S.x1 + 3} ${F - 1.2} l2.2 -1.4 M${cx - 2} ${F - 1} l2.6 -1.6 M${S.x2 - 6} ${F - 1.3} l2 -1.2" stroke="#b38c3c" stroke-width=".4" fill="none"/>` + this._blooms.map((b, i) => {
+        const f3 = (v) => +v.toFixed(2);
+        sb.innerHTML = `<path d="M${S.x1 + 0.8} ${F + 1} V${F - 1.4} Q${cx} ${f3(top)} ${S.x2 - 0.8} ${F - 1.4} V${F + 1}Z" fill="#dcbc6a" stroke="#a9853a" stroke-width=".45"/><path d="M${S.x1 + 3} ${F - 1.2} l2.2 -1.4 M${cx - 2} ${F - 1} l2.6 -1.6 M${S.x2 - 6} ${F - 1.3} l2 -1.2" stroke="#b38c3c" stroke-width=".4" fill="none"/>` + this._blooms.map((b, i) => {
           const [x, y] = P[i];
-          return `<g${bounce && i === n - 1 ? ' class="new"' : ""}><path d="M${f2(x - 2.1)} ${f2(y + 1.1)} Q${f2(x - 1.1)} ${f2(y + 0.3)} ${f2(x)} ${f2(y)}" stroke="#5e8f3e" stroke-width=".5" fill="none"/><circle cx="${f2(x)}" cy="${f2(y)}" r="1.5" fill="${b.color}" stroke="rgba(0,0,0,.22)" stroke-width=".25"/><circle cx="${f2(x)}" cy="${f2(y)}" r=".55" fill="#e0a032"/></g>`;
+          return `<g${bounce && i === n - 1 ? ' class="new"' : ""}><path d="M${f3(x - 2.1)} ${f3(y + 1.1)} Q${f3(x - 1.1)} ${f3(y + 0.3)} ${f3(x)} ${f3(y)}" stroke="#5e8f3e" stroke-width=".5" fill="none"/><circle cx="${f3(x)}" cy="${f3(y)}" r="1.5" fill="${b.color}" stroke="rgba(0,0,0,.22)" stroke-width=".25"/><circle cx="${f3(x)}" cy="${f3(y)}" r=".55" fill="#e0a032"/></g>`;
         }).join("");
         return;
       }
@@ -10135,11 +10250,11 @@
     }
     // Den Frosch anpiepsen: Er quakt zurück, der Pika zuckt zusammen
     async _watchFrog() {
-      const f2 = this._frog;
-      if (!f2?.out) return;
+      const f3 = this._frog;
+      if (!f3?.out) return;
       const p = this._el.pika;
-      const there = () => this._frog === f2 && f2.out;
-      this._face(f2.x >= this._x ? 1 : -1);
+      const there = () => this._frog === f3 && f3.out;
+      this._face(f3.x >= this._x ? 1 : -1);
       p.classList.add("look-f");
       await this._wait(rnd(900, 1600));
       if (!there()) return;
@@ -10149,7 +10264,7 @@
       p.classList.remove("calling");
       await this._wait(rnd(300, 700));
       if (there()) {
-        this._croak(f2);
+        this._croak(f3);
         await this._wait(350);
         this._jump("hop1");
         this._say("!", 800);
@@ -10654,58 +10769,58 @@
       el.className = "frog left";
       el.innerHTML = `<div class="cw" role="button" aria-label="Frosch"><div class="cf"><div class="cb">${FROG_SVG}</div></div></div>`;
       const yG = gy - this._H * 0.02;
-      const f2 = this._critter({ el, x: 0, y: yG, w: fw, dir: -1, out: false, lane: 0, yG });
-      el.querySelector(".cw").addEventListener("click", (e) => (e.stopPropagation(), this._found("visitor"), f2.scare()));
+      const f3 = this._critter({ el, x: 0, y: yG, w: fw, dir: -1, out: false, lane: 0, yG });
+      el.querySelector(".cw").addEventListener("click", (e) => (e.stopPropagation(), this._found("visitor"), f3.scare()));
       this._keyTap(el.querySelector(".cw"));
-      this._frog = f2;
-      this._critZ(f2, false);
+      this._frog = f3;
+      this._critZ(f3, false);
       this._el.mice.appendChild(el);
       const edge = rock.l + 7 * rock.ku;
       const hideX = edge + fw * 0.8;
       const door = edge - fw * 0.6;
       let minX = Math.min(Math.max(this._g.fMin * this._W, fw), door);
       let maxX = Math.max(minX, door - fw * 0.7);
-      f2.lane = this._critLane(pk2, minX, maxX, fw);
-      if (f2.lane) {
+      f3.lane = this._critLane(pk2, minX, maxX, fw);
+      if (f3.lane) {
         const [l, r] = this._laneRange(fw);
         minX = Math.min(Math.max(minX, l), door);
         maxX = Math.max(minX, Math.min(maxX, r));
       }
-      const yW = f2.lane ? yG - this._H * LANE_DY : yG;
-      const face2 = (d) => (f2.dir = d, el.classList.toggle("left", d < 0));
-      const move = (x, ms = 0, y = f2.y) => {
+      const yW = f3.lane ? yG - this._H * LANE_DY : yG;
+      const face2 = (d) => (f3.dir = d, el.classList.toggle("left", d < 0));
+      const move = (x, ms = 0, y = f3.y) => {
         el.style.transition = ms ? `transform ${ms}ms linear` : "none";
-        el.style.transform = this._critXf(f2, x, y);
-        f2.x = x;
-        f2.y = y;
+        el.style.transform = this._critXf(f3, x, y);
+        f3.x = x;
+        f3.y = y;
         if (!ms) void el.offsetWidth;
       };
       const FLEE = {};
       const step = async (ms) => {
-        await this._cw(id, ms, f2);
-        if (f2.out && Math.abs(this._liveX() - f2.x) < pW * 0.55) f2.scare();
-        if (f2.scared) throw FLEE;
+        await this._cw(id, ms, f3);
+        if (f3.out && Math.abs(this._liveX() - f3.x) < pW * 0.55) f3.scare();
+        if (f3.scared) throw FLEE;
       };
-      const hop = async (x, fast = false, y = f2.y) => {
-        const L = this._H * (fast ? 0.34 : 0.22) * this._critS(f2, f2.y);
-        while (Math.abs(x - f2.x) > 1) {
-          const d = clamp(x - f2.x, -L, L);
+      const hop = async (x, fast = false, y = f3.y) => {
+        const L = this._H * (fast ? 0.34 : 0.22) * this._critS(f3, f3.y);
+        while (Math.abs(x - f3.x) > 1) {
+          const d = clamp(x - f3.x, -L, L);
           const k = Math.abs(d) / L;
           face2(d > 0 ? 1 : -1);
           const ms = (fast ? 240 : 320) + k * 90;
           el.style.setProperty("--hd", `${ms}ms`);
           el.style.setProperty("--fh", `${-Math.round(40 + 80 * k)}%`);
           el.classList.add("leap");
-          move(f2.x + d, ms, f2.y + (y - f2.y) * (d / (x - f2.x)));
+          move(f3.x + d, ms, f3.y + (y - f3.y) * (d / (x - f3.x)));
           await (fast ? this._cw(id, ms) : step(ms));
           el.classList.remove("leap");
           await (fast ? this._cw(id, 50) : step(rnd(140, 420)));
         }
-        if (Math.abs(y - f2.y) > 0.5) move(f2.x, 0, y);
+        if (Math.abs(y - f3.y) > 0.5) move(f3.x, 0, y);
       };
       const free = (x) => {
         const s = this._snail;
-        if (!s?.out || (s.lane || 0) !== f2.lane || Math.abs(x - s.x) >= fw) return x;
+        if (!s?.out || (s.lane || 0) !== f3.lane || Math.abs(x - s.x) >= fw) return x;
         const side = x < s.x && s.x - fw * 1.1 >= minX || s.x + fw * 1.1 > maxX ? -1 : 1;
         return clamp(s.x + side * fw * 1.1, minX, maxX);
       };
@@ -10714,66 +10829,66 @@
           move(hideX);
           await step(60);
           await hop(door, false, yW);
-          this._critZ(f2, true);
-          f2.out = true;
-          const spot = (x) => free(this._festClear(x, fw, minX, maxX, f2.lane));
+          this._critZ(f3, true);
+          f3.out = true;
+          const spot = (x) => free(this._festClear(x, fw, minX, maxX, f3.lane));
           await hop(spot(maxX - pk2.x * Math.min(maxX - minX, this._H * 0.7)));
-          this._noticeCritter(f2.x, false);
+          this._noticeCritter(f3.x, false);
           const until = Date.now() + Math.max(3e3, pk2.stay - late);
           let act = "croak";
           let gap = 500;
           while (Date.now() < until && (force || this._critterWeather("frog"))) {
             await step(gap);
-            if (free(f2.x) !== f2.x) await hop(free(f2.x));
+            if (free(f3.x) !== f3.x) await hop(free(f3.x));
             else if (act === "croak") {
               for (let n = Math.random() < 0.4 ? 2 : 1; n > 0; n--) {
-                this._croak(f2);
+                this._croak(f3);
                 await step(1050);
               }
-            } else if (act === "turn") face2(-f2.dir);
+            } else if (act === "turn") face2(-f3.dir);
             else if (act === "zap") {
               el.classList.add("zap");
               await step(400);
               el.classList.remove("zap");
-            } else await hop(spot(clamp(f2.x + rnd(0.8, 2) * fw * pick([-1, 1]), minX, maxX)));
+            } else await hop(spot(clamp(f3.x + rnd(0.8, 2) * fw * pick([-1, 1]), minX, maxX)));
             act = weighted([[3, "croak"], [2, "turn"], [2, "hop"], [1.5, "zap"]]);
             gap = rnd(900, 2400);
           }
           await hop(door);
-          f2.out = false;
-          this._critZ(f2, false);
+          f3.out = false;
+          this._critZ(f3, false);
           await hop(hideX, false, yG);
         } catch (e) {
           if (e !== FLEE) throw e;
-          const at = this._critLive(f2);
-          move(at.x, 0, f2.lane ? at.y : f2.y);
+          const at = this._critLive(f3);
+          move(at.x, 0, f3.lane ? at.y : f3.y);
           el.classList.remove("leap", "croak", "zap");
-          f2.out = false;
-          this._peep(f2.x, f2.y - fw * 0.95 * this._critS(f2, f2.y), "quak!");
+          f3.out = false;
+          this._peep(f3.x, f3.y - fw * 0.95 * this._critS(f3, f3.y), "quak!");
           await this._cw(id, 120);
           if (el.classList.contains("vorn")) {
             await hop(door, true, yW);
-            this._critZ(f2, false);
+            this._critZ(f3, false);
           }
           await hop(hideX, true, yG);
           await this._cw(id, 200);
         }
       } finally {
-        if (this._frog === f2) this._frog = null;
+        if (this._frog === f3) this._frog = null;
         el.remove();
       }
     }
     // Schallblase bläht sich zweimal, „quak!“ steigt auf
-    _croak(f2) {
-      if (!f2?.out || f2.scared) return;
-      const el = f2.el;
+    _croak(f3) {
+      if (!f3?.out || f3.scared) return;
+      const el = f3.el;
       el.classList.remove("croak");
       void el.offsetWidth;
       el.classList.add("croak");
-      clearTimeout(f2.croakT);
-      f2.croakT = setTimeout(() => el.classList.remove("croak"), 950);
-      const k = this._critS(f2, f2.y);
-      this._peep(f2.x + f2.dir * f2.w * 0.3 * k, f2.y - f2.w * 0.85 * k, pick(["quak!", "quak!", "quaak!"]));
+      clearTimeout(f3.croakT);
+      f3.croakT = setTimeout(() => el.classList.remove("croak"), 950);
+      const k = this._critS(f3, f3.y);
+      this._peep(f3.x + f3.dir * f3.w * 0.3 * k, f3.y - f3.w * 0.85 * k, pick(["quak!", "quak!", "quaak!"]));
     }
     // Schnecke (nur bei Regen): kriecht hinter dem Aussichtsstein hervor ein Stück über die Wiese, reckt die Fühler,
     // schaut sich um und kriecht zurück. Weglaufen kann sie nicht: Antippen oder ein naher Pika, und sie zieht sich
@@ -11007,24 +11122,24 @@
       if (!this._attached || this._away()) return;
       const kx = 111.32 * Math.cos(cfg.latitude * RAD);
       const R2 = Number(this._cfg.flight_radius) || 15;
-      const idOf = (f2) => String(f2.id || f2.callsign || f2.flight_number || f2.aircraft_registration || "");
+      const idOf = (f3) => String(f3.id || f3.callsign || f3.flight_number || f3.aircraft_registration || "");
       const list = [];
       const ghosts = this._ghosts ??= /* @__PURE__ */ new Map();
       const seen = /* @__PURE__ */ new Set();
-      for (const f2 of Array.isArray(st?.attributes?.flights) ? st.attributes.flights : []) {
-        if (!f2 || typeof f2 !== "object" || !idOf(f2)) continue;
-        const alt = Number(f2.altitude);
-        const gs = Number(f2.ground_speed) || 0;
-        const lat = Number(f2.latitude);
-        const lon = Number(f2.longitude);
-        if (!flightAloft(f2) || !Number.isFinite(lat) || !Number.isFinite(lon)) continue;
-        seen.add(idOf(f2));
-        if (flightGhost(ghosts.get(idOf(f2)), f2)) continue;
-        ghosts.delete(idOf(f2));
+      for (const f3 of Array.isArray(st?.attributes?.flights) ? st.attributes.flights : []) {
+        if (!f3 || typeof f3 !== "object" || !idOf(f3)) continue;
+        const alt = Number(f3.altitude);
+        const gs = Number(f3.ground_speed) || 0;
+        const lat = Number(f3.latitude);
+        const lon = Number(f3.longitude);
+        if (!flightAloft(f3) || !Number.isFinite(lat) || !Number.isFinite(lon)) continue;
+        seen.add(idOf(f3));
+        if (flightGhost(ghosts.get(idOf(f3)), f3)) continue;
+        ghosts.delete(idOf(f3));
         const e = lonDiff(lon, cfg.longitude) * kx;
         const n = (lat - cfg.latitude) * 110.57;
         if (Math.max(Math.abs(e), Math.abs(n)) >= 0.99 * R2) continue;
-        list.push({ f: f2, e, n, alt, gs, slant: Math.hypot(e, n, alt * 3048e-7) });
+        list.push({ f: f3, e, n, alt, gs, slant: Math.hypot(e, n, alt * 3048e-7) });
       }
       for (const id of ghosts.keys()) if (!seen.has(id)) ghosts.delete(id);
       list.sort((a, b) => a.slant - b.slant);
@@ -11080,18 +11195,18 @@
       }
       return null;
     }
-    _newPlane(id, f2) {
-      const kind = planeKind(f2);
+    _newPlane(id, f3) {
+      const kind = planeKind(f3);
       const el = document.createElement("div");
       el.className = `plane ${kind}`;
       el.innerHTML = `<div class="pl-s"><div class="pl-f"><div class="trail"></div>${PLANE_SVG[kind]}</div></div>`;
-      el.style.setProperty("--tail", TAIL[f2.airline_icao] || TAIL_DEFAULT[kind]);
+      el.style.setProperty("--tail", TAIL[f3.airline_icao] || TAIL_DEFAULT[kind]);
       const tag = document.createElement("div");
       tag.className = "ptag";
       const hit = document.createElement("div");
       hit.className = "phit";
       hit.setAttribute("role", "button");
-      const p = { id, kind, f: f2, el, tag, hit, s: el.firstElementChild, size: PLANE_SIZE[kind], fresh: true };
+      const p = { id, kind, f: f3, el, tag, hit, s: el.firstElementChild, size: PLANE_SIZE[kind], fresh: true };
       const below = (e) => this._tapBelow(e);
       const flip = () => {
         clearTimeout(p.openT);
@@ -11131,26 +11246,26 @@
       return p;
     }
     _planeText(p) {
-      const f2 = p.f;
+      const f3 = p.f;
       const cfg = this._hass?.config;
-      const orig = cityDe(f2.airport_origin_city);
-      const dest = cityDe(f2.airport_destination_city);
-      const dLat = Number(f2.airport_destination_latitude);
-      const dLon = Number(f2.airport_destination_longitude);
+      const orig = cityDe(f3.airport_origin_city);
+      const dest = cityDe(f3.airport_destination_city);
+      const dLat = Number(f3.airport_destination_latitude);
+      const dLon = Number(f3.airport_destination_longitude);
       const landsHere = cfg && Number.isFinite(dLat) && Number.isFinite(dLon) && Math.hypot(lonDiff(dLon, cfg.longitude) * 111.32 * Math.cos(cfg.latitude * RAD), (dLat - cfg.latitude) * 110.57) < 30;
       const route = landsHere && orig ? `aus ${orig}` : dest ? `→ ${dest}` : "";
-      const alt = Math.round((p.altNow ?? p.alt ?? Number(f2.altitude)) * 0.3048 / 10) * 10;
-      const kmh = Math.round(Number(f2.ground_speed) * 1.852);
+      const alt = Math.round((p.altNow ?? p.alt ?? Number(f3.altitude)) * 0.3048 / 10) * 10;
+      const kmh = Math.round(Number(f3.ground_speed) * 1.852);
       const more = [
-        [f2.airline_short || f2.airline, String(f2.aircraft_model || "").replace(/-\S+$/, "")].filter(Boolean).join(" · "),
+        [f3.airline_short || f3.airline, String(f3.aircraft_model || "").replace(/-\S+$/, "")].filter(Boolean).join(" · "),
         orig && dest ? `${orig} → ${dest}` : "",
         `${alt.toLocaleString("de-DE")} m${kmh ? ` · ${kmh} km/h` : ""}`
       ].filter(Boolean);
-      const html = `<b>${esc(flightNo(f2))}</b>${route ? ` ${esc(route)}` : ""}` + more.map((l) => `<div class="more">${esc(l)}</div>`).join("");
+      const html = `<b>${esc(flightNo(f3))}</b>${route ? ` ${esc(route)}` : ""}` + more.map((l) => `<div class="more">${esc(l)}</div>`).join("");
       if (html === p.html) return;
       p.html = html;
       p.tag.innerHTML = html;
-      p.hit.setAttribute("aria-label", `Flug ${flightNo(f2)} ${route}`.trim());
+      p.hit.setAttribute("aria-label", `Flug ${flightNo(f3)} ${route}`.trim());
       p.tw = 0;
     }
     // Auch bei laufendem Takt gleich neu rechnen (neue Meldung): Jeder Schritt startet am gerade sichtbaren Punkt
@@ -11567,8 +11682,8 @@
     _actOk(act) {
       const wx = this._wx;
       if (act === "tv") return true;
-      const f2 = this._fest || {};
-      if (act === "crown" && (f2.xmas || f2.birthday || f2.witch || f2.karneval)) return false;
+      const f3 = this._fest || {};
+      if (act === "crown" && (f3.xmas || f3.birthday || f3.witch || f3.karneval)) return false;
       if (hasKey(MINI_W, act)) return miniOk(act, this._lage());
       if (wx.shelter || wx.wet) return false;
       if (act === "kite") return this._kiteWind();
@@ -12535,8 +12650,8 @@
     }
     // y für den Anteil f der Größeneinheit, gemessen ab der Oberkante der Bühne (die unteren H px der Karte): für
     // alles in der Luft, das zum Pika gehört (Drachen, Ballon, Funkeln am Himmel). Auf normalen Karten H · f.
-    _sy(f2) {
-      return this._Hs - this._H + this._H * f2;
+    _sy(f3) {
+      return this._Hs - this._H + this._H * f3;
     }
     // Tiefe (depth, seit 0.44 Standard): Höhe der hinteren Spur über der Bodenlinie, sonst 0
     _laneDy() {
@@ -13270,7 +13385,7 @@
       if (E?.has(1)) add("wheel", E.get(1), 4);
       this._a2Zones(Z, sr);
       if (!sc.classList.contains("snowcover")) {
-        for (const f2 of this._flowers) if (!f2.el.classList.contains("picked")) add("flower", f2.el, 6);
+        for (const f3 of this._flowers) if (!f3.el.classList.contains("picked")) add("flower", f3.el, 6);
       }
       const S = this._areal().stash;
       if (S && g.bur) thing("hay", g.hayL, g.bur.base + S.top * g.bur.u, g.hayR, g.gy);
@@ -13528,11 +13643,11 @@
     // für anderthalb Sekunden an der Scheibe selbst und steht so hinter Wolken, Hügeln und Bergen wie sie.
     _skyFace(k, el, calm) {
       el.querySelector(".wface")?.remove();
-      const f2 = document.createElement("i");
-      f2.className = `wface w${k}${calm ? " calm" : ""}`;
-      f2.innerHTML = k === "sun" ? SUN_FACE : MOON_FACE;
-      el.appendChild(f2);
-      setTimeout(() => f2.remove(), 1700);
+      const f3 = document.createElement("i");
+      f3.className = `wface w${k}${calm ? " calm" : ""}`;
+      f3.innerHTML = k === "sun" ? SUN_FACE : MOON_FACE;
+      el.appendChild(f3);
+      setTimeout(() => f3.remove(), 1700);
     }
     // Rauchring über dem Schornstein, in der Ebene des Rauchs (hinter Leiste und Blasen) und in Einheiten der Bau-Grafik.
     // Ein eigenes Element neben .smoke: Dessen Regeln (Dauerschleife bei Kälte, Stillstand mit „Bewegung reduzieren“)
@@ -13835,7 +13950,7 @@
       <path d="M7.05 10 V9.4 Q7.05 8.05 8.4 8.05 H18.2 Q19.55 8.05 19.55 9.4 V10Z" fill="${BODY_DUNKEL}"/>
       <rect x="7.05" y="13.4" width="12.5" height="1.2" fill="${BAND}"/></g></svg>`;
   var HIMMEL = { tag: "#a8daf5", grau: "#c9d3dc", abend: "#f6c39a", nacht: "#2d3866" };
-  var wolke = (x, y, s, f2 = "#fff") => `<path transform="translate(${x} ${y}) scale(${s})" d="M-2.6 .9 a1.3 1.3 0 0 1 .6 -2.3 a1.9 1.9 0 0 1 3.5 -.4 a1.4 1.4 0 0 1 1.6 2.7Z" fill="${f2}"/>`;
+  var wolke = (x, y, s, f3 = "#fff") => `<path transform="translate(${x} ${y}) scale(${s})" d="M-2.6 .9 a1.3 1.3 0 0 1 .6 -2.3 a1.9 1.9 0 0 1 3.5 -.4 a1.4 1.4 0 0 1 1.6 2.7Z" fill="${f3}"/>`;
   var sky = (S) => {
     const bg = S.night ? HIMMEL.nacht : S.dusk ? HIMMEL.abend : S.cover >= 70 ? HIMMEL.grau : HIMMEL.tag;
     let h = `<rect width="16" height="16" fill="${bg}"/>`;
@@ -14013,43 +14128,211 @@
     dbg: [["Trampolin springen", "a2TrampPlay", 1], ["Salto", "a2TrampFlip", 2], ["Sternchen (golden)", "a2TrampPlay", 3]]
   };
 
-  // src/grafik/album2/platzhalter.js
-  var A2_PLATZHALTER = `<svg viewBox="0 0 24 24" aria-hidden="true">
-      <rect x="3.6" y="9" width="16.8" height="12.6" rx="1.6" fill="#d8cbb4" stroke="${OUT}" stroke-width="1"/>
-      <path d="M3.6 13 H20.4" stroke="${OUT}" stroke-width=".7" opacity=".5"/>
-      <path d="M9.4 14.6 q0 -2.4 2.6 -2.4 q2.6 0 2.6 2 q0 1.4 -1.6 2 q-1 .4 -1 1.4" stroke="#8a6d4a" stroke-width="1.5" fill="none" stroke-linecap="round"/>
-      <circle cx="12" cy="19.4" r=".95" fill="#8a6d4a"/></svg>`;
-
   // src/grafik/album2/picnic.js
+  var ROT = "#e5534b";
+  var ROT_D = "#b83d37";
+  var WEISS = "#fbf5ec";
+  var WEISS_D = "#ddd1bf";
+  var KORB = "#d9a35e";
+  var KORB_D = "#b07a3c";
+  var DECKEL = "#c48a48";
+  var HENKEL2 = "#9a6a3c";
+  var f2 = (n) => Number(n.toFixed(2));
+  var lerp = (a, b, t) => a + (b - a) * t;
+  var quadPt = (Q, u, v) => [lerp(lerp(Q[0][0], Q[1][0], u), lerp(Q[2][0], Q[3][0], u), v), lerp(lerp(Q[0][1], Q[1][1], u), lerp(Q[2][1], Q[3][1], u), v)];
+  var checks = (Q, nx, V, fill) => {
+    let d = "";
+    for (let j = 0; j < V.length - 1; j++) {
+      for (let i = j % 2; i < nx; i += 2) {
+        const P = [[i / nx, V[j]], [(i + 1) / nx, V[j]], [(i + 1) / nx, V[j + 1]], [i / nx, V[j + 1]]].map(([u, v]) => quadPt(Q, u, v));
+        d += `M${P.map(([x, y]) => `${f2(x)} ${f2(y)}`).join(" L")}Z`;
+      }
+    }
+    return `<path d="${d}" fill="${fill}"/>`;
+  };
+  var hem = (Q, nx, h, r0) => {
+    const [a, b] = [Q[2], Q[3]];
+    let r = "";
+    let w = "";
+    for (let i = 0; i < nx; i++) {
+      const x0 = f2(lerp(a[0], b[0], i / nx));
+      const x1 = f2(lerp(a[0], b[0], (i + 1) / nx));
+      const seg = `M${x0} ${a[1]} H${x1} V${f2(a[1] + h)} H${x0}Z`;
+      if (i % 2 === r0) r += seg;
+      else w += seg;
+    }
+    return `<path d="${w}" fill="${WEISS_D}"/><path d="${r}" fill="${ROT_D}"/>`;
+  };
+  var quad = (Q) => `M${f2(Q[0][0])} ${f2(Q[0][1])} L${f2(Q[1][0])} ${f2(Q[1][1])} L${f2(Q[3][0])} ${f2(Q[3][1])} L${f2(Q[2][0])} ${f2(Q[2][1])}Z`;
+  var BLANKET_G = (Q, nx, V, h, sw) => `<path d="${quad(Q)}" fill="${WEISS}"/>
+      ${checks(Q, nx, V, ROT)}
+      ${hem(Q, nx, h, (V.length - 2) % 2)}
+      <path d="M${f2(Q[2][0])} ${f2(Q[2][1])} H${f2(Q[3][0])} V${f2(Q[3][1] + h)} H${f2(Q[2][0])}Z M${quad(Q).slice(1)}" fill="none" stroke="${OUT}" stroke-width="${sw}" stroke-linejoin="round"/>`;
+  var ICON_Q = [[5, 11.6], [19, 11.6], [1.4, 20.2], [22.6, 20.2]];
+  var ICON7 = `<svg viewBox="0 0 24 24" aria-hidden="true">
+      ${BLANKET_G(ICON_Q, 6, [0, 0.3, 0.63, 1], 1.4, 0.8)}
+      <path d="M13.4 9.4 Q16 3.4 18.6 9.4" stroke="${OUT}" stroke-width="1.9" fill="none" stroke-linecap="round"/>
+      <path d="M13.4 9.4 Q16 3.4 18.6 9.4" stroke="${HENKEL2}" stroke-width=".9" fill="none" stroke-linecap="round"/>
+      <path d="M12.2 9.6 H19.8 L19 14.6 Q16 15.2 13 14.6Z" fill="${KORB}" stroke="${OUT}" stroke-width=".8" stroke-linejoin="round"/>
+      <path d="M12.9 11.8 H19.2 M13.2 13.4 H18.8" stroke="${KORB_D}" stroke-width=".6" stroke-dasharray="1.1 .8"/>
+      <rect x="11.8" y="8.8" width="8.4" height="1.6" rx=".7" fill="${DECKEL}" stroke="${OUT}" stroke-width=".7"/></svg>`;
+  var BLANKET_Q = [[9, 2], [91, 2], [1, 12], [99, 12]];
+  var BLANKET_SVG = `<svg viewBox="0 0 100 16" aria-hidden="true">
+      <path d="M3 13.8 Q50 15.2 97 13.8" stroke="#000" stroke-width="1.4" opacity=".12" fill="none" stroke-linecap="round"/>
+      ${BLANKET_G(BLANKET_Q, 10, [0, 0.28, 0.61, 1], 1.4, 0.5)}
+      <path d="M13 3.2 H87" stroke="#fff" stroke-width=".5" opacity=".5"/></svg>`;
+  var BLANKET_H = 16 / 100;
+  var BLANKET_SINK = 4 / 16;
+  var BASKET_SVG = `<svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M6.2 12 Q6.4 3.4 12 3.4 Q17.6 3.4 17.8 12" stroke="${OUT}" stroke-width="2.3" fill="none" stroke-linecap="round"/>
+      <path d="M6.2 12 Q6.4 3.4 12 3.4 Q17.6 3.4 17.8 12" stroke="${HENKEL2}" stroke-width="1.1" fill="none" stroke-linecap="round"/>
+      <g class="a2pkn"><path d="M6.4 12 L9.6 7.6 L13.4 12Z" fill="${WEISS}" stroke="${OUT}" stroke-width=".6" stroke-linejoin="round"/>
+        <path d="M8 9.8 L9.6 7.6 L10.8 9.2 Z M9.2 12 L11.4 10.1 L12.4 12Z" fill="${ROT}"/></g>
+      <path d="M3.6 12.4 H20.4 L18.9 22.4 Q12 23.4 5.1 22.4Z" fill="${KORB}" stroke="${OUT}" stroke-width=".9" stroke-linejoin="round"/>
+      <path d="M4.3 15.4 H19.7 M4.9 18.4 H19.1" stroke="${KORB_D}" stroke-width=".8" stroke-dasharray="1.8 1.2"/>
+      <path d="M5.3 16.9 H18.8 M5.6 19.9 H18.4" stroke="${KORB_D}" stroke-width=".8" stroke-dasharray="1.8 1.2" stroke-dashoffset="1.5"/>
+      <path d="M5.6 21.4 Q12 22.3 18.4 21.4" stroke="#e8c48a" stroke-width=".6" fill="none" opacity=".7"/>
+      <g class="a2pkl">
+        <path d="M3 12.6 Q3 10.4 5.2 10.4 H18.8 Q21 10.4 21 12.6Z" fill="${DECKEL}" stroke="${OUT}" stroke-width=".8" stroke-linejoin="round"/>
+        <path d="M5.2 11.3 H18.6" stroke="#e0b47c" stroke-width=".6" stroke-linecap="round"/>
+        <rect x="4.2" y="12.2" width="1.6" height="2.2" rx=".4" fill="${HENKEL2}" stroke="${OUT}" stroke-width=".5"/></g></svg>`;
+  var BASKET_W = 0.3;
+  var ROLL_G = (x, y, w, h) => {
+    const r = h / 2;
+    let s = "";
+    for (let i = 1; i < 6; i += 2) s += `M${f2(x + r + (w - 2 * r) * i / 6)} ${f2(y + 0.3)} v${f2(h - 0.6)} h${f2((w - 2 * r) / 6)} v${f2(-(h - 0.6))}Z`;
+    return `<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="${f2(r)}" fill="${WEISS}" stroke="${OUT}" stroke-width=".8"/>
+      <path d="${s}" fill="${ROT}"/>
+      <circle cx="${f2(x + w - r)}" cy="${f2(y + r)}" r="${f2(r * 0.86)}" fill="${WEISS_D}" stroke="${OUT}" stroke-width=".6"/>
+      <path d="M${f2(x + w - r)} ${f2(y + r)} m-.5 0 a.6 .6 0 1 1 .9 .5 a1.2 1.2 0 1 1 -1.6 -1.4" stroke="${ROT_D}" stroke-width=".6" fill="none"/>`;
+  };
+  var BUNDLE_G = `<path d="M3.6 12.4 H20.4 L18.9 22.4 Q12 23.4 5.1 22.4Z" fill="${KORB}" stroke="${OUT}" stroke-width=".9" stroke-linejoin="round"/>
+      <path d="M4.3 15.4 H19.7 M4.9 18.4 H19.1" stroke="${KORB_D}" stroke-width=".8" stroke-dasharray="1.8 1.2"/>
+      <path d="M5.3 16.9 H18.8 M5.6 19.9 H18.4" stroke="${KORB_D}" stroke-width=".8" stroke-dasharray="1.8 1.2" stroke-dashoffset="1.5"/>
+      <path d="M3 12.6 Q3 10.4 5.2 10.4 H18.8 Q21 10.4 21 12.6Z" fill="${DECKEL}" stroke="${OUT}" stroke-width=".8" stroke-linejoin="round"/>
+      ${ROLL_G(2.2, 5.8, 19.6, 4.8)}
+      <path d="M6.2 12 Q6.4 1.6 12 1.6 Q17.6 1.6 17.8 12" stroke="${OUT}" stroke-width="2.3" fill="none" stroke-linecap="round"/>
+      <path d="M6.2 12 Q6.4 1.6 12 1.6 Q17.6 1.6 17.8 12" stroke="${HENKEL2}" stroke-width="1.1" fill="none" stroke-linecap="round"/>`;
+  var BUNDLE_SVG = `<svg viewBox="0 0 24 24" aria-hidden="true">${BUNDLE_G}</svg>`;
+  var CARRY_S3 = BASKET_W * 0.85 * 120 / (0.68 * 24);
+  var BUNDLE_CARRY = `<svg viewBox="0 0 24 24" aria-hidden="true"><g transform="translate(${f2(3 - 12 * CARRY_S3)} ${f2(-0.6 - 1.6 * CARRY_S3)}) scale(${f2(CARRY_S3)})">${BUNDLE_G}</g></svg>`;
+  var BUNDLE_W = 0.34;
+  var ROLL_SVG = `<svg viewBox="0 0 12 12" aria-hidden="true">
+      <circle cx="6" cy="6.4" r="5" fill="${WEISS}" stroke="${OUT}" stroke-width=".8"/>
+      <path d="M6 1.4 A5 5 0 0 1 11 6.4 H8.4 A2.4 2.4 0 0 0 6 4Z M6 11.4 A5 5 0 0 1 1 6.4 H3.6 A2.4 2.4 0 0 0 6 8.8Z" fill="${ROT}"/>
+      <path d="M6 6.4 m-.6 0 a.7 .7 0 1 1 1 .6 a1.6 1.6 0 1 1 -2.2 -1.8 a2.6 2.6 0 1 1 1.2 4.4" stroke="${ROT_D}" stroke-width=".6" fill="none"/></svg>`;
+  var CRUMB_SVG = `<svg viewBox="0 0 4 4" aria-hidden="true"><path d="M.8 2.4 L1.6 .8 L3.2 1.2 L3.2 2.8 L1.8 3.3Z" fill="#e8c48a" stroke="#b07a3c" stroke-width=".45" stroke-linejoin="round"/></svg>`;
   var A2_PICNIC = {
     key: "picnic",
     name: "Picknickdecke",
     say: "eine Picknickdecke!",
-    built: false,
+    built: true,
     mo: [3, 4, 5, 6, 7, 8],
-    icon: A2_PLATZHALTER,
+    icon: ICON7,
     trick: "Teilen",
     gilt: "eine goldene %",
-    use: "Für ein Picknick in der Sonne.",
-    gold: "Schmetterlinge kommen",
-    find: null,
-    dbg: []
+    use: "Für ein Picknick in der Sonne, gern zu zweit.",
+    gold: "Schmetterlinge kommen zur Decke",
+    find: { t: "Picknickkorb", h: "Mach ich Picknick, tipp den Korb auf meiner Decke an. Der Deckel hebt sich, und Krümel hüpfen heraus." },
+    // Vorschau (Leiste „Päckchen“, Album 2): [Knopf, Aktion, Stufe, die der Schatz dafür bekommt]. Die Knöpfe gehen bei
+    // jedem Wetter (_forced); ist ein Freund da, kommt er mit auf die Decke, sitzt ein Vogel oder schaut die Maus heraus,
+    // bekommt beim Teilen der das Stück.
+    dbg: [["Picknick", "a2PicnicPlay", 1], ["Teilen", "a2PicnicShare", 2], ["Schmetterlinge (golden)", "a2PicnicPlay", 3], ["Teilen (golden)", "a2PicnicShare", 3]]
   };
 
   // src/grafik/album2/pool.js
+  var BLAU = "#4a9ee6";
+  var BLAU_DUNKEL = "#2f7cc4";
+  var BLAU_HELL = "#8cc9f4";
+  var RAND = "#f7fbfd";
+  var RAND_SCHATTEN = "#cfe3ef";
+  var INNEN = "#a9dcf6";
+  var WASSER = "#6cc6f2";
+  var WASSER_HELL = "#dff4ff";
+  var ICON8 = `<svg viewBox="0 0 24 24" aria-hidden="true">
+      <ellipse cx="12" cy="18.6" rx="11.2" ry="3" fill="#3c5a2c" opacity=".16"/>
+      <path d="M1.4 10.4 A10.6 4.4 0 0 0 22.6 10.4 L22.2 17 A10.2 3.4 0 0 1 1.8 17Z" fill="${BLAU}" stroke="${OUT}" stroke-width=".9" stroke-linejoin="round"/>
+      <path d="M1.7 13.9 A10.3 3.9 0 0 0 22.3 13.9" stroke="${BLAU_DUNKEL}" stroke-width=".8" fill="none"/>
+      <path d="M4.4 15.6 Q7.4 16.9 10.4 17.2" stroke="${BLAU_HELL}" stroke-width=".9" fill="none" stroke-linecap="round" opacity=".9"/>
+      <g fill="${RAND}"><circle cx="6.2" cy="12.6" r=".8"/><circle cx="12" cy="13.6" r=".8"/><circle cx="17.8" cy="12.6" r=".8"/></g>
+      <ellipse cx="12" cy="10.4" rx="9.2" ry="3.1" fill="${INNEN}"/>
+      <ellipse cx="12" cy="11.2" rx="8.2" ry="2.4" fill="${WASSER}"/>
+      <path d="M6.4 10.4 Q9 9.5 11.6 9.8" stroke="${WASSER_HELL}" stroke-width=".7" fill="none" stroke-linecap="round"/>
+      <ellipse cx="12" cy="10.4" rx="10.4" ry="4.1" fill="none" stroke="${OUT}" stroke-width="2.7"/>
+      <ellipse cx="12" cy="10.4" rx="10.4" ry="4.1" fill="none" stroke="${RAND}" stroke-width="1.6"/></svg>`;
+  var POOL = {
+    vb: [160, 64],
+    floor: 52,
+    rim: { cx: 80, cy: 25, rx: 76, ry: 13 },
+    water: { cx: 80, cy: 29, rx: 66, ry: 9.5 }
+  };
+  var POOL_BACK_SVG = `<svg viewBox="0 0 160 64" aria-hidden="true">
+      <ellipse cx="80" cy="55" rx="80" ry="8.5" fill="#3c5a2c" opacity=".18"/>
+      <g class="a2plb">
+        <ellipse cx="80" cy="25" rx="72.5" ry="9.5" fill="${INNEN}"/>
+        <path d="M9 23 A72 9 0 0 1 151 23" stroke="#c9ebfb" stroke-width="2" fill="none" opacity=".9"/>
+        <g class="a2plwa">
+          <ellipse cx="80" cy="29" rx="66" ry="9.5" fill="${WASSER}"/>
+          <path d="M26 24.6 Q48 21.4 72 21.6" stroke="${WASSER_HELL}" stroke-width="1.3" fill="none" stroke-linecap="round" opacity=".85"/>
+          <path d="M98 22.2 Q116 22.4 130 24.6" stroke="${WASSER_HELL}" stroke-width=".9" fill="none" stroke-linecap="round" opacity=".6"/>
+          <g class="a2plrp" fill="none" stroke="#fff" stroke-width="1.1">
+            <ellipse class="a2plr1" cx="80" cy="29" rx="30" ry="4.3"/><ellipse class="a2plr2" cx="80" cy="29" rx="30" ry="4.3"/></g>
+        </g>
+        <path d="M4 25 A76 13 0 0 1 156 25" stroke="${OUT}" stroke-width="9.4" fill="none"/>
+        <path class="a2plr" d="M4 25 A76 13 0 0 1 156 25" stroke="${RAND}" stroke-width="7" fill="none"/>
+        <path d="M20 19.4 Q50 12.6 80 12.4" stroke="#fff" stroke-width="1.6" fill="none" stroke-linecap="round"/>
+      </g></svg>`;
+  var POOL_FRONT_SVG = `<svg viewBox="0 0 160 64" aria-hidden="true">
+      <g class="a2plb">
+        <g class="a2plwa">
+          <path d="M14 29 A66 9.5 0 0 0 146 29Z" fill="${WASSER}" opacity=".55"/>
+          <g class="a2plrp" fill="none" stroke="#fff" stroke-width="1.1">
+            <path class="a2plr1" d="M50 29 A30 4.3 0 0 0 110 29"/><path class="a2plr2" d="M50 29 A30 4.3 0 0 0 110 29"/></g>
+        </g>
+        <path d="M4.6 39 A75.4 11.6 0 0 0 155.4 39 L153 52 A73 9 0 0 1 7 52Z" fill="${BLAU}" stroke="${OUT}" stroke-width="1.4" stroke-linejoin="round"/>
+        <path d="M4 25 A76 13 0 0 0 156 25 L155.4 39 A75.4 11.6 0 0 1 4.6 39Z" fill="${BLAU}" stroke="${OUT}" stroke-width="1.4" stroke-linejoin="round"/>
+        <path d="M8 44 Q40 55.6 80 56.4" stroke="${BLAU_HELL}" stroke-width="2.2" fill="none" stroke-linecap="round" opacity=".8"/>
+        <path d="M8 31.6 Q40 42.4 80 43.2" stroke="${BLAU_HELL}" stroke-width="2.2" fill="none" stroke-linecap="round" opacity=".8"/>
+        <path d="M5 39.4 A75.2 11.6 0 0 0 155 39.4" stroke="${BLAU_DUNKEL}" stroke-width="1.2" fill="none" opacity=".8"/>
+        <g class="a2plst" fill="${RAND}">
+          <circle cx="24" cy="42" r="2.2"/><circle cx="56" cy="47.6" r="2.2"/><circle cx="104" cy="47.6" r="2.2"/><circle cx="136" cy="42" r="2.2"/>
+          <circle cx="40" cy="53.8" r="1.8"/><circle cx="80" cy="57" r="1.8"/><circle cx="120" cy="53.8" r="1.8"/>
+        </g>
+        <path d="M4 25 A76 13 0 0 0 156 25" stroke="${OUT}" stroke-width="9.4" fill="none"/>
+        <path class="a2plr" d="M4 25 A76 13 0 0 0 156 25" stroke="${RAND}" stroke-width="7" fill="none"/>
+        <path d="M10 31.4 Q44 39.6 80 40.2" stroke="${RAND_SCHATTEN}" stroke-width="1.8" fill="none" stroke-linecap="round"/>
+        <path d="M30 34.4 Q52 37.2 70 37.6" stroke="#fff" stroke-width="1.4" fill="none" stroke-linecap="round" opacity=".9"/>
+      </g></svg>`;
+  var POOL_DUCK_SVG = `<svg viewBox="0 0 24 20" aria-hidden="true">
+      <path d="M3 11.6 Q2.4 8 5.6 8.6 Q8 9.2 10.4 9.6 Q9.4 6.4 11 4.2 Q13.4 1.4 16.6 2.6 Q19.6 4 18.8 7.6 Q18.4 9.4 16.8 10.4
+        Q20.6 11 20.4 13.6 Q19.8 16.6 14 16.6 H7.4 Q3.4 16.4 3 11.6Z" fill="#f6c945" stroke="${OUT}" stroke-width=".9" stroke-linejoin="round"/>
+      <path d="M8.2 12 Q11.2 14.4 15.4 12.4" stroke="#d99a1e" stroke-width="1" fill="none" stroke-linecap="round"/>
+      <path d="M18.4 6.2 Q21.8 6 22.4 7.4 Q21.6 8.6 18.4 8.4Z" fill="#f08a3a" stroke="${OUT}" stroke-width=".7" stroke-linejoin="round"/>
+      <circle cx="15.8" cy="5.4" r="1" fill="${OUT}"/><circle cx="16.1" cy="5.1" r=".35" fill="#fff"/>
+      <path d="M12 4.4 Q13 3.4 14.4 3.4" stroke="#fff6c8" stroke-width=".9" fill="none" stroke-linecap="round"/>
+      <path d="M5.4 10.2 Q6.4 9.6 7.6 10" stroke="#fff6c8" stroke-width=".8" fill="none" stroke-linecap="round"/>
+      <path d="M1 16.6 Q5 15.4 9 16.6 T17 16.6 T23 16.6" stroke="${WASSER_HELL}" stroke-width="1" fill="none" stroke-linecap="round"/></svg>`;
+  var POOL_MOUTH = `<svg viewBox="0 0 24 24">
+      <path d="M4.6 11 Q4 8.6 6.6 8.4 H17.4 Q20 8.6 19.4 11 L18.6 17.4 Q18.4 19 16.6 19 H7.4 Q5.6 19 5.4 17.4Z" fill="${BLAU}" stroke="${OUT}" stroke-width="1" stroke-linejoin="round"/>
+      <path d="M5 12 H19" stroke="${RAND}" stroke-width="2"/>
+      <path d="M7 15.6 H17" stroke="${BLAU_DUNKEL}" stroke-width=".8" stroke-linecap="round"/>
+      <circle cx="9" cy="17.2" r=".8" fill="${RAND}"/><circle cx="15" cy="17.2" r=".8" fill="${RAND}"/></svg>`;
+  var POOL_FARBE = BLAU;
+  var POOL_W = 1.5;
   var A2_POOL = {
     key: "pool",
     name: "Planschbecken",
     say: "ein Planschbecken!",
-    built: false,
+    built: true,
     mo: [5, 6, 7],
-    icon: A2_PLATZHALTER,
+    icon: ICON8,
     trick: "Arschbombe",
     gilt: "ein goldenes %",
-    use: "Für heiße Tage ab 25 Grad.",
-    gold: "eine Gummiente schwimmt",
-    find: null,
-    dbg: []
+    use: "Für heiße Tage ab 25 Grad. Platsch!",
+    gold: "eine Gummiente schwimmt mit",
+    find: { t: "Planschbecken", h: "Steht mein Planschbecken draußen: hineintippen. Plitsch, das Wasser kräuselt sich." },
+    // Vorschau (Leiste „Päckchen“, Album 2): [Knopf, Aktion, Stufe, die der Schatz dafür bekommt]
+    dbg: [["Planschen", "a2PoolPlay", 1], ["Arschbombe", "a2PoolBomb", 2], ["Gummiente (golden)", "a2PoolPlay", 3]]
   };
 
   // src/grafik/album2.js
@@ -14106,7 +14389,7 @@
       if (S.has(k)) return;
       S.add(k);
       try {
-        for (const f2 of findsParse(localStorage.getItem(this._findsKey) || "")) S.add(f2);
+        for (const f3 of findsParse(localStorage.getItem(this._findsKey) || "")) S.add(f3);
         localStorage.setItem(this._findsKey, findsSer(S));
       } catch (e) {
       }
@@ -14307,12 +14590,12 @@
       if (ws >= start && ws <= until && !inU(ws)) {
         const favs = this._tagesform(ws).fav.map((a) => T.actNoun[a]).join(" und ");
         put(ws, "wake", `${tx(T.wake, "wake", ws)} Heute hab ich Lust auf ${favs}.`);
-        const f2 = this._festToday(start + 8 * 36e5);
-        const fl = ["witch", "martin", "xmas", "sticks", "karneval", "ostern", "maibaum", "sommer"].filter((k) => f2[k]).map((k) => T.fest[k]);
-        if (f2.boot?.full) fl.push(T.fest.boot);
-        if (f2.advent && day.getDay() === 0) fl.push(`Der ${f2.advent.candles}. Advent! Heute kommt am Kranz eine Kerze dazu.`);
-        if (f2.birthday) {
-          const n = f2.birthday.names;
+        const f3 = this._festToday(start + 8 * 36e5);
+        const fl = ["witch", "martin", "xmas", "sticks", "karneval", "ostern", "maibaum", "sommer"].filter((k) => f3[k]).map((k) => T.fest[k]);
+        if (f3.boot?.full) fl.push(T.fest.boot);
+        if (f3.advent && day.getDay() === 0) fl.push(`Der ${f3.advent.candles}. Advent! Heute kommt am Kranz eine Kerze dazu.`);
+        if (f3.birthday) {
+          const n = f3.birthday.names;
           fl.push(`Alles Gute, ${n.length > 1 ? `${n.slice(0, -1).join(", ")} und ${n.at(-1)}` : n[0]}! Es gibt Kuchen.`);
         }
         fl.forEach((text, i) => put(ws + 1 + i, "fest", text, { tm: "Heute ist ein besonderer Tag" }));
@@ -14520,15 +14803,15 @@
       const fr = this._frName();
       const lv2 = this._giftOn() ? giftLvs2(this._plan?.gift) : [];
       const a2 = A2_ITEMS.filter((it, t) => it.find && lv2[t] > 0).map((it) => ({ k: it.key, g: 2, t: it.find.t, h: it.find.h }));
-      const list = [...FINDS.filter((f2) => !f2.need || have[f2.need]), ...a2];
-      const n = list.filter((f2) => S.has(f2.k)).length;
+      const list = [...FINDS.filter((f3) => !f3.need || have[f3.need]), ...a2];
+      const n = list.filter((f3) => S.has(f3.k)).length;
       let h = `<p class="fazit">${!n ? "Probier aus, was du mit mir und meiner Welt machen kannst!" : n >= list.length ? "Du hast alles ausprobiert, was es bei mir gibt!" : `Das kannst du mit mir und meiner Welt machen. ${n} von ${list.length} hast du schon ausprobiert.`}</p>`;
       FIND_GROUPS.forEach((g, i) => {
-        const part = list.filter((f2) => f2.g === i);
+        const part = list.filter((f3) => f3.g === i);
         if (!part.length) return;
-        h += `<h3>${esc(g)}</h3>${part.map((f2) => {
-          const ok = S.has(f2.k);
-          return `<div class="fd${ok ? " ok" : ""}"><i>${ok ? DIARY_PAW : ""}</i><div><b>${esc(f2.t.replace("{n}", fr))}</b><span>${esc(f2.h.replace("{n}", fr))}</span></div></div>`;
+        h += `<h3>${esc(g)}</h3>${part.map((f3) => {
+          const ok = S.has(f3.k);
+          return `<div class="fd${ok ? " ok" : ""}"><i>${ok ? DIARY_PAW : ""}</i><div><b>${esc(f3.t.replace("{n}", fr))}</b><span>${esc(f3.h.replace("{n}", fr))}</span></div></div>`;
         }).join("")}`;
       });
       return `${h}<p class="note">Die Pfoten merkt sich nur dieses Gerät.</p>`;
@@ -14738,11 +15021,11 @@
           e.stopPropagation();
           this._diaryClose();
         } else if (e.key === "Tab") {
-          const f2 = [...root.querySelectorAll("button:not([disabled]), summary, .page")].filter((el) => el.getClientRects().length > 0 && el.tabIndex !== -1);
+          const f3 = [...root.querySelectorAll("button:not([disabled]), summary, .page")].filter((el) => el.getClientRects().length > 0 && el.tabIndex !== -1);
           e.preventDefault();
-          if (!f2.length) return;
-          const i = f2.indexOf(root.activeElement);
-          f2[e.shiftKey ? i <= 0 ? f2.length - 1 : i - 1 : (i + 1) % f2.length].focus();
+          if (!f3.length) return;
+          const i = f3.indexOf(root.activeElement);
+          f3[e.shiftKey ? i <= 0 ? f3.length - 1 : i - 1 : (i + 1) % f3.length].focus();
         } else this._rueckTaste(e);
       });
       const poke = () => {
@@ -15101,13 +15384,13 @@
     }
     // Eine Blüte als Geschenk vorn ins Gras legen. Antippen nimmt sie an.
     async _gift() {
-      const f2 = this._nearestFlower();
-      if (!f2 || this._giftEl) return;
+      const f3 = this._nearestFlower();
+      if (!f3 || this._giftEl) return;
       const p = this._el.pika;
       const { pW } = this._g;
-      await this._approach(f2.xf * this._W);
-      await this._sniffPick(f2);
-      this._mouth(f2.color);
+      await this._approach(f3.xf * this._W);
+      await this._sniffPick(f3);
+      this._mouth(f3.color);
       p.classList.add("carry");
       this._giftCarry = true;
       try {
@@ -15116,7 +15399,7 @@
         this._giftCarry = false;
         p.classList.remove("carry");
         this._mouth(null);
-        if (!this._giftEl) this._flowerGiftDrop(f2.color);
+        if (!this._giftEl) this._flowerGiftDrop(f3.color);
       }
       this._say(pick(["für dich!", "für dich ♥", "hier!"]), 1800, true);
       this._blush(3e3);
@@ -15138,18 +15421,18 @@
     // wegnehmen, sobald es auf einem angetippt wurde, und nach FLGIFT.life welken lassen
     _flowerFromPlan() {
       if (!this._g || !this._el) return;
-      const f2 = this._plan?.fl;
-      const left = f2 && !f2.k ? f2.t + FLGIFT.life - this._haNow() : 0;
+      const f3 = this._plan?.fl;
+      const left = f3 && !f3.k ? f3.t + FLGIFT.life - this._haNow() : 0;
       const el = this._giftEl;
-      if (el && (el._t !== f2?.t || left <= 0)) {
+      if (el && (el._t !== f3?.t || left <= 0)) {
         this._giftEl = null;
         clearTimeout(this._giftT);
-        if (el._t === f2?.t && f2.k) {
+        if (el._t === f3?.t && f3.k) {
           el.classList.add("take");
           setTimeout(() => el.remove(), 950);
         } else {
           el.classList.add("wilt");
-          if (el._t !== f2?.t) el.style.transitionDuration = ".6s";
+          if (el._t !== f3?.t) el.style.transitionDuration = ".6s";
           setTimeout(() => el.remove(), 4200);
         }
       }
@@ -15157,9 +15440,9 @@
       const pal = this._flowerPal();
       const g = document.createElement("div");
       g.className = "pgift";
-      g.innerHTML = `${GIFT_SVG(pal[f2.c % pal.length])}<i class="pspk"></i><i class="pspk"></i><i class="pspk"></i>`;
-      g._t = f2.t;
-      g._xf = f2.x / 100;
+      g.innerHTML = `${GIFT_SVG(pal[f3.c % pal.length])}<i class="pspk"></i><i class="pspk"></i><i class="pspk"></i>`;
+      g._t = f3.t;
+      g._xf = f3.x / 100;
       this._flowerGiftPlace(g);
       g.setAttribute("role", "button");
       g.setAttribute("aria-label", "Blume annehmen");
@@ -15635,13 +15918,13 @@
       if (!this._el) return;
       this._festEnsure();
       this._festUpdate();
-      const f2 = this._fest;
+      const f3 = this._fest;
       this._festArm();
       this._festMidnight();
       if (this._away() || !this._g) return;
-      if (f2.witch && this._festDark() && Math.random() < 0.35) this._festBat();
+      if (f3.witch && this._festDark() && Math.random() < 0.35) this._festBat();
       const party = !this._asleep && !this._festDark() && !this._wx.wet;
-      if (f2.karneval) {
+      if (f3.karneval) {
         const t = Date.now();
         this._festCfNext ??= t + rnd(5, 30) * 1e3;
         if (t >= this._festCfNext && party) {
@@ -15692,21 +15975,21 @@
       } else this._festForce("festConfetti");
     }
     _festActs({ wx, g }) {
-      const f2 = this._fest || {};
+      const f3 = this._fest || {};
       const pos = this._festPos || {};
       const ok = (n, min) => Date.now() >= ((this._festLast || {})[n] || 0) + min * 6e4;
       const dry = !wx.wet;
       const out = [];
-      if (f2.halloween && pos.pumpkin) out.push([dry && ok("festPumpkin", 4) ? 1.5 : 0, "festPumpkin"]);
-      if (f2.martin?.walk) out.push([dry && ok("festLantern", 3) ? 3 : 0, "festLantern"]);
-      if (f2.boot && pos.boot) out.push([ok("festBoot", 5) ? 1.6 : 0, "festBoot"]);
-      if (f2.xmas && pos.tree) out.push([ok("festTree", 4) ? 2 : 0, "festTree"]);
-      if (f2.advent && pos.wreath) out.push([this._festCandleOff() ? 12 : ok("festAdvent", 8) ? 1.3 : 0, "festAdvent"]);
-      if (f2.fireworks) out.push([ok("festFireworks", 2) ? 12 : 0, "festFireworks"]);
-      if (f2.karneval) out.push([dry && ok("festConfetti", 4) ? 1.6 : 0, "festConfetti"]);
-      if (f2.ostern && this._festEggs?.length) out.push([ok("festEgg", 3) ? 2 : 0, "festEgg"]);
-      if (f2.birthday && pos.cake) out.push([!this._festCakeOut && ok("festBirthday", 4) ? 2.5 : 0, "festBirthday"]);
-      if (f2.sommer) out.push([dry && g > 30 ? 3 : 0, "binky"]);
+      if (f3.halloween && pos.pumpkin) out.push([dry && ok("festPumpkin", 4) ? 1.5 : 0, "festPumpkin"]);
+      if (f3.martin?.walk) out.push([dry && ok("festLantern", 3) ? 3 : 0, "festLantern"]);
+      if (f3.boot && pos.boot) out.push([ok("festBoot", 5) ? 1.6 : 0, "festBoot"]);
+      if (f3.xmas && pos.tree) out.push([ok("festTree", 4) ? 2 : 0, "festTree"]);
+      if (f3.advent && pos.wreath) out.push([this._festCandleOff() ? 12 : ok("festAdvent", 8) ? 1.3 : 0, "festAdvent"]);
+      if (f3.fireworks) out.push([ok("festFireworks", 2) ? 12 : 0, "festFireworks"]);
+      if (f3.karneval) out.push([dry && ok("festConfetti", 4) ? 1.6 : 0, "festConfetti"]);
+      if (f3.ostern && this._festEggs?.length) out.push([ok("festEgg", 3) ? 2 : 0, "festEgg"]);
+      if (f3.birthday && pos.cake) out.push([!this._festCakeOut && ok("festBirthday", 4) ? 2.5 : 0, "festBirthday"]);
+      if (f3.sommer) out.push([dry && g > 30 ? 3 : 0, "binky"]);
       return out;
     }
     // Uhr von HA: Feuerwerk, Finale und „Helau!“ kommen auf allen Geräten im selben Moment
@@ -15747,28 +16030,28 @@
       const hm = h * 60 + now2.getMinutes();
       const md = mo * 100 + d;
       const day = festDay(y, mo, d);
-      const f2 = { year: y };
+      const f3 = { year: y };
       if (this._cfg?.festive !== false) {
         const hwNight = md === 1101 && h < 6;
-        if (md >= 1024 && md <= 1031 || hwNight) f2.halloween = true;
-        if (md === 1031 || hwNight) f2.witch = true;
-        if (md === 1111) f2.martin = { walk: hm >= this._festEve(now2, 16 * 60, 90) };
+        if (md >= 1024 && md <= 1031 || hwNight) f3.halloween = true;
+        if (md === 1031 || hwNight) f3.witch = true;
+        if (md === 1111) f3.martin = { walk: hm >= this._festEve(now2, 16 * 60, 90) };
         const adv = festAdvent1(y);
         if (day >= adv && md <= 1224) {
-          f2.advent = { candles: Math.min(4, 1 + Math.floor((day - adv) / 7)) };
-          if ((day - adv) % 7 === 0) f2.advent.neu = day;
+          f3.advent = { candles: Math.min(4, 1 + Math.floor((day - adv) / 7)) };
+          if ((day - adv) % 7 === 0) f3.advent.neu = day;
         }
-        if (day >= adv || md <= 106) f2.lights = true;
-        if (md === 1205 && hm >= this._festEve(now2, 18 * 60, 120) || md === 1206) f2.boot = { full: md === 1206 };
-        if (md >= 1224 && md <= 1226) f2.xmas = true;
-        if (md === 1231 && hm >= 23 * 60 + 55 || md === 101 && h < 1) f2.fireworks = true;
-        if (md === 101 && h >= 1) f2.sticks = true;
+        if (day >= adv || md <= 106) f3.lights = true;
+        if (md === 1205 && hm >= this._festEve(now2, 18 * 60, 120) || md === 1206) f3.boot = { full: md === 1206 };
+        if (md >= 1224 && md <= 1226) f3.xmas = true;
+        if (md === 1231 && hm >= 23 * 60 + 55 || md === 101 && h < 1) f3.fireworks = true;
+        if (md === 101 && h >= 1) f3.sticks = true;
         const [em, ed] = festEaster(y);
         const e = festDay(y, em, ed);
-        if (day >= e - 52 && day <= e - 46) f2.karneval = true;
-        if (day >= e - 2 && day <= e + 1) f2.ostern = true;
-        if (md === 430 && h >= 18 || md === 501) f2.maibaum = true;
-        if (md === 621) f2.sommer = true;
+        if (day >= e - 52 && day <= e - 46) f3.karneval = true;
+        if (day >= e - 2 && day <= e + 1) f3.ostern = true;
+        if (md === 430 && h >= 18 || md === 501) f3.maibaum = true;
+        if (md === 621) f3.sommer = true;
       }
       const leap = new Date(y, 1, 29).getMonth() === 1;
       const names = (Array.isArray(this._cfg?.birthdays) ? this._cfg.birthdays : []).filter((b) => {
@@ -15785,8 +16068,8 @@
         if (bm === 2 && bd === 29 && !leap) bd = 28;
         return bm === mo && bd === d;
       }).map((b) => String(b.name || "").trim()).filter(Boolean);
-      if (names.length) f2.birthday = { names };
-      return f2;
+      if (names.length) f3.birthday = { names };
+      return f3;
     }
     _festEnsure() {
       if (this._festEls || !this._el?.festB) return;
@@ -15806,18 +16089,18 @@
     }
     // Feste neu bestimmen; bei Wechsel (oder force) Hüte und Deko neu
     _festUpdate(force) {
-      const f2 = this._festToday();
-      const key = JSON.stringify(f2);
+      const f3 = this._festToday();
+      const key = JSON.stringify(f3);
       const changed = key !== this._festKey;
       this._festKey = key;
-      this._fest = f2;
-      if (changed && !f2.birthday) this._festCakeOut = false;
+      this._fest = f3;
+      if (changed && !f3.birthday) this._festCakeOut = false;
       const umzug = this._festUmKanne();
       if (changed || force || umzug) {
         const p = this._el.pika.classList;
-        const hat = f2.xmas ? "xmas" : f2.birthday ? "party" : f2.witch ? "witch" : f2.karneval ? "party" : null;
+        const hat = f3.xmas ? "xmas" : f3.birthday ? "party" : f3.witch ? "witch" : f3.karneval ? "party" : null;
         for (const h of ["witch", "xmas", "party"]) p.toggle(`fest-${h}`, hat === h);
-        this._el.friends.classList.toggle("fest-xmas", !!f2.xmas);
+        this._el.friends.classList.toggle("fest-xmas", !!f3.xmas);
         this._festRender();
       }
       this._festCandleSync();
@@ -15846,7 +16129,7 @@
     _festRender() {
       const E = this._festEls;
       if (!E || !this._g) return;
-      const f2 = this._fest || {};
+      const f3 = this._fest || {};
       const { gy, hole, rock, bur, hayL, hayR } = this._g;
       const W = this._W;
       const H = this._H;
@@ -15881,14 +16164,14 @@
         const [x, w2] = fit(slot(...prefs), w);
         front.push(item(cls, x, bottom, w2, art, name));
       };
-      if (f2.xmas) used.add("M");
-      if (f2.halloween) ground("fpump", ["M", "R", "L"], gy + 1, H * 0.14, FEST_PUMPKIN, "pumpkin");
-      if (f2.boot) ground("fboot", ["M", "R", "L"], gy + 1, H * 0.11, FEST_BOOT(f2.boot.full), "boot");
-      if (f2.advent) {
-        ground(`fwreath${this._festCandleOff() ? " unlit" : ""}`, ["R", "L", "M"], gy, H * 0.2, FEST_WREATH(f2.advent.candles, !!f2.advent.neu), "wreath");
+      if (f3.xmas) used.add("M");
+      if (f3.halloween) ground("fpump", ["M", "R", "L"], gy + 1, H * 0.14, FEST_PUMPKIN, "pumpkin");
+      if (f3.boot) ground("fboot", ["M", "R", "L"], gy + 1, H * 0.11, FEST_BOOT(f3.boot.full), "boot");
+      if (f3.advent) {
+        ground(`fwreath${this._festCandleOff() ? " unlit" : ""}`, ["R", "L", "M"], gy, H * 0.2, FEST_WREATH(f3.advent.candles, !!f3.advent.neu), "wreath");
       }
       this._festKanneDa = false;
-      if (f2.birthday) {
+      if (f3.birthday) {
         let s = slot("R", "L", "M");
         const kanne = s === slots.L ? this._festKanne() : null;
         this._festKanneDa = !!kanne;
@@ -15900,9 +16183,9 @@
         const [x, w2] = fit(s, H * 0.14);
         front.push(item(`fcake${this._festCakeOut ? " out" : ""}`, x, gy + 1, w2, FEST_CAKE, "cake"));
       }
-      if (f2.lights) on.push(onBur("flights", FEST_LIGHTS(edge)));
-      if (f2.karneval) on.push(onBur("fstream", FEST_STREAMERS(edge)));
-      if (f2.martin) {
+      if (f3.lights) on.push(onBur("flights", FEST_LIGHTS(edge)));
+      if (f3.karneval) on.push(onBur("fstream", FEST_STREAMERS(edge)));
+      if (f3.martin) {
         const [ex, ey] = edge.reduce((a, p) => Math.abs(p[0] - 88) < Math.abs(a[0] - 88) ? p : a);
         const w = H * 0.1;
         const ax = bur.l + ex * bur.u;
@@ -15910,20 +16193,20 @@
         const h = w * 34 / 26;
         on.push(`<div class="fi flan" style="left:${festF1(ax - w / 26)}px;top:${festF1(ay - w * 4.2 / 26)}px;width:${festF1(w)}px;height:${festF1(h)}px">${festSvg(FEST_LANTERN.vb, FEST_LANTERN.b, "b")}${festSvg(FEST_LANTERN.vb, FEST_LANTERN.g, "g")}</div>`);
       }
-      if (f2.xmas) {
+      if (f3.xmas) {
         const tw = H * 0.42 * 50 / 66;
         back.push(item("ftree", slots.M.x, gy + 2, tw, FEST_TREE, "tree"));
         const gw = H * 0.1;
         front.push(item("fgift", Math.min(slots.M.x, Math.max(slots.M.x - tw * 0.32, hayR + gw / 2)), gy - 1, gw, FEST_GIFT, "gift"));
       }
-      if (f2.maibaum) {
+      if (f3.maibaum) {
         const top = Math.max(44, this._sy(0.16));
         const mh = gy - top;
         const mw = mh / 4;
         const x = bur.l + 80 * bur.u;
         back.push(`<div class="fi fmai" style="left:${festF1(x - mw / 2)}px;top:${festF1(top)}px;width:${festF1(mw)}px;height:${festF1(mh)}px;--wd:${this._windDir < 0 ? -1 : 1}">${festSvg(FEST_MAI.vb, FEST_MAI.b, "b")}</div>`);
       }
-      if (f2.birthday || f2.sommer) back.push(this._festString(f2.birthday ? ["A", "L", "L", "E", "S", "♥", "G", "U", "T", "E"] : null));
+      if (f3.birthday || f3.sommer) back.push(this._festString(f3.birthday ? ["A", "L", "L", "E", "S", "♥", "G", "U", "T", "E"] : null));
       const lo = hole.r + H * 0.12;
       const hi = Math.max(lo + H * 0.3, Math.min(W - 10, rock.l + rock.w * 0.75));
       const taken = Object.values(pos);
@@ -15944,10 +16227,10 @@
         return hi;
       };
       const eggX = [];
-      if (f2.ostern) {
-        const n = 4 + Math.floor(seeded(f2.year, 7) * 3);
+      if (f3.ostern) {
+        const n = 4 + Math.floor(seeded(f3.year, 7) * 3);
         for (let i = 0; i < n; i++) {
-          const r = (k) => seeded(f2.year, i, k);
+          const r = (k) => seeded(f3.year, i, k);
           const x = free((i + 0.2 + 0.6 * r(1)) / n, H * 0.05);
           const c1 = FEST_COLORS[Math.floor(r(2) * FEST_COLORS.length)];
           let c2 = FEST_COLORS[Math.floor(r(3) * FEST_COLORS.length)];
@@ -15960,9 +16243,9 @@
           front.push(`<div class="fi fegg" role="button" aria-label="Osterei" style="left:${festF1(x - w / 2 - 6)}px;top:${festF1(b - h - 6)}px;width:${festF1(w + 12)}px;height:${festF1(h + 12)}px"><svg class="b" viewBox="0 0 12 15" aria-hidden="true" style="rotate:${festF1((r(5) - 0.5) * 24)}deg">${FEST_EGG(c1, c2, Math.floor(r(6) * 3))}</svg></div>`);
         }
       }
-      if (f2.sticks) {
+      if (f3.sticks) {
         [[0.3, -6], [0.68, 9]].forEach(([t, rot], i) => {
-          const x = free(t + (seeded(f2.year, 31, i) - 0.5) * 0.1, H * 0.12);
+          const x = free(t + (seeded(f3.year, 31, i) - 0.5) * 0.1, H * 0.12);
           front.push(item("fstick", x, gy - H * 0.018, H * 0.2, FEST_STICK, `stick${i}`, `;rotate:${rot}deg`));
         });
       }
@@ -17726,7 +18009,7 @@
           let rl = deep ? 1 - cl0 : 0;
           let [lo, hi] = range(rl);
           let far = chaseFar(rx, cx, lo, hi, pW);
-          const via = (f2) => f2 ? cx > rx : cx < rx;
+          const via = (f3) => f3 ? cx > rx : cx < rx;
           if (rl !== rl0 && via(far)) {
             rl = rl0;
             [lo, hi] = range(rl);
@@ -17932,10 +18215,10 @@
         const near = (x) => (a, b) => Math.abs(a.xf * W - x) - Math.abs(b.xf * W - x);
         const f1 = [...this._flowers].sort(near(mid))[0];
         const x1 = f1.xf * W;
-        const f2 = this._flowers.filter((f3) => f3 !== f1 && Math.abs(f3.xf * W - x1) > pW * 0.7 && Math.abs(f3.xf * W - x1) < W * 0.3).sort(near(x1))[0];
+        const f22 = this._flowers.filter((f3) => f3 !== f1 && Math.abs(f3.xf * W - x1) > pW * 0.7 && Math.abs(f3.xf * W - x1) < W * 0.3).sort(near(x1))[0];
         const s = this._x <= x1 ? -1 : 1;
-        const fx = f2 ? f2.xf * W + (f2.xf * W > x1 ? 1 : -1) * pW * 0.32 : x1 - s * pW * 0.33;
-        const tx = f2 ? f2.xf * W : x1;
+        const fx = f22 ? f22.xf * W + (f22.xf * W > x1 ? 1 : -1) * pW * 0.32 : x1 - s * pW * 0.33;
+        const tx = f22 ? f22.xf * W : x1;
         await Promise.all([this._walkTo(x1 + s * pW * 0.36), this._friendWalkTo(fr, fx, 1, w)]);
         this._face(x1 >= this._x ? 1 : -1);
         this._frFace(fr, tx >= fr.x ? 1 : -1);
@@ -17943,7 +18226,7 @@
         if (!this._flowers.includes(f1)) return;
         this._pickFlower(f1);
         const ms = rnd(2600, 3800);
-        this._frEat(fr, f2 ? f2.color : f1.color, ms + 300);
+        this._frEat(fr, f22 ? f22.color : f1.color, ms + 300);
         await this._eat(f1.color, ms);
         this._selfFed(SELF.flower);
         await w(300);
@@ -18669,9 +18952,9 @@
         const from = this._flowerPal();
         this._seasonK = sk;
         const to = this._flowerPal();
-        for (const f2 of this._flowers) {
-          f2.color = to[Math.max(0, from.indexOf(f2.color))];
-          f2.el.innerHTML = FLOWER_SVG(f2.color);
+        for (const f3 of this._flowers) {
+          f3.color = to[Math.max(0, from.indexOf(f3.color))];
+          f3.el.innerHTML = FLOWER_SVG(f3.color);
         }
         if (this._plan) this._hayFromPlan();
       }
@@ -18927,11 +19210,11 @@
       if (bolide) {
         const fx = x + dir * dx * 0.78;
         const fy = y + dy * 0.78;
-        const f2 = document.createElement("i");
-        f2.className = "mflash";
-        f2.style.cssText = `background:radial-gradient(circle at ${fx.toFixed(0)}px ${fy.toFixed(0)}px, rgba(215, 235, 255, .3), rgba(215, 235, 255, 0) ${(H * 0.5).toFixed(0)}px);animation-delay:${(dur * 0.68).toFixed(2)}s`;
-        this._el.meteors.appendChild(f2);
-        setTimeout(() => f2.remove(), dur * 680 + 900);
+        const f3 = document.createElement("i");
+        f3.className = "mflash";
+        f3.style.cssText = `background:radial-gradient(circle at ${fx.toFixed(0)}px ${fy.toFixed(0)}px, rgba(215, 235, 255, .3), rgba(215, 235, 255, 0) ${(H * 0.5).toFixed(0)}px);animation-delay:${(dur * 0.68).toFixed(2)}s`;
+        this._el.meteors.appendChild(f3);
+        setTimeout(() => f3.remove(), dur * 680 + 900);
       }
       const watch = !this._asleep && Math.random() < SKY.watch;
       this._met = { at: Date.now(), x: x + dir * dx / 2, dir, bolide, watch, seen: false };
@@ -18969,11 +19252,11 @@
     async _watchFireflies() {
       const p = this._el.pika;
       const { pW } = this._g;
-      let f2 = this._ffSpot();
-      if (f2 && Math.abs(f2.x - this._x) > this._W * 0.3) {
-        await this._walkTo(f2.x - Math.sign(f2.x - this._x) * pW * rnd(0.6, 1.1), 0.7);
+      let f3 = this._ffSpot();
+      if (f3 && Math.abs(f3.x - this._x) > this._W * 0.3) {
+        await this._walkTo(f3.x - Math.sign(f3.x - this._x) * pW * rnd(0.6, 1.1), 0.7);
       }
-      if (f2) this._face(f2.x >= this._x ? 1 : -1);
+      if (f3) this._face(f3.x >= this._x ? 1 : -1);
       p.classList.add("crouch", "look-up");
       await this._wait(rnd(1200, 1900));
       p.classList.remove("look-up");
@@ -18985,8 +19268,8 @@
         await this._wait(rnd(600, 1200));
       }
       p.classList.remove("look-f", "look-b", "crouch");
-      f2 = this._ffSpot() || f2;
-      if (f2) this._face(f2.x >= this._x ? 1 : -1);
+      f3 = this._ffSpot() || f3;
+      if (f3) this._face(f3.x >= this._x ? 1 : -1);
       p.classList.add("look-up");
       await this._wait(200);
       this._jump("hop1");
@@ -19287,10 +19570,10 @@
     }
     _lightning() {
       if (!this._wx.flash) return;
-      const f2 = this._el.flash;
-      f2.classList.remove("go");
-      void f2.offsetWidth;
-      f2.classList.add("go");
+      const f3 = this._el.flash;
+      f3.classList.remove("go");
+      void f3.offsetWidth;
+      f3.classList.add("go");
       if (!this._asleep && this._g) {
         setTimeout(() => {
           this._jump("hop1");
@@ -20086,11 +20369,11 @@
     // Ziel-Gerät: Wunsch aus der Vorschau (_boteFocus = Typ oder Index), sonst das erste passende; beim Beschäftigen
     // mit laufenden Geräten keins, das gerade pausiert, auf den Start wartet oder eine Störung hat
     _boteFind(type, phase) {
-      const f2 = this._boteFocus;
+      const f3 = this._boteFocus;
       this._boteFocus = null;
       const ok = (a) => a.el && a.spec && a.phase === phase && !a.live && (!type || a.type === type) && !(phase === "run" && BOTE_HALT.has(a.st));
       const list = this._bote?.list || [];
-      return list.find((a) => ok(a) && f2 != null && (a.type === f2 || a.idx === f2)) || list.find(ok) || null;
+      return list.find((a) => ok(a) && f3 != null && (a.type === f3 || a.idx === f3)) || list.find(ok) || null;
     }
     // Standplatz neben einem Bereich L..R im Abstand off (px, von der Pika-Mitte): die nähere Seite, wenn dort Platz ist
     _boteSpot(L, R2, off) {
@@ -20135,9 +20418,9 @@
     }
     // Effekt in die vordere Ebene; false, wenn es sie nicht (mehr) gibt (Konfiguration gewechselt)
     _boteFx(...els) {
-      const f2 = this._bote?.f;
-      if (!f2) return false;
-      f2.append(...els);
+      const f3 = this._bote?.f;
+      if (!f3) return false;
+      f3.append(...els);
       return true;
     }
     _boteBubbles(x, y, n) {
@@ -20347,10 +20630,10 @@
     // Fertig: hinhoppeln, tätscheln/stupsen, zum Betrachter schauen und Bescheid sagen
     async _boteNudge() {
       const B = this._bote;
-      const f2 = this._boteFocus;
+      const f3 = this._boteFocus;
       this._boteFocus = null;
       const done = (B?.list || []).filter((o) => o.phase === "done" && o.el && !o.live);
-      const a = done.find((o) => f2 != null && (o.type === f2 || o.idx === f2)) || done.sort((x, y) => x.nudgeAt - y.nudgeAt)[0];
+      const a = done.find((o) => f3 != null && (o.type === f3 || o.idx === f3)) || done.sort((x, y) => x.nudgeAt - y.nudgeAt)[0];
       if (!a) return;
       const { pW } = this._g;
       const p = this._el.pika;
@@ -20405,9 +20688,9 @@
     async _boteEmpty() {
       const B = this._bote;
       if (!B?.list.length) return;
-      const f2 = this._boteFocus;
+      const f3 = this._boteFocus;
       this._boteFocus = null;
-      let a = f2 != null ? B.list.find((o) => (o.type === f2 || o.idx === f2) && o.phase === "empty" && o.el) : null;
+      let a = f3 != null ? B.list.find((o) => (o.type === f3 || o.idx === f3) && o.phase === "empty" && o.el) : null;
       a ||= B.queue.find((o) => o.live && o.phase === "empty");
       if (!a) return;
       B.queue = B.queue.filter((o) => o !== a);
@@ -21180,10 +21463,10 @@
       const B = this._gb;
       if (!B || B.stage !== "hover") return;
       const sc = this._el.scene.getBoundingClientRect();
-      const f2 = this._el.pika.querySelector(".slf").getBoundingClientRect();
+      const f3 = this._el.pika.querySelector(".slf").getBoundingClientRect();
       const t = B.el.querySelector(".gb-ball").getBoundingClientRect();
-      const x0 = f2.left - sc.left + f2.width / 2;
-      const y0 = f2.top - sc.top + f2.height / 2;
+      const x0 = f3.left - sc.left + f3.width / 2;
+      const y0 = f3.top - sc.top + f3.height / 2;
       let x1 = t.left - sc.left + t.width / 2;
       let y1 = t.top - sc.top + t.height / 2;
       if (!hit) {
@@ -21624,7 +21907,7 @@
       const low = lw.length > 1 ? `${lw.slice(0, -1).join(", ")} und ${lw.at(-1)}` : lw[0] || "";
       const away = this._urlaubOn();
       const next = away ? `ruht, solange ich bei ${this._frName()} bin` : G.n >= GIFT.max ? `Vorrat voll${low ? ` · bitte ${low}` : ""}` : c.broken ? `die Serie fängt neu an, sobald alles über 50 % ist${low ? `: bitte ${low}` : ""}` : c.warn ? low ? `noch ${fmt(c.grace ?? GIFT.grace)} Toleranz: bitte ${low}` : "einmal kümmern, dann läuft sie weiter" : `nächstes in ${fmt(c.left ?? GIFT.every)} Wachzeit`;
-      const f2 = G.f ?? 0;
+      const f3 = G.f ?? 0;
       return {
         G,
         lvs,
@@ -21633,8 +21916,8 @@
         away,
         have: lvs.filter((lv) => lv > 0).length,
         // Freundschaftstage: alle, die bis zum nächsten goldenen fehlen, und was heute schon da ist
-        friends: f2,
-        dots: f2 % GIFT.goldDays,
+        friends: f3,
+        dots: f3 % GIFT.goldDays,
         today: this._careToday(),
         mile: [10, 25, 50, 100].find((m) => m > G.o) ?? (Math.floor(G.o / 100) + 1) * 100,
         allGold: giftAllGold(G),
@@ -21781,7 +22064,7 @@
         let best = null;
         for (let i = 0; i < 8; i++) {
           const xf = rnd(fMin, fMax);
-          const d = Math.min(1, ...this._flowers.map((f2) => Math.abs(f2.xf - xf)));
+          const d = Math.min(1, ...this._flowers.map((f3) => Math.abs(f3.xf - xf)));
           if (!best || d > best.d) best = { xf, d };
         }
         const spot = best.xf * W;
@@ -22348,26 +22631,26 @@
     // → true: eine goldene Blume ist gewachsen
     _goldBloom(neu, sx, F) {
       const gelb = this._flowerPal().find((c) => GOLD_BLOOM.includes(c));
-      const f2 = neu[Math.floor(neu.length / 2)];
+      const f3 = neu[Math.floor(neu.length / 2)];
       const { gy } = this._g;
-      if (!f2 || !gelb || this._flowers.some((o) => this._goldIsBloom(o))) {
+      if (!f3 || !gelb || this._flowers.some((o) => this._goldIsBloom(o))) {
         const n = calmMotion() ? 1 : 5;
         for (let i = 0; i < n; i++) {
           F.push(this._goldFx("trail", sx + (n > 1 ? rnd(-0.09, 0.09) * this._H : 0), gy - this._H * rnd(0.06, 0.16), { ms: 900, delay: i * 130 }));
         }
         return false;
       }
-      f2.gold = true;
-      f2.color = gelb;
-      f2.el.classList.add("gbloom");
-      f2.el.innerHTML = GOLD_FLOWER(gelb, flowerMid(gelb));
-      this._flowerTint(f2);
-      F.push(this._goldFx("trail", f2.xf * this._W, gy - this._H * 0.13, { ms: 900, delay: 1e3 }));
+      f3.gold = true;
+      f3.color = gelb;
+      f3.el.classList.add("gbloom");
+      f3.el.innerHTML = GOLD_FLOWER(gelb, flowerMid(gelb));
+      this._flowerTint(f3);
+      F.push(this._goldFx("trail", f3.xf * this._W, gy - this._H * 0.13, { ms: 900, delay: 1e3 }));
       return true;
     }
     // Ist f die goldene Blume, und sieht sie noch so aus? (Nach einem Wechsel der Jahreszeit ist sie eine gewöhnliche.)
-    _goldIsBloom(f2) {
-      return !!f2.gold && !f2.el.classList.contains("picked") && !!f2.el.querySelector(".gsun");
+    _goldIsBloom(f3) {
+      return !!f3.gold && !f3.el.classList.contains("picked") && !!f3.el.querySelector(".gsun");
     }
     // Goldenes Glöckchen hat gebimmelt: Ein Vogel antwortet. Sitzt gerade einer da, zwitschert er zurück (_tweet), sonst
     // kommt ein kurzes Zwitschern vom Bildrand gegenüber dem Bau. Besuche legt das nicht an und verschiebt sie nicht:
@@ -22390,7 +22673,7 @@
     _giftGlint() {
       if (this._asleep || !this._gtEls || Math.random() > 0.2) return;
       const gl = [...this._gtEls.values(), ...this._a2Els?.values() || []].filter((el2) => el2.classList.contains("gilt") && el2.isConnected);
-      for (const f2 of this._flowers || []) if (this._goldIsBloom(f2) && f2.el.isConnected) gl.push(f2.el);
+      for (const f3 of this._flowers || []) if (this._goldIsBloom(f3) && f3.el.isConnected) gl.push(f3.el);
       if (!gl.length) return;
       const el = pick(gl);
       const r = el.getBoundingClientRect();
@@ -22965,9 +23248,9 @@
       boat.style[dir > 0 ? "left" : "right"] = "7%";
       el.appendChild(boat);
       const span = pw * 0.86 - bw;
-      const sail = (f2, ms, ease, skip = 0) => {
+      const sail = (f3, ms, ease, skip = 0) => {
         boat.style.transition = `transform ${Math.round(ms)}ms ${ease} ${-Math.round(skip)}ms, opacity .25s`;
-        boat.style.transform = `translateX(${(dir * f2 * span).toFixed(1)}px)`;
+        boat.style.transform = `translateX(${(dir * f3 * span).toFixed(1)}px)`;
       };
       const trip = (a, b, t0, ms, ease = `cubic-bezier(${BOAT_EASE.join(", ")})`) => {
         const late = this._planNow() - t0;
@@ -23456,7 +23739,7 @@
       const c0 = B ? B.px : U.x - dir * (U.w / 2 - rad(1));
       const fa = snowballPos(SNOWBALL_T.scrape + SNOWBALL_T.leg, run).f;
       const fb = snowballPos(t4, run).f;
-      const xAt = (f2, s) => B ? B.x : clamp(c0 + dir * (f2 * travel - pW * 0.4 - rad(s) * 0.9), pW * 0.45, xR);
+      const xAt = (f3, s) => B ? B.x : clamp(c0 + dir * (f3 * travel - pW * 0.4 - rad(s) * 0.9), pW * 0.45, xR);
       const el = this._aprop("sbp", "", c0 + dir * travel / 2, travel + 2 * rMax, 2 * rMax, false, pH * 0.03);
       const part = (cls, parent) => {
         const d = document.createElement("div");
@@ -23479,13 +23762,13 @@
       size.innerHTML = SNOWBALL_SVG;
       const marks = size.querySelector(".sb-rot");
       const turn = travel / rad(2) * 57.3;
-      const put = (f2, s, ms = 0, ease = "linear", skip = 0) => {
+      const put = (f3, s, ms = 0, ease = "linear", skip = 0) => {
         const tr = `transform ${Math.round(ms)}ms ${ease} ${-Math.round(skip)}ms`;
         const set = (node, v) => node && Object.assign(node.style, { transition: tr, transform: v });
-        set(ball, `translateX(${(dir * f2 * travel).toFixed(1)}px)`);
+        set(ball, `translateX(${(dir * f3 * travel).toFixed(1)}px)`);
         set(size, `scale(${(rad(s) / rMax).toFixed(3)})`);
-        set(marks, `rotate(${(dir * f2 * turn).toFixed(0)}deg)`);
-        set(track, `scaleX(${f2.toFixed(3)})`);
+        set(marks, `rotate(${(dir * f3 * turn).toFixed(0)}deg)`);
+        set(track, `scaleX(${f3.toFixed(3)})`);
       };
       const roll = (a, b, t0, ms, ease = "linear") => {
         const late = now2() - t0;
@@ -23880,8 +24163,8 @@
         const h0 = gy - o.y;
         const dx = T.land - o.x;
         const el = this._aprop("glid", GLIDER_SVG, gw / 2, gw, gw * (14 / 26), true);
-        const pt = (f2, h, a) => ({
-          transform: `translate(${(o.x - gw / 2 + dx * f2).toFixed(1)}px, ${(-h).toFixed(1)}px) rotate(${(dir * a).toFixed(0)}deg) scaleX(${dir})`
+        const pt = (f3, h, a) => ({
+          transform: `translate(${(o.x - gw / 2 + dx * f3).toFixed(1)}px, ${(-h).toFixed(1)}px) rotate(${(dir * a).toFixed(0)}deg) scaleX(${dir})`
         });
         const frames = calmMotion() ? [pt(0, h0, 4), pt(1, pH * 0.05, 4)] : T.steep ? [
           { ...pt(0, h0, -52), easing: "ease-out" },
@@ -25491,6 +25774,13 @@
     }
   };
 
+  // src/grafik/album2/platzhalter.js
+  var A2_PLATZHALTER = `<svg viewBox="0 0 24 24" aria-hidden="true">
+      <rect x="3.6" y="9" width="16.8" height="12.6" rx="1.6" fill="#d8cbb4" stroke="${OUT}" stroke-width="1"/>
+      <path d="M3.6 13 H20.4" stroke="${OUT}" stroke-width=".7" opacity=".5"/>
+      <path d="M9.4 14.6 q0 -2.4 2.6 -2.4 q2.6 0 2.6 2 q0 1.4 -1.6 2 q-1 .4 -1 1.4" stroke="#8a6d4a" stroke-width="1.5" fill="none" stroke-linecap="round"/>
+      <circle cx="12" cy="19.4" r=".95" fill="#8a6d4a"/></svg>`;
+
   // src/karte/album2.js
   var cap = (k) => k[0].toUpperCase() + k.slice(1);
   var Album2 = class {
@@ -25505,8 +25795,8 @@
     }
     // Hook name des Schatzes key aufrufen, wenn es ihn gibt (sonst undefined)
     _a2Hook(key, name, ...args) {
-      const f2 = this[`_a2${cap(key)}${name}`];
-      return typeof f2 === "function" ? this._guard(`Album 2 ${key}`, () => f2.apply(this, args)) : void 0;
+      const f3 = this[`_a2${cap(key)}${name}`];
+      return typeof f3 === "function" ? this._guard(`Album 2 ${key}`, () => f3.apply(this, args)) : void 0;
     }
     // Stufen aller acht, wie sie ausgepackt sind. Wie bei Album 1 (_giftScene): ohne den, der noch am Ballon hängt oder
     // im Päckchen liegt, und der gerade ausgepackte noch auf seiner alten Stufe (_a2Hide), bis er verstaut ist.
@@ -26169,7 +26459,7 @@
       if (!this._a2LanternCarry) return;
       const q = this._a2LanternGlass();
       this._a2LanternGlowAt(q.x, q.y, true);
-      for (const f2 of this._a2LanternFF || []) f2.classList.remove("off");
+      for (const f3 of this._a2LanternFF || []) f3.classList.remove("off");
       this._a2LanternFollow(true);
     }
     // Abstellen: am Platz S { x, foot, home: ihr Platz am Bau }, sie brennt dort noch LANTERN_STAY
@@ -26195,7 +26485,7 @@
       el?.classList.add("a2out");
       if (!this._a2LanternCarry) {
         this._a2LanternGlow?.classList.add("off");
-        for (const f2 of this._a2LanternFF || []) f2.classList.add("off");
+        for (const f3 of this._a2LanternFF || []) f3.classList.add("off");
       }
       setTimeout(() => {
         if (gen !== this._a2LanternGen || this._a2LanternStand) return;
@@ -26224,23 +26514,23 @@
         }
         return false;
       }
-      const F = this._a2LanternFF = (this._a2LanternFF || []).filter((f2) => f2.isConnected);
+      const F = this._a2LanternFF = (this._a2LanternFF || []).filter((f3) => f3.isConnected);
       const calm = calmMotion();
       for (let i = 0; i < n && F.length < 4; i++) {
-        const f2 = this._goldFx("hff a2lff", 0, 0, { ms: LANTERN_STAY + 12e4, html: GOLD_FIREFLY });
-        f2.style.left = f2.style.top = "0";
+        const f3 = this._goldFx("hff a2lff", 0, 0, { ms: LANTERN_STAY + 12e4, html: GOLD_FIREFLY });
+        f3.style.left = f3.style.top = "0";
         const r = this._H * rnd(0.075, 0.13);
-        f2.style.setProperty("--r", `${r.toFixed(1)}px`);
-        f2.style.setProperty("--a0", `${Math.round(rnd(0, 360))}deg`);
-        f2.style.setProperty("--d", `${rnd(2.6, 4.2).toFixed(2)}s`);
-        f2.style.animationDelay = `${(i * 0.45).toFixed(2)}s, 0s, ${(1 + i * 0.45).toFixed(2)}s`;
-        if (Math.random() < 0.4) f2.classList.add("rev");
+        f3.style.setProperty("--r", `${r.toFixed(1)}px`);
+        f3.style.setProperty("--a0", `${Math.round(rnd(0, 360))}deg`);
+        f3.style.setProperty("--d", `${rnd(2.6, 4.2).toFixed(2)}s`);
+        f3.style.animationDelay = `${(i * 0.45).toFixed(2)}s, 0s, ${(1 + i * 0.45).toFixed(2)}s`;
+        if (Math.random() < 0.4) f3.classList.add("rev");
         if (calm) {
           const a = (F.length + 0.5) / 4 * Math.PI * 2;
-          f2.style.transform = `translate(${(Math.cos(a) * r).toFixed(1)}px, ${(Math.sin(a) * r * 0.7).toFixed(1)}px)`;
+          f3.style.transform = `translate(${(Math.cos(a) * r).toFixed(1)}px, ${(Math.sin(a) * r * 0.7).toFixed(1)}px)`;
         }
-        g.appendChild(f2);
-        F.push(f2);
+        g.appendChild(f3);
+        F.push(f3);
       }
       return true;
     }
@@ -26248,7 +26538,7 @@
     _a2LanternFlyOff() {
       const F = this._a2LanternFF || [];
       this._a2LanternFF = [];
-      for (const f2 of F) f2.classList.add("off");
+      for (const f3 of F) f3.classList.add("off");
       setTimeout(() => this._goldDrop(F), 800);
     }
     // Kommen sie jetzt? sure: sicher (Auspacken). Sonst nur golden, und dann in der Vorschau mit _dbgGold immer, von
@@ -26529,10 +26819,10 @@
       const S = this._a2SledS;
       if (!S || S.fdir === dir) return;
       S.fdir = dir;
-      const f2 = S.el.querySelector(".a2slf");
-      if (!f2) return;
-      f2.style.transition = instant || calmMotion() ? "none" : "";
-      f2.classList.toggle("left", dir < 0);
+      const f3 = S.el.querySelector(".a2slf");
+      if (!f3) return;
+      f3.style.transition = instant || calmMotion() ? "none" : "";
+      f3.classList.toggle("left", dir < 0);
     }
     // Schneewehe am Stein (Requisit: Ändert sich die Größe der Karte, bricht _layout die Aktion ab). Ihr Fuß liegt auf
     // breiten Karten bei DRIFT_U0, auf schmalen näher am Stein, aber nie weniger als 0,6 Pika-Breiten rechts vom Vorrat.
@@ -26780,8 +27070,8 @@
       S.ctl = true;
       p.classList.add("walking", "trip");
       this._say(pick(["hau ruck!", "hinauf!", "uff…"]), 1200);
-      await this._a2SledDrive(Math.abs(top - x0) / (pW * 0.5) * 1e3, (f2) => {
-        const x = x0 + (top - x0) * f2;
+      await this._a2SledDrive(Math.abs(top - x0) / (pW * 0.5) * 1e3, (f3) => {
+        const x = x0 + (top - x0) * f3;
         this._a2SledPika(x, this._a2SledH(x));
       });
       p.classList.remove("walking", "trip");
@@ -26792,8 +27082,8 @@
       const s0 = S.x;
       S.tow = false;
       p.classList.add("crouch");
-      await this._a2SledDrive(650, (f2) => {
-        S.x = s0 + (sx - s0) * (1 - (1 - f2) ** 2);
+      await this._a2SledDrive(650, (f3) => {
+        S.x = s0 + (sx - s0) * (1 - (1 - f3) ** 2);
       });
       p.classList.remove("crouch");
       this._a2SledHold(false);
@@ -26807,9 +27097,9 @@
       const xa = this._x;
       const la = this._lift;
       this._jump("hop1", true);
-      await this._a2SledDrive(420, (f2) => {
-        const x = xa + (sx - xa) * f2;
-        this._a2SledPika(x, la + (this._a2SledH(sx) - la) * f2, this._a2SledAng(sx) * f2);
+      await this._a2SledDrive(420, (f3) => {
+        const x = xa + (sx - xa) * f3;
+        this._a2SledPika(x, la + (this._a2SledH(sx) - la) * f3, this._a2SledAng(sx) * f3);
       });
       const { seat } = this._a2SledDim();
       p.style.setProperty("--a2sly", `${(seat * (mode === "belly" ? 0.7 : 1)).toFixed(1)}px`);
@@ -26828,12 +27118,12 @@
       this._say(mode === "belly" ? pick(["wuiii!", "juhuuu!", "schneller!"]) : pick(["juhuu!", "wiii!", "hui!"]), 1400);
       p.classList.add("happy");
       let tick = 0;
-      await this._a2SledDrive(tA + tB, (f2) => {
-        const t = f2 * (tA + tB);
-        const x = f2 >= 1 ? xEnd : at(t);
+      await this._a2SledDrive(tA + tB, (f3) => {
+        const t = f3 * (tA + tB);
+        const x = f3 >= 1 ? xEnd : at(t);
         this._a2SledPika(x, this._a2SledH(x), this._a2SledAng(x));
         const n = Math.floor(t / 70);
-        if (n > tick && f2 < 1) {
+        if (n > tick && f3 < 1) {
           tick = n;
           const v = speed(t) / v1;
           const rx = x + pW * SLED_W * 0.42;
@@ -26849,7 +27139,7 @@
       if (mode === "belly") {
         const xb = Math.max(pW * 0.45, xEnd - pW * 0.45);
         p.classList.add("lying");
-        await this._a2SledDrive(450, (f2) => this._a2SledPika(xEnd + (xb - xEnd) * (1 - (1 - f2) ** 2), 0));
+        await this._a2SledDrive(450, (f3) => this._a2SledPika(xEnd + (xb - xEnd) * (1 - (1 - f3) ** 2), 0));
         this._a2SledSpray(xb - pW * 0.25, this._g.gy, 4, 1);
         this._say(pick(["plumps!", "pfff!", "Schnee im Gesicht!"]), 1100);
         await this._wait(900);
@@ -27187,14 +27477,14 @@
     _a2CameraAimFlower() {
       const { pW } = this._g;
       const O = this._a2CameraOff();
-      const F = (this._flowers || []).filter((f2) => !f2.el?.classList?.contains("picked")).map((f2) => ({ f: f2, x: f2.xf * this._W })).sort((a, b) => Math.abs(a.x - this._x) - Math.abs(b.x - this._x));
-      for (const { f: f2, x } of F) {
+      const F = (this._flowers || []).filter((f3) => !f3.el?.classList?.contains("picked")).map((f3) => ({ f: f3, x: f3.xf * this._W })).sort((a, b) => Math.abs(a.x - this._x) - Math.abs(b.x - this._x));
+      for (const { f: f3, x } of F) {
         for (const d of [x >= this._x ? 1 : -1, x >= this._x ? -1 : 1]) {
           const R2 = this._a2CameraShotRoom(d);
           const cx = x - d * (O.tip + pW * 0.4);
           if (R2 && cx >= R2[0] - 0.01 && cx <= R2[1] + 0.01) {
-            const o = (this._flowers || []).find((g) => g !== f2 && Math.abs(g.xf - f2.xf) * this._W < pW * 0.8);
-            return { d, cx, tilt: 8, M: { k: "flower", color: f2.color, color2: o?.color } };
+            const o = (this._flowers || []).find((g) => g !== f3 && Math.abs(g.xf - f3.xf) * this._W < pW * 0.8);
+            return { d, cx, tilt: 8, M: { k: "flower", color: f3.color, color2: o?.color } };
           }
         }
       }
@@ -27289,7 +27579,7 @@
       if (fr && !this._a2CameraSelfPlan(fr)) fr = null;
       this._a2CameraBusy = true;
       try {
-        if (fr) await this._withFriend((f2, w) => this._a2CameraSelf(f2, w, gold, o));
+        if (fr) await this._withFriend((f3, w) => this._a2CameraSelf(f3, w, gold, o));
         else await this._a2CameraSelf(null, (ms) => this._wait(ms), gold, o);
       } finally {
         this._a2CameraBusy = false;
@@ -28176,7 +28466,7 @@
   var TRAMP_PIVOT = 0.58;
   var TRAMP_CLS = ["a2tr", "a2tr-sq", "a2tr-up", "a2tr-tuck"];
   var now = () => typeof performance !== "undefined" ? performance.now() : Date.now();
-  var smooth = (f2) => f2 * f2 * (3 - 2 * f2);
+  var smooth = (f3) => f3 * f3 * (3 - 2 * f3);
   var Album2Tramp = class {
     // ---------- Szene ----------
     // Szene (Hook): Es steht nie dauerhaft. Nur, solange er es benutzt (_a2TrampS), bleibt es; sonst weg. Hat sich die
@@ -28443,8 +28733,8 @@
       S.y = 0;
       this._a2TrampSay(true);
       if (!calm) this._earSwing?.(p, "hop1");
-      await this._a2TrampDrive(ms, (f2) => {
-        S.y = calm ? S.mat * smooth(f2) : S.mat * f2 + pH * 0.3 * 4 * f2 * (1 - f2);
+      await this._a2TrampDrive(ms, (f3) => {
+        S.y = calm ? S.mat * smooth(f3) : S.mat * f3 + pH * 0.3 * 4 * f3 * (1 - f3);
       });
       S.mode = "mat";
       S.air = 0;
@@ -28466,8 +28756,8 @@
       p.style.transition = `transform ${ms}ms ${calm ? "ease-in-out" : "linear"}`;
       this._setX(x);
       if (!calm) this._earSwing?.(p, "hop1");
-      await this._a2TrampDrive(ms, (f2) => {
-        S.y = calm ? S.mat * (1 - smooth(f2)) : S.mat * (1 - f2) + pH * 0.25 * 4 * f2 * (1 - f2);
+      await this._a2TrampDrive(ms, (f3) => {
+        S.y = calm ? S.mat * (1 - smooth(f3)) : S.mat * (1 - f3) + pH * 0.25 * 4 * f3 * (1 - f3);
       });
       this._a2TrampCtl(false);
       this._setX(this._x, true);
@@ -28484,8 +28774,8 @@
       S.air = 0;
       p.classList.remove("a2tr-up", "a2tr-tuck");
       p.classList.add("a2tr-sq");
-      await this._a2TrampDrive(TRAMP_DOWN, (f2) => {
-        S.dip = D * Math.sin(Math.PI * f2);
+      await this._a2TrampDrive(TRAMP_DOWN, (f3) => {
+        S.dip = D * Math.sin(Math.PI * f3);
       });
       S.dip = 0;
       if (!(h > 0)) {
@@ -28497,14 +28787,14 @@
       this._earSwing?.(p, "hop1");
       const ms = Math.max(300, TRAMP_AIR * Math.sqrt(h / S.top));
       let top = false;
-      await this._a2TrampDrive(ms, (f2) => {
-        S.air = 4 * h * f2 * (1 - f2);
-        if (f2 > 0.3) p.classList.remove("a2tr-up");
+      await this._a2TrampDrive(ms, (f3) => {
+        S.air = 4 * h * f3 * (1 - f3);
+        if (f3 > 0.3) p.classList.remove("a2tr-up");
         if (flip) {
-          S.rot = 360 * smooth(clamp((f2 - 0.12) / 0.74, 0, 1));
-          p.classList.toggle("a2tr-tuck", f2 > 0.14 && f2 < 0.82);
+          S.rot = 360 * smooth(clamp((f3 - 0.12) / 0.74, 0, 1));
+          p.classList.toggle("a2tr-tuck", f3 > 0.14 && f3 < 0.82);
         }
-        if (!top && f2 >= 0.5) {
+        if (!top && f3 >= 0.5) {
           top = true;
           if (gold) this._a2TrampStars(h);
         }
@@ -28548,8 +28838,8 @@
       await this._a2TrampOn();
       this._say(flip ? pick(["stell dir einen Salto vor!", "Salto – in Gedanken!"]) : pick(["wipp, wipp…", "schön federnd!"]), 1500);
       for (let i = 0; i < 4; i++) {
-        await this._a2TrampDrive(900, (f2) => {
-          S.dip = 1.1 * Math.sin(Math.PI * f2);
+        await this._a2TrampDrive(900, (f3) => {
+          S.dip = 1.1 * Math.sin(Math.PI * f3);
         });
         if (i === 1 && gold) this._a2TrampStars(0);
       }
@@ -28692,11 +28982,1361 @@
   };
 
   // src/karte/album2-picnic.js
+  var PICNIC_GOLD = { cd: 2 * 6e4, p: 0.6 };
+  var PICNIC_COND = ["sunny", "partlycloudy", "clear"];
+  var PICNIC_MIN_T = 15;
+  var PICNIC_WIND = 30;
+  var PICNIC_FR_LAST = FRIEND_LAST + 2e4;
+  var PK_Z = () => buehneZ(REIHE.vorn, "schatz");
+  var PK_TZ = () => buehneZ(REIHE.vorn, "requisit");
+  var PICNIC_CLS = ["a2pk-sit"];
+  var PK_FARBE = "#c98e4e";
+  var PK_W1 = 1.9;
+  var PK_W2 = 2.3;
+  var PK_OFF1 = { p: -0.1, k: 0.3 };
+  var PK_OFF2 = { p: -0.26, k: 0.02, f: 0.28 };
+  var PK_FRONT = 0.08;
+  var PK_KBACK = 0.2;
+  var PK_HTML = `<div class="a2pkd">${BLANKET_SVG}</div><div class="a2pkk"><div>${BASKET_SVG}</div></div><div class="a2pkr">${ROLL_SVG}</div><div class="a2pkbu">${BUNDLE_SVG}</div>`;
   var Album2Picnic = class {
+    // ---------- Szene ----------
+    // Szene (Hook): Sie liegt nie dauerhaft. Nur, solange er sie benutzt, bleibt das Element. Hat sich die Größe der
+    // Karte geändert, liegen Decke und Korb an alten Pixeln: abbrechen (wie _layout bei Requisiten)
+    _a2PicnicScene(lv) {
+      const S = this._a2PicnicS;
+      if (!S) return;
+      if ((S.W !== this._W || S.H !== this._H) && this._a2PicnicBusy) this._interrupt();
+      else if (!(lv > 0) || !this._a2PicnicBusy) this._a2PicnicEnd();
+    }
+    // Maße zur Decke P (px): Höhe bh, Versenkung der Unterkante sink, Breite des Korbs kw, Fuß des Korbs (y), Rand des
+    // Korbs (y), Scheitel des Henkels (y)
+    _a2PicnicGeo(P) {
+      const { pW, gy } = this._g;
+      const bh = P.bw * BLANKET_H;
+      const kw = pW * BASKET_W;
+      const kfoot = gy - bh * PK_KBACK;
+      return { bh, sink: bh * (BLANKET_SINK + PK_FRONT), kw, kfoot, krim: kfoot - kw * (10.8 / 24), ktop: kfoot - kw * (19.4 / 24) };
+    }
+    // Wo die Decke liegt: { d: sein Blick (zum Korb bzw. Freund), bx: Mitte, bw: Breite, px: sein Platz, kx: Mitte des
+    // Korbs, fx: Platz des Freunds }. Die Decke ganz auf der Wiese (rechts vom Heu, das davor liegt, im Bild), am liebsten
+    // vor dem Aussichtsstein zu Ende (sonst läge sie über seinem Fuß), er bis xR, der Freund in seinem Bereich
+    // (_frRange). Zu zweit nahe beim Freund, sonst irgendwo (near: neben ihm). → null, wenn es nicht passt
+    _a2PicnicPlan(fr = null, near = false) {
+      const { pW, hayR, xR, rock } = this._g;
+      const bw = pW * (fr ? PK_W2 : PK_W1);
+      const O = fr ? PK_OFF2 : PK_OFF1;
+      const lo0 = hayR + bw / 2 - pW * 0.08;
+      const hi0 = this._W - bw / 2 - 3;
+      const pref = fr ? fr.x >= this._x ? 1 : -1 : this._x < this._W * 0.55 ? 1 : -1;
+      const ends = rock ? [rock.l + rock.w * 0.12 - bw / 2, Infinity] : [Infinity];
+      for (const [end, d] of ends.flatMap((e) => [[e, pref], [e, -pref]])) {
+        let lo = Math.max(lo0, pW * 0.45 - d * O.p * bw);
+        let hi = Math.min(hi0, end, xR - d * O.p * bw);
+        if (fr) {
+          const [fl, fh] = this._frRange();
+          lo = Math.max(lo, fl - d * O.f * bw);
+          hi = Math.min(hi, fh - d * O.f * bw);
+        }
+        if (lo > hi + 0.01) continue;
+        hi = Math.max(lo, hi);
+        const want = fr ? fr.x - d * O.f * bw : near ? this._x - d * O.p * bw : lo + (hi - lo) * rnd(0.2, 0.8);
+        const bx = clamp(want, lo, hi);
+        return { d, bx, bw, px: bx + d * O.p * bw, kx: bx + d * O.k * bw, fx: fr ? bx + d * O.f * bw : null };
+      }
+      return null;
+    }
+    // Passt nicht einmal die Decke für einen (sehr schmale Wiese): so weit rechts vom Heu wie nötig
+    _a2PicnicFallback() {
+      const { pW, hayR } = this._g;
+      const bw = pW * PK_W1;
+      const lo = hayR + bw / 2 - pW * 0.08;
+      const bx = clamp(this._x, lo, Math.max(lo, this._W - bw / 2 - 3));
+      return { d: 1, bx, bw, px: bx + PK_OFF1.p * bw, kx: bx + PK_OFF1.k * bw, fx: null };
+    }
+    // Decke mit Korb hinlegen (Element aus _a2El: Tippfläche, Licht, golden). mode: 'roll' (er rollt sie aus), 'pop'
+    // (ploppt neben ihm auf), 'fade' (blendet ein, reduzierte Bewegung); 'bundle' / 'bundle-fade': nur das Bündel bei
+    // P.x (vorzeigen)
+    _a2PicnicMake(P, mode = "roll") {
+      if (this._a2PicnicS) this._a2PicnicEnd(true, true);
+      const { pW } = this._g;
+      const el = this._a2El("picnic", PK_HTML);
+      el.classList.remove("a2out", "open", "a2tap", "a2roll", "rolled", "pop");
+      el.classList.toggle("a2left", P.d < 0);
+      el.style.zIndex = String(PK_Z());
+      const S = { W: this._W, H: this._H, el, P, lid: false, t: [], fx: /* @__PURE__ */ new Set(), bf: /* @__PURE__ */ new Set(), off: /* @__PURE__ */ new Set(), treat: null };
+      this._a2PicnicS = S;
+      const fade = () => el.animate?.([{ opacity: 0 }, { opacity: 1 }], { duration: 500, fill: "backwards" });
+      if (mode.startsWith("bundle")) {
+        const w = pW * BUNDLE_W;
+        el.classList.add("rolled");
+        el.style.left = `${(P.x - w / 2).toFixed(1)}px`;
+        el.style.width = `${w.toFixed(1)}px`;
+        el.style.height = `${w.toFixed(1)}px`;
+        el.style.setProperty("--a2pks", `${(w * 1.2 / 24).toFixed(1)}px`);
+        this._a2Scene();
+        if (mode === "bundle" && !calmMotion()) {
+          el.classList.add("pop");
+          S.t.push(setTimeout(() => el.classList.remove("pop"), 700));
+        } else fade();
+        return S;
+      }
+      const G = this._a2PicnicGeo(P);
+      const kb = G.sink + (this._g.gy - G.kfoot) - G.kw * (1.2 / 24);
+      el.style.left = `${(P.bx - P.bw / 2).toFixed(1)}px`;
+      el.style.width = `${P.bw.toFixed(1)}px`;
+      el.style.height = `${Math.max(G.bh, kb + G.kw).toFixed(1)}px`;
+      el.style.setProperty("--a2pks", `${G.sink.toFixed(1)}px`);
+      const k = el.querySelector(".a2pkk");
+      Object.assign(k.style, { left: `${(P.kx - G.kw / 2 - (P.bx - P.bw / 2)).toFixed(1)}px`, bottom: `${kb.toFixed(1)}px`, width: `${G.kw.toFixed(1)}px` });
+      this._a2Scene();
+      if (mode === "roll" && !calmMotion()) {
+        this._a2PicnicRoll(S, false);
+        k.classList.add("pop");
+        S.t.push(setTimeout(() => k.classList.remove("pop"), 700));
+      } else if (mode === "pop" && !calmMotion()) {
+        el.classList.add("new");
+        S.t.push(setTimeout(() => el.classList.remove("new"), 800));
+      } else fade();
+      return S;
+    }
+    // Aus- (up = false) oder Aufrollen: Die Decke wird von seiner Seite her sichtbar bzw. verschwindet zu ihr hin, die
+    // Rolle läuft mit der Kante
+    _a2PicnicRoll(S, up) {
+      const { el, P } = S;
+      const ms = up ? 800 : 900;
+      const G = this._a2PicnicGeo(P);
+      const shut = P.d > 0 ? "inset(0 100% 0 0)" : "inset(0 0 0 100%)";
+      const open = "inset(0 0% 0 0%)";
+      el.querySelector(".a2pkd")?.animate?.([{ clipPath: up ? open : shut }, { clipPath: up ? shut : open }], { duration: ms, easing: "ease-out", fill: up ? "forwards" : "backwards" });
+      const r = el.querySelector(".a2pkr");
+      if (!r) return;
+      const rw = G.bh * 0.9;
+      Object.assign(r.style, { width: `${rw.toFixed(1)}px`, marginLeft: `${(-rw / 2).toFixed(1)}px`, bottom: `${(G.sink * 0.55).toFixed(1)}px` });
+      el.classList.add("a2roll");
+      const near = P.d > 0 ? "0%" : "100%";
+      const far = P.d > 0 ? "100%" : "0%";
+      const a = { left: near, transform: "none", opacity: 1 };
+      const b = { left: far, transform: `rotate(${P.d * 300}deg) scale(.45)`, opacity: 0.3 };
+      r.animate?.(up ? [b, a] : [a, b], { duration: ms, easing: "ease-out", fill: "forwards" });
+      S.t.push(setTimeout(() => el.classList.remove("a2roll"), ms + 30));
+    }
+    // Deckel auf oder zu (die Aktion hält ihn; ein Tipp öffnet ihn nur kurz)
+    _a2PicnicLid(S, open) {
+      if (!S) return;
+      S.lid = open;
+      S.el.classList.toggle("open", open);
+    }
+    // Bündel am Henkel im Maul (an) oder abgesetzt
+    _a2PicnicCarry(on) {
+      this._a2PicnicHolding = on;
+      this._el.pika.classList.toggle("carry", on);
+      this._mouth(on ? PK_FARBE : null, on ? BUNDLE_CARRY : null);
+    }
+    // Ein Leckerli (T aus GIFT_ITEMS) im Maul oder (null) nicht mehr
+    _a2PicnicHold(T) {
+      this._a2PicnicHolding = !!T;
+      this._el.pika.classList.toggle("carry", !!T);
+      this._mouth(T ? T.color : null, T ? T.svg : null);
+    }
+    // ---------- Wann ----------
+    // Monat dieses Geräts in der Jahreszeit des Schatzes (A2_PICNIC.mo; Südhalbkugel ein halbes Jahr versetzt)?
+    _a2PicnicSeason() {
+      const south = (this._hass?.config?.latitude ?? 50) < 0;
+      const mo = (new Date(this._dbgDate ?? Date.now()).getMonth() + (south ? 6 : 0)) % 12;
+      return A2_PICNIC.mo.includes(mo);
+    }
+    // Picknickwetter: bei Tag (nicht in der Dämmerung), trocken (kein Regen, Schnee, Nebel, nichts liegt), Wind unter
+    // PICNIC_WIND, sonnig oder heiter und mindestens PICNIC_MIN_T. Ohne Wetterlage oder Temperatur (keine Entität, kein
+    // Attribut) entscheidet die Jahreszeit.
+    _a2PicnicWeather(wx = this._wx || {}) {
+      const sc = this._el.scene.classList;
+      if (sc.contains("night") || sc.contains("dusk")) return false;
+      if (wx.wet || wx.storm || wx.shelter || wx.hail || wx.fog || wx.snow > 0 || wx.snowcover) return false;
+      if ((this._wind || 0) >= PICNIC_WIND) return false;
+      const raw = { ...this._wxRaw || {}, ...this._dbgWeather || {} };
+      if (raw.cond != null ? !PICNIC_COND.includes(raw.cond) : !this._a2PicnicSeason()) return false;
+      return raw.temp != null ? raw.temp >= PICNIC_MIN_T : this._a2PicnicSeason();
+    }
+    // Nach dem Auspacken: Warum jetzt kein Picknick? 'season' (nicht die Jahreszeit), 'cold' (unter PICNIC_MIN_T), 'later'
+    // (Regen, Schnee, Sturm, Nacht), sonst null. Wolken und Wind stören hier nicht, das Picknick ist dann kurz.
+    _a2PicnicNotNow() {
+      const raw = { ...this._wxRaw || {}, ...this._dbgWeather || {} };
+      const wx = this._wx || {};
+      if (!this._a2PicnicSeason()) return "season";
+      if (raw.temp != null && raw.temp < PICNIC_MIN_T) return "cold";
+      if (wx.wet || wx.storm || wx.hail || wx.snow > 0 || wx.snowcover || this._el.scene.classList.contains("night")) return "later";
+      return null;
+    }
+    // Der Freund, der mitkommt: da, begrüßt, nicht im Gehen, nicht mit etwas anderem beschäftigt, und sein Besuch geht
+    // noch lange genug
+    _a2PicnicFriend() {
+      const fr = this._fr;
+      return fr && fr.arrived && !fr.leaving && fr.greeted && !fr.busy && Date.now() < (fr.until ?? Infinity) - PICNIC_FR_LAST ? fr : null;
+    }
+    // Ein Besucher, dem er etwas abgeben kann: der Vogel, der sitzt, sonst die Maus, die herausschaut (beide nur lesen:
+    // Sie gehören dem Besuch nach der Uhr)
+    _a2PicnicGuest() {
+      const b = this._bird;
+      if (b?.sitting && !b.scared) return { k: "bird", x: b.x, y: b.y, b };
+      const m = this._mouse;
+      if (m?.visible && !m.scared) return { k: "mouse", x: m.x, y: m.y, m };
+      return null;
+    }
+    // Leckerli der Jahreszeit aus dem Korb: Erdbeere (April bis Juni), Himbeeren (Juli bis September), sonst Apfelschnitz
+    _a2PicnicTreat() {
+      const south = (this._hass?.config?.latitude ?? 50) < 0;
+      const mo = (new Date(this._dbgDate ?? Date.now()).getMonth() + (south ? 6 : 0)) % 12;
+      const key = mo >= 3 && mo <= 5 ? "straw" : mo >= 6 && mo <= 8 ? "rasp" : "apple";
+      return GIFT_ITEMS.find((x) => x.key === key) || GIFT_ITEMS.find((x) => x.color);
+    }
+    // ---------- Was er damit tut ----------
+    // Hook: Picknick bei Picknickwetter ab und zu, mit dem Freund gern (dessen eigene Spiele wiegen 3,5–7). Teilen ab
+    // Stufe 2: mit dem Freund oft, mit einem Besucher manchmal, allein selten
+    // Liegt ein Häufchen, nicht: Die Decke läge darunter (die Häufchen liegen über allem am Boden), und erst wird
+    // ohnehin sauber gemacht (Vorschau und Auspacken dürfen trotzdem)
+    _a2PicnicActs({ wx, piles }, lv) {
+      if (!this._a2PicnicWeather(wx) || piles?.length) return [];
+      const fr = !!this._a2PicnicFriend();
+      return [[fr ? 0.8 : 0.3, "a2PicnicPlay"], [lv >= 2 ? fr ? 1 : this._a2PicnicGuest() ? 0.5 : 0.15 : 0, "a2PicnicShare"]];
+    }
+    // Stufe 1 (Aktion 'a2PicnicPlay'). o: { short: nach dem Auspacken (alles kommt gleich neben ihn), gold: Schmetterlinge
+    // sicher, solo: ohne den Freund }
+    async _a2PicnicPlay(o = {}) {
+      return this._a2PicnicGo("play", o);
+    }
+    // Stufe 2, der Trick (Aktion 'a2PicnicShare')
+    async _a2PicnicShare(o = {}) {
+      if (this._a2Lv("picnic") < 2) return;
+      return this._a2PicnicGo("share", o);
+    }
+    async _a2PicnicGo(mode, o) {
+      const lv = this._a2Lv("picnic");
+      if (!lv || !this._a2PicnicWeather() && !this._forced && !o.short) return;
+      const gold = !!o.gold || lv >= 3 && this._a2GoldOk("picnic", PICNIC_GOLD);
+      const quick = !!o.short || calmMotion();
+      this._a2PicnicBusy = true;
+      try {
+        if (!quick) await this._a2PicnicFetch();
+        let fr = o.solo ? null : this._a2PicnicFriend();
+        let P = fr ? this._a2PicnicPlan(fr, !!o.short) : null;
+        if (!P) {
+          fr = null;
+          P = this._a2PicnicPlan(null, quick) || this._a2PicnicFallback();
+        }
+        await this._a2PicnicSpread(P, quick);
+        let ran = false;
+        if (fr && this._a2PicnicFriend() === fr) {
+          try {
+            await this._withFriend(async (f3, w) => {
+              ran = true;
+              await this._a2PicnicWith(P, f3, w, mode, gold, o);
+            });
+          } catch (e) {
+            if (!(e instanceof Cancel) || this._ac?.signal?.aborted) throw e;
+            this._a2PicnicHold(null);
+            this._el.pika.classList.remove("a2pk-sit", "look-up", "squint");
+            this._say(pick(["tschüss!", "schade…", "bis bald!"]), 1300);
+            await this._wait(1100);
+          }
+        }
+        if (!ran) await this._a2PicnicWith(P, null, (ms) => this._wait(ms), mode, gold, o);
+        await this._a2PicnicPack(this._a2PicnicS, quick);
+      } finally {
+        this._a2PicnicBusy = false;
+        this._a2PicnicEnd(true);
+      }
+    }
+    // Aus dem Bau holen: Er kramt drinnen und kommt mit dem Bündel im Maul heraus
+    async _a2PicnicFetch() {
+      await this._enterBurrow(1);
+      const { home, hole } = this._g;
+      this._peep(home, hole.top, pick(["kram, kram…", "wo ist der Korb…", "raschel…"]));
+      await this._wait(rnd(800, 1200));
+      this._a2PicnicCarry(true);
+      await this._comeOut();
+    }
+    // Ausbreiten: hin, Bündel absetzen, Decke ausrollen, Korb drauf. quick (nach dem Auspacken, Bewegung reduzieren):
+    // Decke und Korb kommen neben ihm, er geht hinauf
+    async _a2PicnicSpread(P, quick) {
+      const p = this._el.pika;
+      if (quick) {
+        this._a2PicnicMake(P, calmMotion() ? "fade" : "pop");
+        await this._wait(600);
+        await this._walkTo(P.px, 0.8);
+        this._face(P.d);
+        return;
+      }
+      await this._walkTo(P.px, 0.9);
+      this._face(P.d);
+      p.classList.add("crouch");
+      await this._wait(320);
+      this._a2PicnicCarry(false);
+      this._a2PicnicMake(P, "roll");
+      p.classList.remove("crouch");
+      this._say(pick(["ausbreiten!", "Picknick!", "so…"]), 1100);
+      await this._wait(1e3);
+    }
+    // Auf der Decke (P): der Freund kommt dazu, hinsetzen, knabbern, in die Sonne schauen (golden: Schmetterlinge),
+    // teilen (Stufe 2). w: warten (mit dem Freund bricht es ab, wenn er gehen muss)
+    async _a2PicnicWith(P, fr, w, mode, gold, o) {
+      const p = this._el.pika;
+      const S = this._a2PicnicS;
+      if (!S) return;
+      const who = fr ? FRIENDS[fr.kind]?.name || this._frName() : null;
+      if (fr) {
+        this._face(fr.x >= this._x ? 1 : -1);
+        this._say(pick([`${who}, Picknick!`, `komm, ${who}!`]), 1400);
+        this._frCall(fr, pick(["mip!", "oh!"]));
+        await w(700);
+        await this._friendWalkTo(fr, P.fx, 1, w);
+        this._frFace(fr, -P.d);
+        this._frHappy(fr, 1e3);
+      }
+      this._face(P.d);
+      p.classList.add("a2pk-sit");
+      await w(o.short ? 400 : 800);
+      await this._a2PicnicNibble(S, fr, w, o);
+      p.classList.remove("content");
+      p.classList.add("look-up");
+      if (fr) this._frLook(fr, "look-up", gold ? 6e3 : 3500);
+      await w(500);
+      p.classList.add("squint", "content");
+      this._say(pick(["hach, Sonne…", "schön warm…", "Sonne!"]), 1500);
+      await w(o.short ? 1500 : rnd(2600, 4200));
+      p.classList.remove("squint");
+      if (gold) await this._a2PicnicGold(S, fr, w);
+      p.classList.remove("look-up", "content");
+      if (mode === "share") await this._a2PicnicGive(S, fr, w);
+      if (fr && this._fr === fr) {
+        this._frSay(fr, pick(["danke!", "♥", "mip!"]), 1300);
+        await w(900);
+        await this._friendWalkTo(fr, P.fx + P.d * this._g.pW * 0.6, 0.8, w);
+        this._frFace(fr, -P.d);
+      }
+    }
+    // Knabbern: in den Korb, Löwenzahn oder Klee (der Freund das andere)
+    async _a2PicnicNibble(S, fr, w, o) {
+      const p = this._el.pika;
+      const F = pick([FOOD.lz, FOOD.klee]);
+      const ms = o.short ? 1500 : rnd(2200, 3e3);
+      this._a2PicnicLid(S, true);
+      p.classList.add("crouch");
+      await w(320);
+      p.classList.remove("crouch");
+      this._a2PicnicLid(S, false);
+      this._say(F === FOOD.lz ? pick(["Löwenzahn!", "mmh, Löwenzahn"]) : pick(["Klee!", "mmh, Klee"]), 1200);
+      if (fr) this._frEat(fr, (F === FOOD.lz ? FOOD.klee : FOOD.lz).color, ms);
+      await this._eat(F.color, ms);
+      if (fr) this._frEatEnd(fr);
+      p.classList.add("content");
+      await w(600);
+    }
+    // Stufe 2, Teilen: ein Leckerli aus dem Korb für den Freund (und eins für ihn), sonst für den Besucher (hinüber
+    // geworfen), sonst für später (neben den Korb)
+    async _a2PicnicGive(S, fr, w) {
+      const p = this._el.pika;
+      const { pW } = this._g;
+      const P = S.P;
+      const T = this._a2PicnicTreat();
+      this._a2PicnicLid(S, true);
+      p.classList.add("crouch");
+      await w(320);
+      p.classList.remove("crouch");
+      this._a2PicnicLid(S, false);
+      this._a2PicnicHold(T);
+      this._say(`${T.name}!`, 1100);
+      await w(1e3);
+      const G = fr ? null : this._a2PicnicGuest();
+      if (fr && this._fr === fr) {
+        const who = FRIENDS[fr.kind]?.name || this._frName();
+        p.classList.remove("a2pk-sit");
+        this._say(pick([`für dich, ${who}!`, "halbe-halbe!"]), 1400);
+        await this._walkTo(this._x + P.d * pW * 0.16, 0.5);
+        this._face(P.d);
+        this._a2PicnicHold(null);
+        this._a2PicnicFrEat(fr, T, 1900);
+        this._frSay(fr, pick(["♥", "mip!", "danke!"]), 1300);
+        await w(500);
+        await this._walkTo(P.px, 0.5, true, 0, true);
+        this._face(P.d);
+        p.classList.add("a2pk-sit");
+        this._say(pick(["und eins für mich!", "eins für mich!"]), 1200);
+        await this._eat(T.color, 1700, T.svg);
+        this._frEatEnd(fr);
+        this._frCarry(fr, null);
+        this._hearts(2);
+        this._frHearts(fr, 2);
+        p.classList.add("content");
+        await w(1400);
+        p.classList.remove("content");
+      } else if (G) {
+        this._face(((G.b || G.m)?.x ?? G.x) >= this._x ? 1 : -1);
+        this._say(G.k === "bird" ? pick(["für dich, Vögelchen!", "magst du?"]) : pick(["psst… für dich!", "magst du?"]), 1400);
+        await w(900);
+        this._a2PicnicHold(null);
+        this._a2PicnicToss(S, T, G);
+        await w(900);
+        if (G.k === "bird") this._tweet(G.b);
+        this._happy(1e3);
+        await w(1500);
+        this._face(P.d);
+        this._say(pick(["und eins für mich!", "eins für mich!"]), 1200);
+        await this._eat(T.color, 1600, T.svg);
+        await w(600);
+      } else {
+        this._say(pick(["eins für später!", "das heb ich auf!"]), 1400);
+        await w(800);
+        p.classList.add("crouch");
+        await w(300);
+        p.classList.remove("crouch");
+        this._a2PicnicHold(null);
+        this._a2PicnicKeep(S, T);
+        this._happy(900);
+        await w(1600);
+      }
+    }
+    // Der Freund isst das Leckerli T: im Maul, es wird kleiner (endet mit _frEatEnd und _frCarry(fr, null))
+    _a2PicnicFrEat(fr, T, ms) {
+      this._frCarry(fr, T.svg);
+      fr.el.style.setProperty("--eat", `${Math.round(ms)}ms`);
+      const m = fr.mfood;
+      if (m) {
+        m.classList.remove("shrink");
+        void m.getBoundingClientRect();
+        m.classList.add("shrink");
+      }
+      fr.el.classList.add("eating");
+    }
+    // Ein Stück hinüber zum Besucher G: im Bogen aus seinem Maul ins Gras vor ihm (ruhig: blendet dort ein). Es bleibt ein
+    // paar Sekunden liegen und ist dann weg (aufgegessen, das zeigt die Karte nicht)
+    _a2PicnicToss(S, T, G) {
+      const { pW, gy } = this._g;
+      const n = this._nosePos();
+      const w = pW * 0.13;
+      const gx = (G.b || G.m)?.x ?? G.x;
+      const dir = gx >= this._x ? 1 : -1;
+      const tx = clamp(dir * Math.max(dir * (gx - dir * pW * (G.k === "bird" ? 0.12 : 0.32)), dir * this._x + pW * 0.55), pW * 0.2, this._W - pW * 0.2);
+      const ty = gy - this._H * 0.03;
+      const e = document.createElement("div");
+      e.className = "a2pkf";
+      e.innerHTML = T.svg;
+      Object.assign(e.style, { left: `${(tx - w / 2).toFixed(1)}px`, top: `${(ty - w * 0.85).toFixed(1)}px`, width: `${w.toFixed(1)}px` });
+      this._el.fx.appendChild(e);
+      S.fx.add(e);
+      const dx = n.x - tx;
+      const dy = n.y - (ty - w * 0.4);
+      const h = this._H * 0.14;
+      if (!calmMotion() && e.animate) {
+        const kf = [];
+        for (let i = 0; i <= 6; i++) {
+          const t = i / 6;
+          kf.push({ transform: `translate(${((1 - t) * dx).toFixed(1)}px, ${((1 - t) * dy - 4 * h * t * (1 - t)).toFixed(1)}px) rotate(${(t * dir * 200).toFixed(0)}deg)` });
+        }
+        e.animate(kf, { duration: 750, easing: "linear", fill: "backwards" });
+        S.t.push(setTimeout(() => this._a2PicnicS === S && this._peep(tx, ty - w, "plopp"), 760));
+      } else e.animate?.([{ opacity: 0 }, { opacity: 1 }], { duration: 600, fill: "backwards" });
+      S.t.push(setTimeout(() => e.classList.add("away"), 3800));
+    }
+    // Eins für später: das Leckerli T neben dem Korb auf der Decke (zum Schluss packt er es wieder ein)
+    _a2PicnicKeep(S, T) {
+      const { pW, gy } = this._g;
+      const G = this._a2PicnicGeo(S.P);
+      const w = pW * 0.15;
+      const x = S.P.kx + S.P.d * G.kw * 0.85;
+      const y = gy - G.bh * 0.24;
+      const e = document.createElement("div");
+      e.className = `a2pkt${calmMotion() ? " still" : ""}`;
+      e.innerHTML = T.svg;
+      Object.assign(e.style, { left: `${(x - w / 2).toFixed(1)}px`, top: `${(y - w * 0.9).toFixed(1)}px`, width: `${w.toFixed(1)}px`, zIndex: String(PK_TZ()) });
+      this._el.gifts.appendChild(e);
+      S.treat = e;
+      e.animate?.([{ opacity: 0 }, { opacity: 1 }], { duration: calmMotion() ? 600 : 250, fill: "backwards" });
+      this._peep(x, y - w * 1.2, "für später");
+    }
+    // Golden: Schmetterlinge flattern heran und setzen sich auf die Ecken der Decke und den Henkel, er staunt
+    async _a2PicnicGold(S, fr, w) {
+      const P = S.P;
+      const { gy } = this._g;
+      const G = this._a2PicnicGeo(P);
+      const spots = [[P.bx - P.d * P.bw * 0.37, gy - G.bh * 0.12], [P.kx, G.ktop], [P.bx + P.d * P.bw * 0.43, gy - G.bh * 0.2]];
+      const c0 = Math.floor(Math.random() * BFLY_COLORS.length);
+      spots.forEach(([x, y], i) => S.t.push(setTimeout(() => this._a2PicnicS === S && this._a2PicnicBfly(S, x, y, BFLY_COLORS[(c0 + i * 2) % BFLY_COLORS.length], i), i * 650)));
+      await w(calmMotion() ? 1200 : 2200);
+      this._mimik("awe", 1600);
+      this._say(pick(["Schmetterlinge!", "oh, Besuch!", "so bunt!"]), 1600);
+      if (fr && this._fr === fr) this._frSay(fr, pick(["oh!", "♥"]), 1200);
+      await w(1800);
+      this._cls("sparkle", 2e3);
+      this._happy(1200);
+      await w(2400);
+    }
+    // Ein Schmetterling (Farben c) fliegt zu (x, y) und sitzt dort mit langsamem Flügelschlag (ruhig: blendet dort ein).
+    // Die Füße (Körper unten in der Mitte von BFLY_SVG, 20 × 16) auf dem Punkt
+    _a2PicnicBfly(S, x, y, c, i) {
+      const calm = calmMotion();
+      const w = this._H * 0.075;
+      const e = document.createElement("div");
+      e.className = `a2pkb${calm ? " still rest" : ""}`;
+      e.innerHTML = BFLY_SVG(c);
+      Object.assign(e.style, { left: `${(x - w / 2).toFixed(1)}px`, top: `${(y - w * 0.63).toFixed(1)}px` });
+      this._el.fx.appendChild(e);
+      S.fx.add(e);
+      S.bf.add(e);
+      if (calm || !e.animate) {
+        e.animate?.([{ opacity: 0 }, { opacity: 1 }], { duration: 900, fill: "backwards" });
+        return e;
+      }
+      const side = i % 2 ? 1 : -1;
+      const sx = side * this._W * rnd(0.3, 0.45);
+      const sy = -this._H * rnd(0.35, 0.5);
+      const kf = [];
+      for (let k = 0; k <= 10; k++) {
+        const t = k / 10;
+        const q = 1 - (1 - t) * (1 - t);
+        kf.push({ transform: `translate(${(sx * (1 - q)).toFixed(1)}px, ${(sy * (1 - q) + Math.sin(t * Math.PI * 3) * this._H * 0.05 * (1 - t)).toFixed(1)}px)` });
+      }
+      const dur = 2200 + i * 300;
+      e.animate(kf, { duration: dur, easing: "linear", fill: "backwards" });
+      S.t.push(setTimeout(() => e.classList.add("rest"), dur));
+      return e;
+    }
+    // Alle Schmetterlinge fliegen davon (ruhig: blenden aus)
+    _a2PicnicBflyOff(S) {
+      for (const e of S.bf) {
+        S.bf.delete(e);
+        S.off.add(e);
+        e.classList.remove("rest");
+        if (calmMotion() || !e.animate) e.classList.add("off");
+        else {
+          const side = Math.random() < 0.5 ? -1 : 1;
+          e.animate([
+            { transform: "none" },
+            { transform: `translate(${(side * this._W * 0.08).toFixed(1)}px, ${(-this._H * 0.12).toFixed(1)}px)`, offset: 0.3 },
+            { transform: `translate(${(side * this._W * 0.5).toFixed(1)}px, ${(-this._H * 0.8).toFixed(1)}px)` }
+          ], { duration: 2400, easing: "ease-in", fill: "forwards" });
+        }
+        setTimeout(() => {
+          e.remove();
+          S.fx.delete(e);
+        }, 2450);
+      }
+    }
+    // Einpacken: Schmetterlinge fliegen, das Leckerli für später kommt in den Korb, Decke aufrollen, Bündel ins Maul,
+    // zurück in den Bau. quick: Decke und Korb blenden aus
+    async _a2PicnicPack(S, quick) {
+      if (!S || this._a2PicnicS !== S) return;
+      const p = this._el.pika;
+      p.classList.remove("a2pk-sit", "look-up", "squint", "content");
+      this._a2PicnicBflyOff(S);
+      if (S.treat) {
+        this._a2PicnicLid(S, true);
+        p.classList.add("crouch");
+        await this._wait(250);
+        S.treat.classList.add("away");
+        p.classList.remove("crouch");
+        await this._wait(550);
+        this._a2PicnicLid(S, false);
+      }
+      this._say(pick(["schön war’s!", "das war fein!", "hach…"]), 1300);
+      await this._wait(1e3);
+      if (quick) {
+        this._a2PicnicEnd(true);
+        await this._wait(500);
+        return;
+      }
+      p.classList.add("crouch");
+      await this._wait(300);
+      p.classList.remove("crouch");
+      S.el.querySelector(".a2pkk")?.animate?.([{ opacity: 1 }, { opacity: 0 }], { duration: 300, fill: "forwards" });
+      this._a2PicnicRoll(S, true);
+      await this._wait(850);
+      this._a2PicnicEnd(true, true);
+      this._a2PicnicCarry(true);
+      await this._wait(250);
+      await this._enterBurrow(0.9);
+      this._a2PicnicCarry(false);
+      await this._wait(rnd(500, 900));
+      await this._comeOut();
+    }
+    // Nach dem Auspacken (Hook): Stufe 1 gleich ein kurzes Picknick, 2 Teilen, 3 mit Schmetterlingen. Außerhalb der
+    // Jahreszeit, bei Kälte oder ohne Wetter dafür zeigt er nur das Bündel und vertröstet
+    async _a2PicnicStow(lv) {
+      const why = this._a2PicnicNotNow();
+      if (why) return this._a2PicnicShow(lv, why);
+      if (lv === 2) return this._a2PicnicShare({ short: true });
+      this._say(lv >= 3 ? pick(["goldig!", "die glänzt!"]) : pick(["Picknick!", "ein Picknick!"]), 1300);
+      await this._wait(900);
+      return this._a2PicnicPlay({ short: true, gold: lv >= 3 });
+    }
+    // Vorzeigen: Das Bündel steht neben ihm, er schaut es an und vertröstet (why aus _a2PicnicNotNow), dann ist es weg
+    async _a2PicnicShow(lv, why) {
+      const p = this._el.pika;
+      const { pW, hayR } = this._g;
+      this._a2PicnicBusy = true;
+      try {
+        const d = this._x < this._W / 2 ? 1 : -1;
+        const x = clamp(this._x + d * pW * 0.6, hayR + pW * 0.2, this._W - pW * 0.25);
+        this._face(x >= this._x ? 1 : -1);
+        this._a2PicnicMake({ d, x }, calmMotion() ? "bundle-fade" : "bundle");
+        await this._wait(800);
+        p.classList.add("tilt");
+        this._say(why === "cold" ? "brr, noch zu kalt!" : why === "later" ? "wenn die Sonne scheint!" : pick(["die heb ich auf!", "für später!"]), 1600);
+        await this._wait(1700);
+        p.classList.remove("tilt");
+        p.classList.add("look-f");
+        this._say(why === "later" ? "dann Picknick!" : why === "cold" ? "wenn’s wärmer ist!" : lv === 2 ? "im Sommer teil ich!" : lv >= 3 ? "im Sommer kommen Schmetterlinge!" : "im Sommer gibt’s Picknick!", 1800);
+        this._happy(1e3);
+        await this._wait(1900);
+        p.classList.remove("look-f");
+      } finally {
+        this._a2PicnicBusy = false;
+        this._a2PicnicEnd(true);
+      }
+    }
+    // ---------- Hooks: Tipp, Aufräumen, Abhängen ----------
+    // Tipp auf Decke oder Korb (nur, solange sie liegt): Der Deckel hebt sich kurz, Krümel hüpfen heraus, der Korb hüpft.
+    // Aufs Bündel: Es hüpft.
+    _a2PicnicTap() {
+      const S = this._a2PicnicS;
+      if (!S) return false;
+      const el = S.el;
+      const calm = calmMotion();
+      if (!calm) {
+        el.classList.remove("a2tap", "pop");
+        void el.offsetWidth;
+        el.classList.add(el.classList.contains("rolled") ? "pop" : "a2tap");
+        clearTimeout(this._a2PicnicTapT);
+        this._a2PicnicTapT = setTimeout(() => el.classList.remove("a2tap", "pop"), 600);
+      }
+      if (el.classList.contains("rolled")) {
+        this._peep(S.P.x, this._g.gy - this._g.pW * BUNDLE_W * 1.1, "im Sommer!");
+        return true;
+      }
+      const G = this._a2PicnicGeo(S.P);
+      el.classList.add("open");
+      clearTimeout(this._a2PicnicLidT);
+      this._a2PicnicLidT = setTimeout(() => this._a2PicnicS === S && !S.lid && el.classList.remove("open"), 750);
+      this._a2PicnicCrumbs(S, G);
+      this._peep(S.P.kx, G.ktop - this._H * 0.02, pick(["krümel!", "knusper!"]));
+      return true;
+    }
+    // Krümel aus dem Korb: in kleinen Bögen auf die Decke (ruhig: einer blendet am Rand ein und aus)
+    _a2PicnicCrumbs(S, G) {
+      const calm = calmMotion();
+      const { gy } = this._g;
+      const n = calm ? 1 : 4;
+      for (let i = 0; i < n; i++) {
+        const s = document.createElement("span");
+        s.className = `a2pkc${calm ? " still" : ""}`;
+        s.innerHTML = CRUMB_SVG;
+        const x0 = S.P.kx + rnd(-0.25, 0.25) * G.kw;
+        const y0 = G.krim;
+        const x1 = x0 + (i % 2 ? 1 : -1) * G.kw * rnd(0.4, 0.9);
+        const y1 = gy - G.bh * rnd(0.05, 0.2);
+        s.style.left = `${x0.toFixed(1)}px`;
+        s.style.top = `${y0.toFixed(1)}px`;
+        this._el.fx.appendChild(s);
+        S.fx.add(s);
+        const ms = 600;
+        if (!calm && s.animate) {
+          s.animate([
+            { transform: "translate(0, 0)", opacity: 1 },
+            { transform: `translate(${((x1 - x0) / 2).toFixed(1)}px, ${(-this._H * 0.07).toFixed(1)}px)`, opacity: 1, offset: 0.45 },
+            { transform: `translate(${(x1 - x0).toFixed(1)}px, ${(y1 - y0).toFixed(1)}px)`, opacity: 0 }
+          ], { duration: ms, delay: i * 80, easing: "ease-in", fill: "both" });
+        }
+        setTimeout(() => {
+          s.remove();
+          S.fx.delete(s);
+        }, ms + i * 80 + (calm ? 700 : 60));
+      }
+    }
+    // Ende der Aktion oder Abbruch (auch aus _cleanup nach jeder Aktion): Decke, Korb, Leckerli, Schmetterlinge, Krümel,
+    // Zeitgeber, Bündel im Maul weg (force: aus der eigenen Aktion. Sonst, mitten in ihr, aus Szene oder Aufräumen:
+    // nichts, sie räumt in ihrem finally selbst auf; nur nach einem Abbruch gleich). now: sofort, ohne Ausblenden
+    _a2PicnicEnd(force = false, now2 = false) {
+      if (!force && this._a2PicnicBusy && !this._ac?.signal?.aborted) return;
+      if (this._a2PicnicHolding) this._a2PicnicHold(null);
+      this._el.pika.classList.remove(...PICNIC_CLS);
+      const S = this._a2PicnicS;
+      if (!S) return;
+      this._a2PicnicS = null;
+      clearTimeout(this._a2PicnicLidT);
+      for (const t of S.t) clearTimeout(t);
+      for (const e of S.fx) {
+        if (S.off.has(e) && !now2) continue;
+        if (now2 || !S.bf.has(e)) e.remove();
+        else {
+          e.classList.add("off");
+          setTimeout(() => e.remove(), 650);
+        }
+      }
+      const tr = S.treat;
+      if (tr) {
+        if (now2 || !tr.isConnected) tr.remove();
+        else {
+          tr.classList.add("away");
+          setTimeout(() => tr.remove(), 550);
+        }
+      }
+      const el = S.el;
+      el.classList.remove("open", "a2tap", "a2roll", "pop");
+      if (!now2 && el.isConnected && this._a2Els?.get("picnic") === el) {
+        el.classList.add("a2out");
+        setTimeout(() => !this._a2PicnicS && this._a2Drop("picnic"), 450);
+      } else this._a2Drop("picnic");
+    }
+    _a2PicnicCleanup() {
+      this._a2PicnicEnd();
+    }
+    // Karte aus dem DOM: alles sofort weg
+    _a2PicnicDetach() {
+      clearTimeout(this._a2PicnicTapT);
+      this._a2PicnicBusy = false;
+      this._a2PicnicEnd(true, true);
+    }
   };
 
   // src/karte/album2-pool.js
+  var POOL_TEMP = 25;
+  var POOL_GOLD = { cd: 5 * 6e4, p: 0.6 };
+  var POOL_SINK = 4;
+  var POOL_Z = () => buehneZ(REIHE.vorn, "requisit");
+  var POOL_ZF = () => buehneZ(REIHE.vorn, "arm");
+  var HOP_EASE = "cubic-bezier(.3, .6, .4, 1)";
+  var POOL_CLS = ["a2pl-in", "a2pl-ball", "a2pl-wob", "a2pl-drip", "a2pl-shake"];
   var Album2Pool = class {
+    // ---------- Szene ----------
+    // Szene (Hook): Es steht nie dauerhaft. Nur, solange er es benutzt, bleibt es. Hat sich die Größe der Karte
+    // geändert, steht es an alten Pixeln: abbrechen (wie _layout bei Requisiten)
+    _a2PoolScene(lv) {
+      const S = this._a2PoolS;
+      if (!S) return;
+      if ((S.W !== this._W || S.H !== this._H) && this._a2PoolBusy) this._interrupt();
+      else if (!(lv > 0) || !this._a2PoolBusy) this._a2PoolEnd();
+    }
+    // Maße (px): Breite, Höhe, Einheit der viewBox
+    _a2PoolDim() {
+      const w = this._g.pW * POOL_W;
+      return { w, h: w * POOL.vb[1] / POOL.vb[0], u: w / POOL.vb[0] };
+    }
+    // Wo es liegt: Mitte cx, und wo er daneben steht (sx, auf der Seite side, Blick zum Becken: -side). Rechts vom Heu
+    // (.fore verdeckte, was dahinter liegt), über den Stein darf es ragen (der steht dahinter). Er steht lieber links
+    // (zum Bau hin), wenn er dort nicht im Heu steht, sonst rechts; auf schmalen Karten rückt das Becken dafür nach links.
+    _a2PoolSpot() {
+      const { pW, hayR, xR } = this._g;
+      const { w } = this._a2PoolDim();
+      const H = this._H;
+      const lo = hayR + w / 2 + H * 0.01;
+      const hi = Math.max(lo, this._W - w / 2 - H * 0.02);
+      let cx = clamp(this._groundSpot(rnd(0.2, 0.8), w, 1).x, lo, hi);
+      const gap = w / 2 + pW * 0.3;
+      let side = cx - gap >= hayR + pW * 0.15 ? -1 : cx + gap <= xR ? 1 : 0;
+      if (!side) {
+        cx = clamp(xR - gap, lo, hi);
+        side = 1;
+      }
+      return { cx, w, side, sx: clamp(cx + side * gap, pW * 0.45, xR) };
+    }
+    // Höhe der Wasserfläche (y in der Szene)
+    _a2PoolWaterY(S = this._a2PoolS) {
+      return this._g.gy - (POOL.floor - POOL.water.cy) * (S?.u ?? this._a2PoolDim().u);
+    }
+    // Becken anlegen bei P (aus _a2PoolSpot). flat: zusammengelegt (er bläst es dann auf), empty: ohne Wasser (er füllt
+    // es mit der Gießkanne), pop: ploppt auf (sonst blendet es ein), gold: mit der Gummiente
+    _a2PoolMake(P, { flat = false, empty = false, pop = true, gold = false } = {}) {
+      if (this._a2PoolS) this._a2PoolEnd(true);
+      const { w, u } = this._a2PoolDim();
+      const sink = (POOL.vb[1] - POOL.floor) * u;
+      const el = this._a2El("pool", POOL_BACK_SVG);
+      const fr = document.createElement("div");
+      fr.className = "a2plf";
+      fr.innerHTML = POOL_FRONT_SVG;
+      this._el.gifts.appendChild(fr);
+      for (const e of [el, fr]) {
+        e.classList.remove("a2out", "rip", "rip2", "wave", "deflate");
+        e.classList.toggle("leer", !!empty);
+        e.classList.toggle("still", calmMotion());
+        e.style.left = `${(P.cx - w / 2).toFixed(1)}px`;
+        e.style.width = `${w.toFixed(1)}px`;
+        e.style.bottom = `calc(var(--gb) - ${sink.toFixed(1)}px)`;
+        e.style.zIndex = String(POOL_Z());
+        e.style.setProperty("--a2plf", flat ? "0" : "1");
+      }
+      const S = { W: this._W, H: this._H, el, fr, duck: null, cx: P.cx, w, u, side: P.side, sx: P.sx, flat, ctl: false, can: null, fx: /* @__PURE__ */ new Set(), t: [] };
+      this._a2PoolS = S;
+      this._a2Scene();
+      fr.classList.toggle("gilt", el.classList.contains("gilt"));
+      if (gold) this._a2PoolDuck(S, !empty);
+      if (pop && !calmMotion()) {
+        if (!flat) {
+          for (const e of [el, fr]) e.classList.add("new");
+          S.t.push(setTimeout(() => [el, fr].forEach((e) => e.classList.remove("new")), 800));
+        }
+      } else for (const e of [el, fr]) e.animate?.([{ opacity: 0 }, { opacity: 1 }], { duration: 500, fill: "backwards" });
+      return S;
+    }
+    // Die Gummiente aufs Wasser (on: gleich zu sehen, sonst erst, wenn Wasser drin ist: _a2PoolWater)
+    _a2PoolDuck(S, on) {
+      const d = document.createElement("div");
+      d.className = `a2pld${calmMotion() ? " still" : ""}${on ? " on" : ""}`;
+      d.innerHTML = POOL_DUCK_SVG;
+      S.fr.appendChild(d);
+      S.duck = d;
+    }
+    // Aufblasen: f von 0 (flach) bis 1 (prall), beide Stücke
+    _a2PoolInflate(f3) {
+      const S = this._a2PoolS;
+      if (!S) return;
+      S.flat = f3 < 1;
+      for (const e of [S.el, S.fr]) e.style.setProperty("--a2plf", f3.toFixed(2));
+    }
+    // Wasser hinein (on) oder heraus. Die Ente kommt mit dem Wasser
+    _a2PoolWater(on) {
+      const S = this._a2PoolS;
+      if (!S) return;
+      for (const e of [S.el, S.fr]) e.classList.toggle("leer", !on);
+      S.duck?.classList.toggle("on", on);
+    }
+    // Steht er im Becken (in), liegt das vordere Stück vor ihm
+    _a2PoolFront(inside) {
+      const S = this._a2PoolS;
+      if (S) S.fr.style.zIndex = String(inside ? POOL_ZF() : POOL_Z());
+    }
+    // Pika selbst stellen (statt _setX): bei x, um dy px tiefer (im Becken) bzw. höher (negativ: auf dem Rand), mit
+    // einem Übergang von ms (0: sofort). _lift bleibt 0.
+    _a2PoolPika(x, dy, ms = 0, ease = "ease-out") {
+      const S = this._a2PoolS;
+      if (S) S.ctl = true;
+      const p = this._el.pika;
+      this._x = x;
+      this._lift = 0;
+      this._lane = 0;
+      const tr = `translate(${(x - this._g.pW / 2).toFixed(1)}px, ${dy.toFixed(1)}px)`;
+      const tn = ms ? `transform ${ms}ms ${ease}` : "none";
+      p.style.transition = tn;
+      p.style.transform = tr;
+      const t = this._el.psay.style;
+      t.transition = tn;
+      t.transform = tr;
+      this._pikaZ?.();
+    }
+    // Wieder normal stellen (_setX, am Boden)
+    _a2PoolStand() {
+      const S = this._a2PoolS;
+      if (S) S.ctl = false;
+      this._lift = 0;
+      this._setX(this._x, true);
+    }
+    // Zusammengelegtes Becken im Maul (an) oder abgesetzt
+    _a2PoolCarry(on) {
+      this._a2PoolCarrying = on;
+      this._el.pika.classList.toggle("carry", on);
+      this._mouth(on ? POOL_FARBE : null, on ? POOL_MOUTH : null);
+    }
+    // Die Gießkanne aus Album 1, wenn sie in der Szene steht (und nicht gerade unterwegs ist)
+    _a2PoolCan() {
+      const can = this._gtEls?.get(6);
+      return can && !can.classList.contains("away") ? can : null;
+    }
+    // ---------- Wetter ----------
+    // Temperatur in °C (roh aus der Wetter-Entität wie bei der Sonnenbrille, _tickGift; die Vorschau mit _dbgWeather)
+    _a2PoolTemp() {
+      const t = { ...this._wxRaw || {}, ...this._dbgWeather || {} }.temp;
+      return Number.isFinite(t) ? t : null;
+    }
+    // Seine Jahreszeit: die Monate aus den Daten (Juni bis August; Südhalbkugel versetzt wie beim Vogelhäuschen). Nur für
+    // das Vertrösten nach dem Auspacken („im Sommer!“)
+    _a2PoolSummer() {
+      const south = (this._hass?.config?.latitude ?? 50) < 0;
+      const mo = (new Date(this._dbgDate ?? Date.now()).getMonth() + (south ? 6 : 0)) % 12;
+      return A2_POOL.mo.includes(mo);
+    }
+    // Planschwetter: ab 25 °C bei Tag; kein Gewitter, kein Starkregen, Hagel oder Schnee, kaum Wind. Leichter Regen
+    // (rainy, 40) geht.
+    _a2PoolWeather(wx = this._wx || {}) {
+      const sc = this._el.scene.classList;
+      return (this._a2PoolTemp() ?? -99) >= POOL_TEMP && !wx.storm && !wx.shelter && !wx.flash && !wx.hail && !((wx.rain || 0) > 40) && !((wx.snow || 0) > 0) && !wx.snowcover && !sc.contains("night") && !sc.contains("dusk") && (this._wind || 0) < 40;
+    }
+    // ---------- Was er damit tut ----------
+    // Hook: nur bei Planschwetter; ab 30 °C öfter, bei leichtem Regen seltener
+    // Liegt ein Häufchen, nicht (das Becken stünde auf schmalen Karten darüber, und erst wird sauber gemacht)
+    _a2PoolActs({ wx, piles }, lv) {
+      if (!this._a2PoolWeather(wx) || piles?.length) return [];
+      const w = ((this._a2PoolTemp() ?? 0) >= 30 ? 0.8 : 0.45) * (wx.wet ? 0.4 : 1);
+      return [[w, "a2PoolPlay"], [lv >= 2 ? w * 0.6 : 0, "a2PoolBomb"]];
+    }
+    // Stufe 1 (Aktion 'a2PoolPlay'). o: { short: nach dem Auspacken (das Becken kommt gleich neben ihn, voll, kein
+    // Wegräumen), gold: die Ente sicher }
+    async _a2PoolPlay(o = {}) {
+      return this._a2PoolGo("play", o);
+    }
+    // Stufe 2, der Trick (Aktion 'a2PoolBomb')
+    async _a2PoolBomb(o = {}) {
+      if (this._a2Lv("pool") < 2) return;
+      return this._a2PoolGo("bomb", o);
+    }
+    async _a2PoolGo(mode, o) {
+      const lv = this._a2Lv("pool");
+      if (!lv || !this._a2PoolWeather() && !this._forced && !o.short) return;
+      const gold = !!o.gold || lv >= 3 && this._a2GoldOk("pool", POOL_GOLD);
+      this._a2PoolBusy = true;
+      try {
+        await this._a2PoolSetUp(!!o.short, gold);
+        if (mode === "bomb" && !calmMotion()) await this._a2PoolCannon();
+        else await this._a2PoolGetIn(mode === "bomb");
+        await this._a2PoolSplashes(mode, !!o.short);
+        await this._a2PoolGetOut();
+        if (!o.short) await this._a2PoolPack();
+      } finally {
+        this._a2PoolBusy = false;
+        this._a2PoolEnd(true);
+      }
+    }
+    // Holen, hinlegen, aufblasen, füllen. short (nach dem Auspacken) und Bewegung reduzieren: kein Holen, kein Aufblasen,
+    // es kommt neben ihm (ruhig: blendet ein); nach dem Auspacken ist es gleich voll
+    async _a2PoolSetUp(short, gold) {
+      const p = this._el.pika;
+      const { hole, pW } = this._g;
+      const calm = calmMotion();
+      const P = this._a2PoolSpot();
+      const can = short ? null : this._a2PoolCan();
+      const fetch = !short && !calm;
+      if (fetch) {
+        await this._walkTo(hole.cx + pW * 0.75, 1.1);
+        this._face(-1);
+        this._say(pick(["Planschbecken holen!", "wo ist es…", "Badezeit!"]), 1300);
+        await this._wait(700);
+        p.classList.add("crouch");
+        await this._wait(260);
+        p.classList.remove("crouch");
+        this._a2PoolCarry(true);
+        await this._wait(300);
+      }
+      await this._walkTo(P.sx, 1);
+      this._face(-P.side);
+      if (this._a2PoolCarrying) {
+        p.classList.add("crouch");
+        await this._wait(260);
+        p.classList.remove("crouch");
+        this._a2PoolCarry(false);
+      }
+      this._a2PoolMake(P, { flat: fetch, empty: !!can, pop: !calm, gold });
+      if (fetch) {
+        this._puff(P.cx, this._g.gy, 2);
+        await this._wait(400);
+        p.classList.add("puffy");
+        for (let i = 1; i <= 3; i++) {
+          const n = this._nosePos();
+          this._peep(n.x, n.y - this._H * 0.05, i === 3 ? "pffft!" : "pff…");
+          this._a2PoolInflate(i / 3);
+          await this._wait(i === 3 ? 600 : 700);
+        }
+        p.classList.remove("puffy");
+        this._happy(900);
+        this._say(pick(["aufgeblasen!", "prall!", "fertig!"]), 1100);
+        await this._wait(800);
+      } else await this._wait(calm ? 600 : 700);
+      if (can) await this._a2PoolFill(can);
+    }
+    // Mit der Gießkanne füllen: holen, zum Becken, gießen (das Wasser steigt), zurückstellen, wieder ans Becken
+    async _a2PoolFill(can) {
+      const S = this._a2PoolS;
+      if (!S) return;
+      const p = this._el.pika;
+      const { pW, gy } = this._g;
+      const cx = this._giftX(6);
+      this._say(pick(["Wasser holen!", "Gießkanne!", "noch leer…"]), 1200);
+      await this._approach(cx, 1.1);
+      S.can = can;
+      can.classList.add("away");
+      p.classList.add("wcan");
+      await this._wait(400);
+      await this._walkTo(S.sx, 1);
+      this._face(-S.side);
+      await this._wait(300);
+      p.classList.add("pour");
+      await this._wait(400);
+      this._a2PoolWater(true);
+      const sx = this._x + this._dir * pW * 0.5;
+      for (let i = 0; i < 12; i++) {
+        const d = document.createElement("span");
+        d.className = "gdrop";
+        d.style.left = `${(sx + rnd(-pW * 0.05, pW * 0.05)).toFixed(1)}px`;
+        d.style.top = `${(gy - this._H * 0.14 + rnd(-2, 2)).toFixed(1)}px`;
+        this._el.fx.appendChild(d);
+        S.fx.add(d);
+        S.t.push(setTimeout(() => (d.remove(), S.fx.delete(d)), 600));
+        await this._wait(180);
+      }
+      p.classList.remove("pour");
+      this._say(pick(["voll!", "plätscher!", "so!"]), 1100);
+      await this._wait(600);
+      await this._approach(cx, 1.1);
+      can.classList.remove("away");
+      p.classList.remove("wcan");
+      S.can = null;
+      await this._wait(300);
+      await this._walkTo(S.sx, 1);
+      this._face(-S.side);
+      await this._wait(300);
+    }
+    // Hinein: hüpfen (ruhig, und beim ruhigen Trick: hineingehen und sich setzen)
+    async _a2PoolGetIn(bomb = false) {
+      const S = this._a2PoolS;
+      if (!S) return;
+      const p = this._el.pika;
+      const sink = POOL_SINK * S.u;
+      if (calmMotion()) {
+        this._a2PoolFront(true);
+        await this._walkTo(S.cx, 0.7);
+        this._a2PoolPika(S.cx, sink, 500);
+        p.classList.add("a2pl-in");
+        await this._wait(500);
+        this._a2PoolSplash(0, bomb);
+        this._say(bomb ? pick(["sanfte Arschbombe!", "platsch… ganz leise!"]) : pick(["herrlich!", "schön kühl!"]), 1400);
+        await this._wait(1200);
+        return;
+      }
+      this._say(pick(["rein!", "eins, zwei…", "hopp!"]), 1e3);
+      p.classList.add("crouch");
+      await this._wait(180);
+      p.classList.remove("crouch");
+      S.t.push(setTimeout(() => this._a2PoolS === S && this._a2PoolFront(true), 200));
+      this._a2PoolPika(S.cx, sink, 550, HOP_EASE);
+      this._jump("hop1", true);
+      await this._wait(JUMPS.hop1.air[1]);
+      this._a2PoolFront(true);
+      p.classList.add("a2pl-in");
+      this._a2PoolSplash(4);
+      this._say(pick(["platsch!", "plitsch!", "huch, nass!"]), 1100);
+      await this._wait(500);
+    }
+    // Der Trick: auf den Rand, wackeln, bis drei zählen, zusammengerollt hinein. Großer Spritzer, das Wasser schwappt
+    async _a2PoolCannon() {
+      const S = this._a2PoolS;
+      if (!S) return;
+      const p = this._el.pika;
+      const sink = POOL_SINK * S.u;
+      const lift = (POOL.floor - POOL.rim.cy) * S.u;
+      const rx = S.cx + S.side * (POOL.rim.rx - 3) * S.u;
+      this._say(pick(["Arschbombe!", "jetzt kommt's!", "aufgepasst!"]), 1200);
+      await this._wait(700);
+      p.classList.add("crouch");
+      await this._wait(200);
+      p.classList.remove("crouch");
+      this._a2PoolPika(rx, -lift, 550, HOP_EASE);
+      this._jump("hop1", true);
+      await this._wait(650);
+      this._face(-S.side);
+      p.classList.add("a2pl-wob");
+      this._say("eins… zwei…", 1100);
+      await this._wait(1100);
+      p.classList.remove("a2pl-wob");
+      this._say("…drei!", 800);
+      p.classList.add("crouch");
+      await this._wait(240);
+      p.classList.remove("crouch");
+      p.classList.add("a2pl-ball");
+      S.t.push(setTimeout(() => this._a2PoolS === S && this._a2PoolFront(true), 300));
+      this._a2PoolPika(S.cx, sink, 760, "cubic-bezier(.45, 0, .7, .5)");
+      this._jump("binky", true);
+      await this._wait(JUMPS.binky.air[1]);
+      p.classList.remove("a2pl-ball");
+      this._a2PoolFront(true);
+      p.classList.add("a2pl-in");
+      this._a2PoolSplash(14, true);
+      this._say("PLATSCH!", 1300);
+      await this._wait(1200);
+      this._happy(1200);
+      this._say(pick(["hihi!", "nochmal!", "alles nass!"]), 1200);
+      await this._wait(900);
+    }
+    // Planschen: hüpfen, es spritzt; einmal umdrehen; golden die Ente bestaunen
+    async _a2PoolSplashes(mode, short) {
+      const S = this._a2PoolS;
+      if (!S) return;
+      const p = this._el.pika;
+      const calm = calmMotion();
+      const n = mode === "bomb" ? short ? 1 : 2 : short ? 2 : 3 + (Math.random() < 0.5 ? 1 : 0);
+      for (let i = 0; i < n; i++) {
+        if (!calm) {
+          this._jump("hop1", true);
+          await this._wait(JUMPS.hop1.air[1]);
+          this._a2PoolSplash(5);
+        } else this._a2PoolSplash(0);
+        if (i % 2 === 0) this._say(pick(["plitsch!", "platsch!", "hihi!", "spritz!"]), 800);
+        await this._wait(rnd(600, 900));
+        if (i === 1) this._face(-this._dir);
+      }
+      this._happy(1400);
+      this._say(pick(["schön kühl!", "herrlich!", "ahh…"]), 1400);
+      await this._wait(1500);
+      const d = S.duck;
+      if (d?.classList.contains("on")) {
+        const r = d.getBoundingClientRect();
+        const sc = this._el.scene.getBoundingClientRect();
+        const x = r.left - sc.left + r.width / 2;
+        const y = r.top - sc.top;
+        this._face(x >= this._x ? 1 : -1);
+        d.classList.remove("bob");
+        void d.offsetWidth;
+        d.classList.add("bob");
+        S.t.push(setTimeout(() => d.classList.remove("bob"), 700));
+        this._peep(x, y - 4, "quietsch!");
+        this._mimik("awe", 1400);
+        this._say(pick(["meine Gummiente!", "eine goldene Ente!", "Entchen!"]), 1500);
+        for (let i = 0; i < 3; i++) S.t.push(setTimeout(() => this._a2PoolS === S && this._sparkle(x, y + 2, 1), i * 300));
+        await this._wait(1800);
+      }
+      p.classList.add("content");
+      await this._wait(short ? 700 : rnd(1500, 2500));
+      p.classList.remove("content");
+    }
+    // Heraus (ruhig: hinausgehen), tropfen, schütteln
+    async _a2PoolGetOut() {
+      const S = this._a2PoolS;
+      if (!S) return;
+      const p = this._el.pika;
+      if (calmMotion()) {
+        this._a2PoolPika(S.cx, 0, 500);
+        await this._wait(500);
+        this._a2PoolStand();
+        p.classList.remove("a2pl-in");
+        await this._walkTo(S.sx, 0.7);
+        this._a2PoolFront(false);
+        this._face(-S.side);
+        this._say(pick(["schön kühl!", "erfrischend!"]), 1200);
+        await this._wait(1e3);
+        return;
+      }
+      p.classList.add("crouch");
+      await this._wait(180);
+      p.classList.remove("crouch");
+      this._a2PoolPika(S.sx, 0, 550, HOP_EASE);
+      this._jump("hop1", true);
+      this._a2PoolSplash(2);
+      S.t.push(setTimeout(() => this._a2PoolS === S && p.classList.remove("a2pl-in"), 150));
+      S.t.push(setTimeout(() => this._a2PoolS === S && this._a2PoolFront(false), 380));
+      await this._wait(650);
+      this._a2PoolStand();
+      p.classList.remove("a2pl-in");
+      this._a2PoolFront(false);
+      p.classList.add("a2pl-drip");
+      this._a2PoolDrip();
+      for (let i = 1; i < 6; i++) S.t.push(setTimeout(() => this._a2PoolS === S && this._a2PoolDrip(), i * 230));
+      this._say(pick(["tropf…", "pitschnass!", "nass!"]), 1100);
+      await this._wait(1300);
+      p.classList.add("a2pl-shake");
+      this._a2PoolShake();
+      this._say(pick(["schüttel!", "brrr-schüttel!", "wusch!"]), 900);
+      await this._wait(700);
+      p.classList.remove("a2pl-shake", "a2pl-drip");
+      this._happy(1e3);
+      await this._wait(900);
+    }
+    // Wegräumen: Wasser ablassen, Luft heraus, zusammenlegen, in den Bau tragen (ruhig: es blendet aus, _a2PoolEnd)
+    async _a2PoolPack() {
+      const S = this._a2PoolS;
+      if (!S || calmMotion()) return;
+      const p = this._el.pika;
+      const { hole, pW } = this._g;
+      this._face(-S.side);
+      this._a2PoolWater(false);
+      this._peep(S.cx, this._a2PoolWaterY(S) - this._H * 0.04, "gluck, gluck");
+      await this._wait(1300);
+      for (const e of [S.el, S.fr]) e.classList.add("deflate");
+      this._a2PoolInflate(0);
+      const n = this._nosePos();
+      this._peep(n.x, n.y - this._H * 0.05, "pfffff…");
+      p.classList.add("crouch");
+      await this._wait(1e3);
+      p.classList.remove("crouch");
+      this._a2PoolEnd(true, true);
+      this._a2PoolCarry(true);
+      await this._wait(250);
+      await this._walkTo(hole.cx + pW * 0.75, 1);
+      this._face(-1);
+      p.classList.add("crouch");
+      await this._wait(260);
+      p.classList.remove("crouch");
+      this._a2PoolCarry(false);
+      this._say(pick(["bis zum nächsten Mal!", "aufgeräumt!", "das war schön!"]), 1300);
+      await this._wait(900);
+    }
+    // Nach dem Auspacken (Hook): Bei Planschwetter gleich kurz planschen (Stufe 2 die Arschbombe, 3 mit Ente). Sonst nur
+    // zeigen: Das Becken kommt voll neben ihn, er tippt mit der Pfote hinein, es ist zu kalt (oder kein Sommer, kein
+    // Wetter dafür), er vertröstet. Golden schwimmt die Ente schon („die Ente darf!“).
+    async _a2PoolStow(lv) {
+      if (this._a2PoolWeather()) return lv === 2 ? this._a2PoolBomb({ short: true }) : this._a2PoolPlay({ short: true, gold: lv >= 3 });
+      this._a2PoolBusy = true;
+      const p = this._el.pika;
+      try {
+        const P = this._a2PoolSpot();
+        await this._walkTo(P.sx, 1);
+        this._face(-P.side);
+        this._a2PoolMake(P, { pop: !calmMotion(), gold: lv >= 3 });
+        this._say(lv >= 3 ? pick(["goldig!", "mit Gummiente!"]) : lv === 2 ? pick(["für Arschbomben!", "platsch, bald!"]) : pick(["zum Planschen!", "ein Becken!"]), 1300);
+        await this._wait(1300);
+        p.classList.add("crouch");
+        await this._wait(300);
+        this._a2PoolSplash(0);
+        const S = this._a2PoolS;
+        if (S) this._peep(S.cx + S.side * S.w * 0.3, this._a2PoolWaterY(S) - 6, "tipp");
+        await this._wait(500);
+        p.classList.remove("crouch");
+        const why = (this._a2PoolTemp() ?? -99) >= POOL_TEMP ? "heute" : this._a2PoolSummer() ? "kalt" : "sommer";
+        this._say(why === "sommer" ? pick(["kein Sommer…", "noch kein Badewetter…"]) : why === "kalt" ? pick(["brrr, zu kalt!", "huh, kalt!"]) : pick(["heute nicht…", "ein andermal…"]), 1500);
+        await this._wait(1600);
+        if (lv >= 3) {
+          this._say("die Ente darf!", 1300);
+          await this._wait(1400);
+        }
+        this._say(why === "sommer" ? pick(["im Sommer!", "bis zum Sommer!"]) : why === "kalt" ? pick(["wenn's heiß ist!", "ab 25 Grad!"]) : pick(["bald!", "wenn die Sonne scheint!"]), 1400);
+        this._happy(1e3);
+        await this._wait(1500);
+      } finally {
+        this._a2PoolBusy = false;
+        this._a2PoolEnd(true);
+      }
+    }
+    // ---------- Wasser, Tropfen ----------
+    // Ringe laufen über das Wasser (big: ein zweiter, größerer, und das Wasser schwappt), die Ente hüpft; n Tropfen
+    // spritzen von der Wasserfläche um ihn auf. Bewegung reduzieren: nur der Ring.
+    _a2PoolSplash(n, big = false) {
+      const S = this._a2PoolS;
+      if (!S) return;
+      const cls = big && !calmMotion() ? ["rip", "rip2", "wave"] : ["rip"];
+      for (const e of [S.el, S.fr]) {
+        e.classList.remove(...cls);
+        void e.offsetWidth;
+        e.classList.add(...cls);
+      }
+      S.t.push(setTimeout(() => [S.el, S.fr].forEach((e) => e.classList.remove(...cls)), 950));
+      if (S.duck && !calmMotion()) {
+        S.duck.classList.remove("bob");
+        void S.duck.offsetWidth;
+        S.duck.classList.add("bob");
+      }
+      if (calmMotion() || !n) return;
+      const { pW, pH } = this._g;
+      const y = this._a2PoolWaterY(S);
+      const k = big ? 1.7 : 1;
+      for (let i = 0; i < n; i++) {
+        const side = i % 2 ? 1 : -1;
+        const s = document.createElement("span");
+        s.className = "splash a2plsp";
+        s.innerHTML = DROP_SVG;
+        s.style.left = `${clamp(this._x + side * rnd(0.15, 0.5) * pW, S.cx - S.w / 2, S.cx + S.w / 2).toFixed(1)}px`;
+        s.style.top = `${(y - pH * 0.04).toFixed(1)}px`;
+        s.style.setProperty("--dx", `${(side * rnd(0.1, 0.42) * pW * k).toFixed(1)}px`);
+        s.style.setProperty("--dy", `${(-rnd(0.22, 0.55) * pH * k).toFixed(1)}px`);
+        this._el.fx.appendChild(s);
+        S.fx.add(s);
+        S.t.push(setTimeout(() => (s.remove(), S.fx.delete(s)), 800));
+      }
+    }
+    // Ein Tropfen fällt aus dem Fell (nach dem Planschen)
+    _a2PoolDrip() {
+      const S = this._a2PoolS;
+      if (!S || calmMotion()) return;
+      const { pW, pH, gy } = this._g;
+      const s = document.createElement("span");
+      s.className = "a2pldrip";
+      s.innerHTML = DROP_SVG;
+      s.style.left = `${(this._x + rnd(-0.3, 0.3) * pW).toFixed(1)}px`;
+      s.style.top = `${(gy - pH * rnd(0.15, 0.55)).toFixed(1)}px`;
+      this._el.fx.appendChild(s);
+      S.fx.add(s);
+      S.t.push(setTimeout(() => (s.remove(), S.fx.delete(s)), 900));
+    }
+    // Schütteln: Tropfen fliegen nach beiden Seiten aus dem Fell
+    _a2PoolShake() {
+      const S = this._a2PoolS;
+      if (!S || calmMotion()) return;
+      const { pW, pH, gy } = this._g;
+      for (let i = 0; i < 6; i++) {
+        const side = i % 2 ? 1 : -1;
+        const s = document.createElement("span");
+        s.className = "splash a2plsp";
+        s.innerHTML = DROP_SVG;
+        s.style.left = `${(this._x + side * rnd(0.2, 0.4) * pW).toFixed(1)}px`;
+        s.style.top = `${(gy - pH * rnd(0.3, 0.6)).toFixed(1)}px`;
+        s.style.setProperty("--dx", `${(side * rnd(0.3, 0.6) * pW).toFixed(1)}px`);
+        s.style.setProperty("--dy", `${(-rnd(0.08, 0.25) * pH).toFixed(1)}px`);
+        this._el.fx.appendChild(s);
+        S.fx.add(s);
+        S.t.push(setTimeout(() => (s.remove(), S.fx.delete(s)), 800));
+      }
+    }
+    // ---------- Hooks: Tipp, Aufräumen, Abhängen ----------
+    // Tipp ins Becken (nur, solange es steht und aufgeblasen ist): Ring auf dem Wasser, plitsch, ein paar Tropfen
+    _a2PoolTap() {
+      const S = this._a2PoolS;
+      if (!S || S.flat || S.el.classList.contains("leer")) return false;
+      this._a2PoolSplash(0);
+      const x = S.cx + rnd(-0.25, 0.25) * S.w;
+      const y = this._a2PoolWaterY(S);
+      this._peep(x, y - this._H * 0.06, pick(["plitsch!", "platsch!", "blubb!"]));
+      if (!calmMotion()) {
+        const { pW, pH } = this._g;
+        for (let i = 0; i < 2; i++) {
+          const s = document.createElement("span");
+          s.className = "splash a2plsp";
+          s.innerHTML = DROP_SVG;
+          s.style.left = `${x.toFixed(1)}px`;
+          s.style.top = `${(y - pH * 0.03).toFixed(1)}px`;
+          s.style.setProperty("--dx", `${((i ? 1 : -1) * rnd(0.08, 0.2) * pW).toFixed(1)}px`);
+          s.style.setProperty("--dy", `${(-rnd(0.12, 0.25) * pH).toFixed(1)}px`);
+          this._el.fx.appendChild(s);
+          S.fx.add(s);
+          S.t.push(setTimeout(() => (s.remove(), S.fx.delete(s)), 800));
+        }
+      }
+      return true;
+    }
+    // Ende der Aktion oder Abbruch (auch aus _cleanup nach jeder Aktion): Becken (beide Stücke), Ente, Tropfen,
+    // Zeitgeber, das Becken im Maul weg, die Gießkanne wieder an ihren Platz; stellte er den Pika selbst, steht der wieder
+    // normal am Boden. (force: aus der eigenen Aktion. Sonst, mitten in ihr, aus Szene oder Aufräumen: nichts, sie räumt
+    // in ihrem finally selbst auf; nur nach einem Abbruch gleich.) now: sofort, ohne Ausblenden
+    _a2PoolEnd(force = false, now2 = false) {
+      if (!force && this._a2PoolBusy && !this._ac?.signal?.aborted) return;
+      const p = this._el.pika;
+      if (this._a2PoolCarrying) this._a2PoolCarry(false);
+      p.classList.remove(...POOL_CLS);
+      const S = this._a2PoolS;
+      if (!S) return;
+      this._a2PoolS = null;
+      for (const t of S.t) clearTimeout(t);
+      for (const e of S.fx) e.remove();
+      if (S.can) {
+        S.can.classList.remove("away");
+        p.classList.remove("wcan", "pour");
+      }
+      if (S.ctl) {
+        this._lift = 0;
+        this._setX(this._x, true);
+      }
+      const fr = S.fr;
+      const el = S.el;
+      if (now2 || !fr.isConnected) fr.remove();
+      else {
+        fr.classList.add("a2out");
+        setTimeout(() => fr.remove(), 450);
+      }
+      if (!now2 && el.isConnected && this._a2Els?.get("pool") === el) {
+        el.classList.add("a2out");
+        setTimeout(() => !this._a2PoolS && this._a2Drop("pool"), 450);
+      } else this._a2Drop("pool");
+    }
+    _a2PoolCleanup() {
+      this._a2PoolEnd();
+    }
+    // Karte aus dem DOM: alles sofort weg
+    _a2PoolDetach() {
+      this._a2PoolBusy = false;
+      this._a2PoolEnd(true, true);
+    }
   };
 
   // src/karte.js
@@ -28895,8 +30535,8 @@
         this._lastFlights = fl;
         this._guard("Flugzeuge", () => this._readFlights(fl));
       }
-      for (const f2 of [this._hassSky, this._hassFest, this._hassFriend, this._hassBote, this._hassCoffee, this._hassPlan, this._hassSig, this._hassAct]) {
-        this._guard(f2.name, () => f2.call(this, hass));
+      for (const f3 of [this._hassSky, this._hassFest, this._hassFriend, this._hassBote, this._hassCoffee, this._hassPlan, this._hassSig, this._hassAct]) {
+        this._guard(f3.name, () => f3.call(this, hass));
       }
       this._guard("Himmel", () => this._updateSky());
       if (conn && this._planConn === false && c.plan_entity) this._planStaleArm();
