@@ -1076,9 +1076,10 @@ const STYLE = `
     0%, 100% { transform: translateY(1.6px) rotate(-6deg); } 30% { transform: translateY(1.6px) rotate(-14deg); }
     65% { transform: translateY(1.6px) rotate(2deg); }
   }
+  /* Piepser (Maus, Glöckchen, Schild im Urlaub): mindestens 10 px, H × 0,05 sind bei Standardhöhe 180 nur 9 px */
   .squeak {
     position: absolute; padding: .1em .45em; border-radius: 999px; background: #fff; color: #4a3a2c; pointer-events: none;
-    font-size: calc(var(--H) * .05); font-weight: 800; white-space: nowrap; box-shadow: 0 1px 4px rgba(0, 0, 0, .2);
+    font-size: max(10px, calc(var(--H) * .05)); font-weight: 800; white-space: nowrap; box-shadow: 0 1px 4px rgba(0, 0, 0, .2);
     transform: translate(-50%, -100%); animation: squeak 1s ease-out forwards;
   }
   @keyframes squeak { 0% { opacity: 0; scale: .4; } 15% { opacity: 1; scale: 1; } 75% { opacity: 1; } 100% { opacity: 0; translate: 0 -6px; } }

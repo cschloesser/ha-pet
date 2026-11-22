@@ -1,5 +1,7 @@
 // Haus-Signale: Mülltonne, Garderobe, Saugroboter, Haustür – reine Regeln (wann, was, wie lange)
 
+import { MEM_TONNE, MEM_TONNE2 } from './tagesplan.js';
+
 // Eine Schicht neben dem Haus-Boten: Ein Zustand in HA löst beim Pika ein Requisit, eine Pose oder einen Spruch aus,
 // und er erinnert nach festen Regeln daran. Alles folgt aus den Zuständen in HA (Kalender, Vorhersage, Sauger, Tür),
 // darum zeigen alle Geräte dasselbe. Geteilt werden muss nur „Tonne steht draußen“: ein Bit im Tagesplan (MEM_TONNE).
@@ -47,8 +49,16 @@ const binPlan = (st, now) => {
 };
 
 // Tonne schon rausgestellt? Das Bit gilt an dem Pika-Tag, an dem sie dasteht (Vortag), und am Tag der Abholung
-// (cute.d zwischen beiden; der Tag davor oder ein alter Tag zählen nicht)
-const binDone = (cute, dFrom, dAt, bit) => !!cute && (cute.m & bit) !== 0 && cute.d >= dFrom && cute.d <= dAt;
+// (cute.d zwischen beiden; der Tag davor oder ein alter Tag zählen nicht). bit: welche der beiden Bits gefragt sind.
+// MEM_TONNE ist heute gesetzt worden. MEM_TONNE2 hat der neue Pika-Tag von gestern übernommen (cuteNew), es meint
+// also die Tonne, die gestern schon stand: Es zählt nur, wenn diese Abholung da schon dastand (cute.d - 1 >= dFrom).
+// Sonst nähme es an Tagen mit Abholungen hintereinander (Dienstag Bio, Mittwoch Gelber Sack) am Dienstagnachmittag
+// die Tonne für Mittwoch weg, sobald jemand streichelt, und niemand stellte sie raus.
+const binDone = (cute, dFrom, dAt, bit = MEM_TONNE | MEM_TONNE2) => {
+  if (!cute || cute.d < dFrom || cute.d > dAt) return false;
+  if (cute.m & bit & MEM_TONNE) return true;
+  return (cute.m & bit & MEM_TONNE2) !== 0 && cute.d - 1 >= dFrom;
+};
 
 // Garderobe: was man heute braucht, aus der stündlichen Vorhersage ([{ datetime, temperature, precipitation,
 // uv_index }]) für die Stunden SIG.wardFrom bis SIG.wardTo des Tags day (ms, irgendwann an dem Tag). Reihenfolge:

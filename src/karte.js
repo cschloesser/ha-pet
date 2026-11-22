@@ -255,9 +255,15 @@ class PikaPetCard extends HTMLElement {
       this._guard(f.name, () => f.call(this, hass));
     }
     this._guard('Himmel', () => this._updateSky());
+    // Verbindung wieder da (jedes Mal, nicht nur nach langer Pause): Der Tagesplan im Helfer kann in der Lücke von
+    // anderen Geräten weitergeschrieben worden sein. HA meldet „verbunden“, bevor die Zustände neu da sind; bis dahin
+    // gilt der eigene Stand als veraltet, und der Plan wird nicht geschrieben (_planBlind).
+    if (conn && this._planConn === false && c.plan_entity) this._planStaleArm();
+    this._planConn = conn;
     // Veralteter Plan nach langer Pause: erst frisch, wenn verbunden und sich seitdem etwas geändert hat (ein neues
     // hass-Objekt allein kann nur "verbunden: ja/nein" sein, mit noch altem Stand)
     if (fresh && this._planStale && hass.connected !== false && hass.states !== this._staleStates) this._planFresh();
+    this._guard('Tagesplan', () => this._planHass(hass, fresh));
   }
 
   getCardSize() {
@@ -323,6 +329,17 @@ class PikaPetCard extends HTMLElement {
       // (auch wenn beim Abhängen noch auf einen frischen Stand gewartet wurde: dessen Frist ist mit abgeräumt)
       if (this._hass && (this._planStale || Date.now() - this._detachAt > 2000)) this._planStaleArm(600);
     }
+    if (this._detachAt) {
+      // Was sich während der Trennung in HA geändert hat, kommt jetzt auf einmal an, mit den Zeitstempeln von damals:
+      // Das sind keine Zeitproben für die Uhr von HA (_clockHass). Wie nach dem Wiederverbinden die ersten Sekunden
+      // auslassen, sonst ginge die Uhr dieser Karte um Minuten nach, solange ihr gute Proben fehlen, und ihre
+      // Änderungen am Tagesplan gälten als längst veraltet.
+      this._clkConn = false;
+      // Der Tagesplan darf wieder geschrieben werden: nach längerer Trennung erst, wenn HA frisch geliefert hat (die
+      // 0,6 s oben reichen dafür nicht: Kam die Karte mit dem Panel aus dem Hintergrund zurück, baut sich die
+      // Verbindung gerade erst wieder auf, und ihr letztes hass-Objekt sagt noch „verbunden“)
+      this._planWake(Date.now() - this._detachAt > 2000);
+    }
     this._showReq();
     this._start();
     // Wie beim Sichtbarwerden (_visSync → _tick) gleich den Stand zeigen: Häufchen, die während der Trennung fällig
@@ -343,6 +360,9 @@ class PikaPetCard extends HTMLElement {
     if (!this._attached) return;
     this._attached = false;
     this._detachAt = Date.now();
+    // Ab hier kommt kein hass mehr (zwischengespeicherte Ansicht, weggeräumtes Panel): Ungesendetes aus dem Tagesplan
+    // noch hinaus, danach schreibt diese Karte ihn nicht, bis sie wieder eingehängt ist
+    this._guard('Tagesplan', () => this._planPark());
     this._stop();
     this._stopCritters();
     this._ro?.disconnect();

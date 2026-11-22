@@ -63,6 +63,7 @@ const MEM_TONNE = 1 << 10;
 const MEM_TONNE2 = 1 << 11; // vom Vortag übernommen (wird nicht noch einmal weitergegeben)
 // Beginnt ein neuer Pika-Tag (4 Uhr), fängt das Gedächtnis bei null an. Nur „Tonne steht draußen“ gilt weiter bis zur
 // Abholung am Morgen (der Tag danach): Sonst stünde die Tonne nach dem ersten Streicheln des Morgens wieder da.
+// Das übernommene Bit meint nur diese eine Tonne; für eine Abholung, die erst heute dasteht, zählt es nicht (binDone).
 const cuteNew = (c, d) => ({ d, n: 0, m: c && c.d === d - 1 && c.m & MEM_TONNE ? MEM_TONNE2 : 0 });
 // Pika-Tag: wechselt um 4 Uhr nachts, so träumt er nach Mitternacht noch vom Vortag
 const pikaDay = (t) => Math.floor((t - new Date(t).getTimezoneOffset() * 6e4 - 4 * 36e5) / 864e5);
@@ -285,7 +286,112 @@ const planApply = (P, op, now) => {
   return out;
 };
 
+// Was nur wächst, fällt nicht zurück. neu: ein Stand, den ein anderes Gerät eben in den Helfer geschrieben hat; alt: der
+// Stand, den dieses Gerät zuletzt dort gesehen hat. Schrieb das andere Gerät von einem veralteten Stand aus (es war
+// eine Weile nicht verbunden, oder es läuft noch eine Karte bis 0.42.1), fehlt in neu, was seither geschah. Gibt neu
+// selbst zurück, wenn nichts zu retten war, sonst eine Kopie mit dem Geretteten.
+// - Streicheln und Erlebnisse (cute) können an einem Pika-Tag nie weniger werden, und ein älterer Tag kommt nie
+//   wieder: der neuere Tag gilt, am selben Tag der höhere Zähler und alle Erlebnisse zusammen. Ein neuer Tag in neu
+//   fängt wie immer bei null an (cuteNew), der wird übernommen.
+// - Päckchen: verschenkte (z, samt x, i, r des letzten), ausgepackte (o), Album (u), Stufen (v) und Freundschaftstage
+//   (f) wachsen im Alltag auch nur. Die Vorschau darf sie aber senken („Päckchen zurücksetzen“, „Stufen weg“), und die
+//   kommt von einem frischen Stand. Darum nur, wenn neu erwiesen veraltet ist: wenn dort etwas fehlt, das keine
+//   Änderung je zurücknimmt (cute wie oben, die jüngste große Beschäftigung im Verlauf, das letzte Sammel-Fenster).
+//   Das Bit „gut“ in cute.m und f gehören zusammen (ggood setzt beide): Mit dem Bit kommt so auch f zurück.
+// - Die Beweise selbst kommen mit zurück: das spätere Sammel-Fenster (hay.m wächst nur) und, ist neu veraltet, die
+//   fehlenden Einträge des Verlaufs (rec: je Fenster ein Eintrag, die jüngsten PLAN_REC, wie es die Änderung „rec“
+//   auch täte). Sonst wäre der Beweis nach dem ersten Mal verbraucht: Sendet das veraltete Gerät denselben Stand noch
+//   einmal (eine Karte bis 0.42.1 tut das alle 15 s), gälte er nicht mehr als veraltet, und Päckchen und Album fielen
+//   doch zurück.
+// - Nicht angefasst wird, was auch sinken darf: Vorrat (n, y; nach einer Rettung kann ein inzwischen verschenktes
+//   Päckchen darum wieder im Vorrat liegen), Serie (k, a, p, b, d), Heu, Futter, Blume, Urlaub. Eine Ausnahme: Kommt f
+//   über ein Vielfaches von GIFT.goldDays zurück, fehlt in neu vielleicht das goldene Päckchen dieses Tages, und ggood
+//   brächte es nicht wieder (das Bit „gut“ steht ja schon): dann gilt bei y der höhere Wert. Lieber eins zu viel.
+// planOld sagt, ob neu erwiesen veraltet ist. planKeep(neu, alt, old) rettet; old steht eigens da, weil die Karte am
+// rohen Stand prüft, aber erst rettet, nachdem ihre eigenen, schon bestätigten Änderungen wieder darauf liegen (siehe
+// _hassPlan): Was die selbst wiederbringen, bringen sie samt allem, was daran hängt (Vorrat, goldenes Päckchen).
+const planOld = (neu, alt) => {
+  if (!alt) return false;
+  const a = alt.cute;
+  const c = neu.cute;
+  if (a && (!c || c.d < a.d || (c.d === a.d && (c.n < a.n || (a.m & ~c.m) !== 0)))) return true;
+  // (Ein leerer Verlauf ist kein Beweis: _planFit lässt ihn weg, wenn der Helfer knapp ist)
+  const top = (P) => P.rec.reduce((m, e) => Math.max(m, e[0]), -Infinity);
+  return (neu.rec.length > 0 && alt.rec.length > 0 && top(neu) < top(alt)) || neu.hay.m < alt.hay.m;
+};
+const planKeep = (neu, alt, old = planOld(neu, alt)) => {
+  if (!alt) return neu;
+  const out = { ...neu };
+  let diff = false;
+  const a = alt.cute;
+  const c = neu.cute;
+  if (a && (!c || c.d < a.d)) {
+    out.cute = a;
+    diff = true;
+  } else if (a && c.d === a.d && (c.n < a.n || (a.m & ~c.m) !== 0)) {
+    out.cute = { d: c.d, n: Math.max(c.n, a.n), m: c.m | a.m };
+    diff = true;
+  }
+  if (neu.hay.m < alt.hay.m) {
+    out.hay = { ...neu.hay, m: alt.hay.m };
+    diff = true;
+  }
+  if (old && alt.rec.length) {
+    // je Fenster ein Eintrag (der von neu, außer ihm fehlt die Variante), die jüngsten zuerst
+    const R = new Map(alt.rec.map((e) => [e[0], e]));
+    for (const e of neu.rec) R.set(e[0], !e[2] && R.get(e[0])?.[2] ? R.get(e[0]) : e);
+    const rec = [...R.values()].sort((x, y) => y[0] - x[0]).slice(0, PLAN_REC);
+    if (rec.length !== neu.rec.length || rec.some((e, i) => e[0] !== neu.rec[i][0] || e[1] !== neu.rec[i][1] || e[2] !== neu.rec[i][2])) {
+      out.rec = rec.map((e) => [...e]);
+      diff = true;
+    }
+  }
+  const G = neu.gift;
+  const A = alt.gift;
+  if (old && G && A) {
+    const g = { ...G };
+    if (A.z > G.z) Object.assign(g, { z: A.z, x: A.x, i: A.i, r: A.r });
+    g.o = Math.max(G.o, A.o);
+    g.u = G.u | A.u;
+    g.v = (G.v || 0) | (A.v || 0);
+    if (g.v !== G.v) g.nov = undefined; // die Stufen sind damit bekannt (siehe planParse)
+    const gold = (f) => Math.floor((f ?? -1) / GIFT.goldDays);
+    if (A.f != null && (G.f == null || G.f < A.f)) {
+      g.f = A.f;
+      if (gold(A.f) > gold(G.f)) g.y = Math.max(G.y, A.y);
+    }
+    if (GIFT_F.some((f) => g[f] !== G[f]) || g.v !== G.v || g.f !== G.f || g.r !== G.r) {
+      out.gift = g;
+      diff = true;
+    }
+  }
+  return diff ? out : neu;
+};
+// Streicheln, das dieses Gerät noch nie gesendet hat (o.out fehlt), kommt auf einen fremden Stand P obendrauf: Die
+// Änderung trägt den Zähler, den es beim Streicheln kannte, + 1, und der höchste Zähler gewinnt (planApply). War das
+// Gerät dabei nicht auf dem Laufenden (getrennt, veralteter Stand) oder streichelte zugleich jemand woanders, ginge
+// es sonst im höheren Zähler unter. Gesendetes bleibt, wie es ist: Das kann im fremden Stand schon stecken. Gezählt
+// wird aber von ihm aus weiter: Ist ein eigenes Streicheln noch unterwegs (gesendet, ohne Echo) und kam danach noch
+// eins dazu, ist das eins mehr als das unterwegs, nicht eins mehr als der fremde Stand.
+const planRebase = (ops, P) => {
+  let d = null;
+  let n = 0;
+  return ops.map((o) => {
+    if (o.t !== 'pet' || (P.cute && P.cute.d > o.d)) return o;
+    if (d !== o.d) {
+      d = o.d;
+      n = P.cute?.d === o.d ? P.cute.n : 0;
+    }
+    if (o.out) {
+      n = Math.max(n, Math.min(o.n, PET_CAP));
+      return o;
+    }
+    n = Math.min(n + 1, PET_CAP);
+    return o.n === n ? o : { ...o, n };
+  });
+};
+
 export {
   HAY_MAX, PLAN_MIN, planBlank, FOOD_KINDS, FLGIFT, PET_CLING, PET_CAP, MEM_BITS, MEM_GUT, pikaDay, planSer, planParse, hayNow,
-  planApply, urOn, MEM_TONNE, MEM_TONNE2,
+  planApply, urOn, MEM_TONNE, MEM_TONNE2, planOld, planKeep, planRebase,
 };

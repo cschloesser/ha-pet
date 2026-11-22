@@ -1,10 +1,19 @@
 // Haus-Signale: Mülltonne, Garderobe, Saugroboter, Haustür – lesen, zeigen, daran erinnern
 
-import { rnd, pick } from '../logik/hilfen.js';
+import { rnd, pick, clamp } from '../logik/hilfen.js';
 import { MEM_TONNE, MEM_TONNE2, pikaDay } from '../logik/tagesplan.js';
 import { BOTE_FRONT_DY } from '../logik/haus-bote.js';
 import { SIG, binPlan, binDone, wardrobePick, WARD_SAY, vacMode } from '../logik/signale.js';
 import { SIG_BIN, SIG_VAC, SIG_WEAR } from '../grafik/signale.js';
+
+// Garderobe: Breite je Stück (Anteil von H); die Stiefel-Grafik ist 26 × 20 (SIG_WEAR), die Sohle liegt bei 92 % der Höhe
+const WEAR_W = { boots: 0.1, umbrella: 0.05, hat: 0.075, sunhat: 0.1 };
+const BOOT_SOLE = (20 / 26) * 0.92;
+// Breite der Gießkanne aus den Päckchen (Anteil von H), wie .gt-can in stil/paeckchen.js
+const CAN_W = 0.085;
+// Was der Bau links der Tür am Boden stehen hat und die Stiefel nicht verdecken sollen, je Areal in Bau-Einheiten
+// [von, bis]: am Erdhügel der Fuß der Laterne (Pfad „M14.6 57 … 21.4 57Z“ in grafik/areale.js)
+const WEAR_KEEP = { huegel: [[14.6, 21.4]] };
 
 export class Signale {
   // Konfiguration `signals`: { waste: calendar.*, wardrobe: true, vacuum: vacuum.*, door: binary_sensor.*, window:
@@ -98,7 +107,8 @@ export class Signale {
 
   // ---------- Mülltonne ----------
 
-  // Steht die Tonne heute da? → Abholung (binPlan) oder null
+  // Steht die Tonne heute da? → Abholung (binPlan) oder null. „Steht draußen“ von heute (MEM_TONNE) gilt immer, das
+  // vom Vortag übernommene (MEM_TONNE2) nur für die Tonne, die gestern schon stand (binDone).
   _sigBin() {
     const st = this._sigW;
     if (!st || this._urlaubOn()) return null;
@@ -251,23 +261,25 @@ export class Signale {
       fresh = true;
     }
     if (fresh) this._sigWearAt = Math.min(this._sigWearAt || Infinity, this._haNow() + rnd(10000, 30000));
-    if (!fresh && !relayout) return;
+    // Die Stiefel weichen aus, wenn links der Tür etwas dazukommt oder verschwindet (Gießkanne, Festdeko): dann auch
+    // ohne neue Größe neu hinstellen. Der Takt (_tickSig) und die Schätze (_giftDress) fragen hier nach.
+    const boot = E.has('boots') ? this._sigBootSpot() : null;
+    const bootSig = boot ? `${boot.left.toFixed(1)}:${boot.top.toFixed(1)}:${boot.w.toFixed(1)}` : '';
+    const moved = bootSig !== (this._sigBootSig || '');
+    this._sigBootSig = bootSig;
+    if (!fresh && !relayout && !moved) return;
     // Plätze: Stiefel links neben der Tür am Boden, das andere hängt links oben am Türrahmen nebeneinander
     const { hole } = this._g;
     const H = this._H;
-    const size = { boots: 0.1, umbrella: 0.05, hat: 0.075, sunhat: 0.1 };
-    const ratio = { boots: 20 / 26, umbrella: 30 / 12, hat: 26 / 24, sunhat: 16 / 28 };
     let hx = hole.l - 0.01 * H;
     for (const k of ['boots', 'umbrella', 'hat', 'sunhat']) {
       const el = E.get(k);
       if (!el) continue;
-      const w = H * size[k];
-      const h = w * ratio[k];
+      let w = H * WEAR_W[k];
       let left;
       let top;
       if (k === 'boots') {
-        left = hole.l - w * 0.95;
-        top = hole.lip - h * 0.92;
+        ({ left, top, w } = boot);
       } else {
         hx -= w;
         left = hx;
@@ -276,6 +288,48 @@ export class Signale {
       }
       Object.assign(el.style, { width: `${w.toFixed(1)}px`, left: `${left.toFixed(1)}px`, top: `${top.toFixed(1)}px` });
     }
+  }
+
+  // Platz der Gummistiefel (px) → { left, top, w }. Stammplatz: links an der Tür auf der Schwelle (rechte Kante knapp
+  // im Türrahmen, Sohle auf hole.lip). Genau dort steht aber auch die Gießkanne aus den Päckchen (Mitte hole.l − 0,07 H,
+  // 0,085 H breit; die Stiefel reichen von hole.l − 0,095 H bis hole.l + 0,005 H) und im Advent der Geburtstagskuchen
+  // (Platz L in _festRender, bis hole.l − 0,145 H): Die Stiefel standen auf der Kanne.
+  // Steht dort schon etwas, rücken sie links daneben, mit 0,005 H Abstand zur linken Kante des am weitesten links
+  // stehenden Stücks, und stehen dann vor der Schwelle auf dem Boden (Sohle auf der Bodenlinie wie die Kanne). Rechts
+  // der Kanne ist kein Platz: Dort ist der Eingang, in dem der Pika schläft. Links davon ist es eng: Die Kanne beginnt
+  // bei hole.l − 0,1125 H, das sind an Felsbau, Geröllhalde und Baumstumpf 0,095 bis 0,114 H vom linken Rand (wenn der
+  // Bau nicht nach rechts rückt). Am Erdhügel sind es 0,146 H, aber gleich links der Kanne steht dort die Laterne: Ihr
+  // Fuß (WEAR_KEEP, Bau-Einheiten 14,6 bis 21,4, die Kanne beginnt bei 23,8) bleibt frei, die Stiefel stehen links
+  // von ihr unter der Lampe, wo bis zum Rand 0,07 bis 0,10 H bleiben.
+  // Passen die Stiefel (0,1 H) nicht ganz ins Bild (2 px Rand), werden sie wie die Festdeko bis auf 70 % kleiner;
+  // reicht auch das nicht (schmale Karte, auf der der Bau nicht nach rechts rückt), ragen sie lieber ein, zwei Pixel
+  // über den Bildrand, als etwas zu verdecken. An Baumstumpf, Felsbau und Geröllhalde stehen sie links der Kanne vor
+  // den kleinen Pilzen bzw. vor einem Stein des Baus: Dort ist links davon kein Platz mehr.
+  _sigBootSpot() {
+    const { hole, gy, bur } = this._g;
+    const H = this._H;
+    const w0 = H * WEAR_W.boots;
+    const r0 = hole.l + w0 * 0.05;
+    // Was links der Tür am Boden steht: [linke Kante, rechte Kante]. Die Kanne zählt, solange sie zur Szene gehört
+    // (_giftScene), auch während er mit ihr gießt (.away): Sonst sprängen die Stiefel hin und her.
+    const blocks = [];
+    if (this._gtEls?.has(6)) {
+      const x = this._giftX(6);
+      blocks.push([x - (H * CAN_W) / 2, x + (H * CAN_W) / 2]);
+    }
+    // Bodendeko mit festem Platz (wie in _boteLayout): Ostereier und Raketenstäbe sind verstreut und zählen nicht
+    for (const [n, p] of Object.entries(this._festPos || {})) if (!/^(egg|stick)/.test(n)) blocks.push([p.l, p.l + p.w]);
+    // … und was zum Bau gehört (am Stammplatz stört es nicht, erst wenn sie nach links rücken)
+    for (const [a, b] of WEAR_KEEP[this._arealKey] || []) blocks.push([bur.l + a * bur.u, bur.l + b * bur.u]);
+    let r = r0;
+    for (let i = 0; i < blocks.length; i++) {
+      const hit = blocks.filter(([a, b]) => a < r && b > r - w0);
+      if (!hit.length) break;
+      r = Math.min(...hit.map(([a]) => a)) - 0.005 * H;
+    }
+    if (r === r0) return { left: r0 - w0, top: hole.lip - w0 * BOOT_SOLE, w: w0 };
+    const w = clamp(r - 2, w0 * 0.7, w0);
+    return { left: r - w, top: gy + 1 - w * BOOT_SOLE, w };
   }
 
 

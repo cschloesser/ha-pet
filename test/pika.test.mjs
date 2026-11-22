@@ -4883,3 +4883,640 @@ test('Freunde: Grafiken wie Pinos (eigene ids, keine Rückansicht, keine kaputte
   const e = T.chronikBilanz([{ t: start + 1000, k: 'mem', b: 'rufus' }, { t: start + 2000, k: 'mem', b: 'pino' }], {}, start, start + 864e5, tag);
   assert.deepEqual([...e.besuch], ['pino', 'rufus']);
 });
+
+// ==================== 0.42.2 Urlaub: der verreiste Pika grüßt und schnarcht nicht, der Himmel folgt der Uhr ====================
+
+// Zeitgeber von Hand: Was die Karte in fn stellt, läuft erst mit lauf(ms), in der Reihenfolge der Fristen. Ein Fehler
+// in einem Zeitgeber kommt so im Test an (mit den echten wäre er eine unbehandelte Ausnahme irgendwann später). fn
+// läuft in einem Zug (kein await): Sonst stellten Zeitgeber früherer Tests ihre Nachfolger hier ein.
+const mitUhr = (fn) => {
+  const echt = [WELT.setTimeout, WELT.clearTimeout];
+  const Q = [];
+  let jetzt = 0;
+  WELT.setTimeout = (f, ms = 0) => {
+    const h = { f, um: jetzt + ms };
+    Q.push(h);
+    return h;
+  };
+  WELT.clearTimeout = (h) => {
+    const i = Q.indexOf(h);
+    if (i >= 0) Q.splice(i, 1);
+  };
+  const lauf = (ms) => {
+    const bis = jetzt + ms;
+    for (;;) {
+      const h = Q.filter((x) => x.um <= bis).sort((a, b) => a.um - b.um)[0];
+      if (!h) break;
+      Q.splice(Q.indexOf(h), 1);
+      jetzt = h.um;
+      h.f();
+    }
+    jetzt = bis;
+  };
+  try {
+    return fn(lauf);
+  } finally {
+    [WELT.setTimeout, WELT.clearTimeout] = echt;
+  }
+};
+
+// Eine Karte mitten im Urlaub, der Pika ist schon fort (mehr: anders). tut schreibt mit, was der Pika sagt oder
+// aussendet (Blase, Herzen, Zeichen, Freude, rote Bäckchen, Sprung); c.abbr zählt, wie oft die Schleife abgebrochen
+// wird, c.schlaeft stellt die Uhr auf Schlafenszeit. _el ist ein schlichtes Objekt: Die Attrappe von buehne() legte
+// Schild und Postkarte schon beim Nachsehen an.
+const ZUHAUSE = { _plan: {}, _fort: false, _action: 'read' };
+const urlaubKarte = (mehr = {}) => {
+  const c = Object.create(T.PikaPetCard.prototype);
+  const tut = [];
+  const el = { pika: new Att(), psay: new Att(), scene: new Att(), gifts: new Att(), fx: new Att(), feed: new Att(), ursign: null, urcard: null };
+  el.scene.getBoundingClientRect = () => ({ left: 0, top: 0, width: 600, height: 248 });
+  Object.assign(c, {
+    _cfg: { name: 'Pika' }, _el: el, _W: 600, _H: 248, _Hs: 248, _x: 300, _dir: 1, _lift: 0, _wx: {}, _foods: [],
+    _g: { home: 90, pW: 120, pH: 100, gy: 223, hole: { l: 60, r: 120, cx: 90, top: 150, lip: 215 } },
+    _plan: { ur: { t: Date.now() - 36e5, d: null } }, _fort: true, _running: true, _action: 'urlFort', _asleep: false, _inside: false,
+    abbr: 0, schlaeft: false, schatz: 0,
+    _sleepTime() { return this.schlaeft; },
+    _interrupt() { this.abbr++; },
+    _say: (t) => tut.push(`sagt ${t}`), _hearts: () => tut.push('Herzen'), _emote: () => tut.push('Zeichen'), _happy: () => tut.push('freut sich'),
+    _blush: () => tut.push('wird rot'), _jump: () => tut.push('springt'),
+    _pose() {}, _setX(x) { this._x = x; }, _face() {}, _giftScene() { this.schatz++; },
+    _light() {}, _place() {}, _starOcc() {}, _renderStats() {}, _hayFromPlan() {},
+  }, mehr);
+  return [c, tut];
+};
+const himmel = (c) => ['day', 'dusk', 'night'].filter((k) => c._el.scene.classList.contains(k)).join('+');
+// Die drei Lagen, in denen niemand da ist: schon fort; der Urlaub läuft, die Schleife hat ihn aber noch nicht
+// weggeschickt (frisch geladen, Karte war verdeckt); der Urlaub ist vorbei, er ist aber noch nicht wieder hereingehoppelt
+const FERN = [
+  ['fort', {}],
+  ['noch nicht weggeschickt', { _fort: false, _action: null }],
+  ['noch nicht zurück', { _plan: { ur: { t: Date.now() - 5 * 36e5, d: 4 * 36e5 } } }],
+];
+
+test('Urlaub im Stil: mit dem Pika ist auch seine Sprech-Ebene versteckt (Blasen, zzz, Zeichen) und der Plüsch-Pino in seinem Arm', () => {
+  const R = cssRegeln();
+  const weg = (d) => /visibility:\s*hidden/.test(d);
+  assert.ok(R.some(([sel, d]) => ['psay', 'fort'].every((k) => klassen(letzter(sel)).has(k)) && weg(d)), '.psay.fort bleibt zu sehen');
+  assert.ok(R.some(([sel, d]) => /\.pika\.fort\s*~/.test(sel) && klassen(letzter(sel)).has('held') && weg(d)), '.held bleibt zu sehen');
+  // Nichts in der Sprech-Ebene macht sich selbst wieder sichtbar (visibility: visible schlüge die Hülle)
+  for (const [sel, d] of R) {
+    if (['zzz', 'bubble', 'say', 'think', 'emo', 'anchor'].some((k) => klassen(letzter(sel)).has(k))) assert.doesNotMatch(d, /visibility:\s*visible/, sel);
+  }
+  // _urlaubWeg setzt die Klasse an beide (die Rückkehr nimmt sie beiden wieder, siehe unten)
+  const [c] = urlaubKarte({ _fort: false });
+  c._urlaubWeg();
+  assert.equal(c._fort, true);
+  assert.ok(c._el.pika.classList.contains('fort') && c._el.psay.classList.contains('fort'));
+});
+
+test('Urlaub: Wird die Karte sichtbar, grüßt der verreiste Pika nicht (kein „Hallöchen!“, kein Herz, kein verschlafenes „mh…?“)', () => {
+  mitUhr((lauf) => {
+    for (const [was, mehr] of FERN) {
+      // tagsüber: früher „beschäftigt“ (urlFort) → Gruß mit Herz über dem Schild
+      const [c, tut] = urlaubKarte({ ...mehr, _goneAt: Date.now() - 5 * 36e5 });
+      c._showReq();
+      lauf(3000);
+      assert.deepEqual(tut, [], `${was}, tags`);
+      assert.ok(!c._greetDue && !c._reunion, `${was}: Gruß vorgemerkt`);
+      // Die Abwesenheit des Betrachters endet trotzdem: Sonst gäbe es nach der Rückkehr ein großes Wiedersehen obendrauf
+      assert.equal(c._goneAt, null, was);
+      assert.equal(c.abbr, 0, was);
+      // nachts: früher blinzelte er verschlafen
+      const [n, ntut] = urlaubKarte({ ...mehr, _asleep: true, schlaeft: true });
+      n._showReq();
+      lauf(3000);
+      assert.deepEqual(ntut, [], `${was}, nachts`);
+      assert.ok(!n._el.pika.classList.contains('peek'), `${was}: blinzelt`);
+    }
+    // Der Urlaub beginnt in den 0,7 s, bevor er verschlafen blinzelt: dann auch nicht mehr
+    {
+      const [c, tut] = urlaubKarte({ ...ZUHAUSE, _asleep: true, schlaeft: true });
+      c._showReq();
+      c._fort = true;
+      lauf(3000);
+      assert.deepEqual(tut, []);
+    }
+    // Gegenprobe mit denselben Attrappen, zu Hause: Er grüßt, nachts blinzelt er
+    {
+      const [c, tut] = urlaubKarte(ZUHAUSE);
+      c._showReq();
+      lauf(3000);
+      assert.equal(tut.length, 2, tut.join());
+      assert.match(tut[0], /^sagt /);
+      assert.equal(tut[1], 'Herzen');
+      const [n, ntut] = urlaubKarte({ ...ZUHAUSE, _asleep: true, schlaeft: true });
+      n._showReq();
+      lauf(800);
+      assert.match(ntut.join(), /^sagt /);
+      assert.ok(n._el.pika.classList.contains('peek'));
+    }
+  });
+});
+
+test('Urlaub: Nach langer Pause wieder sichtbar legt die Karte keinen verreisten Pika schlafen, sie folgt nur still der Uhr', () => {
+  // Am Tag weggehoppelt (oder zu Hause wach), dann der Bildschirm aus; an geht er erst wieder zur Schlafenszeit
+  const sichtbar = (mehr) => {
+    const [c, tut] = urlaubKarte({
+      _attached: true, _away0: true, _hidAt: Date.now() - 60000, gezeigt: 0,
+      _planStaleArm() {}, _start() {}, _startCritters() {}, _hiddenFeatures() {}, _planeSnap() {}, _revealPending() { this.gezeigt++; },
+      _tick() { this._tickCore(); }, ...mehr,
+    });
+    if (c._fort) c._urlaubWeg();
+    assert.equal(c._asleep, false);
+    c.schlaeft = true;
+    c._visSync();
+    return [c, tut];
+  };
+  mitUhr((lauf) => {
+    const [c, tut] = sichtbar({});
+    lauf(3000);
+    assert.equal(c.gezeigt, 0, 'ein zurückgehaltenes Häufchen gehört einem Pika, der da ist');
+    assert.deepEqual(tut, []);
+    // Die Uhr gilt trotzdem (für Himmel, Geräte und Schätze), und die Sprech-Ebene bleibt versteckt: kein zzz über der Tür
+    assert.equal(c._asleep, true);
+    assert.ok(c._el.psay.classList.contains('fort'));
+    assert.equal(c.abbr, 0);
+    // Gegenprobe zu Hause: Er liegt gleich im Bett
+    const [h] = sichtbar(ZUHAUSE);
+    assert.equal(h.gezeigt, 1);
+    assert.ok(h._asleep && h._inside && h._el.pika.classList.contains('sleeping'));
+  });
+});
+
+test('Urlaub: Feuerwerk und Konfetti gehören der Welt, „Frohes Neues!“ und „Helau!“ dem Pika – verreist ruft er nichts', () => {
+  const neujahr = new Date(2027, 0, 1, 0, 2).getTime();
+  const elfter = new Date(2026, 10, 11, 11, 11, 30).getTime();
+  const fest = (mehr) => urlaubKarte({
+    _fest: { fireworks: true }, finale: 0, regen: 0, _festDark: () => false,
+    _festFinale() { this.finale++; }, _festConfettiRain() { this.regen++; }, ...mehr,
+  });
+  for (const [was, mehr] of FERN) {
+    // Neujahr: Das Finale steigt (einmal), der Pika wird nicht dazugeholt
+    const [c, tut] = fest({ ...mehr, _festNow: () => neujahr });
+    c._festMidnight();
+    c._festMidnight();
+    assert.equal(c.finale, 1, was);
+    assert.ok(!Object.hasOwn(c, '_step'), `${was}: Schritt eingeschoben`);
+    assert.equal(c.abbr, 0, was);
+    // 11.11., 11:11: kein „Helau!“, weder aus dem Bau noch als eingeschobene Aktion. Gemerkt wird nichts: Ist er
+    // bis 11:13 zurück, holt er es nach.
+    for (const drin of [true, false]) {
+      const [k, ktut] = fest({ ...mehr, _festNow: () => elfter, _inside: drin });
+      k._festHelau();
+      assert.deepEqual(ktut, [], was);
+      assert.ok(!Object.hasOwn(k, '_step'), was);
+      assert.equal(k._festKickY, undefined, was);
+    }
+    // auch nicht über den Knopf der Vorschau
+    c._festForce('festConfetti');
+    assert.ok(!Object.hasOwn(c, '_step'), was);
+    assert.deepEqual(tut, []);
+  }
+  // Gegenprobe zu Hause: Der Schritt wird eingeschoben, im Bau ruft er selbst
+  {
+    const [c] = fest({ ...ZUHAUSE, _festNow: () => neujahr });
+    c._festMidnight();
+    assert.equal(c.finale, 1);
+    assert.ok(Object.hasOwn(c, '_step'));
+    assert.equal(c.abbr, 1);
+    const [k, ktut] = fest({ ...ZUHAUSE, _festNow: () => elfter, _inside: true });
+    k._festHelau();
+    assert.deepEqual(ktut, ['sagt Helau!']);
+    assert.equal(k.regen, 1);
+    const [w] = fest({ ...ZUHAUSE, _festNow: () => elfter });
+    w._festHelau();
+    assert.ok(Object.hasOwn(w, '_step'));
+    assert.equal(w._festKickY, 2026);
+  }
+});
+
+test('Urlaub: Eine Blume, die noch im Gras liegt, lässt sich annehmen; der verreiste Pika freut sich nicht dazu', () => {
+  const blume = (mehr) => {
+    const [c, tut] = urlaubKarte({ ops: [], _found() {}, _add() {}, _planOp(op) { this.ops.push(op); }, ...mehr });
+    c._giftEl = Object.assign(new Att(), { _t: 4711, getBoundingClientRect: () => ({ left: 200, top: 200, width: 20, height: 20 }) });
+    c._el.fx.appendChild(c._giftEl);
+    return [c, tut, c._giftEl];
+  };
+  mitUhr((lauf) => {
+    for (const [was, mehr] of FERN) {
+      const [c, tut, el] = blume(mehr);
+      c._takeGift();
+      // angenommen ist sie (für alle Geräte), die Herzchen steigen von der Blume auf
+      assert.deepEqual(plain(c.ops), [{ t: 'ftake', ft: 4711 }], was);
+      assert.equal(c._el.fx.children.length, 4, was);
+      assert.deepEqual(tut, [], was);
+      lauf(3000);
+      assert.equal(el.parentElement, null, was);
+    }
+    const [c, tut] = blume(ZUHAUSE);
+    c._takeGift();
+    assert.deepEqual(tut.map((s) => s.replace(/^sagt .*/, 'sagt')), ['wird rot', 'freut sich', 'springt', 'sagt']);
+  });
+});
+
+test('Urlaub: Solange er weg ist, folgt _asleep still der Uhr – mittags ist Tag, auch wenn das Gerät bei der Abreise schlief', async () => {
+  // Das Gerät schlief, als der Urlaub begann (Bildschirm über Nacht aus): Die Schleife schickt ihn ohne Aufwachen weg
+  const [c, tut] = urlaubKarte({ _fort: false, _action: 'urlAbreise', _asleep: true, _inside: true, _elev: 35 });
+  c._el.pika.classList.add('sleeping');
+  await c._urlAbreise();
+  assert.equal(c._fort, true);
+  assert.equal(c._asleep, false, 'schläft den ganzen Urlaub');
+  assert.ok(!c._el.pika.classList.contains('sleeping'));
+  assert.equal(himmel(c), 'day', 'Abendlicht am Mittag');
+  assert.ok(c.schatz > 0, '.gifts.still nicht nachgezogen');
+  // Der Takt bricht das Warten nicht mehr alle 20 s ab, auch nicht am Abend und am Morgen: Er stellt nur um
+  c._action = 'urlFort';
+  c._tickCore();
+  assert.equal(c.abbr, 0);
+  Object.assign(c, { schlaeft: true, _elev: -20 });
+  c._tickCore();
+  assert.deepEqual([c._asleep, c._inside, himmel(c), c.abbr], [true, true, 'night', 0]);
+  assert.ok(c._el.pika.classList.contains('sleeping') && c._el.psay.classList.contains('fort'), 'zzz nur unter der versteckten Sprech-Ebene');
+  Object.assign(c, { schlaeft: false, _elev: 12 });
+  c._tickCore();
+  assert.deepEqual([c._asleep, c._inside, himmel(c), c.abbr], [false, false, 'day', 0]);
+  // ohne Sonnen-Entity richtet sich der Himmel nach der Schlafenszeit: tags Tag (früher den ganzen Urlaub Nacht)
+  Object.assign(c, { _elev: null, schlaeft: true });
+  c._tickCore();
+  assert.equal(himmel(c), 'night');
+  c.schlaeft = false;
+  c._tickCore();
+  assert.equal(himmel(c), 'day');
+  // Auch das Warten selbst stellt gleich um (die Schleife läuft nach einer Pause vor dem ersten Takt an)
+  Object.assign(c, { _asleep: true, _elev: 35 });
+  c._ac = new AbortController();
+  const p = c._urlFort();
+  assert.equal(c._asleep, false);
+  assert.equal(himmel(c), 'day');
+  c._ac.abort();
+  await assert.rejects(p);
+  assert.deepEqual(tut, [], 'beim Umstellen gähnt und piept niemand');
+  // Winkt er gerade zum Abschied, lässt ihn der Takt ausreden; zu Hause weckt bzw. bettet der Takt wie bisher
+  const [w] = urlaubKarte({ _fort: false, _action: 'urlAbreise', schlaeft: true });
+  w._tickCore();
+  assert.deepEqual([w.abbr, w._asleep], [0, false]);
+  const [h] = urlaubKarte({ ...ZUHAUSE, _action: 'idle', schlaeft: true });
+  h._tickCore();
+  assert.deepEqual([h.abbr, h._asleep], [1, false]);
+});
+
+test('Urlaub: Zurück liegt er nachts wieder im Bau, tagsüber hoppelt er herein – egal, wie die Uhr inzwischen stand', async () => {
+  const ende = { _plan: { ur: { t: Date.now() - 5 * 36e5, d: 5 * 36e5 - 1000 } }, _urlaubLauf: async () => {}, _wait: async () => {} };
+  // nachts, er war tagsüber weggehoppelt
+  {
+    const [c, tut] = urlaubKarte({ ...ende, schlaeft: true });
+    c._urlaubWeg();
+    assert.equal(c._urlaubNext(), 'urlHeim');
+    await c._urlHeim();
+    assert.deepEqual([c._fort, c._asleep, c._inside, c._x], [false, true, true, c._g.home]);
+    assert.ok(c._el.pika.classList.contains('sleeping'));
+    assert.ok(!c._el.pika.classList.contains('fort') && !c._el.psay.classList.contains('fort'));
+    assert.deepEqual(tut, []);
+    assert.equal(c._urlaubNext(), null);
+  }
+  // tags, über Nacht stand er auf „schläft im Bau“
+  {
+    const [c, tut] = urlaubKarte({ ...ende, schlaeft: true });
+    c._urlaubWeg();
+    assert.deepEqual([c._asleep, c._inside], [true, true]);
+    c.schlaeft = false;
+    await c._urlHeim();
+    assert.deepEqual([c._fort, c._asleep, c._inside], [false, false, false]);
+    assert.ok(!c._el.pika.classList.contains('sleeping') && !c._el.pika.classList.contains('fort') && !c._el.psay.classList.contains('fort'));
+    assert.ok(tut.includes('sagt Da bin ich wieder!') && tut.includes('Herzen'), tut.join());
+  }
+});
+
+test('Urlaub: Schild und Postkarte verschwinden nach dem Ausblenden wirklich aus der Szene, und das Schild antwortet bis dahin', () => {
+  mitUhr((lauf) => {
+    const [c] = urlaubKarte();
+    c._urlaubScene();
+    const schild = c._el.ursign;
+    assert.ok(schild && schild.parentElement === c._el.gifts && schild.classList.contains('in'));
+    lauf(800);
+    assert.ok(!schild.classList.contains('in'), 'die Karte sieht die Zeitgeber des Tests nicht');
+    // Der Futterknopf schüttelt „nein“, das Schild sagt, wo er ist (die Welt antwortet weiter)
+    schild.getBoundingClientRect = () => ({ left: 60, top: 150, width: 60, height: 30 });
+    c._onFeed();
+    assert.ok(c._el.feed.classList.contains('no') && schild.classList.contains('wig'));
+    assert.deepEqual(c._el.fx.children.map((k) => k.textContent), ['Bin bei Pino!']);
+    lauf(1100);
+    // Zurückgeholt: Das Schild blendet aus und ist nach 0,9 s weg, die Postkarte steckt an der Tür
+    c._plan = { ur: { t: Date.now() - 5 * 36e5, d: 5 * 36e5 - 1000 } };
+    c._urlaubScene();
+    assert.equal(c._el.ursign, null);
+    assert.ok(schild.classList.contains('out') && schild.parentElement === c._el.gifts);
+    const karte = c._el.urcard;
+    assert.ok(karte && karte.parentElement === c._el.gifts);
+    assert.doesNotThrow(() => lauf(900));
+    assert.equal(schild.parentElement, null, 'das ausgeblendete Schild bleibt im DOM');
+    assert.equal(karte.parentElement, c._el.gifts);
+    // Das Ende ist aus dem Plan (nach 24 Stunden, vclear): Die Postkarte blendet aus und ist dann ebenfalls weg
+    c._plan = {};
+    c._urlaubScene();
+    assert.equal(c._el.urcard, null);
+    assert.ok(karte.classList.contains('out'));
+    assert.doesNotThrow(() => lauf(900));
+    assert.equal(karte.parentElement, null, 'die ausgeblendete Postkarte bleibt im DOM');
+    // Ein neuer Urlaub hängt ein neues Schild auf
+    c._plan = { ur: { t: Date.now() - 1000, d: null } };
+    c._urlaubScene();
+    assert.ok(c._el.ursign && c._el.ursign !== schild);
+  });
+});
+
+// ---------- 0.42.2: Tonne an zwei Tagen hintereinander, Rufus' Brauen, Kirbys Arme, Sprechblasen der Freunde,
+// Gummistiefel neben der Gießkanne, Plüsch-Pino ----------
+
+test('Haus-Signale: Abholungen an zwei Tagen hintereinander, „steht draußen“ von gestern gilt nur für die Tonne, die gestern schon stand', () => {
+  const P = T.PikaPetCard.prototype;
+  const am = (tag, h, min = 0) => new Date(2026, 10, tag, h, min).getTime();
+  // Dienstag Bio, Mittwoch Gelber Sack, Donnerstag Restmüll, jeweils um 6 Uhr (der Kalender zeigt immer die nächste)
+  const kal = (name, tag) => ({ state: 'off', attributes: { message: name, start_time: `2026-11-${tag} 06:00:00` } });
+  const bio = kal('Biotonne', 24);
+  const gelb = kal('Gelber Sack', 25);
+  const rest = kal('Restmüll', 26);
+  // so fragt die Karte (_sigBin): Welche Tonne steht jetzt da?
+  const steht = (cal, plan, now) => P._sigBin.call({ _sigW: cal, _plan: plan, _urlaubOn: () => false, _haNow: () => now })?.kind ?? null;
+  const tu = (plan, op, now) => T.planApply(plan, { ...op, d: T.pikaDay(now) }, now);
+  const leer = T.planBlank(am(23, 12));
+  assert.equal(steht(bio, leer, am(23, 13)), null, 'vor 14 Uhr steht noch keine da');
+  assert.equal(steht(bio, leer, am(23, 15)), 'bio');
+  // Montagabend angetippt: steht draußen
+  const mo = tu(leer, { t: 'mem', b: T.MEM_TONNE }, am(23, 20));
+  assert.equal(steht(bio, mo, am(23, 20, 1)), null);
+  // Dienstag früh gestreichelt: Der neue Pika-Tag übernimmt das Bit (MEM_TONNE2), die Bio-Tonne bleibt weg
+  const di = tu(mo, { t: 'pet', n: 1 }, am(24, 5));
+  assert.equal(di.cute.m, T.MEM_TONNE2);
+  assert.equal(steht(bio, di, am(24, 5, 30)), null, 'dieselbe Tonne taucht am Morgen ihrer Abholung nicht wieder auf');
+  // Dienstag ab 14 Uhr steht die Tonne für Mittwoch da, und sie bleibt, was auch immer er heute erlebt
+  assert.equal(steht(gelb, di, am(24, 14, 30)), 'gelb', 'das übernommene Bit von gestern gilt nicht für die nächste Abholung');
+  assert.equal(steht(gelb, tu(di, { t: 'mem', b: 1 }, am(24, 15)), am(24, 15, 1)), 'gelb');
+  // auch wenn heute erst nach 14 Uhr zum ersten Mal gestreichelt wird (da wird cute mit MEM_TONNE2 neu geschrieben)
+  assert.equal(steht(gelb, mo, am(24, 14, 30)), 'gelb');
+  assert.equal(steht(gelb, tu(mo, { t: 'pet', n: 1 }, am(24, 16)), am(24, 16, 1)), 'gelb');
+  // Dienstagabend auch die gelbe rausgestellt: weg, und am Mittwochmorgen bleibt sie weg
+  const diAbend = tu(di, { t: 'mem', b: T.MEM_TONNE }, am(24, 18));
+  assert.equal(steht(gelb, diAbend, am(24, 18, 1)), null);
+  const mi = tu(diAbend, { t: 'pet', n: 1 }, am(25, 5));
+  assert.equal(mi.cute.m, T.MEM_TONNE2);
+  assert.equal(steht(gelb, mi, am(25, 5, 30)), null);
+  // … die dritte am Mittwochnachmittag steht wieder da
+  assert.equal(steht(rest, mi, am(25, 14, 30)), 'rest');
+  // dieselbe Regel in Zahlen: übernommen zählt nur, wenn die Tonne am Vortag schon stand
+  const d = T.pikaDay(am(24, 14));
+  const beide = T.MEM_TONNE | T.MEM_TONNE2;
+  assert.equal(T.binDone({ d, n: 0, m: T.MEM_TONNE2 }, d, d + 1, beide), false);
+  assert.equal(T.binDone({ d, n: 0, m: T.MEM_TONNE2 }, d - 1, d, beide), true);
+  assert.equal(T.binDone({ d, n: 0, m: T.MEM_TONNE }, d, d + 1, beide), true);
+  assert.equal(T.binDone({ d: d + 1, n: 0, m: T.MEM_TONNE2 }, d, d + 1, beide), true);
+  // der Plan sieht aus wie vorher (kein neues Feld, kein neues Bit)
+  assert.equal(T.planSer(T.planParse(T.planSer(mi))), T.planSer(mi));
+  assert.deepEqual([T.MEM_TONNE, T.MEM_TONNE2], [1 << 10, 1 << 11]);
+});
+
+// Teile einer Figur (die Blätter des SVG) mit allen Klassen von außen nach innen (kette) und einem Schlüssel aus Tag,
+// Klasse und Geometrie. Farben zählen nicht mit: Jeder Freund ist umgefärbt.
+const svgTeile = (svg) => {
+  const out = [];
+  const offen = [];
+  for (const [, zu, tag, attr, leer] of svg.matchAll(/<(\/)?([a-zA-Z]+)((?:"[^"]*"|[^>"])*?)(\/)?>/g)) {
+    if (zu) {
+      offen.pop();
+      continue;
+    }
+    const kl = (/\bclass="([^"]*)"/.exec(attr)?.[1] || '').split(/\s+/).filter(Boolean);
+    if (!leer) {
+      offen.push(kl);
+      continue;
+    }
+    const geo = ['d', 'cx', 'cy', 'rx', 'ry', 'r', 'x', 'y', 'width', 'height'].map((k) => new RegExp(`\\s${k}="([^"]*)"`).exec(attr)?.[1] ?? '').join('|');
+    out.push({ tag, kl, kette: [...offen.flat(), ...kl], key: `${tag}|${kl.join('.')}|${geo}` });
+  }
+  return out;
+};
+// Klassen, die das Stylesheet der Karte ohne jede Zustandsklasse ausblendet (.brow, .fear, .paws …)
+const grundAus = () => new Set(cssRegeln().filter(([s, d]) => /^\.[\w-]+$/.test(s) && /display:\s*none/.test(d)).map(([s]) => s.slice(1)));
+// Was es absichtlich nur zeitweise gibt, obwohl es eine eigene Zeichnung ist: Katzumis Freu- und Schlafaugen sitzen
+// wie ihre Augen weiter außen als beim Pika
+const FREUND_ZUSTAND = new Set(['seye', 'heye']);
+const FREUND_ART = () => ({ kirby: T.KIRBY_SVG, rufus: T.RUFUS_SVG, katzumi: T.KATZUMI_SVG });
+
+test('Freunde: kein eigenes Teil liegt in einer Klasse, die die Karte im Grundzustand ausblendet (Rufus’ Brauen)', () => {
+  const aus = grundAus();
+  for (const k of ['brow', 'mim', 'fear', 'paws', 'seye', 'heye']) assert.ok(aus.has(k), `.${k} ist im Grundzustand aus`);
+  // Pino ist der umgefärbte Pika: Was ein Freund darüber hinaus hat, ist seine eigene Zeichnung
+  const pika = new Set(svgTeile(T.FRIEND_SVG).map((t) => t.key));
+  for (const [name, svg] of Object.entries(FREUND_ART())) {
+    const eigen = svgTeile(svg).filter((t) => !pika.has(t.key));
+    assert.ok(eigen.length >= 10, `${name}: nur ${eigen.length} eigene Teile gefunden`);
+    const weg = eigen.filter((t) => t.kette.some((c) => aus.has(c) && !FREUND_ZUSTAND.has(c)));
+    assert.deepEqual(weg.map((t) => t.kette.join(' ')), [], `${name}: immer nötige Teile in einer ausgeblendeten Klasse`);
+  }
+  // Pinos Eigenes: Blesse und Halstuch
+  for (const k of ['blaze', 'bandana']) {
+    assert.ok(T.FRIEND_SVG.includes(`class="${k}"`), k);
+    assert.equal(aus.has(k), false, k);
+  }
+  // Rufus’ Fellbüschel über den Augen: eigene Klasse statt der Mimik-Brauen des Pikas, im Gesicht (sie wandern mit
+  // Blick und Kopf mit), und keine Regel blendet sie aus
+  const rb = svgTeile(T.RUFUS_SVG).filter((t) => t.kl.includes('rbrow'));
+  assert.deepEqual(rb.map((t) => t.kl.join(' ')), ['rbrow rbrow-l', 'rbrow rbrow-r']);
+  for (const t of rb) assert.ok(t.kette.includes('hd') && t.kette.includes('face'), 'Büschel sitzen im Gesicht');
+  assert.doesNotMatch(T.RUFUS_SVG, /class="brow/);
+  assert.equal(cssRegeln().some(([s, d]) => s.includes('.rbrow') && /display:\s*none/.test(d)), false);
+  assert.doesNotMatch(quell, /\.fri \.rbrow/);
+});
+
+test('Tagebuch: die Bilder der Freunde zeigen den Grundzustand, die Mimik-Brauen des Pikas sind aus, eigene Teile bleiben', () => {
+  const aus = grundAus();
+  // die Liste aus STYLE_DIARY (src/stil/tagebuch.js; T.STYLES enthält nur den Knopf des Tagebuchs)
+  const fri = new Set([...quell.matchAll(/\.fri \.([\w-]+)/g)].map((m) => m[1]));
+  assert.ok(fri.size >= 45, `nur ${fri.size} Klassen in der .fri-Liste gefunden`);
+  assert.ok(fri.has('brow') && fri.has('mim'), 'Brauen und Mund der Mimik');
+  const pika = new Set(svgTeile(T.FRIEND_SVG).map((t) => t.key));
+  for (const name of ['kirby', 'rufus', 'katzumi']) {
+    const svg = T.FRIEND_ICON[name];
+    assert.match(svg, /class="pk fri"/);
+    const P = svgTeile(svg);
+    // in der Karte im Grundzustand aus, im Tagebuch aber zu sehen?
+    const zuviel = new Set(P.filter((t) => !t.kette.some((c) => fri.has(c))).flatMap((t) => t.kette.filter((c) => aus.has(c))));
+    assert.deepEqual([...zuviel], [], `${name}: im Tagebuch zu sehen, in der Karte ausgeblendet`);
+    // … und umgekehrt: Seine eigene Zeichnung blendet .fri nicht aus
+    const fehlt = P.filter((t) => !pika.has(t.key) && t.kette.some((c) => fri.has(c) && !FREUND_ZUSTAND.has(c)));
+    assert.deepEqual(fehlt.map((t) => t.kette.join(' ')), [], `${name}: eigene Teile im Tagebuch ausgeblendet`);
+  }
+  assert.ok(svgTeile(T.FRIEND_ICON.rufus).some((t) => t.kl.includes('rbrow')), 'Rufus’ Fellbüschel');
+});
+
+test('Freunde: Kirby hat nie vier Arme, beim Putzen verschwinden die Stummelärmchen', () => {
+  assert.equal((T.KIRBY_SVG.match(/class="karm"/g) || []).length, 2);
+  const R = cssRegeln();
+  const an = (d) => /display:\s*inline/.test(d);
+  const weg = (d) => /display:\s*none/.test(d);
+  // im Grundzustand sind sie da
+  assert.equal(grundAus().has('karm'), false);
+  // Haltungen, die ein Freund bekommt (FRIEND_CLS), und Pfoten der Pika-Grafik, die eine Haltung vor den Körper holt.
+  // Regeln mit .pika gelten für die Freunde nicht (.friends liegt neben .pika).
+  const haltungen = quell.match(/const FRIEND_CLS = \[([^\]]*)\]/)[1].match(/[\w-]+/g);
+  assert.ok(haltungen.includes('groom') && haltungen.includes('eating') && haltungen.includes('calling'));
+  const PFOTEN = ['paws', 'arms', 'epaws', 'wpaw', 'kpaw', 'sleg'];
+  const mit = haltungen.filter((h) => R.some(([s, d]) => an(d) && !s.includes('.pika') && klassen(s).has(h)
+    && PFOTEN.some((p) => klassen(letzter(s)).has(p))));
+  assert.deepEqual(mit, ['groom'], 'nur das Putzen holt bei den Freunden Pfoten hervor');
+  for (const h of mit) {
+    assert.ok(R.some(([s, d]) => weg(d) && klassen(s).has(h) && letzter(s) === '.karm'), `.${h}: Ärmchen und Pfoten zugleich zu sehen`);
+  }
+});
+
+test('Sprechblasen: die Freunde sprechen mindestens in 10 px, die Blase des Pikas bleibt, wie sie war; auch Piepser haben eine Untergrenze', () => {
+  const R = cssRegeln();
+  const schrift = (sel) => {
+    const r = R.filter(([s]) => s === sel);
+    assert.equal(r.length, 1, `genau eine Regel ${sel}`);
+    return /font-size:\s*([^;]+);/.exec(r[0][1])[1].trim();
+  };
+  // der Pika: unverändert
+  assert.equal(schrift('.bubble'), 'calc(var(--ph) * .15)');
+  // die Freunde: dieselbe Rechnung (ihr --ph ist ihre eigene Größe) mit Untergrenze, und die Regel schlägt .bubble
+  const m = /^max\((\d+)px, calc\(var\(--ph\) \* \.15\)\)$/.exec(schrift('.frsay .bubble'));
+  assert.ok(m, schrift('.frsay .bubble'));
+  const unten = Number(m[1]);
+  assert.equal(unten, 10);
+  assert.ok(spezifitaet('.frsay .bubble') > spezifitaet('.bubble'));
+  // Innenabstand in em: Die Blase wächst mit der Schrift. Die Spitze ist in px und hängt nicht an der Schrift.
+  assert.match(R.find(([s]) => s === '.bubble')[1], /padding:\s*\.15em \.6em/);
+  assert.match(R.find(([s]) => s === '.say::after')[1], /border:\s*5px solid transparent/);
+  // Standardhöhe 180 (Pika 72 px hoch) und 600 × 248: jeder Freund ist lesbar, wer groß genug ist, bleibt wie bisher
+  for (const [Hs, gleich] of [[180, []], [248, ['pino', 'kirby', 'rufus']]]) {
+    const pH = buehne(600, Hs)._g.pH;
+    assert.ok(Math.abs(pH - Hs * 0.4) < 1e-9);
+    for (const k of T.FRIEND_KEYS) {
+      const roh = pH * T.FRIENDS[k].scale * 0.15;
+      const px = Math.max(unten, roh);
+      assert.ok(px >= 10, `${k} bei ${Hs}: ${px} px`);
+      assert.ok(px <= pH * 0.15 + 1e-9 || pH * 0.15 < unten, `${k} bei ${Hs}: größer als der Pika`);
+      if (gleich.includes(k)) assert.equal(px, roh, `${k} bei ${Hs}: unverändert`);
+    }
+  }
+  assert.ok(buehne(600, 180)._g.pH * T.FRIENDS.katzumi.scale * 0.15 < 6, 'Katzumi spräche ohne Untergrenze in unter 6 px');
+  // Piepser (Maus, Glöckchen, „Bin bei Pino!“): H × 0,05 sind bei Standardhöhe 9 px
+  assert.match(schrift('.squeak'), /^max\(10px, calc\(var\(--H\) \* \.05\)\)$/);
+});
+
+test('Haus-Signale: Gummistiefel stehen neben der Gießkanne, nicht auf ihr (und weichen Laterne und Festdeko links der Tür)', () => {
+  const zahl = (re, d) => Number(re.exec(d)[1]);
+  // Fuß der Laterne am Erdhügel, aus der Grafik gelesen (Bau-Einheiten von bis): Den verdecken die Stiefel nicht
+  const fuss = /<path d="M([\d.]+) 57 Q[\d. ]+Q[\d. ]+ ([\d.]+) 57Z" fill="#9aa0a6"/.exec(T.AREALE.huegel.svg).slice(1).map(Number);
+  assert.deepEqual(fuss, [14.6, 21.4]);
+  // Breite der Gießkanne aus dem Stil (.gt-can), ihre Mitte aus _giftX: so stellt _giftScene sie hin
+  const canCss = cssRegeln().find(([s]) => s === '.gt-can')[1];
+  const CAN_W = zahl(/width:\s*calc\(var\(--H\) \* (\.\d+)\)/, canCss);
+  assert.equal(zahl(/margin-left:\s*calc\(var\(--H\) \* -(\.\d+)\)/, canCss), CAN_W / 2);
+  const regen = [{ datetime: new Date(2026, 10, 24, 9).toISOString(), precipitation: 1, temperature: 9 }];
+  const karte = (W, Hs, areal) => {
+    const c = buehne(W, Hs, areal);
+    Object.assign(c, {
+      _cfg: { signals: { wardrobe: true }, weather_entity: 'weather.zuhause' }, _dbgForecast: regen, _plan: null,
+      _haNow: () => new Date(2026, 10, 24, 7, 30).getTime(), _urlaubOn: () => false,
+    });
+    return c;
+  };
+  const kiste = (c) => {
+    const s = c._sigWearEls.get('boots').style;
+    const [l, t, w] = [s.left, s.top, s.width].map(parseFloat);
+    return { l, r: l + w, t, b: t + (w * 20) / 26, w };
+  };
+  const kanne = (c) => {
+    const w = c._H * CAN_W;
+    const x = c._giftX(6);
+    return { l: x - w / 2, r: x + w / 2, t: c._g.gy + 3 - w, b: c._g.gy + 3, w };
+  };
+  const ueber = (a, b) => Math.min(a.r, b.r) - Math.max(a.l, b.l) > 0.05 && Math.min(a.b, b.b) - Math.max(a.t, b.t) > 0.05;
+  let geprueft = 0;
+  for (const areal of Object.keys(T.AREALE)) {
+    // 300 × 184: so schmal, dass der Bau nicht nach rechts rückt (links ist am wenigsten Platz)
+    for (const [W, Hs] of [[600, 248], [380, 184], [300, 184], ...GROESSEN]) {
+      const c = karte(W, Hs, areal);
+      const { hole, gy } = c._g;
+      const H = c._H;
+      const wo = `${areal} ${W}×${Hs}`;
+      // ohne Gießkanne: Stammplatz links neben der Tür auf der Schwelle, wie bisher
+      c._sigWearSync();
+      let B = kiste(c);
+      assert.ok(Math.abs(B.l - (hole.l - H * 0.095)) < 0.06 && Math.abs(B.w - H * 0.1) < 0.06, `${wo}: Stammplatz`);
+      assert.ok(Math.abs(B.t - (hole.lip - ((H * 0.1 * 20) / 26) * 0.92)) < 0.06, `${wo}: auf der Schwelle`);
+      // die Gießkanne kommt dazu (ausgepackt): Beim nächsten Abgleich rücken die Stiefel von selbst
+      c._gtEls = new Map([[6, new Att()]]);
+      const K = kanne(c);
+      assert.ok(ueber(B, K), `${wo}: am Stammplatz stünden sie auf der Kanne`);
+      c._sigWearSync();
+      B = kiste(c);
+      assert.equal(ueber(B, K), false, `${wo}: Stiefel ${JSON.stringify(B)} auf der Kanne ${JSON.stringify(K)}`);
+      assert.ok(B.r <= K.l + 0.05, `${wo}: links neben der Kanne`);
+      // dicht daneben; am Erdhügel steht dazwischen die Laterne, dann links von ihrem Fuß
+      const { bur } = c._g;
+      const L = areal === 'huegel' ? { l: bur.l + fuss[0] * bur.u, r: bur.l + fuss[1] * bur.u } : null;
+      if (L) assert.ok(L.r < K.l && B.r <= L.l + 0.05, `${wo}: Stiefel ${JSON.stringify(B)} vor dem Laternenfuß ${JSON.stringify(L)}`);
+      assert.ok((L || K).l - B.r < H * 0.02, `${wo}: dicht daneben`);
+      // am Boden wie die Kanne, höchstens auf 70 % verkleinert, und (fast) ganz im Bild
+      assert.ok(Math.abs(B.t + B.w * (18.4 / 26) - (gy + 1)) < 0.06, `${wo}: Sohle auf der Bodenlinie`);
+      assert.ok(B.w >= H * 0.07 - 0.06 && B.w <= H * 0.1 + 0.06, `${wo}: Breite ${B.w}`);
+      assert.ok(B.l >= -0.1 * B.w, `${wo}: ragt links aus dem Bild (${B.l})`);
+      // 600 × 248 und 380 × 184 (der Bau rückt nach rechts): am Erdhügel etwas kleiner, überall ganz im Bild
+      if ((W === 600 && Hs === 248) || (W === 380 && Hs === 184)) {
+        assert.ok(B.l >= 2 - 0.06, `${wo}: ganz im Bild (${B.l})`);
+        assert.ok(B.w > H * (areal === 'huegel' ? 0.075 : 0.095), `${wo}: Breite ${B.w}`);
+      }
+      // Festdeko links der Tür (der Kuchen im Advent, Platz L): links von Kanne und Kuchen, nie auf einem von beiden
+      const kw = H * 0.14;
+      const kuchen = { l: hole.l - H * 0.145, r: hole.l - H * 0.145 + kw, t: gy + 1 - kw, b: gy + 1 };
+      c._festPos = { cake: { x: kuchen.l + kw / 2, l: kuchen.l, top: kuchen.t, w: kw, h: kw }, egg0: { x: 5, l: 0, top: gy - 5, w: 10, h: 10 } };
+      c._sigWearSync();
+      B = kiste(c);
+      assert.equal(ueber(B, K) || ueber(B, kuchen), false, `${wo}: Stiefel auf Kanne oder Kuchen`);
+      assert.ok(B.r <= kuchen.l + 0.05, `${wo}: links neben dem Kuchen`);
+      // Deko rechts der Tür stört nicht, und ohne Kanne und Kuchen stehen sie wieder am Stammplatz
+      c._festPos = { wreath: { x: hole.r + H * 0.1, l: hole.r, top: gy - H * 0.2, w: H * 0.2, h: H * 0.2 } };
+      c._gtEls = new Map();
+      c._sigWearSync();
+      B = kiste(c);
+      assert.ok(Math.abs(B.l - (hole.l - H * 0.095)) < 0.06 && Math.abs(B.w - H * 0.1) < 0.06, `${wo}: zurück am Stammplatz`);
+      geprueft++;
+    }
+  }
+  assert.equal(geprueft, 4 * 8);
+  // Die Schätze melden sich, wenn sich ihre Szene ändert (_giftScene endet mit _giftDress): nicht erst der nächste Takt
+  const c = karte(600, 248, 'huegel');
+  c._sigWearSync();
+  c._gtEls = new Map([[6, new Att()]]);
+  c._giftDress([]);
+  assert.equal(ueber(kiste(c), kanne(c)), false, 'nach _giftDress stehen die Stiefel neben der Kanne');
+});
+
+test('Plüsch-Pino heißt Pino (friend_name), auch wenn zuletzt Kirby, Rufus oder Katzumi zu Besuch war', async () => {
+  const P = T.PikaPetCard.prototype;
+  const gesagt = [];
+  const c = Object.create(P);
+  Object.assign(c, {
+    _cfg: { friend: true, friend_name: 'Momo' }, _frWho: 'Katzumi', _action: 'giftPlush', _W: 600, _x: 100, _plushX: null,
+    _g: { hole: { cx: 150 }, pW: 100, gy: 220, fMin: 0.4, fMax: 0.8 }, _el: { pika: new Att() }, _gtEls: new Map(),
+    _walkTo: async () => {}, _wait: async () => {}, _face() {}, _say: (t) => gesagt.push(t), _giftScene() {}, _puff() {}, _blush() {}, _happy() {},
+  });
+  // der zuletzt gekommene Gast heißt weiter Katzumi (für Begrüßung und Abschied)
+  assert.equal(c._frGuest(), 'Katzumi');
+  const zufall = Math.random;
+  Math.random = () => 0; // pick nimmt den ersten Spruch
+  try {
+    await c._giftPlush(10);
+  } finally {
+    Math.random = zufall;
+  }
+  assert.equal(gesagt[0], 'komm, Momo!');
+  assert.equal(gesagt.some((t) => /Katzumi/.test(t)), false);
+  // _frGuest (der letzte Gast) nur noch dort, wo der Besuch selbst gemeint ist: Begrüßung und Abschied
+  const stellen = [...quell.matchAll(/[^\n]*this\._frGuest\(\)[^\n]*/g)].map((m) => m[0].trim());
+  assert.equal(stellen.length, 2, stellen.join('\n'));
+  assert.match(stellen[0], /_say\(`\$\{this\._frGuest\(\)\}!`/);
+  assert.match(stellen[1], /_say\(`tschüss, \$\{this\._frGuest\(\)\}!`/);
+});

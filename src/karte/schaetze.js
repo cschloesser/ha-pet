@@ -300,6 +300,9 @@ export class Schaetze {
     p.classList.toggle('g-shd', lv[3] >= 3);
     p.classList.toggle('g-scp', lv[4] >= 3);
     p.classList.toggle('g-can', lv[6] >= 3);
+    // _giftScene endet hier: Steht die Gießkanne jetzt neben der Tür (oder nicht mehr), rücken die Gummistiefel der
+    // Garderobe gleich zur Seite bzw. zurück (_sigBootSpot), nicht erst beim nächsten Takt
+    this._sigWearSync();
   }
 
   // Trick des Windrads: bei wenig Wind hinhoppeln und es anpusten, dann dreht es sich kurz ganz schnell
@@ -353,7 +356,8 @@ export class Schaetze {
         await this._walkTo(hole.cx + pW * 0.15, 1);
         this._face(-1);
         await this._wait(500);
-        this._say(pick([`komm, ${this._frGuest()}!`, 'hab dich!']), 1200);
+        // Der Plüsch-Pino heißt wie Pino (friend_name), nicht wie der Gast, der zuletzt da war (_frGuest)
+        this._say(pick([`komm, ${this._frName()}!`, 'hab dich!']), 1200);
         await this._wait(900);
         // mit ihm hinaus auf die Wiese
         const { fMin, fMax } = this._g;

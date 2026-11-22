@@ -154,6 +154,8 @@ const K = {
   nose: '#3b2218', foot: '#8e5726', ear: '#e4bf85', earIn: '#f2dcb4',
 };
 const K_BODY = fluff(77, 56, 39, 35.5, 42, 2.5, 7);
+// Stummelärmchen links und rechts am Körper, immer zu sehen. Nur beim Putzen (.groom holt die Pfoten ans Gesicht)
+// blendet STYLE_FRIEND sie aus, sonst hätte er vier Arme.
 const K_ARM = (cx, cy, seed) => `<path class="karm" d="${fluff(cx, cy, 5, 6.2, 10, 1.5, seed)}"
         fill="url(#fur3)" stroke="${OUT}" stroke-width="1.5" stroke-linejoin="round"/>`;
 // Halbkreis-Ohr aus hellerem Fell; liegt hinter dem Körper, die untere Hälfte verschwindet darin
@@ -194,7 +196,10 @@ const R_EAR = (cx, cy, rot, side) => `
       <ellipse cx="${cx}" cy="${cy + 2.4}" rx="3.4" ry="4.6" fill="${R.earIn}"/>
     </g></g>`;
 const R_FOOT = (cls, cx, cy, rx, ry, seed) => `<path class="${cls}" d="${fluff(cx, cy, rx, ry, 12, 1.3, seed)}"/>`;
-const R_BROW = (side, d) => `<path class="brow brow-${side}" d="${d}" stroke="${R.brow}" stroke-width="1.2" fill="none"
+// Fellbüschel über den Augen, an der Stelle von Pikas Mimik-Brauen im Gesicht (.face: wandern mit Blick und Kopf mit).
+// Eigene Klasse rbrow: .brow ist außer bei einer Mimik ausgeblendet (szene.js), und die bekommt nur der Pika. Die
+// Büschel sollen immer zu sehen sein (derselbe Fehler wie bei den Ohren in .fear, 0.42.1).
+const R_BROW = (side, d) => `<path class="rbrow rbrow-${side}" d="${d}" stroke="${R.brow}" stroke-width="1.2" fill="none"
           stroke-linecap="round" stroke-linejoin="round"/>`;
 const RUFUS_SVG = body(derive(4, R), 4, R_BODY, '2.1')
   .replace(BELLY, furMarks(60, 62, 52, 33, 150, 9, 0.95, (x, y) => ((x - 91) / 14) ** 2 + ((y - 51) / 11) ** 2 < 1, wave,

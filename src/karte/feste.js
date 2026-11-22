@@ -95,7 +95,8 @@ export class Feste {
   }
 
   // Mitternacht an Neujahr: Finale, und der Pika wacht auf und schaut aus dem Bau. Nur sichtbar: sonst liefe es
-  // ungesehen ab, und wer den Bildschirm um 0:03 einschaltet, bekäme keins mehr (bis 0:05 holt der Takt es nach)
+  // ungesehen ab, und wer den Bildschirm um 0:03 einschaltet, bekäme keins mehr (bis 0:05 holt der Takt es nach).
+  // Ist er verreist, steigt das Finale trotzdem (es gehört der Welt), nur schaut keiner aus dem Bau (_festForce).
   _festMidnight() {
     const d = new Date(this._festNow());
     if (!this._fest?.fireworks || this._away() || !this._g || this._festMidY === d.getFullYear()
@@ -106,12 +107,13 @@ export class Feste {
   }
 
   // 11. 11. um 11:11: Auftakt der Karnevalszeit, einmal kurz Konfetti und „Helau!“, wenn er wach, es hell und
-  // trocken ist (bis 11:13 holt der Takt es nach)
+  // trocken ist (bis 11:13 holt der Takt es nach). Verreist wie im Schlaf: Den Auftakt ruft er selbst, ohne ihn gibt
+  // es keinen (gemerkt wird dann nichts; ist er bis 11:13 zurück, holt er ihn nach).
   _festHelau() {
     const d = new Date(this._festNow());
     if (this._cfg?.festive === false || this._away() || !this._g || this._festKickY === d.getFullYear()
       || d.getMonth() !== 10 || d.getDate() !== 11 || d.getHours() !== 11 || d.getMinutes() < 11 || d.getMinutes() >= 14) return;
-    if (this._asleep || this._festDark() || this._wx.wet || this._wx.shelter) return;
+    if (this._asleep || this._urlaubFern() || this._festDark() || this._wx.wet || this._wx.shelter) return;
     this._festKickY = d.getFullYear();
     if (this._inside || this._lift > 0) {
       this._festConfettiRain();
@@ -631,9 +633,11 @@ export class Feste {
     }
   }
 
-  // Erzwingt einmal eine Aktion, auch wenn er schläft: der nächste Schritt der Lebensschleife ist diese Aktion
+  // Erzwingt einmal eine Aktion, auch wenn er schläft: der nächste Schritt der Lebensschleife ist diese Aktion.
+  // Nicht, wenn er verreist ist: Der eingeschobene Schritt ginge an der Urlaubs-Weiche in _step vorbei, und ein
+  // unsichtbarer Pika riefe „Frohes Neues!“ oder „Helau!“ über dem Schild an der Tür.
   _festForce(name) {
-    if (!this._g) return;
+    if (!this._g || this._urlaubFern()) return;
     this._step = () => {
       delete this._step;
       this._planWaiting = false; // wie in _step: Dieser Schritt wartet nicht auf den Plan

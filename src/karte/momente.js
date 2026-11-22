@@ -384,7 +384,9 @@ export class Momente {
     el.classList.add('take');
     setTimeout(() => el.remove(), 950);
     this._add('g', GAIN.pet);
-    if (this._asleep) return;
+    // Schläft er oder ist er verreist (die Blume lag schon vor der Abreise da), freut sich niemand dazu: Angenommen ist
+    // sie, die Herzchen steigen von der Blume auf
+    if (this._asleep || this._urlaubFern()) return;
     this._blush(2500);
     this._happy(1400);
     if (!this._el.pika.classList.contains('walking')) this._jump('binky');

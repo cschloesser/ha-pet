@@ -5,6 +5,11 @@ import { LICHT_P } from '../logik/buehne.js';
 const STYLE_URLAUB = `
   /* Verreist: nicht zu sehen (Tippen geht durch, er ist ja nicht da) */
   .pika.fort { visibility: hidden; }
+  /* Mit ihm seine Sprech-Ebene: Sie ist ein Geschwister des Pikas (über dem Wetter), sein visibility erreicht sie nicht.
+     Ohne die Regel schwebten nachts „z z“ über der Tür (.pika.sleeping ~ .psay .zzz), und was er noch sagt (Schreck beim
+     Blitz), stünde über dem Schild. Ebenso der Plüsch-Pino, der nachts in seinem Arm liegt (.held): Er läge allein im
+     Eingang. */
+  .psay.fort, .pika.fort ~ .held { visibility: hidden; }
   .ursign, .urcard { position: absolute; pointer-events: none; }
   .ursign { transform-origin: 50% 4%; animation: ursw 5s ease-in-out infinite; }
   .ursign.in { animation: urin .7s cubic-bezier(.3, 1.5, .5, 1), ursw 5s ease-in-out .7s infinite; }

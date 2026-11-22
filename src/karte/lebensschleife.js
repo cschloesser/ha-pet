@@ -59,7 +59,8 @@ export class Lebensschleife {
     this._blindFirst = false;
     // Über die Pause wurde es Schlafenszeit (Bildschirm abends aus, nachts an): Er liegt längst im Bett, statt jetzt erst
     // hinzulaufen. Das Aufwachen am Morgen spielt dagegen die Schleife (_wakeUp), danach begrüßt er (_showReq).
-    if (long && this._g && !this._asleep && this._sleepTime()) {
+    // Ist er verreist, liegt niemand im Bett: _asleep folgt dann still der Uhr (_urlaubSchlaf, gleich im Takt unten).
+    if (long && this._g && !this._fort && !this._asleep && this._sleepTime()) {
       if (this._next === 'poop') this._next = null;
       this._revealPending();
       this._sleepNow(true);
@@ -407,7 +408,11 @@ export class Lebensschleife {
     if (this._plan) this._hayFromPlan();
     // Frischer Kaffee hält ihn kurz wach (er trinkt aus und schläft dann weiter). Ein Päckchen packt er noch fertig
     // aus (sonst verschwände der Inhalt ohne Vorführung), danach geht er von selbst schlafen (_step).
-    if (this._sleepTime() !== this._asleep && !['goSleep', 'wakeUp', 'coffee', 'giftOpen'].includes(this._action)) {
+    // Verreist gibt es nichts zu wecken oder zu betten: _step wählte doch wieder nur das Warten (urlFort), der Takt
+    // bräche es alle 20 s ab. Stattdessen stellt er _asleep still nach der Uhr. Den Abschied (urlAbreise) lässt er
+    // ausreden, danach ist er ohnehin fort.
+    if (this._fort) this._urlaubSchlaf();
+    else if (this._sleepTime() !== this._asleep && !['goSleep', 'wakeUp', 'coffee', 'giftOpen', 'urlAbreise'].includes(this._action)) {
       this._interrupt();
     }
     if (this._wxDeadAt > 0 && Date.now() - this._wxDeadAt >= WX_HOLD) this._readWeather(this._lastWeather, this._lastPrecip);

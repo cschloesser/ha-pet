@@ -18,6 +18,14 @@ const STYLE_FRIEND = `
     position: absolute; left: 0; top: calc(var(--gy) - var(--ph) * .945); width: var(--pw); height: var(--ph);
     z-index: var(--z-talk); pointer-events: none; transform-origin: 50% 94.5%;
   }
+  /* Schrift der Blase: --ph ist an .friends die Größe des Freunds (Katzumi 0,5 vom Pika), ohne Untergrenze spräche
+     sie bei Standardhöhe in 5,4 px und Rufus in 7,6 px. Der Innenabstand ist in em und wächst mit, die Spitze
+     (.say::after) ist in px und hängt nicht an der Schrift. Die Blase des Pikas (.bubble in STYLE) bleibt, wie sie ist. */
+  .frsay .bubble { font-size: max(10px, calc(var(--ph) * .15)); }
+  /* Kirbys Stummelärmchen (.karm, grafik/freunde.js) sind sonst immer zu sehen. Beim Putzen kommen die Pfoten ans
+     Gesicht (.groom .paws in STYLE): Dann sind die Ärmchen dort, sonst hätte er vier. Putzen ist die einzige Haltung
+     der Freunde (FRIEND_CLS), die Pfoten hervorholt. */
+  .friend.groom .karm { display: none; }
   /* Hintere Spur: wie beim Pika Schatten etwas blasser, tagsüber ein Hauch Dunst. Die Ebene setzt _frZ (Bühne). */
   .friend.lane1 .shadow { opacity: .75; }
   .friend .br { transition: filter 1s; }

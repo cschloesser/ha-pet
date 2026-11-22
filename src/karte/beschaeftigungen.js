@@ -110,6 +110,13 @@ export class Beschaeftigungen {
     // Über 3 Stunden nicht zu sehen (Tab im Hintergrund, Bildschirm aus): großes Wiedersehen
     this._reunion = !!this._goneAt && now - this._goneAt > 3 * 36e5;
     this._goneAt = null;
+    // Verreist: Es ist niemand da, der grüßen oder verschlafen blinzeln könnte (sonst riefe er „Hallöchen!“ mit Herz
+    // über dem Schild an der Tür). Gesehen ist die Karte trotzdem, darum erst hier: Bliebe _goneAt stehen, gäbe es
+    // nach der Rückkehr zum „Da bin ich wieder!“ beim nächsten Hinschauen noch ein großes Wiedersehen.
+    if (this._urlaubFern()) {
+      this._reunion = this._greetDue = false;
+      return;
+    }
     // Es zählt, ob jetzt Schlafenszeit ist: _asleep ist nach einer Pause veraltet (Bildschirm nachts aus, morgens an).
     // Dann wacht er gleich auf (_step), und die Begrüßung bzw. das Wiedersehen kommt danach.
     if (this._g ? this._sleepTime() : this._asleep) return this._asleep ? this._sleepyHello() : undefined;
@@ -123,14 +130,16 @@ export class Beschaeftigungen {
       this._greetDue = false;
       const big = this._reunion;
       this._reunion = false;
-      setTimeout(() => this._action && !this._asleep && (this._say(pick(ACT_GREET), 1500), this._hearts(big ? 3 : 1)), 500);
+      // (in der halben Sekunde verreist: dann grüßt auch keiner mehr)
+      setTimeout(() => this._action && !this._asleep && !this._fort && (this._say(pick(ACT_GREET), 1500), this._hearts(big ? 3 : 1)), 500);
     }
   }
 
   _sleepyHello() {
     const p = this._el.pika;
     setTimeout(() => {
-      if (!this._asleep) return;
+      // Verreist (auch erst seit eben): Im Bau liegt keiner, der ein Auge aufmachen könnte
+      if (!this._asleep || this._urlaubFern()) return;
       p.classList.add('peek');
       this._say(pick(['mh…?', '*gähn*', 'zzz… hallo']), 1700);
       clearTimeout(this._peekT);

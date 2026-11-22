@@ -2,6 +2,24 @@
 
 Jede Version der Pika Pet Card, die neueste zuerst.
 
+## 0.42.2 (2026-11-22)
+
+Zehn Fehler aus dem Audit vom 22.11.: Der Tagesplan geht nicht mehr verloren, der Urlaub ist still, die Freunde sind vollständig.
+
+- **Tagesplan überschreibt nichts mehr von einem veralteten Stand aus:** Eine Karte schreibt den Plan nicht, solange sie nicht sicher weiß, was im Helfer steht: abgehängt (andere Ansicht, im Hintergrund weggeräumtes Panel), getrennt (auch wenn ihr letztes hass-Objekt noch „verbunden“ sagt) oder nach dem Wiederverbinden noch ohne frische Zustände (`_planBlind`). Ihre Änderungen warten und kommen auf den frischen Stand. Bisher sendete eine abgehängte Karte ohne Echo ihren alten Plan bis zu 30 Minuten lang alle 15,4 s neu, und ein Gerät, das aus dem Hintergrund zurückkam, schrieb seinen Stunden alten Plan, bevor der neue da war: Ausgepackte Päckchen, Album, Streicheln und Erlebnisse der Zwischenzeit waren weg (so am 21.11. im Verlauf des Helfers zu sehen: Streichelzähler von 23 auf 15, Kirbys Besuch vergessen).
+- **Was nur wächst, fällt nicht zurück:** Schreibt doch ein Gerät von einem veralteten Stand aus (etwa noch mit 0.42.1), behalten die anderen Streichelzähler und Erlebnisse des Tages und, wenn der Stand erwiesen alt ist, verschenkte und ausgepackte Päckchen, Album, Stufen und Freundschaftstage, und schreiben sie nach 2 s zurück (`planKeep`). Streicheln, das noch nicht gesendet war, zählt auf den fremden Stand obendrauf. Das gilt auch, wenn derselbe alte Stand immer wieder kommt, und ein von Hand geleerter Helfer setzt weiter alles zurück. Lehnt HA ein Schreiben des Plans ab, versucht es die Karte in wachsenden Abständen wieder (5 s bis 5 Minuten) statt alle 5 s. Das Format des Helfers bleibt, wie es ist.
+- **Zustand im weggeräumten Panel:** Auch Satt, Glück und Sauber sendet eine Karte nicht mehr, wenn die Verbindung getrennt ist, ihr letztes hass-Objekt aber noch „verbunden“ sagt. Ihr zwei Stunden alter Stand überschrieb sonst das Füttern eines anderen Geräts.
+- **Verreist und trotzdem „Hallöchen!“:** Im Urlaub rief der Pika beim Einschalten des Bildschirms „Hallöchen!“ mit Herz über dem Schild an der Tür, nachts schwebte „z z“ über dem Eingang. An Neujahr rief er „Frohes Neues!“ und am 11.11. „Helau!“. Seine Sprech-Ebene war nicht mit ihm versteckt (`.psay.fort` fehlte im Stil), und `_festForce` ging an der Urlaubs-Weiche vorbei. Solange er weg ist (`_urlaubFern`), grüßt, blinzelt und feiert er nicht mehr; das Feuerwerk steigt weiter. Der Plüsch-Pino ist mit ihm versteckt.
+- **Abendlicht am Mittag:** Schlief ein Gerät, als der Urlaub begann, blieb es den ganzen Urlaub über beim Schlafen: Der Himmel zeigte mittags Abend (ohne Sonnenstand den ganzen Tag Nacht), und der Takt brach das Warten alle 20 s ab. Solange er fort ist, folgt der Schlaf jetzt still der Uhr (`_urlaubSchlaf`), ohne Gähnen und Aufwachen.
+- **Schild und Postkarte blieben im DOM:** Der Zeitgeber, der sie nach dem Ausblenden entfernt, hielt die Variable, die gleich danach `null` wird („Cannot read properties of null (reading 'remove')“). Beide verschwinden jetzt nach 0,9 s wirklich.
+- **Tonne an zwei Tagen hintereinander:** Stand am Dienstag die Bio-Tonne an und am Mittwoch der Gelbe Sack, und war die erste am Montagabend als „steht draußen“ angetippt, verschwand am Dienstagnachmittag auch die zweite, sobald jemand streichelte. Das vom Vortag übernommene Bit gilt jetzt nur noch für die Tonne, die gestern schon stand (`binDone`).
+- **Rufus' Brauen:** Die Fellbüschel über den Augen trugen die Klasse der Mimik-Brauen des Pikas (`.brow`), und die ist ohne Mimik ausgeblendet, derselbe Fehler wie bei den Ohren in 0.42.1. Sie heißen jetzt `rbrow` und sind immer da. Im Tagebuch zeigte Kirbys Bild dafür die geraden Brauenstriche des Pikas; `.fri` blendet sie aus.
+- **Kirby putzt sich mit zwei Armen:** Beim Putzen kamen die Pfoten ans Gesicht, die Stummelärmchen blieben an der Seite stehen. Sie verschwinden jetzt, solange er sich putzt.
+- **Sprechblasen der Freunde:** Ihre Schrift hing an der Größe des Freunds, Katzumi sprach bei Standardhöhe in 5,4 px. Jetzt sind es mindestens 10 px; die Blase des Pikas bleibt, wie sie war. Auch die Piepser (Maus, Glöckchen) haben mindestens 10 px.
+- **Gummistiefel neben der Gießkanne:** Die Stiefel der Garderobe standen genau auf der Gießkanne aus den Päckchen. Steht links der Tür schon etwas (Kanne, Festdeko), rücken sie links daneben auf den Boden, am Erdhügel links neben die Laterne; ist es dort eng, werden sie bis auf 70 % kleiner.
+- **Plüsch-Pino:** Der Pika rief ihn beim Namen des letzten Gasts („komm, Katzumi!“). Er heißt wieder wie Pino.
+- **Tests:** Neu sind `test/welt.mjs`, eine Testwelt mit eigener Uhr und nachgestelltem HA für mehrere Karten, und `test/zwei-karten.test.mjs` (Echo, Zusammenführen, verlorenes Schreiben, veralteter Stand, abgehängte Karte, eine echte Karte 0.42.1 als Gegenspieler). 182 Tests.
+
 ## 0.42.1 (2026-11-15)
 
 Rufus hat wieder Ohren.

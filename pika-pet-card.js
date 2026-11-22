@@ -60,7 +60,7 @@
  */
 (() => {
   // src/version.js
-  var VERSION = "0.42.1";
+  var VERSION = "0.42.2";
 
   // src/logik/hilfen.js
   var Cancel = class extends Error {
@@ -745,6 +745,78 @@
       out.cute = op.t === "pet" ? { ...b, n: Math.max(b.n, Math.min(op.n, PET_CAP)) } : { ...b, m: b.m | op.b };
     }
     return out;
+  };
+  var planOld = (neu, alt) => {
+    if (!alt) return false;
+    const a = alt.cute;
+    const c = neu.cute;
+    if (a && (!c || c.d < a.d || c.d === a.d && (c.n < a.n || (a.m & ~c.m) !== 0))) return true;
+    const top = (P) => P.rec.reduce((m, e) => Math.max(m, e[0]), -Infinity);
+    return neu.rec.length > 0 && alt.rec.length > 0 && top(neu) < top(alt) || neu.hay.m < alt.hay.m;
+  };
+  var planKeep = (neu, alt, old = planOld(neu, alt)) => {
+    if (!alt) return neu;
+    const out = { ...neu };
+    let diff = false;
+    const a = alt.cute;
+    const c = neu.cute;
+    if (a && (!c || c.d < a.d)) {
+      out.cute = a;
+      diff = true;
+    } else if (a && c.d === a.d && (c.n < a.n || (a.m & ~c.m) !== 0)) {
+      out.cute = { d: c.d, n: Math.max(c.n, a.n), m: c.m | a.m };
+      diff = true;
+    }
+    if (neu.hay.m < alt.hay.m) {
+      out.hay = { ...neu.hay, m: alt.hay.m };
+      diff = true;
+    }
+    if (old && alt.rec.length) {
+      const R2 = new Map(alt.rec.map((e) => [e[0], e]));
+      for (const e of neu.rec) R2.set(e[0], !e[2] && R2.get(e[0])?.[2] ? R2.get(e[0]) : e);
+      const rec = [...R2.values()].sort((x, y) => y[0] - x[0]).slice(0, PLAN_REC);
+      if (rec.length !== neu.rec.length || rec.some((e, i) => e[0] !== neu.rec[i][0] || e[1] !== neu.rec[i][1] || e[2] !== neu.rec[i][2])) {
+        out.rec = rec.map((e) => [...e]);
+        diff = true;
+      }
+    }
+    const G = neu.gift;
+    const A = alt.gift;
+    if (old && G && A) {
+      const g = { ...G };
+      if (A.z > G.z) Object.assign(g, { z: A.z, x: A.x, i: A.i, r: A.r });
+      g.o = Math.max(G.o, A.o);
+      g.u = G.u | A.u;
+      g.v = (G.v || 0) | (A.v || 0);
+      if (g.v !== G.v) g.nov = void 0;
+      const gold = (f2) => Math.floor((f2 ?? -1) / GIFT.goldDays);
+      if (A.f != null && (G.f == null || G.f < A.f)) {
+        g.f = A.f;
+        if (gold(A.f) > gold(G.f)) g.y = Math.max(G.y, A.y);
+      }
+      if (GIFT_F.some((f2) => g[f2] !== G[f2]) || g.v !== G.v || g.f !== G.f || g.r !== G.r) {
+        out.gift = g;
+        diff = true;
+      }
+    }
+    return diff ? out : neu;
+  };
+  var planRebase = (ops, P) => {
+    let d = null;
+    let n = 0;
+    return ops.map((o) => {
+      if (o.t !== "pet" || P.cute && P.cute.d > o.d) return o;
+      if (d !== o.d) {
+        d = o.d;
+        n = P.cute?.d === o.d ? P.cute.n : 0;
+      }
+      if (o.out) {
+        n = Math.max(n, Math.min(o.n, PET_CAP));
+        return o;
+      }
+      n = Math.min(n + 1, PET_CAP);
+      return o.n === n ? o : { ...o, n };
+    });
   };
 
   // src/logik/feste.js
@@ -1485,7 +1557,11 @@
     const name = String(st.attributes?.message || st.attributes?.description || "Tonne");
     return { at, from, name, ...binKind(name) };
   };
-  var binDone = (cute, dFrom, dAt, bit) => !!cute && (cute.m & bit) !== 0 && cute.d >= dFrom && cute.d <= dAt;
+  var binDone = (cute, dFrom, dAt, bit = MEM_TONNE | MEM_TONNE2) => {
+    if (!cute || cute.d < dFrom || cute.d > dAt) return false;
+    if (cute.m & bit & MEM_TONNE) return true;
+    return (cute.m & bit & MEM_TONNE2) !== 0 && cute.d - 1 >= dFrom;
+  };
   var wardrobePick = (fc, day) => {
     const d = new Date(day);
     const a = new Date(d.getFullYear(), d.getMonth(), d.getDate(), SIG.wardFrom).getTime();
@@ -3311,9 +3387,10 @@
     0%, 100% { transform: translateY(1.6px) rotate(-6deg); } 30% { transform: translateY(1.6px) rotate(-14deg); }
     65% { transform: translateY(1.6px) rotate(2deg); }
   }
+  /* Piepser (Maus, Glöckchen, Schild im Urlaub): mindestens 10 px, H × 0,05 sind bei Standardhöhe 180 nur 9 px */
   .squeak {
     position: absolute; padding: .1em .45em; border-radius: 999px; background: #fff; color: #4a3a2c; pointer-events: none;
-    font-size: calc(var(--H) * .05); font-weight: 800; white-space: nowrap; box-shadow: 0 1px 4px rgba(0, 0, 0, .2);
+    font-size: max(10px, calc(var(--H) * .05)); font-weight: 800; white-space: nowrap; box-shadow: 0 1px 4px rgba(0, 0, 0, .2);
     transform: translate(-50%, -100%); animation: squeak 1s ease-out forwards;
   }
   @keyframes squeak { 0% { opacity: 0; scale: .4; } 15% { opacity: 1; scale: 1; } 75% { opacity: 1; } 100% { opacity: 0; translate: 0 -6px; } }
@@ -3689,6 +3766,14 @@
     position: absolute; left: 0; top: calc(var(--gy) - var(--ph) * .945); width: var(--pw); height: var(--ph);
     z-index: var(--z-talk); pointer-events: none; transform-origin: 50% 94.5%;
   }
+  /* Schrift der Blase: --ph ist an .friends die Größe des Freunds (Katzumi 0,5 vom Pika), ohne Untergrenze spräche
+     sie bei Standardhöhe in 5,4 px und Rufus in 7,6 px. Der Innenabstand ist in em und wächst mit, die Spitze
+     (.say::after) ist in px und hängt nicht an der Schrift. Die Blase des Pikas (.bubble in STYLE) bleibt, wie sie ist. */
+  .frsay .bubble { font-size: max(10px, calc(var(--ph) * .15)); }
+  /* Kirbys Stummelärmchen (.karm, grafik/freunde.js) sind sonst immer zu sehen. Beim Putzen kommen die Pfoten ans
+     Gesicht (.groom .paws in STYLE): Dann sind die Ärmchen dort, sonst hätte er vier. Putzen ist die einzige Haltung
+     der Freunde (FRIEND_CLS), die Pfoten hervorholt. */
+  .friend.groom .karm { display: none; }
   /* Hintere Spur: wie beim Pika Schatten etwas blasser, tagsüber ein Hauch Dunst. Die Ebene setzt _frZ (Bühne). */
   .friend.lane1 .shadow { opacity: .75; }
   .friend .br { transition: filter 1s; }
@@ -5012,12 +5097,14 @@
     box-shadow: 0 1px 3px rgba(90, 64, 48, .22); transform: rotate(-4deg); color: var(--soft); }
   .e:nth-child(even) .ic { transform: rotate(3deg); }
   .night .ic { background: rgba(255, 255, 255, .14); box-shadow: none; }
-  /* Besuch (Kirby, Rufus, Katzumi, FRIEND_ICON): Grundzustand der Figur wie in der Karte, Requisiten und Mimik-Varianten aus */
+  /* Besuch (Kirby, Rufus, Katzumi, FRIEND_ICON): Grundzustand der Figur wie in der Karte, Requisiten und Mimik-Varianten aus
+     (.brow und .mim: Brauenstriche und Mund der Mimik des Pikas; Rufus' eigene Fellbüschel heißen .rbrow und bleiben) */
   .fri .band, .fri .arms, .fri .uke, .fri .brush, .fri .wand, .fri .rope, .fri .rgrip, .fri .bar, .fri .wpaw, .fri .nsm,
   .fri .hats > g, .fri .slg, .fri .gspy, .fri .gcan, .fri .shades, .fri .seye, .fri .heye, .fri .mfood, .fri .paws,
   .fri .cap, .fri .scarf, .fri .brolly, .fri .omouth, .fri .callfx, .fri .blines, .fri .wmouth, .fri .tongue, .fri .yawnm,
   .fri .estar, .fri .sleg, .fri .epaws, .fri .book, .fri .gb, .fri .tab, .fri .kpaw, .fri .bk, .fri .cup, .fri .cfoam,
-  .fri .hoop, .fri .yo, .fri .pbl, .fri .jug, .fri .dchain, .fri .dcrown, .fri .pgl, .fri .peb, .fri .sboat, .fri .mim { display: none; }
+  .fri .hoop, .fri .yo, .fri .pbl, .fri .jug, .fri .dchain, .fri .dcrown, .fri .pgl, .fri .peb, .fri .sboat, .fri .mim,
+  .fri .brow { display: none; }
   .tm { display: block; font-size: 12px; font-weight: 700; color: var(--soft); }
   .e p { margin: 1px 0 0; font-size: 15px; line-height: 1.45; }
   .e.dim p { color: var(--soft); }
@@ -5116,6 +5203,11 @@
   var STYLE_URLAUB = `
   /* Verreist: nicht zu sehen (Tippen geht durch, er ist ja nicht da) */
   .pika.fort { visibility: hidden; }
+  /* Mit ihm seine Sprech-Ebene: Sie ist ein Geschwister des Pikas (über dem Wetter), sein visibility erreicht sie nicht.
+     Ohne die Regel schwebten nachts „z z“ über der Tür (.pika.sleeping ~ .psay .zzz), und was er noch sagt (Schreck beim
+     Blitz), stünde über dem Schild. Ebenso der Plüsch-Pino, der nachts in seinem Arm liegt (.held): Er läge allein im
+     Eingang. */
+  .psay.fort, .pika.fort ~ .held { visibility: hidden; }
   .ursign, .urcard { position: absolute; pointer-events: none; }
   .ursign { transform-origin: 50% 4%; animation: ursw 5s ease-in-out infinite; }
   .ursign.in { animation: urin .7s cubic-bezier(.3, 1.5, .5, 1), ursw 5s ease-in-out .7s infinite; }
@@ -5878,7 +5970,7 @@
       <ellipse cx="${cx}" cy="${cy + 2.4}" rx="3.4" ry="4.6" fill="${R.earIn}"/>
     </g></g>`;
   var R_FOOT = (cls, cx, cy, rx, ry, seed) => `<path class="${cls}" d="${fluff(cx, cy, rx, ry, 12, 1.3, seed)}"/>`;
-  var R_BROW = (side, d) => `<path class="brow brow-${side}" d="${d}" stroke="${R.brow}" stroke-width="1.2" fill="none"
+  var R_BROW = (side, d) => `<path class="rbrow rbrow-${side}" d="${d}" stroke="${R.brow}" stroke-width="1.2" fill="none"
           stroke-linecap="round" stroke-linejoin="round"/>`;
   var RUFUS_SVG = body(derive(4, R), 4, R_BODY, "2.1").replace(BELLY, furMarks(
     60,
@@ -7044,7 +7136,7 @@
       this._hidAt = null;
       this._blindAt = Date.now();
       this._blindFirst = false;
-      if (long && this._g && !this._asleep && this._sleepTime()) {
+      if (long && this._g && !this._fort && !this._asleep && this._sleepTime()) {
         if (this._next === "poop") this._next = null;
         this._revealPending();
         this._sleepNow(true);
@@ -7368,7 +7460,8 @@
     _tickCore() {
       this._renderStats();
       if (this._plan) this._hayFromPlan();
-      if (this._sleepTime() !== this._asleep && !["goSleep", "wakeUp", "coffee", "giftOpen"].includes(this._action)) {
+      if (this._fort) this._urlaubSchlaf();
+      else if (this._sleepTime() !== this._asleep && !["goSleep", "wakeUp", "coffee", "giftOpen", "urlAbreise"].includes(this._action)) {
         this._interrupt();
       }
       if (this._wxDeadAt > 0 && Date.now() - this._wxDeadAt >= WX_HOLD) this._readWeather(this._lastWeather, this._lastPrecip);
@@ -9578,6 +9671,10 @@
       this._showAt = now;
       this._reunion = !!this._goneAt && now - this._goneAt > 3 * 36e5;
       this._goneAt = null;
+      if (this._urlaubFern()) {
+        this._reunion = this._greetDue = false;
+        return;
+      }
       if (this._g ? this._sleepTime() : this._asleep) return this._asleep ? this._sleepyHello() : void 0;
       this._greetDue = true;
       const a = this._action;
@@ -9606,13 +9703,13 @@
         this._greetDue = false;
         const big = this._reunion;
         this._reunion = false;
-        setTimeout(() => this._action && !this._asleep && (this._say(pick(ACT_GREET), 1500), this._hearts(big ? 3 : 1)), 500);
+        setTimeout(() => this._action && !this._asleep && !this._fort && (this._say(pick(ACT_GREET), 1500), this._hearts(big ? 3 : 1)), 500);
       }
     }
     _sleepyHello() {
       const p = this._el.pika;
       setTimeout(() => {
-        if (!this._asleep) return;
+        if (!this._asleep || this._urlaubFern()) return;
         p.classList.add("peek");
         this._say(pick(["mh…?", "*gähn*", "zzz… hallo"]), 1700);
         clearTimeout(this._peekT);
@@ -12590,7 +12687,7 @@
       el.classList.add("take");
       setTimeout(() => el.remove(), 950);
       this._add("g", GAIN.pet);
-      if (this._asleep) return;
+      if (this._asleep || this._urlaubFern()) return;
       this._blush(2500);
       this._happy(1400);
       if (!this._el.pika.classList.contains("walking")) this._jump("binky");
@@ -12927,7 +13024,8 @@
       }
     }
     // Mitternacht an Neujahr: Finale, und der Pika wacht auf und schaut aus dem Bau. Nur sichtbar: sonst liefe es
-    // ungesehen ab, und wer den Bildschirm um 0:03 einschaltet, bekäme keins mehr (bis 0:05 holt der Takt es nach)
+    // ungesehen ab, und wer den Bildschirm um 0:03 einschaltet, bekäme keins mehr (bis 0:05 holt der Takt es nach).
+    // Ist er verreist, steigt das Finale trotzdem (es gehört der Welt), nur schaut keiner aus dem Bau (_festForce).
     _festMidnight() {
       const d = new Date(this._festNow());
       if (!this._fest?.fireworks || this._away() || !this._g || this._festMidY === d.getFullYear() || d.getMonth() !== 0 || d.getDate() !== 1 || d.getHours() !== 0 || d.getMinutes() >= 5) return;
@@ -12936,11 +13034,12 @@
       this._festForce("festFireworks");
     }
     // 11. 11. um 11:11: Auftakt der Karnevalszeit, einmal kurz Konfetti und „Helau!“, wenn er wach, es hell und
-    // trocken ist (bis 11:13 holt der Takt es nach)
+    // trocken ist (bis 11:13 holt der Takt es nach). Verreist wie im Schlaf: Den Auftakt ruft er selbst, ohne ihn gibt
+    // es keinen (gemerkt wird dann nichts; ist er bis 11:13 zurück, holt er ihn nach).
     _festHelau() {
       const d = new Date(this._festNow());
       if (this._cfg?.festive === false || this._away() || !this._g || this._festKickY === d.getFullYear() || d.getMonth() !== 10 || d.getDate() !== 11 || d.getHours() !== 11 || d.getMinutes() < 11 || d.getMinutes() >= 14) return;
-      if (this._asleep || this._festDark() || this._wx.wet || this._wx.shelter) return;
+      if (this._asleep || this._urlaubFern() || this._festDark() || this._wx.wet || this._wx.shelter) return;
       this._festKickY = d.getFullYear();
       if (this._inside || this._lift > 0) {
         this._festConfettiRain();
@@ -13393,9 +13492,11 @@
         this._festLater(() => c.remove(), dur + delay + 60);
       }
     }
-    // Erzwingt einmal eine Aktion, auch wenn er schläft: der nächste Schritt der Lebensschleife ist diese Aktion
+    // Erzwingt einmal eine Aktion, auch wenn er schläft: der nächste Schritt der Lebensschleife ist diese Aktion.
+    // Nicht, wenn er verreist ist: Der eingeschobene Schritt ginge an der Urlaubs-Weiche in _step vorbei, und ein
+    // unsichtbarer Pika riefe „Frohes Neues!“ oder „Helau!“ über dem Schild an der Tür.
     _festForce(name) {
-      if (!this._g) return;
+      if (!this._g || this._urlaubFern()) return;
       this._step = () => {
         delete this._step;
         this._planWaiting = false;
@@ -13757,7 +13858,7 @@
         if (!this._synced || !this._hass) return;
         const id = this._cfg.entity;
         const st = this._hass.states[id]?.state;
-        if (this._hass.connected === false || st === "unavailable") {
+        if (this._hass.connected === false || this._hass.connection?.connected === false || st === "unavailable") {
           this._saveWait = true;
           return;
         }
@@ -18280,6 +18381,7 @@
       p.classList.toggle("g-shd", lv[3] >= 3);
       p.classList.toggle("g-scp", lv[4] >= 3);
       p.classList.toggle("g-can", lv[6] >= 3);
+      this._sigWearSync();
     }
     // Trick des Windrads: bei wenig Wind hinhoppeln und es anpusten, dann dreht es sich kurz ganz schnell
     async _giftBlow() {
@@ -18330,7 +18432,7 @@
           await this._walkTo(hole.cx + pW * 0.15, 1);
           this._face(-1);
           await this._wait(500);
-          this._say(pick([`komm, ${this._frGuest()}!`, "hab dich!"]), 1200);
+          this._say(pick([`komm, ${this._frName()}!`, "hab dich!"]), 1200);
           await this._wait(900);
           const { fMin, fMax } = this._g;
           await this._walkTo((fMin + rnd(0.2, 0.45) * (fMax - fMin)) * this._W, 0.9);
@@ -18436,6 +18538,10 @@
   };
 
   // src/karte/tagesplan.js
+  var PLAN_HOLD = 5e3;
+  var PLAN_DOUBT = 1e4;
+  var PLAN_HEAL = 2e3;
+  var PLAN_MEND = 30 * 6e4;
   var Tagesplan = class {
     // Anderer Helfer oder Name: von vorn. Ohne plan_entity bleibt der Plan im Browser (je Gerät).
     _planReset() {
@@ -18448,6 +18554,12 @@
       this._planOps = [];
       this._planSent = [];
       this._planAck = 0;
+      this._planKnown = null;
+      this._planHeal = false;
+      this._planHealAt = 0;
+      this._planFail = 0;
+      this._planHeld = false;
+      this._planDoubt = null;
       this._planSt = null;
       this._planOk = !this._cfg.plan_entity;
       this._planBase = this._planLocal();
@@ -18483,6 +18595,7 @@
       if (sent >= 0) {
         this._planAck = Math.max(this._planAck, this._planSent[sent].at);
         this._planSent.splice(0, sent + 1);
+        this._planFail = 0;
       }
       const P = this._planMax() < PLAN_MIN ? null : planParse(st);
       if (st !== void 0) this._planSeen = true;
@@ -18490,15 +18603,28 @@
         const newer = !P && /^p\d+\|/.test(st) && (!st.startsWith("p1|") || st.split("|").length > 6);
         if (newer && !this._planNewer) console.warn(`pika-pet-card: ${id} hat das Format einer neueren Karte, dieses Gerät schreibt den Tagesplan nicht mehr. Bitte neu laden.`);
         this._planNewer = newer;
+        if (!P && !newer && this._planMax() >= PLAN_MIN) {
+          this._planKnown = null;
+          this._planHeal = false;
+        }
       }
       if (P) {
         if (sent < 0 && P.gift && P.gift.b == null && this._plan?.gift?.b != null) {
           this._planOps = this._planOps.filter((o) => o.t !== "gbad");
           this._careHold = Date.now() + 1e4;
         }
-        this._planBase = P;
+        const alt = this._planKnown;
+        const old = sent < 0 && !!alt && (planOld(P, alt) || this._planMend());
+        const now = this._haNow();
+        const Q = this._planOps.filter((o) => o.at <= this._planAck && now - o.at < 15e3).reduce((X, o) => planApply(X, o, o.at), P);
+        const K2 = sent < 0 ? planKeep(Q, alt, old) : Q;
+        this._planKnown = sent < 0 ? planKeep(P, alt, old) : P;
+        if (K2 !== Q && !this._planMend()) this._planHealAt = now;
+        this._planHeal = K2 !== Q;
+        this._planBase = this._planHeal ? K2 : P;
+        if (sent < 0) this._planOps = planRebase(this._planOps, K2);
         const last = this._planOps.at(-1);
-        if (last && last.at > this._planAck && planSer(this._planOps.reduce((Q, o) => planApply(Q, o, o.at), P)) === planSer(P)) {
+        if (last && last.at > this._planAck && planSer(this._planOps.reduce((Q2, o) => planApply(Q2, o, o.at), P)) === planSer(P)) {
           this._planAck = last.at;
         }
       }
@@ -18520,6 +18646,12 @@
         }, 6e4);
       }
       this._planCompose(true);
+      if (this._planMend() && !this._planT && planSer(this._plan) !== st) this._planSave(PLAN_HEAL);
+    }
+    // Steht ein Retten aus (im Helfer fehlt etwas, das dort schon stand)? Höchstens PLAN_MEND lang: Lehnt HA das
+    // Schreiben ab, versuchte die Karte es sonst ohne Ende.
+    _planMend() {
+      return this._planHeal && this._haNow() - this._planHealAt < PLAN_MEND;
     }
     _planReady() {
       if (this._planOk) return;
@@ -18562,9 +18694,70 @@
       this._planOps.push(op);
       if (this._planCompose(false)) this._planSave();
     }
-    _planSave() {
+    _planSave(ms = 400) {
       clearTimeout(this._planT);
-      this._planT = setTimeout(() => this._planSaveNow(), 400);
+      this._planT = setTimeout(() => this._planSaveNow(), ms);
+    }
+    // Weiß dieses Gerät gerade nicht sicher, was im Helfer steht? Dann schreibt es den Plan nicht: Es legte seine
+    // Änderung auf einen veralteten Stand, und der überschriebe im Helfer alles, was die anderen Geräte inzwischen
+    // geschrieben haben (verschenkte und ausgepackte Päckchen, Album, Streicheln, Erlebnisse). So ist es
+    // - abgehängt (_planPark): HA liefert einer Karte in einer zwischengespeicherten Ansicht oder in einem nach 5 Min im
+    //   Hintergrund weggeräumten Panel kein hass mehr. Ihr letztes hass-Objekt sagt weiter „verbunden“ und kann senden.
+    // - getrennt. Auch nach dem letzten hass-Objekt gefragt (hass.connection, die Verbindung selbst): Die weggeräumte
+    //   Karte bekommt das Trennen nicht mehr mit. Was in der Zeit des Wiederverbindens gesendet wird, stellt HA zurück
+    //   und schickt es los, bevor der frische Stand kommt.
+    // - nach langer Pause oder dem Wiederverbinden noch ohne frischen Stand (_planStale)
+    // - im Zweifel (_planDoubt): Nach dem Trennen oder Wiedereinhängen gilt der eigene Stand erst wieder, wenn HA
+    //   verbunden einen neuen geliefert hat (_planHass). Liefert HA verbunden ein hass mit denselben Zuständen und
+    //   danach PLAN_DOUBT lang keine neuen, hat sich dort nichts geändert: Dann gilt der alte. Ohne ein einziges hass
+    //   seit dem Zweifel endet er nie: Dass nichts ankommt, heißt nicht, dass nichts geschah (eine wieder eingehängte
+    //   Karte hat alles verpasst, auch wenn die Verbindung steht).
+    _planBlind() {
+      const h = this._hass;
+      if (this._planOff || !h) return true;
+      if (h.connected === false || h.connection?.connected === false) {
+        this._planDoubt = { states: h.states, at: Date.now(), fed: false };
+        return true;
+      }
+      if (this._planStale) return true;
+      const D = this._planDoubt;
+      if (!D) return false;
+      if (!D.fed || Date.now() - D.at < PLAN_DOUBT) return true;
+      this._planDoubt = null;
+      return false;
+    }
+    // Jedes hass (am Ende von set hass, der Plan ist dann schon gelesen): Zweifel am eigenen Stand führen und beenden,
+    // Zurückgehaltenes hinausschicken, sobald es darf. fresh: ein neues hass-Objekt.
+    _planHass(hass, fresh) {
+      const D = this._planDoubt;
+      if (hass.connected === false || hass.connection?.connected === false) {
+        this._planDoubt = { states: hass.states, at: Date.now(), fed: false };
+      } else if (D && fresh) {
+        if (hass.states !== D.states) this._planDoubt = null;
+        else if (!D.fed) Object.assign(D, { fed: true, at: Date.now() });
+      }
+      if (this._planHeld && !this._planBlind()) {
+        this._planHeld = false;
+        this._planSave();
+      }
+    }
+    // Karte wird abgehängt: Ungesendetes noch hinaus (bis eben kam hass, der Stand ist frisch), danach schreibt sie den
+    // Plan nicht mehr, bis sie wieder eingehängt ist. Ohne das sendete eine abgehängte Karte, der noch eine Bestätigung
+    // fehlt, ihren alten Plan bis zu 30 Min lang alle 15 s neu (_planRetry) und überschrieb damit jedes Mal, was die
+    // anderen Geräte gerade geschrieben hatten.
+    _planPark() {
+      if (this._planOff) return;
+      if (this._planT) this._planSaveNow();
+      this._planOff = true;
+      clearTimeout(this._planRT);
+      this._planRT = null;
+    }
+    // Wieder eingehängt. long: Sie war länger weg, ihr Stand ist so alt wie die Trennung (Zweifel, bis HA frisch liefert).
+    _planWake(long) {
+      if (!this._planOff) return;
+      this._planOff = false;
+      if (long) this._planDoubt = { states: this._hass?.states, at: Date.now(), fed: false };
+      if (this._planHeld || this._planMend() || this._planOps.some((o) => o.at > this._planAck)) this._planRetry(PLAN_HOLD);
     }
     _planSaveNow() {
       clearTimeout(this._planT);
@@ -18588,12 +18781,24 @@
           this._planBase = P;
           return this._planRetry(15e3);
         }
-        if (v !== this._planSt && v !== this._planSent.at(-1)?.v) {
-          this._planSent.push({ v, at: this._haNow() });
+        const neu = v !== this._planSt && v !== this._planSent.at(-1)?.v;
+        this._planHeld = neu && this._planBlind();
+        if (this._planHeld) {
+          this._planBase = P;
+          this._planOps = this._planOps.filter((o) => !(o.t === "gather" && o.m == null));
+          if (!this._planOff) this._planRetry(PLAN_HOLD);
+          return;
+        }
+        if (neu) {
+          const e = { v, at: this._haNow(), n: this._hassN };
+          this._planSent.push(e);
           if (this._planSent.length > 8) this._planSent.shift();
-          this._hass.callService("input_text", "set_value", { entity_id: id, value: v }).catch((e) => {
-            console.warn("pika-pet-card: Tagesplan speichern fehlgeschlagen, neuer Versuch", e);
-            this._planRetry(5e3);
+          for (const o of this._planOps) o.out = true;
+          this._hass.callService("input_text", "set_value", { entity_id: id, value: v }).catch((err) => {
+            console.warn("pika-pet-card: Tagesplan speichern fehlgeschlagen, neuer Versuch", err);
+            e.failed = true;
+            this._planFail++;
+            this._planRetry(Math.min(5e3 * 2 ** (this._planFail - 1), 3e5));
           });
           this._planRetry(15e3);
         }
@@ -18637,12 +18842,23 @@
       clearTimeout(this._planRT);
       this._planRT = setTimeout(() => {
         this._planRT = null;
+        if (this._planOff) return;
         const id = this._cfg.plan_entity;
         const st = id && this._hass?.states[id]?.state;
         if (!st || !this._planOk) return;
+        const open = () => this._planHeld || this._planOps.some((o) => o.at > this._planAck) || this._planMend() && planSer(this._plan) !== st;
+        if (this._planBlind()) {
+          if (open()) this._planRetry(PLAN_HOLD);
+          return;
+        }
         this._planCompose(false);
-        if (!this._planOps.some((o) => o.at > this._planAck)) return;
-        if (this._hass.connected === false || st === "unavailable") return this._planRetry(15e3);
+        if (!open()) {
+          this._planSent = [];
+          return;
+        }
+        if (st === "unavailable") return this._planRetry(15e3);
+        const last = this._planSent.at(-1);
+        if (last && !last.failed && last.n === this._hassN) return this._planRetry(15e3);
         this._planSent = [];
         this._planSave();
       }, ms);
@@ -19696,9 +19912,10 @@
         this._el.ursign = el;
         setTimeout(() => el.classList.remove("in"), 800);
       } else if (!on && el) {
+        const alt = el;
         this._el.ursign = null;
-        el.classList.add("out");
-        setTimeout(() => el.remove(), 900);
+        alt.classList.add("out");
+        setTimeout(() => alt.remove(), 900);
         el = null;
       }
       if (el) {
@@ -19716,9 +19933,10 @@
         this._el.gifts.appendChild(pc);
         this._el.urcard = pc;
       } else if (!ur && pc) {
+        const alt = pc;
         this._el.urcard = null;
-        pc.classList.add("out");
-        setTimeout(() => pc.remove(), 900);
+        alt.classList.add("out");
+        setTimeout(() => alt.remove(), 900);
         pc = null;
       }
       if (pc) {
@@ -19784,9 +20002,31 @@
       this._fort = true;
       this._el.pika.classList.add("fort");
       this._el.psay?.classList.add("fort");
+      this._urlaubSchlaf();
+    }
+    // Ist gerade niemand da, der etwas sagen oder tun könnte? Er ist schon fort, oder der Urlaub läuft und die Schleife
+    // hat ihn nur noch nicht weggeschickt (frisch geladen, Karte war verdeckt), oder er ist nach dem Ende noch nicht
+    // wieder hereingehoppelt. Dann grüßt, blinzelt und feiert er nicht: Blasen, zzz und Zeichen versteckt zwar der Stil
+    // (.psay.fort), Herzchen steigen aber in der Effekt-Ebene auf und stünden über dem Schild. Den Abschied („Bis
+    // bald!“) sagt er selbst in _urlAbreise, der läuft hier nicht durch.
+    _urlaubFern() {
+      return !!this._fort || this._urlaubOn();
+    }
+    // Solange er fort ist, folgt _asleep still der Uhr, ohne Gähnen und Aufwachen (die spielte sonst die Schleife, und
+    // die wartet nur): An _asleep hängen der Himmel (schläft er bei hoher Sonne, ist Abend; ohne Sonnenstand Nacht), die
+    // Ruhe der Geräte am Bau und der Schätze. Ein Gerät, das bei der Abreise schlief, zeigte sonst den ganzen Urlaub
+    // über mittags Abendlicht. _sleepNow hält Klasse, Bau und Haltung dazu passend, so findet ihn die Rückkehr
+    // (_urlHeim) in einem Zustand vor, den sie kennt. Zu sehen ist davon nichts (.pika.fort, .psay.fort).
+    _urlaubSchlaf() {
+      if (!this._fort || !this._g) return;
+      const on = this._sleepTime();
+      if (on === !!this._asleep) return;
+      this._sleepNow(on);
+      this._updateSky();
     }
     // Weg: nur warten (eine Änderung des Plans weckt die Schleife)
     async _urlFort() {
+      this._urlaubSchlaf();
       await this._wait(6e4);
     }
     // Zurück: Er hoppelt von der Seite herein und freut sich (nachts liegt er gleich wieder im Bau)
@@ -19833,6 +20073,10 @@
   };
 
   // src/karte/signale.js
+  var WEAR_W = { boots: 0.1, umbrella: 0.05, hat: 0.075, sunhat: 0.1 };
+  var BOOT_SOLE = 20 / 26 * 0.92;
+  var CAN_W = 0.085;
+  var WEAR_KEEP = { huegel: [[14.6, 21.4]] };
   var Signale = class {
     // Konfiguration `signals`: { waste: calendar.*, wardrobe: true, vacuum: vacuum.*, door: binary_sensor.*, window:
     // binary_sensor.* oder Liste (seit 0.40, karte/fenster.js) }. Alles ist
@@ -19913,7 +20157,8 @@
       return this._g.gy + BOTE_FRONT_DY * this._H;
     }
     // ---------- Mülltonne ----------
-    // Steht die Tonne heute da? → Abholung (binPlan) oder null
+    // Steht die Tonne heute da? → Abholung (binPlan) oder null. „Steht draußen“ von heute (MEM_TONNE) gilt immer, das
+    // vom Vortag übernommene (MEM_TONNE2) nur für die Tonne, die gestern schon stand (binDone).
     _sigBin() {
       const st = this._sigW;
       if (!st || this._urlaubOn()) return null;
@@ -20057,22 +20302,22 @@
         fresh = true;
       }
       if (fresh) this._sigWearAt = Math.min(this._sigWearAt || Infinity, this._haNow() + rnd(1e4, 3e4));
-      if (!fresh && !relayout) return;
+      const boot = E.has("boots") ? this._sigBootSpot() : null;
+      const bootSig = boot ? `${boot.left.toFixed(1)}:${boot.top.toFixed(1)}:${boot.w.toFixed(1)}` : "";
+      const moved = bootSig !== (this._sigBootSig || "");
+      this._sigBootSig = bootSig;
+      if (!fresh && !relayout && !moved) return;
       const { hole } = this._g;
       const H = this._H;
-      const size = { boots: 0.1, umbrella: 0.05, hat: 0.075, sunhat: 0.1 };
-      const ratio = { boots: 20 / 26, umbrella: 30 / 12, hat: 26 / 24, sunhat: 16 / 28 };
       let hx = hole.l - 0.01 * H;
       for (const k of ["boots", "umbrella", "hat", "sunhat"]) {
         const el = E.get(k);
         if (!el) continue;
-        const w = H * size[k];
-        const h = w * ratio[k];
+        let w = H * WEAR_W[k];
         let left;
         let top;
         if (k === "boots") {
-          left = hole.l - w * 0.95;
-          top = hole.lip - h * 0.92;
+          ({ left, top, w } = boot);
         } else {
           hx -= w;
           left = hx;
@@ -20081,6 +20326,43 @@
         }
         Object.assign(el.style, { width: `${w.toFixed(1)}px`, left: `${left.toFixed(1)}px`, top: `${top.toFixed(1)}px` });
       }
+    }
+    // Platz der Gummistiefel (px) → { left, top, w }. Stammplatz: links an der Tür auf der Schwelle (rechte Kante knapp
+    // im Türrahmen, Sohle auf hole.lip). Genau dort steht aber auch die Gießkanne aus den Päckchen (Mitte hole.l − 0,07 H,
+    // 0,085 H breit; die Stiefel reichen von hole.l − 0,095 H bis hole.l + 0,005 H) und im Advent der Geburtstagskuchen
+    // (Platz L in _festRender, bis hole.l − 0,145 H): Die Stiefel standen auf der Kanne.
+    // Steht dort schon etwas, rücken sie links daneben, mit 0,005 H Abstand zur linken Kante des am weitesten links
+    // stehenden Stücks, und stehen dann vor der Schwelle auf dem Boden (Sohle auf der Bodenlinie wie die Kanne). Rechts
+    // der Kanne ist kein Platz: Dort ist der Eingang, in dem der Pika schläft. Links davon ist es eng: Die Kanne beginnt
+    // bei hole.l − 0,1125 H, das sind an Felsbau, Geröllhalde und Baumstumpf 0,095 bis 0,114 H vom linken Rand (wenn der
+    // Bau nicht nach rechts rückt). Am Erdhügel sind es 0,146 H, aber gleich links der Kanne steht dort die Laterne: Ihr
+    // Fuß (WEAR_KEEP, Bau-Einheiten 14,6 bis 21,4, die Kanne beginnt bei 23,8) bleibt frei, die Stiefel stehen links
+    // von ihr unter der Lampe, wo bis zum Rand 0,07 bis 0,10 H bleiben.
+    // Passen die Stiefel (0,1 H) nicht ganz ins Bild (2 px Rand), werden sie wie die Festdeko bis auf 70 % kleiner;
+    // reicht auch das nicht (schmale Karte, auf der der Bau nicht nach rechts rückt), ragen sie lieber ein, zwei Pixel
+    // über den Bildrand, als etwas zu verdecken. An Baumstumpf, Felsbau und Geröllhalde stehen sie links der Kanne vor
+    // den kleinen Pilzen bzw. vor einem Stein des Baus: Dort ist links davon kein Platz mehr.
+    _sigBootSpot() {
+      const { hole, gy, bur } = this._g;
+      const H = this._H;
+      const w0 = H * WEAR_W.boots;
+      const r0 = hole.l + w0 * 0.05;
+      const blocks = [];
+      if (this._gtEls?.has(6)) {
+        const x = this._giftX(6);
+        blocks.push([x - H * CAN_W / 2, x + H * CAN_W / 2]);
+      }
+      for (const [n, p] of Object.entries(this._festPos || {})) if (!/^(egg|stick)/.test(n)) blocks.push([p.l, p.l + p.w]);
+      for (const [a, b] of WEAR_KEEP[this._arealKey] || []) blocks.push([bur.l + a * bur.u, bur.l + b * bur.u]);
+      let r = r0;
+      for (let i = 0; i < blocks.length; i++) {
+        const hit = blocks.filter(([a, b]) => a < r && b > r - w0);
+        if (!hit.length) break;
+        r = Math.min(...hit.map(([a]) => a)) - 5e-3 * H;
+      }
+      if (r === r0) return { left: r0 - w0, top: hole.lip - w0 * BOOT_SOLE, w: w0 };
+      const w = clamp(r - 2, w0 * 0.7, w0);
+      return { left: r - w, top: gy + 1 - w * BOOT_SOLE, w };
     }
     // Probiert, was an der Tür hängt: hinhoppeln, eins hochhalten, sagen, was man heute braucht
     async _sigWear() {
@@ -20920,7 +21202,10 @@
         this._guard(f2.name, () => f2.call(this, hass));
       }
       this._guard("Himmel", () => this._updateSky());
+      if (conn && this._planConn === false && c.plan_entity) this._planStaleArm();
+      this._planConn = conn;
       if (fresh && this._planStale && hass.connected !== false && hass.states !== this._staleStates) this._planFresh();
+      this._guard("Tagesplan", () => this._planHass(hass, fresh));
     }
     getCardSize() {
       return 4;
@@ -20970,6 +21255,10 @@
         this._blindFirst = false;
         if (this._hass && (this._planStale || Date.now() - this._detachAt > 2e3)) this._planStaleArm(600);
       }
+      if (this._detachAt) {
+        this._clkConn = false;
+        this._planWake(Date.now() - this._detachAt > 2e3);
+      }
       this._showReq();
       this._start();
       if (this._g && this._detachAt && this._stats) this._renderStats();
@@ -20987,6 +21276,7 @@
       if (!this._attached) return;
       this._attached = false;
       this._detachAt = Date.now();
+      this._guard("Tagesplan", () => this._planPark());
       this._stop();
       this._stopCritters();
       this._ro?.disconnect();

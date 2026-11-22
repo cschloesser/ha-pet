@@ -179,9 +179,12 @@ export class Urlaub {
       this._el.ursign = el;
       setTimeout(() => el.classList.remove('in'), 800);
     } else if (!on && el) {
+      // (eigene Konstante für den Zeitgeber: el ist gleich null, er riefe sonst null.remove() und das ausgeblendete
+      // Schild bliebe im DOM)
+      const alt = el;
       this._el.ursign = null;
-      el.classList.add('out');
-      setTimeout(() => el.remove(), 900);
+      alt.classList.add('out');
+      setTimeout(() => alt.remove(), 900);
       el = null;
     }
     if (el) {
@@ -199,9 +202,10 @@ export class Urlaub {
       this._el.gifts.appendChild(pc);
       this._el.urcard = pc;
     } else if (!ur && pc) {
+      const alt = pc; // wie beim Schild
       this._el.urcard = null;
-      pc.classList.add('out');
-      setTimeout(() => pc.remove(), 900);
+      alt.classList.add('out');
+      setTimeout(() => alt.remove(), 900);
       pc = null;
     }
     if (pc) {
@@ -274,10 +278,35 @@ export class Urlaub {
     this._fort = true;
     this._el.pika.classList.add('fort');
     this._el.psay?.classList.add('fort');
+    this._urlaubSchlaf();
+  }
+
+  // Ist gerade niemand da, der etwas sagen oder tun könnte? Er ist schon fort, oder der Urlaub läuft und die Schleife
+  // hat ihn nur noch nicht weggeschickt (frisch geladen, Karte war verdeckt), oder er ist nach dem Ende noch nicht
+  // wieder hereingehoppelt. Dann grüßt, blinzelt und feiert er nicht: Blasen, zzz und Zeichen versteckt zwar der Stil
+  // (.psay.fort), Herzchen steigen aber in der Effekt-Ebene auf und stünden über dem Schild. Den Abschied („Bis
+  // bald!“) sagt er selbst in _urlAbreise, der läuft hier nicht durch.
+  _urlaubFern() {
+    return !!this._fort || this._urlaubOn();
+  }
+
+  // Solange er fort ist, folgt _asleep still der Uhr, ohne Gähnen und Aufwachen (die spielte sonst die Schleife, und
+  // die wartet nur): An _asleep hängen der Himmel (schläft er bei hoher Sonne, ist Abend; ohne Sonnenstand Nacht), die
+  // Ruhe der Geräte am Bau und der Schätze. Ein Gerät, das bei der Abreise schlief, zeigte sonst den ganzen Urlaub
+  // über mittags Abendlicht. _sleepNow hält Klasse, Bau und Haltung dazu passend, so findet ihn die Rückkehr
+  // (_urlHeim) in einem Zustand vor, den sie kennt. Zu sehen ist davon nichts (.pika.fort, .psay.fort).
+  _urlaubSchlaf() {
+    if (!this._fort || !this._g) return;
+    const on = this._sleepTime();
+    if (on === !!this._asleep) return;
+    this._sleepNow(on);
+    this._updateSky();
   }
 
   // Weg: nur warten (eine Änderung des Plans weckt die Schleife)
   async _urlFort() {
+    // Die Schleife läuft nach einer Pause (Bildschirm aus) vor dem ersten Takt wieder an: gleich nach der Uhr stellen
+    this._urlaubSchlaf();
     await this._wait(60000);
   }
 

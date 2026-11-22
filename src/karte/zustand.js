@@ -157,7 +157,9 @@ export class Zustand {
       // Getrennt oder Helfer gerade nicht erreichbar: nicht ins Leere senden (es käme nie ein Echo). Bleibt
       // ungesendet und geht beim nächsten verbundenen hass bzw. zusammengeführt mit dem wiederkehrenden Stand hinaus.
       // ("unknown" ist ein frisch angelegter, leerer Helfer: _synced kommt dort erst nach 20 s, dann beschreiben)
-      if (this._hass.connected === false || st === 'unavailable') {
+      // Getrennt auch, wenn die Verbindung selbst es sagt (hass.connection): Einer Karte in einem im Hintergrund
+      // weggeräumten Panel setzt HA kein hass mehr, ihr letztes sagt noch „verbunden“ (siehe _planBlind).
+      if (this._hass.connected === false || this._hass.connection?.connected === false || st === 'unavailable') {
         this._saveWait = true;
         return;
       }
