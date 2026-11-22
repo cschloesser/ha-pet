@@ -1,12 +1,19 @@
 // Päckchen: Hinweise, Inhalte mit Bild, Name und Trick, Papier- und Ballonfarben, Päckchen, Ballon, Hängematte,
 // Windrad, Goldfilter
 
+import { GIFT_TRE } from '../logik/paeckchen.js';
 import { OUT } from './pika.js';
 import { ICON_LEAF, ICON_HEART, ICON_SPARK } from './szene.js';
 
 // Was die Serie gerade gefährdet (unter GIFT.min): Hinweis im Album und Zeichen am Knopf
 // Was für die Serie fehlt: Wort im Album (ruhig, seit 0.35 ohne Ausrufezeichen) und Zeichen am Knopf
 const GIFT_LOW = { s: ['füttern', ICON_LEAF], g: ['streicheln', ICON_HEART], c: ['putzen', ICON_SPARK] };
+// Fünfzackiger Stern um 12/12.6 (Plätzchen): Spitzen bei ra, Kerben bei ri
+const giftStar = (ra, ri) => `M${[...Array(10).keys()].map((n) => {
+  const a = (-90 + n * 36) * Math.PI / 180;
+  const r = n % 2 ? ri : ra;
+  return `${Number((12 + r * Math.cos(a)).toFixed(1))} ${Number((12.6 + r * Math.sin(a)).toFixed(1))}`;
+}).join(' L')}Z`;
 const GIFT_ITEMS = [
   { key: 'yarn', name: 'Wollknäuel', say: 'ein Wollknäuel!', svg: `<svg viewBox="0 0 24 24" aria-hidden="true">
       <path d="M18.4 17.6 q3.6 1.6 1.6 4 q-2 1.6 -4.4 .2" stroke="#f28fb1" stroke-width="1.2" fill="none" stroke-linecap="round"/>
@@ -73,7 +80,38 @@ const GIFT_ITEMS = [
         ${[0, 72, 144, 216, 288].map((a) => `<ellipse rx="1.6" ry="2.4" transform="rotate(${a}) translate(0 -2)" fill="${c}" stroke="${OUT}" stroke-width=".5"/>`).join('')}
         <circle r="1.3" fill="#e0a032"/></g>`).join('')}
       <path d="M9.4 16.4 l2.6 1.4 2.6 -1.4 -.6 3 -2 -.8 -2 .8z" fill="#5fb9de" stroke="${OUT}" stroke-width=".6"/></svg>` },
+  // Winter und Frühling (seit 0.43). Nur anhängen: Die Nummer steht im Tagesplan (gift.i, vier Bits), mit 16 Einträgen
+  // ist sie voll. Ohne id und class: _mouth setzt die Grafik in den Pika, dort griffe sonst dessen Stylesheet.
+  { key: 'nuts', name: 'Haselnüsse', color: '#b9783f', mo: [10, 11, 0, 1], svg: `<svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M12.4 8.6 q-.6 -4.6 -5.4 -5.6 q-.8 4.6 5.4 5.6z M12.6 8.6 q1.4 -4.4 6.2 -4.6 q-.2 4.4 -6.2 4.6z" fill="#5fae4a" stroke="${OUT}" stroke-width=".7" stroke-linejoin="round"/>
+      ${[[15.8, 14.4, 14], [8.4, 14.8, -12]].map(([x, y, a]) => `<g transform="translate(${x} ${y}) rotate(${a})">
+        <path d="M-5.4 -1.6 C-5.6 3.4 -2 5.6 0 7.4 C2 5.6 5.6 3.4 5.4 -1.6 C5 -6.4 -5 -6.4 -5.4 -1.6Z" fill="#b9783f" stroke="${OUT}" stroke-width=".9" stroke-linejoin="round"/>
+        <path d="M-4.6 -2.6 C-3.6 -6 3.6 -6 4.6 -2.6 C2.4 -1.2 -2.4 -1.2 -4.6 -2.6Z" fill="#ecd3a2" stroke="${OUT}" stroke-width=".6" stroke-linejoin="round"/>
+        <path d="M-3.4 .6 q.2 2.4 1.8 3.8" stroke="#fff" stroke-width=".9" fill="none" opacity=".5" stroke-linecap="round"/></g>`).join('')}</svg>` },
+  { key: 'baked', name: 'Bratapfel', color: '#cf4a3a', mo: [11, 0, 1], svg: `<svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M6.6 6.4 q-1.6 -1.6 0 -3.2 q1.4 -1.4 .2 -2.8 M10.6 5 q-1.2 -1.2 0 -2.6" stroke="#b9a590" stroke-width="1.7" fill="none" stroke-linecap="round"/>
+      <path d="M6.6 6.4 q-1.6 -1.6 0 -3.2 q1.4 -1.4 .2 -2.8 M10.6 5 q-1.2 -1.2 0 -2.6" stroke="#fff" stroke-width="1" fill="none" stroke-linecap="round"/>
+      <path d="M12 10 C8.4 7.8 3 9.4 3 14.4 C3 18.8 6.2 22.2 9.6 22.2 C10.8 22.2 11.2 21.6 12 21.6 C12.8 21.6 13.2 22.2 14.4 22.2 C17.8 22.2 21 18.8 21 14.4 C21 9.4 15.6 7.8 12 10Z" fill="#cf4a3a" stroke="${OUT}" stroke-width=".9" stroke-linejoin="round"/>
+      <path d="M5.2 16.6 q.4 2.2 2 3.4" stroke="#fff" stroke-width="1" fill="none" opacity=".5" stroke-linecap="round"/>
+      <path d="M13.2 10.4 L16.6 3.6 L19 4.8 L15.8 11.2Z" fill="#a8683a" stroke="${OUT}" stroke-width=".7" stroke-linejoin="round"/>
+      <path d="M17.4 5 L14.9 10" stroke="#7a4a26" stroke-width=".7" fill="none" stroke-linecap="round"/>
+      <path d="M5.6 10.8 Q12 6.6 18.4 10.8 Q19.4 13.4 17.6 13.8 Q16.2 13.8 16 12.4 Q14.8 14.2 13.4 12.8 Q12.8 16.4 11 13 Q9.6 14.2 8.4 12.6 Q7.4 14.4 6 13.4 Q4.8 12.2 5.6 10.8Z" fill="#fbf1d8" stroke="${OUT}" stroke-width=".7" stroke-linejoin="round"/>
+      <path d="M8.6 10.8 q1.4 -1 3 -1.2" stroke="#fff" stroke-width=".9" fill="none" stroke-linecap="round"/></svg>` },
+  { key: 'cookie', name: 'Plätzchen', color: '#dfa253', mo: [11], svg: `<svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="${giftStar(10, 5.6)}" fill="#dfa253" stroke="${OUT}" stroke-width=".9" stroke-linejoin="round"/>
+      <path d="${giftStar(5.4, 3.1)}" fill="#fff8ec" stroke="#fff8ec" stroke-width="1" stroke-linejoin="round"/>
+      <circle cx="12" cy="10" r=".85" fill="#e8584e"/><circle cx="9.7" cy="12.2" r=".85" fill="#5fae4a"/><circle cx="14.3" cy="12.2" r=".85" fill="#5fb9de"/>
+      <circle cx="10.6" cy="14.8" r=".85" fill="#f6c945"/><circle cx="13.4" cy="14.8" r=".85" fill="#e8584e"/></svg>` },
+  { key: 'carrot', name: 'Möhre', color: '#f08a2c', mo: [2, 3], svg: `<svg viewBox="0 0 24 24" aria-hidden="true"><g transform="rotate(38 12 12)">
+      <path d="M12 7.6 Q8.6 5.4 8.2 1.4 Q11.4 2.6 12 7.6Z M12 7.6 Q11 3.2 13 -.4 Q15 3.4 12 7.6Z M12 7.6 Q13.4 3.6 17 2.6 Q16.4 6 12 7.6Z" fill="#5fae4a" stroke="${OUT}" stroke-width=".7" stroke-linejoin="round"/>
+      <path d="M7.8 9 Q12 5.6 16.2 9 Q15.6 17 12 24 Q8.4 17 7.8 9Z" fill="#f08a2c" stroke="${OUT}" stroke-width=".9" stroke-linejoin="round"/>
+      <path d="M9.4 11.6 h2.6 M12.8 14.4 h1.8 M10.4 17.2 h1.8" stroke="#c4621a" stroke-width=".8" fill="none" stroke-linecap="round"/>
+      <path d="M9.6 9.6 q-.2 3 .6 5.6" stroke="#fff" stroke-width=".9" fill="none" opacity=".5" stroke-linecap="round"/></g></svg>` },
 ];
+// Inhalt Nummer i. Eine Nummer, die diese Version nicht kennt (ein Leckerli aus einer späteren): das Blumensträußchen,
+// das gibt es immer. Bis 0.42.2 fehlte das: Dort wirft das Auspacken einmal (siehe _giftOpen), sobald ein Gerät mit 0.43
+// eins der vier neuen verschenkt.
+const giftItem = (i) => GIFT_ITEMS[i] || (i >= GIFT_TRE ? GIFT_ITEMS.find((it) => it.key === 'posy') : undefined);
 // Papier und Band der Päckchen (je Nummer), Ballonfarben, golden
 const GIFT_PAPER = [['#5fb9de', '#f6c945'], ['#f28fb1', '#ffffff'], ['#7cc35a', '#e8584e'], ['#b99cf0', '#f6c945'], ['#ff9f5a', '#5fb9de']];
 const GIFT_BALLOONS = ['#e8584e', '#5fb9de', '#f6c945', '#b99cf0', '#7cc35a', '#f28fb1'];
@@ -131,6 +169,6 @@ const GIFT_WHEEL = `<svg viewBox="0 0 24 44" aria-hidden="true">
 const GILT_F = 'sepia(1) saturate(2.6) hue-rotate(8deg) brightness(1.12)';
 
 export {
-  GIFT_LOW, GIFT_ITEMS, GIFT_PAPER, GIFT_BALLOONS, GIFT_GOLD, GIFT_TRICK, GIFT_GILT, GIFT_PARCEL, GIFT_BALLOON,
+  GIFT_LOW, GIFT_ITEMS, giftItem, GIFT_PAPER, GIFT_BALLOONS, GIFT_GOLD, GIFT_TRICK, GIFT_GILT, GIFT_PARCEL, GIFT_BALLOON,
   GIFT_HAMMOCK, GIFT_HAM_W, GIFT_HAM_LIFT, GIFT_HAM_MS, GIFT_WHEEL, GILT_F,
 };

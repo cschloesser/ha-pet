@@ -1,7 +1,7 @@
 // Stil der Beschäftigungen (groß und klein)
 
 import { PROPS, KRAM } from '../logik/beschaeftigungen.js';
-import { PURZEL_ROLL } from '../logik/beschaeftigungen-klein.js';
+import { PURZEL_ROLL, ANGEL_T } from '../logik/beschaeftigungen-klein.js';
 import { BZ, LICHT_P } from '../logik/buehne.js';
 
 const STYLE_ACT = `
@@ -212,7 +212,8 @@ const STYLE_ACT = `
   }
 
   /* ---- Kleine Beschäftigungen ab 0.32: Hula-Hoop, Jo-Jo, Pusteblume, Purzelbaum, Steintürmchen, Jonglieren,
-     Blumenkranz, Papierflieger; bei Regen Pfützenspringen und Papierschiffchen, bei Schnee der Schnee-Pika ---- */
+     Blumenkranz, Papierflieger; bei Regen Pfützenspringen und Papierschiffchen, bei Schnee der Schnee-Pika und
+     (ab 0.43) Schneeengel und Schneeball ---- */
   .hoop, .yo, .pbl, .jug, .dchain, .dcrown, .pgl, .peb, .sboat { display: none; }
   .hula .hoop, .hula .arms, .yoyo .yo, .puste .pbl, .juggle .jug, .juggle .arms, .plait .dchain, .crowned .dcrown,
   .gliding .pgl, .pebble .peb, .boating .sboat { display: inline; }
@@ -351,6 +352,79 @@ const STYLE_ACT = `
   .snowp { transform-origin: 50% 100%; }
   .snowp.off { transform: scaleY(.35); transition: opacity .6s, transform .6s ease-in, filter 2.5s; }
 
+  /* Schneeengel: Er plumpst rückwärts auf den Rücken (.angel-dn: aufbäumen, umkippen, Füße in der Luft), schwingt
+     Arme und Beine (.angel-go) und rappelt sich wieder auf (.angel-up). Gedreht wird .hop um die Körpermitte wie
+     beim Purzelbaum; die Pfoten neben dem Kopf (.arms) liegen dabei am Boden. */
+  .angel-dn .hop, .angel-up .hop { transform-origin: 50% 58%; }
+  .angel-dn .hop { animation: aflop ${ANGEL_T.flop}ms cubic-bezier(.45, 0, .6, 1) both; }
+  @keyframes aflop {
+    0% { transform: translateY(0) rotate(0deg); }
+    28% { transform: translateY(-7%) rotate(-48deg); }
+    78% { transform: translateY(-3%) rotate(-188deg) scale(1.04, .95); }
+    100% { transform: translateY(-5%) rotate(-180deg); }
+  }
+  .angel-up .hop { animation: aup ${ANGEL_T.up}ms cubic-bezier(.4, 0, .4, 1) both; }
+  @keyframes aup {
+    0% { transform: translateY(-5%) rotate(-180deg); }
+    55% { transform: translateY(-10%) rotate(-52deg); }
+    85% { transform: translateY(0) rotate(5deg) scale(1.05, .94); }
+    100% { transform: translateY(0) rotate(0deg); }
+  }
+  .angel-dn .shadow { transform: scale(1.12, 1); transition: transform .5s; }
+  .angel-dn .arms { display: inline; transform: translateY(-9px); }
+  .angel-dn .face { transform: translate(-1px, -1.5px); }
+  .angel-go .arms { animation: aarm ${ANGEL_T.sweep}ms ease-in-out infinite; }
+  @keyframes aarm { 0%, 100% { transform: translate(7px, -9px); } 50% { transform: translate(-9px, -11px); } }
+  .angel-go .bfoot { animation: aleg-b ${ANGEL_T.sweep}ms ease-in-out infinite; }
+  .angel-go .ffoot { animation: aleg-f ${ANGEL_T.sweep}ms ease-in-out infinite; }
+  @keyframes aleg-b { 0%, 100% { transform: translate(5px, 1px) rotate(10deg); } 50% { transform: translate(-7px, 0) rotate(-14deg); } }
+  @keyframes aleg-f { 0%, 100% { transform: translate(-5px, 1px) rotate(-10deg); } 50% { transform: translate(7px, 0) rotate(14deg); } }
+  .angel-go .jump { animation: arock ${ANGEL_T.sweep}ms ease-in-out infinite; }
+  @keyframes arock { 0%, 100% { transform: rotate(-1.6deg); } 50% { transform: rotate(1.6deg); } }
+  /* Der Abdruck im Schnee: Bauch, Kopf und Ohren sind da, sobald er liegt (.b); Flügel und Fächer wachsen mit jedem
+     Schwung (--aw 0 … 1). .now: alles auf einmal (Bewegung reduzieren: blendet über --ag ein). .drift: Schnee weht
+     darüber, er verblasst. */
+  .angelp > svg { opacity: .9; }
+  .ap-l { fill: none; stroke: #9db1cb; stroke-width: 1.5; stroke-linecap: round; }
+  .ap-b, .ap-w, .ap-s { opacity: 0; transition: opacity var(--ag, .35s) ease-out, transform 1.1s ease-in-out; }
+  .ap-w, .ap-s { transform-box: view-box; transform: scale(var(--aw, .2)); }
+  .ap-wl { transform-origin: 48px 27px; }
+  .ap-wr { transform-origin: 72px 27px; }
+  .ap-s { transform-origin: 60px 32px; }
+  .angelp.b .ap-b, .angelp.w .ap-w, .angelp.w .ap-s { opacity: 1; }
+  .angelp.drift { opacity: 0; transition: opacity ${ANGEL_T.drift}ms ease-in, filter 2.5s; }
+  /* Schneeflöckchen, die beim Plumpsen und bei jedem Schwung aufstieben (wie .puff, nur weiß) */
+  .puff.snowy { background: rgba(250, 252, 255, .95); box-shadow: 0 0 0 1px rgba(160, 178, 200, .35); }
+  .night .puff.snowy { background: rgba(190, 200, 225, .8); }
+
+  /* Schneeball: Er schiebt mit Nase und Pfoten (.sb-push: vorgebeugt, das Hoppeln kommt von .walking), am Ende lehnt
+     er sich an (.sb-lean). Geneigt wird .jump, damit .hop frei für das Hoppeln bleibt. */
+  .sb-push .jump { transform: rotate(7deg); transition: transform .25s ease-out; }
+  .sb-push .paws { display: inline; transform: translate(13.5px, 3px); }
+  .sb-push .face { transform: translate(2.6px, 1.4px); }
+  /* die kleine Kugel am Boden festklopfen: geduckt, Pfoten tief (wie .spat, das auf Bauchhöhe klopft) */
+  .sb-pat .hop { transform: scale(1.05, .92); transition: transform .25s; }
+  .sb-pat .paws { display: inline; transform-box: fill-box; animation: sbpat .34s ease-in-out infinite alternate; }
+  @keyframes sbpat { from { transform: translate(12px, 17px); } to { transform: translate(14.5px, 11.5px); } }
+  .sb-pat .face { transform: translate(2.6px, 2.8px); }
+  .sb-lean .jump { transform: rotate(11deg) translateX(2%); transition: transform .35s ease-out; }
+  .sb-lean .paws { display: inline; transform: translate(16px, -5px); }
+  .sb-lean .face { transform: translate(2px, -.6px); }
+  /* Das Requisit (.sbp) hält Spur und Kugel. Das Skript schiebt die Kugel (.sb-ball), lässt sie wachsen (.sb-size,
+     von unten), dreht ihre Kerben (.sb-rot) und zieht die Spur auf (.sb-track), alles über dieselbe Dauer. Am Ende
+     sackt sie zusammen wie der Schnee-Pika (.off). */
+  .sb-ball { position: absolute; bottom: 0; will-change: transform; }
+  .sb-sink, .sb-size { position: absolute; inset: 0; transform-origin: 50% 100%; }
+  .sb-size { transform: scale(0); }
+  .sb-size > svg { display: block; width: 100%; height: 100%; overflow: visible; }
+  .sb-rot { transform-box: view-box; transform-origin: 30px 31px; }
+  .sb-track {
+    position: absolute; bottom: 0; transform: scaleX(0); border-radius: 999px; opacity: .9;
+    background: linear-gradient(#f7fafc 0 14%, #a9bbd3 14% 32%, #c2d0e2 32% 82%, #f7fafc 82%);
+  }
+  .sbp.off { transition: opacity .6s, filter 2.5s; }
+  .sbp.off .sb-sink { transform: scaleY(.3); transition: transform .6s ease-in; }
+
   /* Bewegung reduzieren: Nichts kreist, pendelt oder schaukelt von selbst; man sieht trotzdem, was er tut (Reifen
      schräg um den Bauch, Jo-Jo an halber Schnur, drei Beeren im Bogen). Steine und Schnee erscheinen ohne Federn. */
   @media (prefers-reduced-motion: reduce) {
@@ -363,6 +437,11 @@ const STYLE_ACT = `
     .jug-go .jb2 { transform: translate(23.5px, -37px); }
     .jug-go .jb3 { transform: translate(47px, -4px); }
     .stn, .stonep.fall .stn, .spl { transition-timing-function: ease-out; }
+    /* Schneeengel und Schneeball: Das Skript lässt ihn gar nicht erst plumpsen oder schieben (calmMotion); der
+       Abdruck blendet ein, ohne dass Flügel wachsen, und nichts lehnt sich mit Schwung */
+    .ap-w, .ap-s { transform: none; }
+    .sb-lean .jump, .sb-push .jump { transition: none; }
+    .sb-pat .paws { animation: none; transform: translate(13px, 14px); }
   }
   `;
 

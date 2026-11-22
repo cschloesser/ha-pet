@@ -13,6 +13,14 @@ const festEaster = (y) => {
 };
 // 1. Advent: vierter Sonntag vor dem 25. 12. (Tagesnummer)
 const festAdvent1 = (y) => festDay(y, 12, 25) - (new Date(y, 11, 25).getDay() || 7) - 21;
+// Adventssonntag: Die neue Kerze zündet der Pika selbst an (Aktion festAdvent), bis dahin ist sie auf diesem Gerät
+// aus. Kommt er nicht dazu (er schläft, ist verreist, die Karte ist nicht zu sehen, Gewitter), brennt sie von selbst:
+// ab der Abenddämmerung, spätestens ab 17 Uhr (für Karten, deren Himmel der Schlafenszeit folgt). Dunkel ist es auch
+// am Morgen vor Sonnenaufgang, darum zählt die Dämmerung erst ab Mittag.
+// neu: heute ist Adventssonntag, lit: hier schon angezündet, h: Stunde (Ortszeit), dark: Dämmerung oder Nacht
+const FEST_CANDLE_AUTO = 17;
+const festCandleOff = (neu, lit, h, dark) => !!neu && !lit && h < FEST_CANDLE_AUTO && (h < 12 || !dark);
+const FEST_ADVENT = ['Erster', 'Zweiter', 'Dritter', 'Vierter'];
 // Augenblicke, die auf allen Geräten in derselben Sekunde kommen sollen (Ortszeit, ms): der nächste Jahreswechsel
 // und 11:11 Uhr am 11. 11. dieses Jahres. Der 20-Sekunden-Takt jedes Geräts hat seine eigene Phase: Er stellt nur
 // den Zeitgeber, ausgelöst wird nach der Uhr von HA.
@@ -49,4 +57,4 @@ const festBirthdate = (v) => {
 // "Mia" / "Mia und Tom" / "Mia, Tom und Lea"
 const festNames = (a) => (a.length < 2 ? a[0] || '' : `${a.slice(0, -1).join(', ')} und ${a[a.length - 1]}`);
 
-export { festDay, festEaster, festAdvent1, FEST_AHEAD, festMoments, festBirthdate, festNames };
+export { festDay, festEaster, festAdvent1, festCandleOff, FEST_ADVENT, FEST_AHEAD, festMoments, festBirthdate, festNames };

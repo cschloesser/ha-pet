@@ -1,5 +1,5 @@
 // Beschäftigungen: Fernsehfarben, Drachen, Staffelei, Schirmchen, Tropfen, Pfütze, Schiffchen, Schnee-Pika, Steine,
-// Papierflieger
+// Papierflieger, Schneeengel, Schneeball
 
 import { OUT, BOAT_ART } from './pika.js';
 
@@ -129,8 +129,35 @@ const GLIDER_SVG = `<svg viewBox="0 0 26 14" aria-hidden="true">
       <path d="M1 3 L25 6 L9 9Z" fill="#fffaf0" stroke="${OUT}" stroke-width=".9" stroke-linejoin="round"/>
       <path d="M25 6 L9 9 L11 13 L13.6 8.4" fill="#ead2a2" stroke="${OUT}" stroke-width=".9" stroke-linejoin="round"/>
     </svg>`;
+// Schneeengel (gezeichnet auf 120 × 56, liegt flach im Schnee, deshalb gestaucht): der Abdruck eines Pikas, also
+// Bauch, Kopf und zwei runde Ohren (.ap-b), dazu die Flügel der Arme (.ap-w, wachsen vom Ansatz aus mit --aw) und
+// der Fächer der Beine (.ap-s). Zweimal gezeichnet: hell und breiter als aufgeworfener Rand, darauf die bläuliche
+// Mulde; so gibt es keine Linien, wo sich die Teile überlappen. In den Flügeln die Spuren der Schwünge.
+// Die viewBox ist ringsum etwas größer als die Zeichnung: Flügelspitzen und Rand ragten sonst über die Box, und
+// Safari schneidet mit dem Lichtfilter der Dämmerung alles ab, was übersteht (siehe 0.40.1).
+const ANGEL_PARTS = (lines) => `<g class="ap-w ap-wl"><path d="M48 27 L25 6.4 A44 22 0 0 0 9 41Z"/>${lines
+    ? '<path class="ap-l" d="M32.6 13.4 A30 15 0 0 0 21.8 36.6 M39 19.6 A17 8.5 0 0 0 33 32.6"/>' : ''}</g>
+      <g class="ap-w ap-wr"><path d="M72 27 L95 6.4 A44 22 0 0 1 111 41Z"/>${lines
+    ? '<path class="ap-l" d="M87.4 13.4 A30 15 0 0 1 98.2 36.6 M81 19.6 A17 8.5 0 0 1 87 32.6"/>' : ''}</g>
+      <path class="ap-s" d="M60 32 L39 50.6 A24 6.4 0 0 0 81 50.6Z"/>
+      <g class="ap-b"><ellipse cx="47.4" cy="6.6" rx="9" ry="4.6"/><ellipse cx="72.6" cy="6.6" rx="9" ry="4.6"/>
+        <ellipse cx="60" cy="13.4" rx="15.4" ry="7.8"/><ellipse cx="60" cy="30" rx="18.6" ry="12.4"/></g>`;
+const ANGEL_SVG = `<svg viewBox="-5 -1 130 58" preserveAspectRatio="none" aria-hidden="true">
+      <g fill="#f7fafc" stroke="#f7fafc" stroke-width="4.6" stroke-linejoin="round">${ANGEL_PARTS(false)}</g>
+      <g fill="#c2d0e2" stroke="#c2d0e2" stroke-width="1.6" stroke-linejoin="round">${ANGEL_PARTS(true)}</g>
+    </svg>`;
+// Schneeball (60 × 60): Kugel mit Schatten unten links wie die Schichten des Schnee-Pikas; die Kerben und Krümel
+// (.sb-rot) drehen sich beim Rollen mit, Rand und Schatten bleiben stehen.
+const SNOWBALL_SVG = `<svg viewBox="0 0 60 60" aria-hidden="true">
+      <circle cx="30" cy="31" r="27" fill="#f4f6f8" stroke="#9aa3ad" stroke-width="1.8"/>
+      <path d="M9 41 Q17 55 35 56" stroke="#bccbd8" stroke-width="4.6" fill="none" stroke-linecap="round"/>
+      <g class="sb-rot" fill="none" stroke="#c6d2df" stroke-width="1.9" stroke-linecap="round">
+        <path d="M19 17 q7 -6 15 -3"/><path d="M41 29 q5 4 4 10"/><path d="M19 36 q3 5 9 6"/>
+        <circle cx="42" cy="19" r="1.3" fill="#c6d2df" stroke="none"/><circle cx="30" cy="30" r="1.2" fill="#c6d2df" stroke="none"/>
+      </g>
+    </svg>`;
 
 export {
   TV_COLORS, KITE_SVG, EASEL_MOTIF, EASEL_SVG, SEED_SVG, DROP_SVG, PUDDLE_SVG, BOAT_SVG, SNOWPIKA_SVG, STONES_SVG,
-  GLIDER_SVG,
+  GLIDER_SVG, ANGEL_SVG, SNOWBALL_SVG,
 };

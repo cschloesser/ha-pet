@@ -3,9 +3,9 @@
 import { rnd, pick, clamp, seeded, seedRnd } from '../logik/hilfen.js';
 import { RATE, sec } from '../logik/zustand.js';
 import { PLAN_MIN, MEM_GUT, pikaDay, planParse } from '../logik/tagesplan.js';
-import { GIFT, GIFT_TRE, giftLv, giftLvs, giftOwned, giftTre, giftMile, giftAllGold } from '../logik/paeckchen.js';
+import { GIFT, GIFT_TRE, giftLv, giftLvs, giftOwned, giftTre, giftTreat, giftMile, giftAllGold } from '../logik/paeckchen.js';
 import {
-  GIFT_LOW, GIFT_ITEMS, GIFT_PAPER, GIFT_BALLOONS, GIFT_GOLD, GIFT_TRICK, GIFT_GILT, GIFT_PARCEL, GIFT_BALLOON,
+  GIFT_LOW, GIFT_ITEMS, giftItem, GIFT_PAPER, GIFT_BALLOONS, GIFT_GOLD, GIFT_TRICK, GIFT_GILT, GIFT_PARCEL, GIFT_BALLOON,
   GIFT_HAMMOCK, GIFT_HAM_W, GIFT_HAM_MS, GIFT_WHEEL,
 } from '../grafik/paeckchen.js';
 
@@ -248,16 +248,27 @@ export class Paeckchen {
   // immer), nie mehr als zwei Leckerli in Folge (giftTre), sonst ein Leckerli der Jahreszeit. Schatz heißt: erst einer, der noch fehlt, dann ein Trick für einen, der
   // noch keinen hat. Goldene vergolden lieber einen mit Trick, bevor sie einen neuen Trick bringen. Hat jeder Schatz
   // alles, was er aus solchen Päckchen bekommen kann, gibt es nur noch Leckerli.
+  // Gewürfelt wird nur auf dem Gerät, das verschenkt (sein Monat gilt): Die Nummer steht danach im Tagesplan (gift.i),
+  // alle anderen lesen sie dort. Nummern ab 12 (seit 0.43) kennt eine Karte bis 0.42.2 nicht, siehe giftItem.
   _giftPick(G, z, gold) {
+    if (this._dbgTreat != null) return this._dbgTreat; // Vorschau: dieses Leckerli, gleich welcher Monat
     const T = [...Array(GIFT_TRE).keys()];
     const at = (lv) => T.filter((t) => giftLv(G, t) === lv);
     const miss = at(0).length ? at(0) : gold && at(2).length ? at(2) : at(1);
     const tre = miss.length && (gold || giftTre(z));
     if (tre) return miss[Math.floor(seedRnd('gtre', z) * miss.length)];
     const south = (this._hass?.config?.latitude ?? 50) < 0;
-    const mo = (new Date().getMonth() + (south ? 6 : 0)) % 12;
-    const ok = GIFT_ITEMS.map((it, n) => n).filter((n) => n >= GIFT_TRE && (!GIFT_ITEMS[n].mo || GIFT_ITEMS[n].mo.includes(mo)));
-    return ok[Math.floor(seedRnd('gtreat', z) * ok.length)];
+    return this._giftTreat(z, (new Date().getMonth() + (south ? 6 : 0)) % 12);
+  }
+
+  // Leckerli für Päckchen z im Monat mo (für die Tests ohne Uhr)
+  _giftTreat(z, mo) {
+    return giftTreat(GIFT_ITEMS, z, mo);
+  }
+
+  // Inhalt Nummer i mit Bild, Name und Farbe; eine unbekannte Nummer zeigt das Blumensträußchen (für die Tests)
+  _giftItem(i) {
+    return giftItem(i);
   }
 
   // Plan geändert: Knopf, Ballon und Schätze nachziehen
@@ -505,7 +516,8 @@ export class Paeckchen {
     const lv = B.item < GIFT_TRE && PG?.z === B.z ? giftLv(PG, B.item) : 1;
     this._giftHide = B.item < GIFT_TRE ? B.item : null;
     this._planOp({ t: 'gopen', z: B.z });
-    const it = GIFT_ITEMS[B.item];
+    // (eine Nummer aus einer späteren Version: giftItem zeigt dann das Sträußchen, statt hier zu werfen)
+    const it = giftItem(B.item);
     let ie = null;
     try {
       B.el.querySelector('.gp-bow').classList.add('off');

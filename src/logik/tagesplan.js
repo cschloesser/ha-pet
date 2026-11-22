@@ -229,7 +229,7 @@ const planApply = (P, op, now) => {
   if (op.t === 'voff') {
     // Zurück: Dauer d. Das Gerät, das zurückholt, hat ausgerechnet, wohin Fortschritt (gp) und Toleranz (gb) der Serie
     // und der Verfall des Vorrats (ht) rücken, damit die Urlaubszeit nicht mitzählt. Gilt nur für diesen Urlaub, einmal.
-    if (out.ur?.t !== op.t0 || out.ur.d != null) return out;
+    if (!out.ur || out.ur.t !== op.t0 || out.ur.d != null) return out;
     out.ur = { t: op.t0, d: op.d };
     if (out.gift && op.gp != null && out.gift.p != null) out.gift.p = op.gp;
     if (out.gift && op.gb != null && out.gift.b != null) out.gift.b = op.gb;
@@ -238,7 +238,7 @@ const planApply = (P, op, now) => {
   }
   if (op.t === 'vclear') {
     // Ende des Urlaubs lange genug bekannt: Abschnitt weg (ältere Karten schreiben dann wieder mit)
-    if (out.ur?.t === op.t0 && out.ur.d != null) out.ur = null;
+    if (out.ur && out.ur.t === op.t0 && out.ur.d != null) out.ur = null;
     return out;
   }
   if (op.t === 'rec') {

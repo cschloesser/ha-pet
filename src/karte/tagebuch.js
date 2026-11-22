@@ -14,7 +14,7 @@ import {
   DIARY, FIND_GROUPS, FINDS, FIND_IDS, findsParse, findsSer, DIARY_TXT, diaryPick, diaryTime, diaryDerive,
 } from '../logik/tagebuch.js';
 import { ICON_LEAF, ICON_HEART, ICON_SPARK } from '../grafik/szene.js';
-import { GIFT_ITEMS, GIFT_TRICK, GIFT_GILT, GIFT_PARCEL } from '../grafik/paeckchen.js';
+import { GIFT_ITEMS, giftItem, GIFT_TRICK, GIFT_GILT, GIFT_PARCEL } from '../grafik/paeckchen.js';
 import { DIARY_BOOK, DIARY_PAW, DIARY_ICON, diaryPainting } from '../grafik/tagebuch.js';
 import { STYLE_DIARY } from '../stil/tagebuch.js';
 import { URLAUB_SIGN, URLAUB_CARD } from '../grafik/urlaub.js';
@@ -219,7 +219,8 @@ export class Tagebuch {
     const it = GIFT_ITEMS[e.it];
     const fr = this._frName();
     const lead = e.gold ? 'Ein goldenes Päckchen! Ich hab es mit der Zwille vom Himmel geholt.' : diaryPick(DIARY_TXT.parcel, 'parcel', Math.floor(t / 60000));
-    if (!it) return lead;
+    // Ein Leckerli, das diese Version noch nicht kennt (aus einer späteren): ohne Namen, das Bild ist das Sträußchen
+    if (!it) return e.what === 'treat' ? `${lead} Drin war ein Leckerli. Sofort aufgefuttert!` : lead;
     const nm = it.key === 'plush' ? `Plüsch-${fr}` : it.name;
     if (e.what === 'treat') return `${lead} Drin war ein Leckerli: ${nm}. Sofort aufgefuttert!`;
     if (e.what === 'trick') return `${lead} Jetzt kann ich einen neuen Trick: ${GIFT_TRICK[e.it]}!`;
@@ -295,8 +296,8 @@ export class Tagebuch {
         else if (e.b === 'tonne' && house) put(t, 'tonne', tx(T.tonne, 'tonne', t), { svg: SIG_BIN('#7d848c') });
       } else if (e.k === 'parcel') {
         one.add('parcel');
-        put(t, 'parcel', this._diaryParcel(e, t), { svg: GIFT_ITEMS[e.it]?.svg });
-        if (e.all) put(t + 1, 'parcel', tx(T.allGold, 'allg', t), { svg: GIFT_ITEMS[e.it]?.svg });
+        put(t, 'parcel', this._diaryParcel(e, t), { svg: giftItem(e.it)?.svg });
+        if (e.all) put(t + 1, 'parcel', tx(T.allGold, 'allg', t), { svg: giftItem(e.it)?.svg });
         else if (e.mile) put(t + 1, 'parcel', tx(T.mile, 'mile', t).replace('{z}', e.o), { svg: GIFT_PARCEL });
       } else if (e.k === 'urlaub') {
         put(t, 'urlaub', tx(T.urlaub, 'ur', t), { svg: URLAUB_SIGN(fr) });

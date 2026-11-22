@@ -128,9 +128,11 @@ const FEST_CARRY = `<svg viewBox="0 0 120 100" aria-hidden="true">
     </g>
     <ellipse cx="101" cy="62.4" rx="4" ry="5" fill="#ecdcc6" stroke="${OUT}" stroke-width="1.4"/>
   </svg>`;
-// Adventskranz (viewBox 44 × 28): n Kerzen brennen
+// Adventskranz (viewBox 44 × 28): n Kerzen brennen. neu (Adventssonntag): Schein und Flamme der n-ten Kerze stehen
+// zusammen in .fnew, damit der Stil sie ausblenden kann, bis der Pika sie anzündet (.fwreath.unlit); .fpop lässt die
+// Flamme beim Anzünden aufspringen. Kerze und Docht stehen in .b und sind immer zu sehen.
 const FEST_CANDLES = [[15.5, 15.6], [28.5, 15.6], [9, 21.6], [35, 21.6]]; // Kerzenfuß; brennen in Reihenfolge 1–4
-const FEST_WREATH = (n) => ({
+const FEST_WREATH = (n, neu = false) => ({
   vb: [44, 28],
   b: `<ellipse cx="22" cy="19.6" rx="18.6" ry="6.2" fill="none" stroke="${OUT}" stroke-width="7"/>
       <ellipse cx="22" cy="19.6" rx="18.6" ry="6.2" fill="none" stroke="#2f6b33" stroke-width="5.4"/>
@@ -143,11 +145,12 @@ const FEST_WREATH = (n) => ({
       <path d="M22 25.5 Q16.5 21.5 16.6 26.2 Q17 28.4 22 25.5Z M22 25.5 Q27.5 21.5 27.4 26.2 Q27 28.4 22 25.5Z" fill="#e8584e" stroke="${OUT}" stroke-width=".7" stroke-linejoin="round"/>
       <path d="M21.3 26 L19.6 30.4 L21.4 29.6Z M22.7 26 L24.4 30.4 L22.6 29.6Z" fill="#c94440" stroke="${OUT}" stroke-width=".5"/>
       <circle cx="22" cy="25.6" r="1.3" fill="#c94440" stroke="${OUT}" stroke-width=".6"/>`,
-  g: `<defs>${GLOW_GRAD('fst-wg', '#ffcf70')}</defs>${FEST_CANDLES.slice(0, n).map(([x, y]) => {
+  g: `<defs>${GLOW_GRAD('fst-wg', '#ffcf70')}</defs>${FEST_CANDLES.slice(0, n).map(([x, y], i) => {
     const t = y - 9.8;
-    return `<g class="nite"><circle cx="${x}" cy="${t - 1.6}" r="6" fill="url(#fst-wg)"/></g>`
-      + `<g class="flm"><path d="M${x} ${t - 4} Q${x + 1.9} ${t - 1.2} ${x} ${t} Q${x - 1.9} ${t - 1.2} ${x} ${t - 4}Z" fill="#ffb53a"/>`
+    const halo = `<g class="nite"><circle cx="${x}" cy="${t - 1.6}" r="6" fill="url(#fst-wg)"/></g>`;
+    const flame = `<g class="flm"><path d="M${x} ${t - 4} Q${x + 1.9} ${t - 1.2} ${x} ${t} Q${x - 1.9} ${t - 1.2} ${x} ${t - 4}Z" fill="#ffb53a"/>`
       + `<path d="M${x} ${t - 2.4} Q${x + 0.9} ${t - 0.8} ${x} ${t} Q${x - 0.9} ${t - 0.8} ${x} ${t - 2.4}Z" fill="#fff3b0"/></g>`;
+    return neu && i === n - 1 ? `<g class="fnew">${halo}<g class="fpop">${flame}</g></g>` : halo + flame;
   }).join('')}`,
 });
 // Nikolausstiefel (viewBox 30 × 38), am 6. 12. gefüllt
@@ -266,5 +269,5 @@ const FEST_BAT = `<svg viewBox="0 0 40 22" aria-hidden="true">
 
 export {
   FEST_COLORS, FEST_FW_COLORS, festF1, festSvg, FEST_EDGE, FEST_LIGHTS, FEST_STREAMERS, FEST_PUMPKIN, FEST_LANTERN,
-  FEST_CARRY, FEST_WREATH, FEST_BOOT, FEST_TREE, FEST_GIFT, FEST_MAI, FEST_CAKE, FEST_EGG, FEST_STICK, FEST_BAT,
+  FEST_CARRY, FEST_CANDLES, FEST_WREATH, FEST_BOOT, FEST_TREE, FEST_GIFT, FEST_MAI, FEST_CAKE, FEST_EGG, FEST_STICK, FEST_BAT,
 };

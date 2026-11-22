@@ -60,7 +60,7 @@
  */
 (() => {
   // src/version.js
-  var VERSION = "0.42.2";
+  var VERSION = "0.43.0";
 
   // src/logik/hilfen.js
   var Cancel = class extends Error {
@@ -540,6 +540,10 @@
     }
     return giftTreM[z];
   };
+  var giftTreat = (items, z, mo) => {
+    const ok = items.map((it, n) => n).filter((n) => n >= GIFT_TRE && (!items[n].mo || items[n].mo.includes(mo)));
+    return ok[Math.floor(seedRnd("gtreat", z) * ok.length)];
+  };
   var giftMile = (o) => o === 10 || o === 25 || o === 50 || o >= 100 && o % 100 === 0;
   var giftAllGold = (G) => !!G && (G.u & 255) === 255 && ((G.v || 0) & 65535) === 65535;
   var GIFT_CLS = ["sling", "aim", "snap", "spy", "wcan", "pour", "shup", "wink", "hswing", "puffy"];
@@ -699,7 +703,7 @@
       return out;
     }
     if (op.t === "voff") {
-      if (out.ur?.t !== op.t0 || out.ur.d != null) return out;
+      if (!out.ur || out.ur.t !== op.t0 || out.ur.d != null) return out;
       out.ur = { t: op.t0, d: op.d };
       if (out.gift && op.gp != null && out.gift.p != null) out.gift.p = op.gp;
       if (out.gift && op.gb != null && out.gift.b != null) out.gift.b = op.gb;
@@ -707,7 +711,7 @@
       return out;
     }
     if (op.t === "vclear") {
-      if (out.ur?.t === op.t0 && out.ur.d != null) out.ur = null;
+      if (out.ur && out.ur.t === op.t0 && out.ur.d != null) out.ur = null;
       return out;
     }
     if (op.t === "rec") {
@@ -830,6 +834,9 @@
     return [Math.floor(n / 31), n % 31 + 1];
   };
   var festAdvent1 = (y) => festDay(y, 12, 25) - (new Date(y, 11, 25).getDay() || 7) - 21;
+  var FEST_CANDLE_AUTO = 17;
+  var festCandleOff = (neu, lit, h, dark) => !!neu && !lit && h < FEST_CANDLE_AUTO && (h < 12 || !dark);
+  var FEST_ADVENT = ["Erster", "Zweiter", "Dritter", "Vierter"];
   var FEST_AHEAD = 45e3;
   var festMoments = (t) => {
     const y = new Date(t).getFullYear();
@@ -1157,23 +1164,27 @@
     glider: 0.8,
     puddle: 1.5,
     boat: 1.2,
-    snowpika: 1.3
+    snowpika: 1.3,
+    angel: 0.9,
+    snowball: 0.9
   };
   var MINI_ACTS = Object.keys(MINI_W);
   var MINI_SNOW = /* @__PURE__ */ new Set(["weights", "hula", "yoyo", "purzel", "juggle", "glider"]);
+  var MINI_RAIN = ["puddle", "boat"];
+  var MINI_SNOWONLY = /* @__PURE__ */ new Set(["snowpika", "angel", "snowball"]);
   var MINI_PROG = {
-    dry: MINI_ACTS.filter((a) => !["puddle", "boat", "snowpika"].includes(a)),
-    rain: ["puddle", "boat"],
-    snow: MINI_ACTS.filter((a) => MINI_SNOW.has(a) || a === "snowpika")
+    dry: MINI_ACTS.filter((a) => !MINI_RAIN.includes(a) && !MINI_SNOWONLY.has(a)),
+    rain: MINI_RAIN,
+    snow: MINI_ACTS.filter((a) => MINI_SNOW.has(a) || MINI_SNOWONLY.has(a))
   };
   var MINI_REST = 3;
   var miniProg = (L) => L.shelter ? null : L.rain > 0 && !L.snowcover ? "rain" : L.wet || L.storm ? null : L.snowcover ? "snow" : "dry";
   var miniOk = (act, L) => {
     if (L.shelter) return false;
-    if (act === "puddle" || act === "boat") return L.rain > 0 && !L.snowcover;
+    if (MINI_RAIN.includes(act)) return L.rain > 0 && !L.snowcover;
     if (act === "gather") return !L.wet && !L.snowcover && !L.hayFull;
     if (L.wet || L.storm) return false;
-    if (act === "snowpika") return !!L.snowcover;
+    if (MINI_SNOWONLY.has(act)) return !!L.snowcover;
     if (act === "glider") return (L.wind || 0) < 40;
     if (L.snowcover) return MINI_SNOW.has(act);
     if (act === "crown") return !L.cold && !L.winter;
@@ -1262,6 +1273,46 @@
       return T;
     });
   };
+  var ANGEL_T = { look: 1400, flop: 700, sweep: 1500, up: 800, hop: 800, proud: 2400, stay: 3e3, stayMore: 2e3, drift: 1600 };
+  var angelSweeps = (r) => 2 + Math.floor(r(1) * 2);
+  var angelLen = (r) => ANGEL_T.look + ANGEL_T.flop + angelSweeps(r) * ANGEL_T.sweep + ANGEL_T.up + ANGEL_T.hop + ANGEL_T.proud;
+  var SNOWBALL_T = {
+    dig: 700,
+    scrape: 1800,
+    leg: 2400,
+    rest: 600,
+    pat: 1300,
+    lean: 2600,
+    away: 900,
+    gasp: 500,
+    chase: 1240,
+    hold: 1100,
+    stay: 3e3,
+    stayMore: 2e3
+  };
+  var SNOWBALL_EASE = [0.2, 0.7, 0.4, 1];
+  var snowballRuns = (r) => r(6) < 0.3;
+  var snowballLen = (r) => SNOWBALL_T.scrape + 2 * SNOWBALL_T.leg + SNOWBALL_T.rest + (snowballRuns(r) ? SNOWBALL_T.gasp + SNOWBALL_T.chase + SNOWBALL_T.hold : SNOWBALL_T.pat) + SNOWBALL_T.lean;
+  var SNOWBALL_R = [0, 0.1, 0.17, 0.25];
+  var SNOWBALL_BIG = 3.3;
+  var snowballR = (s) => {
+    const i = clamp(Math.floor(s), 0, 2);
+    return SNOWBALL_R[i] + (SNOWBALL_R[i + 1] - SNOWBALL_R[i]) * (s - i);
+  };
+  var snowballPos = (t, run) => {
+    const T = SNOWBALL_T;
+    const [fa, fb] = run ? [0.38, 0.76] : [0.5, 1];
+    const t2 = T.scrape + T.leg;
+    const t3 = t2 + T.rest;
+    const t4 = t3 + T.leg;
+    if (t < T.scrape) return { f: 0, s: clamp((t - T.dig) / (T.scrape - T.dig), 0, 1) };
+    if (t < t2) return { f: fa * (t - T.scrape) / T.leg, s: 1 + (t - T.scrape) / T.leg };
+    if (t < t3) return { f: fa, s: 2 };
+    if (t < t4) return { f: fa + (fb - fa) * (t - t3) / T.leg, s: 2 + (t - t3) / T.leg };
+    if (!run) return { f: 1, s: 3 };
+    const k = bezAt(...SNOWBALL_EASE, (t - t4) / T.away);
+    return { f: fb + (1 - fb) * k, s: 3 + (SNOWBALL_BIG - 3) * k };
+  };
   var groundSpot = (u, w, a, b, blocks = [], kMin = 0.6) => {
     const k = clamp((b - a) / w, kMin, 1);
     const m = w * k / 2;
@@ -1298,11 +1349,13 @@
     glider: () => 700 + 2 * GLIDER_STEP,
     puddle: (r) => 800 + puddleJumps(r) * PUDDLE_MS,
     boat: (r) => BOAT_T.launch + boatPuffs(r) * BOAT_T.puff + BOAT_T.back,
-    snowpika: (r) => 2e4 + r(1) * 6e3
+    snowpika: (r) => 2e4 + r(1) * 6e3,
+    angel: angelLen,
+    snowball: snowballLen
   };
   var ropeJumps = (r) => 12 + Math.floor(r(5) * 18);
   var ACT_JOIN_END = 4e3;
-  var ACT_NOJOIN = /* @__PURE__ */ new Set(["gather", "rope", "weights", "hula", "yoyo", "puste", "purzel", "stones", "juggle", "crown", "glider"]);
+  var ACT_NOJOIN = /* @__PURE__ */ new Set(["gather", "rope", "weights", "hula", "yoyo", "puste", "purzel", "stones", "juggle", "crown", "glider", "angel"]);
   var bigStart = (k) => k * ACT_WIN.big + Math.floor(seedRnd("big", k, 0) * ACT_WIN.spread);
   var miniStart = (m) => m * ACT_WIN.mini + Math.floor(seedRnd("mini", m, 1) * (ACT_WIN.mini - ACT_WIN.miniRoom));
   var miniHas = (m) => seedRnd("mini", m, 0) < ACT_WIN.miniP;
@@ -1410,7 +1463,13 @@
     "crowned",
     "gliding",
     "boating",
-    "spat"
+    "spat",
+    "angel-dn",
+    "angel-go",
+    "angel-up",
+    "sb-pat",
+    "sb-push",
+    "sb-lean"
   ];
   var SPORT_WIN = [10, 180];
   var SPORT_INTRO = 1700;
@@ -3688,6 +3747,25 @@
   .fcake.out .flm, .fcake.out .khalo { display: none; }
   .fcake.out .smk { animation: fsmk 2.6s ease-out forwards; }
   @keyframes fsmk { 0% { opacity: .9; stroke-dashoffset: 22; } 50% { opacity: .7; } 100% { opacity: 0; stroke-dashoffset: 0; transform: translate(1px, -4px); } }
+  /* Adventssonntag: Die neue Kerze (.fnew: Schein und Flamme, nur die neue) ist aus, bis der Pika sie anzündet
+     (.unlit, gesetzt von _festCandleSync); danach blendet sie ein. .lit: Beim Anzünden ist sie sofort da, und die
+     Flamme springt kurz auf. */
+  .fwreath .fnew { transition: opacity .9s; }
+  .fwreath.unlit .fnew { opacity: 0; }
+  .fwreath.unlit .fnew .flm { animation: none; }
+  .fwreath.lit .fnew { transition-duration: .2s; }
+  .fwreath.lit .fpop { transform-box: fill-box; transform-origin: 50% 100%; animation: fwlit .7s ease-out; }
+  @keyframes fwlit { 0% { transform: scale(.1); } 55% { transform: scale(1.5); } 100% { transform: scale(1); } }
+  /* Pfoten wärmen: Solange er davor sitzt, ist der Schein der Kerzen auch am Tag zu ahnen (abends leuchtet er ohnehin) */
+  .scene:not(.dusk):not(.night) .fwreath.warm .nite { opacity: .55; transition: opacity 1s; }
+  /* Pfoten vorgestreckt über den Flammen (.fest-warm), zum Anzünden hinunter an den Docht (.fest-reach; --fky: so
+     weit, hintere und vordere Kerzen sind verschieden hoch) */
+  .pika.fest-warm .paws { display: inline; transform: translate(13.5px, 6px); transition: transform .45s ease-out; }
+  .pika.fest-warm:not(.fest-reach) .paws { animation: fwarm 1s ease-in-out infinite alternate; }
+  .pika.fest-warm.fest-reach .paws { transform: translate(15px, var(--fky, 8px)); }
+  /* Bei Regen hält die vordere Pfote das Blatt (.wet blendet sie aus): Dann reicht die andere bis an den Docht */
+  .pika.wet:not(.inside).fest-warm.fest-reach .paws { transform: translate(29px, var(--fky, 8px)); }
+  @keyframes fwarm { from { transform: translate(13px, 6.8px); } to { transform: translate(14px, 5.2px); } }
   /* Maibaum: Bänder wehen in Windrichtung (--wd) */
   .fmai .rd { transform-box: view-box; transform-origin: 20px 46px; transform: scaleX(var(--wd, 1)); transition: transform 3s; }
   .fmai .rb { transform-box: view-box; transform-origin: 20px 46px; animation: frib 1.2s ease-in-out infinite alternate; }
@@ -3749,6 +3827,8 @@
   /* Weniger Bewegung gewünscht: Wimpel und Maibaum-Bänder hängen still (Teilchen spart das Skript, calmMotion) */
   @media (prefers-reduced-motion: reduce) {
     .fpn, .fmai .rb { animation: none !important; }
+    /* Advent: Die neue Flamme blendet nur ein, die Pfoten halten still */
+    .fwreath.lit .fpop, .pika.fest-warm:not(.fest-reach) .paws { animation: none; }
   }
   `;
 
@@ -4256,7 +4336,8 @@
   }
 
   /* ---- Kleine Beschäftigungen ab 0.32: Hula-Hoop, Jo-Jo, Pusteblume, Purzelbaum, Steintürmchen, Jonglieren,
-     Blumenkranz, Papierflieger; bei Regen Pfützenspringen und Papierschiffchen, bei Schnee der Schnee-Pika ---- */
+     Blumenkranz, Papierflieger; bei Regen Pfützenspringen und Papierschiffchen, bei Schnee der Schnee-Pika und
+     (ab 0.43) Schneeengel und Schneeball ---- */
   .hoop, .yo, .pbl, .jug, .dchain, .dcrown, .pgl, .peb, .sboat { display: none; }
   .hula .hoop, .hula .arms, .yoyo .yo, .puste .pbl, .juggle .jug, .juggle .arms, .plait .dchain, .crowned .dcrown,
   .gliding .pgl, .pebble .peb, .boating .sboat { display: inline; }
@@ -4395,6 +4476,79 @@
   .snowp { transform-origin: 50% 100%; }
   .snowp.off { transform: scaleY(.35); transition: opacity .6s, transform .6s ease-in, filter 2.5s; }
 
+  /* Schneeengel: Er plumpst rückwärts auf den Rücken (.angel-dn: aufbäumen, umkippen, Füße in der Luft), schwingt
+     Arme und Beine (.angel-go) und rappelt sich wieder auf (.angel-up). Gedreht wird .hop um die Körpermitte wie
+     beim Purzelbaum; die Pfoten neben dem Kopf (.arms) liegen dabei am Boden. */
+  .angel-dn .hop, .angel-up .hop { transform-origin: 50% 58%; }
+  .angel-dn .hop { animation: aflop ${ANGEL_T.flop}ms cubic-bezier(.45, 0, .6, 1) both; }
+  @keyframes aflop {
+    0% { transform: translateY(0) rotate(0deg); }
+    28% { transform: translateY(-7%) rotate(-48deg); }
+    78% { transform: translateY(-3%) rotate(-188deg) scale(1.04, .95); }
+    100% { transform: translateY(-5%) rotate(-180deg); }
+  }
+  .angel-up .hop { animation: aup ${ANGEL_T.up}ms cubic-bezier(.4, 0, .4, 1) both; }
+  @keyframes aup {
+    0% { transform: translateY(-5%) rotate(-180deg); }
+    55% { transform: translateY(-10%) rotate(-52deg); }
+    85% { transform: translateY(0) rotate(5deg) scale(1.05, .94); }
+    100% { transform: translateY(0) rotate(0deg); }
+  }
+  .angel-dn .shadow { transform: scale(1.12, 1); transition: transform .5s; }
+  .angel-dn .arms { display: inline; transform: translateY(-9px); }
+  .angel-dn .face { transform: translate(-1px, -1.5px); }
+  .angel-go .arms { animation: aarm ${ANGEL_T.sweep}ms ease-in-out infinite; }
+  @keyframes aarm { 0%, 100% { transform: translate(7px, -9px); } 50% { transform: translate(-9px, -11px); } }
+  .angel-go .bfoot { animation: aleg-b ${ANGEL_T.sweep}ms ease-in-out infinite; }
+  .angel-go .ffoot { animation: aleg-f ${ANGEL_T.sweep}ms ease-in-out infinite; }
+  @keyframes aleg-b { 0%, 100% { transform: translate(5px, 1px) rotate(10deg); } 50% { transform: translate(-7px, 0) rotate(-14deg); } }
+  @keyframes aleg-f { 0%, 100% { transform: translate(-5px, 1px) rotate(-10deg); } 50% { transform: translate(7px, 0) rotate(14deg); } }
+  .angel-go .jump { animation: arock ${ANGEL_T.sweep}ms ease-in-out infinite; }
+  @keyframes arock { 0%, 100% { transform: rotate(-1.6deg); } 50% { transform: rotate(1.6deg); } }
+  /* Der Abdruck im Schnee: Bauch, Kopf und Ohren sind da, sobald er liegt (.b); Flügel und Fächer wachsen mit jedem
+     Schwung (--aw 0 … 1). .now: alles auf einmal (Bewegung reduzieren: blendet über --ag ein). .drift: Schnee weht
+     darüber, er verblasst. */
+  .angelp > svg { opacity: .9; }
+  .ap-l { fill: none; stroke: #9db1cb; stroke-width: 1.5; stroke-linecap: round; }
+  .ap-b, .ap-w, .ap-s { opacity: 0; transition: opacity var(--ag, .35s) ease-out, transform 1.1s ease-in-out; }
+  .ap-w, .ap-s { transform-box: view-box; transform: scale(var(--aw, .2)); }
+  .ap-wl { transform-origin: 48px 27px; }
+  .ap-wr { transform-origin: 72px 27px; }
+  .ap-s { transform-origin: 60px 32px; }
+  .angelp.b .ap-b, .angelp.w .ap-w, .angelp.w .ap-s { opacity: 1; }
+  .angelp.drift { opacity: 0; transition: opacity ${ANGEL_T.drift}ms ease-in, filter 2.5s; }
+  /* Schneeflöckchen, die beim Plumpsen und bei jedem Schwung aufstieben (wie .puff, nur weiß) */
+  .puff.snowy { background: rgba(250, 252, 255, .95); box-shadow: 0 0 0 1px rgba(160, 178, 200, .35); }
+  .night .puff.snowy { background: rgba(190, 200, 225, .8); }
+
+  /* Schneeball: Er schiebt mit Nase und Pfoten (.sb-push: vorgebeugt, das Hoppeln kommt von .walking), am Ende lehnt
+     er sich an (.sb-lean). Geneigt wird .jump, damit .hop frei für das Hoppeln bleibt. */
+  .sb-push .jump { transform: rotate(7deg); transition: transform .25s ease-out; }
+  .sb-push .paws { display: inline; transform: translate(13.5px, 3px); }
+  .sb-push .face { transform: translate(2.6px, 1.4px); }
+  /* die kleine Kugel am Boden festklopfen: geduckt, Pfoten tief (wie .spat, das auf Bauchhöhe klopft) */
+  .sb-pat .hop { transform: scale(1.05, .92); transition: transform .25s; }
+  .sb-pat .paws { display: inline; transform-box: fill-box; animation: sbpat .34s ease-in-out infinite alternate; }
+  @keyframes sbpat { from { transform: translate(12px, 17px); } to { transform: translate(14.5px, 11.5px); } }
+  .sb-pat .face { transform: translate(2.6px, 2.8px); }
+  .sb-lean .jump { transform: rotate(11deg) translateX(2%); transition: transform .35s ease-out; }
+  .sb-lean .paws { display: inline; transform: translate(16px, -5px); }
+  .sb-lean .face { transform: translate(2px, -.6px); }
+  /* Das Requisit (.sbp) hält Spur und Kugel. Das Skript schiebt die Kugel (.sb-ball), lässt sie wachsen (.sb-size,
+     von unten), dreht ihre Kerben (.sb-rot) und zieht die Spur auf (.sb-track), alles über dieselbe Dauer. Am Ende
+     sackt sie zusammen wie der Schnee-Pika (.off). */
+  .sb-ball { position: absolute; bottom: 0; will-change: transform; }
+  .sb-sink, .sb-size { position: absolute; inset: 0; transform-origin: 50% 100%; }
+  .sb-size { transform: scale(0); }
+  .sb-size > svg { display: block; width: 100%; height: 100%; overflow: visible; }
+  .sb-rot { transform-box: view-box; transform-origin: 30px 31px; }
+  .sb-track {
+    position: absolute; bottom: 0; transform: scaleX(0); border-radius: 999px; opacity: .9;
+    background: linear-gradient(#f7fafc 0 14%, #a9bbd3 14% 32%, #c2d0e2 32% 82%, #f7fafc 82%);
+  }
+  .sbp.off { transition: opacity .6s, filter 2.5s; }
+  .sbp.off .sb-sink { transform: scaleY(.3); transition: transform .6s ease-in; }
+
   /* Bewegung reduzieren: Nichts kreist, pendelt oder schaukelt von selbst; man sieht trotzdem, was er tut (Reifen
      schräg um den Bauch, Jo-Jo an halber Schnur, drei Beeren im Bogen). Steine und Schnee erscheinen ohne Federn. */
   @media (prefers-reduced-motion: reduce) {
@@ -4407,6 +4561,11 @@
     .jug-go .jb2 { transform: translate(23.5px, -37px); }
     .jug-go .jb3 { transform: translate(47px, -4px); }
     .stn, .stonep.fall .stn, .spl { transition-timing-function: ease-out; }
+    /* Schneeengel und Schneeball: Das Skript lässt ihn gar nicht erst plumpsen oder schieben (calmMotion); der
+       Abdruck blendet ein, ohne dass Flügel wachsen, und nichts lehnt sich mit Schwung */
+    .ap-w, .ap-s { transform: none; }
+    .sb-lean .jump, .sb-push .jump { transition: none; }
+    .sb-pat .paws { animation: none; transform: translate(13px, 14px); }
   }
   `;
 
@@ -4734,6 +4893,11 @@
 
   // src/grafik/paeckchen.js
   var GIFT_LOW = { s: ["füttern", ICON_LEAF], g: ["streicheln", ICON_HEART], c: ["putzen", ICON_SPARK] };
+  var giftStar = (ra, ri) => `M${[...Array(10).keys()].map((n) => {
+    const a = (-90 + n * 36) * Math.PI / 180;
+    const r = n % 2 ? ri : ra;
+    return `${Number((12 + r * Math.cos(a)).toFixed(1))} ${Number((12.6 + r * Math.sin(a)).toFixed(1))}`;
+  }).join(" L")}Z`;
   var GIFT_ITEMS = [
     { key: "yarn", name: "Wollknäuel", say: "ein Wollknäuel!", svg: `<svg viewBox="0 0 24 24" aria-hidden="true">
       <path d="M18.4 17.6 q3.6 1.6 1.6 4 q-2 1.6 -4.4 .2" stroke="#f28fb1" stroke-width="1.2" fill="none" stroke-linecap="round"/>
@@ -4799,8 +4963,36 @@
       ${[[7, 8, "#f28fb1"], [12, 6, "#f6c945"], [17, 8, "#b99cf0"]].map(([x, y, c]) => `<g transform="translate(${x} ${y})">
         ${[0, 72, 144, 216, 288].map((a) => `<ellipse rx="1.6" ry="2.4" transform="rotate(${a}) translate(0 -2)" fill="${c}" stroke="${OUT}" stroke-width=".5"/>`).join("")}
         <circle r="1.3" fill="#e0a032"/></g>`).join("")}
-      <path d="M9.4 16.4 l2.6 1.4 2.6 -1.4 -.6 3 -2 -.8 -2 .8z" fill="#5fb9de" stroke="${OUT}" stroke-width=".6"/></svg>` }
+      <path d="M9.4 16.4 l2.6 1.4 2.6 -1.4 -.6 3 -2 -.8 -2 .8z" fill="#5fb9de" stroke="${OUT}" stroke-width=".6"/></svg>` },
+    // Winter und Frühling (seit 0.43). Nur anhängen: Die Nummer steht im Tagesplan (gift.i, vier Bits), mit 16 Einträgen
+    // ist sie voll. Ohne id und class: _mouth setzt die Grafik in den Pika, dort griffe sonst dessen Stylesheet.
+    { key: "nuts", name: "Haselnüsse", color: "#b9783f", mo: [10, 11, 0, 1], svg: `<svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M12.4 8.6 q-.6 -4.6 -5.4 -5.6 q-.8 4.6 5.4 5.6z M12.6 8.6 q1.4 -4.4 6.2 -4.6 q-.2 4.4 -6.2 4.6z" fill="#5fae4a" stroke="${OUT}" stroke-width=".7" stroke-linejoin="round"/>
+      ${[[15.8, 14.4, 14], [8.4, 14.8, -12]].map(([x, y, a]) => `<g transform="translate(${x} ${y}) rotate(${a})">
+        <path d="M-5.4 -1.6 C-5.6 3.4 -2 5.6 0 7.4 C2 5.6 5.6 3.4 5.4 -1.6 C5 -6.4 -5 -6.4 -5.4 -1.6Z" fill="#b9783f" stroke="${OUT}" stroke-width=".9" stroke-linejoin="round"/>
+        <path d="M-4.6 -2.6 C-3.6 -6 3.6 -6 4.6 -2.6 C2.4 -1.2 -2.4 -1.2 -4.6 -2.6Z" fill="#ecd3a2" stroke="${OUT}" stroke-width=".6" stroke-linejoin="round"/>
+        <path d="M-3.4 .6 q.2 2.4 1.8 3.8" stroke="#fff" stroke-width=".9" fill="none" opacity=".5" stroke-linecap="round"/></g>`).join("")}</svg>` },
+    { key: "baked", name: "Bratapfel", color: "#cf4a3a", mo: [11, 0, 1], svg: `<svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M6.6 6.4 q-1.6 -1.6 0 -3.2 q1.4 -1.4 .2 -2.8 M10.6 5 q-1.2 -1.2 0 -2.6" stroke="#b9a590" stroke-width="1.7" fill="none" stroke-linecap="round"/>
+      <path d="M6.6 6.4 q-1.6 -1.6 0 -3.2 q1.4 -1.4 .2 -2.8 M10.6 5 q-1.2 -1.2 0 -2.6" stroke="#fff" stroke-width="1" fill="none" stroke-linecap="round"/>
+      <path d="M12 10 C8.4 7.8 3 9.4 3 14.4 C3 18.8 6.2 22.2 9.6 22.2 C10.8 22.2 11.2 21.6 12 21.6 C12.8 21.6 13.2 22.2 14.4 22.2 C17.8 22.2 21 18.8 21 14.4 C21 9.4 15.6 7.8 12 10Z" fill="#cf4a3a" stroke="${OUT}" stroke-width=".9" stroke-linejoin="round"/>
+      <path d="M5.2 16.6 q.4 2.2 2 3.4" stroke="#fff" stroke-width="1" fill="none" opacity=".5" stroke-linecap="round"/>
+      <path d="M13.2 10.4 L16.6 3.6 L19 4.8 L15.8 11.2Z" fill="#a8683a" stroke="${OUT}" stroke-width=".7" stroke-linejoin="round"/>
+      <path d="M17.4 5 L14.9 10" stroke="#7a4a26" stroke-width=".7" fill="none" stroke-linecap="round"/>
+      <path d="M5.6 10.8 Q12 6.6 18.4 10.8 Q19.4 13.4 17.6 13.8 Q16.2 13.8 16 12.4 Q14.8 14.2 13.4 12.8 Q12.8 16.4 11 13 Q9.6 14.2 8.4 12.6 Q7.4 14.4 6 13.4 Q4.8 12.2 5.6 10.8Z" fill="#fbf1d8" stroke="${OUT}" stroke-width=".7" stroke-linejoin="round"/>
+      <path d="M8.6 10.8 q1.4 -1 3 -1.2" stroke="#fff" stroke-width=".9" fill="none" stroke-linecap="round"/></svg>` },
+    { key: "cookie", name: "Plätzchen", color: "#dfa253", mo: [11], svg: `<svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="${giftStar(10, 5.6)}" fill="#dfa253" stroke="${OUT}" stroke-width=".9" stroke-linejoin="round"/>
+      <path d="${giftStar(5.4, 3.1)}" fill="#fff8ec" stroke="#fff8ec" stroke-width="1" stroke-linejoin="round"/>
+      <circle cx="12" cy="10" r=".85" fill="#e8584e"/><circle cx="9.7" cy="12.2" r=".85" fill="#5fae4a"/><circle cx="14.3" cy="12.2" r=".85" fill="#5fb9de"/>
+      <circle cx="10.6" cy="14.8" r=".85" fill="#f6c945"/><circle cx="13.4" cy="14.8" r=".85" fill="#e8584e"/></svg>` },
+    { key: "carrot", name: "Möhre", color: "#f08a2c", mo: [2, 3], svg: `<svg viewBox="0 0 24 24" aria-hidden="true"><g transform="rotate(38 12 12)">
+      <path d="M12 7.6 Q8.6 5.4 8.2 1.4 Q11.4 2.6 12 7.6Z M12 7.6 Q11 3.2 13 -.4 Q15 3.4 12 7.6Z M12 7.6 Q13.4 3.6 17 2.6 Q16.4 6 12 7.6Z" fill="#5fae4a" stroke="${OUT}" stroke-width=".7" stroke-linejoin="round"/>
+      <path d="M7.8 9 Q12 5.6 16.2 9 Q15.6 17 12 24 Q8.4 17 7.8 9Z" fill="#f08a2c" stroke="${OUT}" stroke-width=".9" stroke-linejoin="round"/>
+      <path d="M9.4 11.6 h2.6 M12.8 14.4 h1.8 M10.4 17.2 h1.8" stroke="#c4621a" stroke-width=".8" fill="none" stroke-linecap="round"/>
+      <path d="M9.6 9.6 q-.2 3 .6 5.6" stroke="#fff" stroke-width=".9" fill="none" opacity=".5" stroke-linecap="round"/></g></svg>` }
   ];
+  var giftItem = (i) => GIFT_ITEMS[i] || (i >= GIFT_TRE ? GIFT_ITEMS.find((it) => it.key === "posy") : void 0);
   var GIFT_PAPER = [["#5fb9de", "#f6c945"], ["#f28fb1", "#ffffff"], ["#7cc35a", "#e8584e"], ["#b99cf0", "#f6c945"], ["#ff9f5a", "#5fb9de"]];
   var GIFT_BALLOONS = ["#e8584e", "#5fb9de", "#f6c945", "#b99cf0", "#7cc35a", "#f28fb1"];
   var GIFT_GOLD = ["#f2c230", "#fff7d6"];
@@ -6416,6 +6608,23 @@
   var GLIDER_SVG = `<svg viewBox="0 0 26 14" aria-hidden="true">
       <path d="M1 3 L25 6 L9 9Z" fill="#fffaf0" stroke="${OUT}" stroke-width=".9" stroke-linejoin="round"/>
       <path d="M25 6 L9 9 L11 13 L13.6 8.4" fill="#ead2a2" stroke="${OUT}" stroke-width=".9" stroke-linejoin="round"/>
+    </svg>`;
+  var ANGEL_PARTS = (lines) => `<g class="ap-w ap-wl"><path d="M48 27 L25 6.4 A44 22 0 0 0 9 41Z"/>${lines ? '<path class="ap-l" d="M32.6 13.4 A30 15 0 0 0 21.8 36.6 M39 19.6 A17 8.5 0 0 0 33 32.6"/>' : ""}</g>
+      <g class="ap-w ap-wr"><path d="M72 27 L95 6.4 A44 22 0 0 1 111 41Z"/>${lines ? '<path class="ap-l" d="M87.4 13.4 A30 15 0 0 1 98.2 36.6 M81 19.6 A17 8.5 0 0 1 87 32.6"/>' : ""}</g>
+      <path class="ap-s" d="M60 32 L39 50.6 A24 6.4 0 0 0 81 50.6Z"/>
+      <g class="ap-b"><ellipse cx="47.4" cy="6.6" rx="9" ry="4.6"/><ellipse cx="72.6" cy="6.6" rx="9" ry="4.6"/>
+        <ellipse cx="60" cy="13.4" rx="15.4" ry="7.8"/><ellipse cx="60" cy="30" rx="18.6" ry="12.4"/></g>`;
+  var ANGEL_SVG = `<svg viewBox="-5 -1 130 58" preserveAspectRatio="none" aria-hidden="true">
+      <g fill="#f7fafc" stroke="#f7fafc" stroke-width="4.6" stroke-linejoin="round">${ANGEL_PARTS(false)}</g>
+      <g fill="#c2d0e2" stroke="#c2d0e2" stroke-width="1.6" stroke-linejoin="round">${ANGEL_PARTS(true)}</g>
+    </svg>`;
+  var SNOWBALL_SVG = `<svg viewBox="0 0 60 60" aria-hidden="true">
+      <circle cx="30" cy="31" r="27" fill="#f4f6f8" stroke="#9aa3ad" stroke-width="1.8"/>
+      <path d="M9 41 Q17 55 35 56" stroke="#bccbd8" stroke-width="4.6" fill="none" stroke-linecap="round"/>
+      <g class="sb-rot" fill="none" stroke="#c6d2df" stroke-width="1.9" stroke-linecap="round">
+        <path d="M19 17 q7 -6 15 -3"/><path d="M41 29 q5 4 4 10"/><path d="M19 36 q3 5 9 6"/>
+        <circle cx="42" cy="19" r="1.3" fill="#c6d2df" stroke="none"/><circle cx="30" cy="30" r="1.2" fill="#c6d2df" stroke="none"/>
+      </g>
     </svg>`;
 
   // src/grafik/tagebuch.js
@@ -11958,7 +12167,7 @@
       const it = GIFT_ITEMS[e.it];
       const fr = this._frName();
       const lead = e.gold ? "Ein goldenes Päckchen! Ich hab es mit der Zwille vom Himmel geholt." : diaryPick(DIARY_TXT.parcel, "parcel", Math.floor(t / 6e4));
-      if (!it) return lead;
+      if (!it) return e.what === "treat" ? `${lead} Drin war ein Leckerli. Sofort aufgefuttert!` : lead;
       const nm = it.key === "plush" ? `Plüsch-${fr}` : it.name;
       if (e.what === "treat") return `${lead} Drin war ein Leckerli: ${nm}. Sofort aufgefuttert!`;
       if (e.what === "trick") return `${lead} Jetzt kann ich einen neuen Trick: ${GIFT_TRICK[e.it]}!`;
@@ -12027,8 +12236,8 @@
           else if (e.b === "tonne" && house) put(t, "tonne", tx(T.tonne, "tonne", t), { svg: SIG_BIN("#7d848c") });
         } else if (e.k === "parcel") {
           one.add("parcel");
-          put(t, "parcel", this._diaryParcel(e, t), { svg: GIFT_ITEMS[e.it]?.svg });
-          if (e.all) put(t + 1, "parcel", tx(T.allGold, "allg", t), { svg: GIFT_ITEMS[e.it]?.svg });
+          put(t, "parcel", this._diaryParcel(e, t), { svg: giftItem(e.it)?.svg });
+          if (e.all) put(t + 1, "parcel", tx(T.allGold, "allg", t), { svg: giftItem(e.it)?.svg });
           else if (e.mile) put(t + 1, "parcel", tx(T.mile, "mile", t).replace("{z}", e.o), { svg: GIFT_PARCEL });
         } else if (e.k === "urlaub") {
           put(t, "urlaub", tx(T.urlaub, "ur", t), { svg: URLAUB_SIGN(fr) });
@@ -12830,7 +13039,7 @@
     <ellipse cx="101" cy="62.4" rx="4" ry="5" fill="#ecdcc6" stroke="${OUT}" stroke-width="1.4"/>
   </svg>`;
   var FEST_CANDLES = [[15.5, 15.6], [28.5, 15.6], [9, 21.6], [35, 21.6]];
-  var FEST_WREATH = (n) => ({
+  var FEST_WREATH = (n, neu = false) => ({
     vb: [44, 28],
     b: `<ellipse cx="22" cy="19.6" rx="18.6" ry="6.2" fill="none" stroke="${OUT}" stroke-width="7"/>
       <ellipse cx="22" cy="19.6" rx="18.6" ry="6.2" fill="none" stroke="#2f6b33" stroke-width="5.4"/>
@@ -12843,9 +13052,11 @@
       <path d="M22 25.5 Q16.5 21.5 16.6 26.2 Q17 28.4 22 25.5Z M22 25.5 Q27.5 21.5 27.4 26.2 Q27 28.4 22 25.5Z" fill="#e8584e" stroke="${OUT}" stroke-width=".7" stroke-linejoin="round"/>
       <path d="M21.3 26 L19.6 30.4 L21.4 29.6Z M22.7 26 L24.4 30.4 L22.6 29.6Z" fill="#c94440" stroke="${OUT}" stroke-width=".5"/>
       <circle cx="22" cy="25.6" r="1.3" fill="#c94440" stroke="${OUT}" stroke-width=".6"/>`,
-    g: `<defs>${GLOW_GRAD("fst-wg", "#ffcf70")}</defs>${FEST_CANDLES.slice(0, n).map(([x, y]) => {
+    g: `<defs>${GLOW_GRAD("fst-wg", "#ffcf70")}</defs>${FEST_CANDLES.slice(0, n).map(([x, y], i) => {
       const t = y - 9.8;
-      return `<g class="nite"><circle cx="${x}" cy="${t - 1.6}" r="6" fill="url(#fst-wg)"/></g><g class="flm"><path d="M${x} ${t - 4} Q${x + 1.9} ${t - 1.2} ${x} ${t} Q${x - 1.9} ${t - 1.2} ${x} ${t - 4}Z" fill="#ffb53a"/><path d="M${x} ${t - 2.4} Q${x + 0.9} ${t - 0.8} ${x} ${t} Q${x - 0.9} ${t - 0.8} ${x} ${t - 2.4}Z" fill="#fff3b0"/></g>`;
+      const halo = `<g class="nite"><circle cx="${x}" cy="${t - 1.6}" r="6" fill="url(#fst-wg)"/></g>`;
+      const flame = `<g class="flm"><path d="M${x} ${t - 4} Q${x + 1.9} ${t - 1.2} ${x} ${t} Q${x - 1.9} ${t - 1.2} ${x} ${t - 4}Z" fill="#ffb53a"/><path d="M${x} ${t - 2.4} Q${x + 0.9} ${t - 0.8} ${x} ${t} Q${x - 0.9} ${t - 0.8} ${x} ${t - 2.4}Z" fill="#fff3b0"/></g>`;
+      return neu && i === n - 1 ? `<g class="fnew">${halo}<g class="fpop">${flame}</g></g>` : halo + flame;
     }).join("")}`
   });
   var FEST_BOOT = (full) => ({
@@ -13056,6 +13267,7 @@
       if (f2.martin?.walk) out.push([dry && ok("festLantern", 3) ? 3 : 0, "festLantern"]);
       if (f2.boot && pos.boot) out.push([ok("festBoot", 5) ? 1.6 : 0, "festBoot"]);
       if (f2.xmas && pos.tree) out.push([ok("festTree", 4) ? 2 : 0, "festTree"]);
+      if (f2.advent && pos.wreath) out.push([this._festCandleOff() ? 12 : ok("festAdvent", 8) ? 1.3 : 0, "festAdvent"]);
       if (f2.fireworks) out.push([ok("festFireworks", 2) ? 12 : 0, "festFireworks"]);
       if (f2.karneval) out.push([dry && ok("festConfetti", 4) ? 1.6 : 0, "festConfetti"]);
       if (f2.ostern && this._festEggs?.length) out.push([ok("festEgg", 3) ? 2 : 0, "festEgg"]);
@@ -13108,7 +13320,10 @@
         if (md === 1031 || hwNight) f2.witch = true;
         if (md === 1111) f2.martin = { walk: hm >= this._festEve(now, 16 * 60, 90) };
         const adv = festAdvent1(y);
-        if (day >= adv && md <= 1224) f2.advent = { candles: Math.min(4, 1 + Math.floor((day - adv) / 7)) };
+        if (day >= adv && md <= 1224) {
+          f2.advent = { candles: Math.min(4, 1 + Math.floor((day - adv) / 7)) };
+          if ((day - adv) % 7 === 0) f2.advent.neu = day;
+        }
         if (day >= adv || md <= 106) f2.lights = true;
         if (md === 1205 && hm >= this._festEve(now, 18 * 60, 120) || md === 1206) f2.boot = { full: md === 1206 };
         if (md >= 1224 && md <= 1226) f2.xmas = true;
@@ -13170,6 +13385,7 @@
         this._el.friends.classList.toggle("fest-xmas", !!f2.xmas);
         this._festRender();
       }
+      this._festCandleSync();
       this._festFwSync();
     }
     // Deko aufbauen. Plätze: rechts und links neben der Tür, die Wiese zwischen Heu und Stein, die Bau-Oberkante,
@@ -13215,7 +13431,9 @@
       if (f2.xmas) used.add("M");
       if (f2.halloween) ground("fpump", ["M", "R", "L"], gy + 1, H * 0.14, FEST_PUMPKIN, "pumpkin");
       if (f2.boot) ground("fboot", ["M", "R", "L"], gy + 1, H * 0.11, FEST_BOOT(f2.boot.full), "boot");
-      if (f2.advent) ground("fwreath", ["R", "L", "M"], gy, H * 0.2, FEST_WREATH(f2.advent.candles), "wreath");
+      if (f2.advent) {
+        ground(`fwreath${this._festCandleOff() ? " unlit" : ""}`, ["R", "L", "M"], gy, H * 0.2, FEST_WREATH(f2.advent.candles, !!f2.advent.neu), "wreath");
+      }
       if (f2.birthday) ground(`fcake${this._festCakeOut ? " out" : ""}`, ["R", "L", "M"], gy + 1, H * 0.14, FEST_CAKE, "cake");
       if (f2.lights) on.push(onBur("flights", FEST_LIGHTS(edge)));
       if (f2.karneval) on.push(onBur("fstream", FEST_STREAMERS(edge)));
@@ -13288,6 +13506,7 @@
       E.front.innerHTML = front.join("");
       this._festPos = pos;
       this._festCakeEl = E.front.querySelector(".fcake");
+      this._festWreathEl = E.front.querySelector(".fwreath");
       this._festEggs = [...E.front.querySelectorAll(".fegg")].map((el, i) => {
         el.addEventListener("click", (e) => (e.stopPropagation(), this._festWobble(el)));
         this._keyTap(el);
@@ -13528,6 +13747,27 @@
         this._festCakeEl?.classList.remove("out");
       }, 2e4);
     }
+    // Adventssonntag: Ist die neue Kerze auf diesem Gerät noch aus? Sie brennt, sobald er sie angezündet hat
+    // (_festLit: Tagesnummer dieses Sonntags, je Gerät und Tag wie die ausgepustete Kuchenkerze; nach dem Neuladen
+    // zündet er sie noch einmal an), sonst von selbst ab der Abenddämmerung (festCandleOff).
+    _festCandleOff() {
+      const neu = this._fest?.advent?.neu;
+      return !!neu && festCandleOff(neu, this._festLit === neu, new Date(this._festNow()).getHours(), this._festDark());
+    }
+    // Der Kranz folgt dem Stand (im Takt, nach dem Anzünden): .unlit blendet Schein und Flamme der neuen Kerze aus
+    _festCandleSync() {
+      this._festWreathEl?.classList.toggle("unlit", this._festCandleOff());
+    }
+    // Die neue Kerze brennt. pop: Die Flamme springt kurz auf (sonst blendet sie nur ein)
+    _festLight(pop) {
+      this._festLit = this._fest?.advent?.neu;
+      const el = this._festWreathEl;
+      if (pop && el) {
+        el.classList.add("lit");
+        this._festLater(() => el.classList.remove("lit"), 900);
+      }
+      this._festCandleSync();
+    }
     // ---- Aktionen ----
     // Halloween: am Kürbis schnuppern, vor dem Gesicht erschrecken, kichern
     async _festPumpkin() {
@@ -13600,6 +13840,57 @@
         this._say(pick(["noch leer…", "morgen?"]), 1500);
         p.classList.add("look-up");
         await this._wait(1700);
+      }
+    }
+    // Advent: zum Kranz hoppeln, daran schnuppern, die Pfoten an den Kerzen wärmen. Am Adventssonntag zündet er zuerst
+    // die neue Kerze an: Pfoten an den Docht, ein Funke, die Flamme springt auf, „Zweiter Advent!“ und ein Hüpfer.
+    // Der Kranz steht vor ihm (.fest-f) und reicht ihm bis zur Brust: Er setzt sich daneben, nicht dahinter.
+    // Bewegung reduzieren: ohne Funken und Hüpfer, die Flamme blendet nur ein.
+    async _festAdvent() {
+      const it = this._festPos?.wreath;
+      const a = this._fest?.advent;
+      if (!it || !a || this._urlaubFern()) return;
+      this._festMark("festAdvent");
+      const p = this._el.pika;
+      const { pW, pH, gy } = this._g;
+      const calm = calmMotion();
+      const [cx, cy] = FEST_CANDLES[a.candles - 1];
+      const kx = it.l + cx / 44 * it.w;
+      const ky = it.top + (cy - 10.3) / 28 * it.h;
+      try {
+        const off = this._festCandleOff();
+        const dir = off ? cx < 22 ? 1 : -1 : this._x > it.x ? -1 : 1;
+        await this._walkTo((off ? kx : it.x) - dir * pW * (off ? 0.445 : 0.52), 0.9);
+        this._face(dir);
+        p.style.setProperty("--fky", `${(94.5 - (gy - ky) / pH * 100 - 4 - 61).toFixed(1)}px`);
+        await this._wait(350);
+        p.classList.add("sniff");
+        await this._wait(rnd(900, 1400));
+        p.classList.remove("sniff");
+        p.classList.add("look-f", "fest-warm");
+        if (this._festCandleOff()) {
+          await this._wait(300);
+          p.classList.add("fest-reach");
+          await this._wait(650);
+          if (!calm) this._sparkle(kx, ky, 2);
+          this._festLight(!calm);
+          await this._wait(800);
+          p.classList.remove("fest-reach");
+          this._say(`${FEST_ADVENT[a.candles - 1]} Advent!`, 2200);
+          if (!calm) this._jump("hop1");
+          await this._wait(1900);
+        }
+        this._festWreathEl?.classList.add("warm");
+        await this._wait(rnd(1300, 1900));
+        p.classList.add("happy");
+        this._say(pick(a.candles > 3 && !this._fest.xmas ? ["bald ist Weihnachten!", "schön warm!"] : ["schön warm!", "mmh, Tannenduft!"]), 1800);
+        if (!calm) this._sparkle(it.x, it.top + it.h * 0.2, 2);
+        await this._wait(rnd(2400, 3200));
+        p.classList.remove("happy");
+        await this._wait(rnd(400, 900));
+      } finally {
+        p.classList.remove("fest-warm", "fest-reach");
+        this._festWreathEl?.classList.remove("warm");
       }
     }
     // Weihnachten: vor dem Baum sitzen und staunen, es funkelt
@@ -17501,16 +17792,25 @@
     // immer), nie mehr als zwei Leckerli in Folge (giftTre), sonst ein Leckerli der Jahreszeit. Schatz heißt: erst einer, der noch fehlt, dann ein Trick für einen, der
     // noch keinen hat. Goldene vergolden lieber einen mit Trick, bevor sie einen neuen Trick bringen. Hat jeder Schatz
     // alles, was er aus solchen Päckchen bekommen kann, gibt es nur noch Leckerli.
+    // Gewürfelt wird nur auf dem Gerät, das verschenkt (sein Monat gilt): Die Nummer steht danach im Tagesplan (gift.i),
+    // alle anderen lesen sie dort. Nummern ab 12 (seit 0.43) kennt eine Karte bis 0.42.2 nicht, siehe giftItem.
     _giftPick(G, z, gold) {
+      if (this._dbgTreat != null) return this._dbgTreat;
       const T = [...Array(GIFT_TRE).keys()];
       const at = (lv) => T.filter((t) => giftLv(G, t) === lv);
       const miss = at(0).length ? at(0) : gold && at(2).length ? at(2) : at(1);
       const tre = miss.length && (gold || giftTre(z));
       if (tre) return miss[Math.floor(seedRnd("gtre", z) * miss.length)];
       const south = (this._hass?.config?.latitude ?? 50) < 0;
-      const mo = ((/* @__PURE__ */ new Date()).getMonth() + (south ? 6 : 0)) % 12;
-      const ok = GIFT_ITEMS.map((it, n) => n).filter((n) => n >= GIFT_TRE && (!GIFT_ITEMS[n].mo || GIFT_ITEMS[n].mo.includes(mo)));
-      return ok[Math.floor(seedRnd("gtreat", z) * ok.length)];
+      return this._giftTreat(z, ((/* @__PURE__ */ new Date()).getMonth() + (south ? 6 : 0)) % 12);
+    }
+    // Leckerli für Päckchen z im Monat mo (für die Tests ohne Uhr)
+    _giftTreat(z, mo) {
+      return giftTreat(GIFT_ITEMS, z, mo);
+    }
+    // Inhalt Nummer i mit Bild, Name und Farbe; eine unbekannte Nummer zeigt das Blumensträußchen (für die Tests)
+    _giftItem(i) {
+      return giftItem(i);
     }
     // Plan geändert: Knopf, Ballon und Schätze nachziehen
     _giftFromPlan() {
@@ -17742,7 +18042,7 @@
       const lv = B.item < GIFT_TRE && PG?.z === B.z ? giftLv(PG, B.item) : 1;
       this._giftHide = B.item < GIFT_TRE ? B.item : null;
       this._planOp({ t: "gopen", z: B.z });
-      const it = GIFT_ITEMS[B.item];
+      const it = giftItem(B.item);
       let ie = null;
       try {
         B.el.querySelector(".gp-bow").classList.add("off");
@@ -18869,9 +19169,10 @@
   var BeschaeftigungenKlein = class {
     // ==================== Kleine Beschäftigungen ab 0.32 ====================
     // Hula-Hoop, Jo-Jo, Pusteblume, Purzelbaum, Steintürmchen, Jonglieren, Blumenkranz und Papierflieger bei trockenem
-    // Wetter, Pfützenspringen und Papierschiffchen bei Regen, der Schnee-Pika bei liegendem Schnee. Auswahl: miniChain
-    // (MINI_PROG, MINI_W, miniOk). Alle kommen aus dem Tagesplan (_miniAt) und stehen nicht im Helfer. Die drei für
-    // Regen und Schnee laufen nach der Planzeit: Ein Gerät, das später dazukommt, steigt mitten hinein ein.
+    // Wetter, Pfützenspringen und Papierschiffchen bei Regen, Schnee-Pika, Schneeengel und Schneeball bei liegendem
+    // Schnee. Auswahl: miniChain (MINI_PROG, MINI_W, miniOk). Alle kommen aus dem Tagesplan (_miniAt) und stehen nicht
+    // im Helfer. Pfütze, Schiffchen, Schnee-Pika und Schneeball laufen nach der Planzeit: Ein Gerät, das später
+    // dazukommt, steigt mitten hinein ein.
     // Lage für die Wahl der kleinen Beschäftigungen (miniProg, miniOk): Wetter, Wind und Kälte kommen von der
     // Wetter-Entität und sind auf allen Geräten gleich, die Jahreszeit hängt am Datum. Der Vorrat ist nur mit
     // plan_entity überall derselbe (ohne Helfer zählt jedes Gerät für sich). Was an der Konfiguration der einzelnen
@@ -19146,6 +19447,256 @@
       this._say(pick(["Fertig!", "Hallo, du!", "Mein Zwilling!", "♥"]), 1500);
       this._jump("hop1");
       await this._wait(4e3 + S.r(7) * 3e3);
+      p.classList.remove("look-f");
+      this._apropsAway(el);
+      await this._wait(700);
+    }
+    // ---------- Schnee: Schneeengel ----------
+    // Platz für den Abdruck und ihn daneben: { px: Mitte des Abdrucks, w: seine Breite, x: dort steht er danach,
+    // dir: sein Blick von dort zum Abdruck }. Der Abdruck liegt zwischen Vorrat und Stein (_groundSpot), eine gute
+    // Pika-Breite groß; ist die Wiese schmaler (schmale Karte), wird er kleiner, höchstens bis auf 0,62 Pika-Breiten
+    // (dann ragt er vor Vorrat und Stein). Auf welche Seite er zum Anschauen hüpft, steht mit dem Fenster fest; ist
+    // dort kein Platz oder die Wiese schmal, nach links (vor den Vorrat, wie beim Schnee-Pika).
+    _angelSpot(S) {
+      const { pW, hayR, rock, xR } = this._g;
+      const room = rock.l - hayR - this._H * 0.04;
+      const w = clamp(room, pW * 0.62, pW * 1.05);
+      const px = this._groundSpot(S.r(2), w, 1).x;
+      const off = w / 2 + pW * 0.42;
+      const dir = room < w + pW * 0.9 || S.r(3) < 0.5 || px + off > xR ? 1 : -1;
+      return { px, w, dir, x: clamp(px - dir * off, pW * 0.45, xR) };
+    }
+    // Schnee stiebt auf: n Flöckchen links und rechts von x am Boden. Wie _puff, aber weiß und mit den festen Zahlen
+    // u(0), u(1) … des Fensters statt gewürfelt. Bewegung reduzieren: keine.
+    _snowPuff(x, n, u) {
+      if (calmMotion()) return;
+      const { pW, gy } = this._g;
+      const H = this._H;
+      for (let i = 0; i < n; i++) {
+        const el = document.createElement("span");
+        el.className = "puff snowy";
+        const side = i % 2 ? 1 : -1;
+        el.style.left = `${(x + side * pW * (0.2 + u(2 * i) * 0.3)).toFixed(1)}px`;
+        el.style.top = `${(gy - H * 0.04).toFixed(1)}px`;
+        el.style.setProperty("--px", `${(side * H * (0.04 + u(2 * i + 1) * 0.05)).toFixed(1)}px`);
+        this._el.fx.appendChild(el);
+        setTimeout(() => el.remove(), 650);
+      }
+    }
+    // Er schaut sich um, plumpst rückwärts in den Schnee, schwingt zwei- oder dreimal Arme und Beine (der Abdruck
+    // bekommt mit jedem Schwung breitere Flügel), rappelt sich auf, hüpft zur Seite und schaut sich den Engel stolz
+    // an. Der Abdruck bleibt noch ein paar Sekunden, dann weht Schnee darüber. Zahl der Schwünge, Platz, Seite und
+    // Sprüche stehen mit dem Fenster fest. Ein Gerät, das später dazukommt, steigt nicht ein (ACT_NOJOIN).
+    // Bewegung reduzieren: Er legt sich nicht hin; der Abdruck blendet neben ihm ein.
+    async _angel() {
+      const S = this._slotFor("angel");
+      const p = this._el.pika;
+      const calm = calmMotion();
+      const n = angelSweeps(S.r);
+      const A = this._angelSpot(S);
+      const h = A.w * 0.48;
+      const line = (i, list) => list[Math.floor(S.r(i) * list.length)];
+      const el = this._aprop("angelp", ANGEL_SVG, A.px, A.w, h, false, h * 0.1);
+      await this._goSpot(S, calm ? A.x : A.px, 0.9);
+      this._face(calm ? A.dir : S.r(4) < 0.5 ? -1 : 1);
+      if (S.k >= 0) await this._at(S.start + ACT_WALK);
+      this._say(line(20, ["Schnee!", "So viel Schnee!", "hui, Schnee!"]), 1100);
+      p.classList.add("look-b");
+      await this._wait(ANGEL_T.look / 2);
+      p.classList.remove("look-b");
+      p.classList.add("look-f");
+      await this._wait(ANGEL_T.look / 2);
+      p.classList.remove("look-f");
+      if (calm) {
+        el.style.setProperty("--ag", `${ANGEL_T.flop + n * ANGEL_T.sweep}ms`);
+        el.classList.add("b", "w");
+        p.classList.add("look-f");
+        await this._wait(ANGEL_T.flop + n * ANGEL_T.sweep + ANGEL_T.up + ANGEL_T.hop);
+      } else {
+        p.classList.add("angel-dn");
+        await this._wait(ANGEL_T.flop * 0.75);
+        el.classList.add("b");
+        this._snowPuff(this._x, 4, (i) => S.r(30 + i));
+        this._say(line(21, ["plumps!", "uff!", "hihi"]), 800);
+        await this._wait(ANGEL_T.flop * 0.25);
+        p.classList.add("angel-go", "happy");
+        for (let k = 1; k <= n; k++) {
+          el.style.setProperty("--aw", (0.2 + 0.8 * k / n).toFixed(2));
+          el.classList.add("w");
+          this._snowPuff(this._x, 2, (i) => S.r(40 + k * 8 + i));
+          if (k === 2) this._say(line(22, ["wusch, wusch!", "und nochmal!", "hui!"]), 900);
+          await this._wait(ANGEL_T.sweep / 2);
+          this._snowPuff(this._x, 2, (i) => S.r(44 + k * 8 + i));
+          await this._wait(ANGEL_T.sweep / 2);
+        }
+        p.classList.remove("angel-go", "happy", "angel-dn");
+        p.classList.add("angel-up");
+        await this._wait(ANGEL_T.up);
+        p.classList.remove("angel-up");
+        await this._hopTo(A.x, 0, false);
+        await this._wait(Math.max(0, ANGEL_T.hop - 620));
+      }
+      this._face(A.dir);
+      p.classList.add("look-f");
+      this._happy(1400);
+      this._mimik("proud", ANGEL_T.proud);
+      this._say(line(23, ["Ein Schneeengel!", "Ein Schneeengel!", "Mein Schneeengel! ♥"]), 1700);
+      if (!calm) this._jump("hop1");
+      await this._wait(ANGEL_T.proud);
+      const stay = ANGEL_T.stay + S.r(7) * ANGEL_T.stayMore;
+      await this._wait(stay * 0.4);
+      p.classList.add("tilt");
+      await this._wait(stay * 0.6);
+      p.classList.remove("tilt", "look-f");
+      el.classList.add("drift");
+      await this._wait(ANGEL_T.drift);
+      this._apropsAway(el);
+      await this._wait(300);
+    }
+    // ---------- Schnee: Schneeball rollen ----------
+    // Er scharrt einen kleinen Schneeball zusammen und schiebt ihn mit Nase und Pfoten in zwei Etappen über die Wiese:
+    // Die Kugel wächst mit dem Weg (drei Größen, snowballR) und hinterlässt eine Spur. Am Ende klopft er sie fest und
+    // lehnt sich an („so groß!“). Manchmal (snowballRuns, steht mit dem Fenster fest) wird sie zu groß und rollt das
+    // letzte Stück von selbst: Er hüpft hinterher („halt!“). Wo die Kugel ist und wie groß, steht mit der Planzeit fest
+    // (snowballPos): Wer später einsteigt, sieht sie an derselben Stelle. Sie bleibt noch kurz stehen und sackt dann
+    // zusammen wie der Schnee-Pika.
+    // Der Weg liegt zwischen Vorrat und Stein (_groundSpot, höchstens 1,5 Pika-Breiten) und wird kürzer, wenn dort
+    // weniger Platz ist. Bleibt kaum ein Weg (schmale Karte) oder gilt „Bewegung reduzieren“, wächst die Kugel an Ort
+    // und Stelle (still): Er steht daneben und klopft, nichts rollt.
+    async _snowball() {
+      const S = this._slotFor("snowball");
+      const { pW, pH, xR, hayR, rock } = this._g;
+      const H = this._H;
+      const p = this._el.pika;
+      const T0 = S.start + ACT_WALK;
+      const t3 = SNOWBALL_T.scrape + SNOWBALL_T.leg + SNOWBALL_T.rest;
+      const t4 = t3 + SNOWBALL_T.leg;
+      const rad = (s) => snowballR(s) * pH;
+      const rMax = rad(SNOWBALL_BIG);
+      const line = (i, list) => list[Math.floor(S.r(i) * list.length)];
+      const now = () => this._planNow() - T0;
+      const lo = hayR + H * 0.03;
+      const U = groundSpot(S.r(2), pW * 1.5 + rad(1) + rMax, lo, Math.max(lo, rock.l - rock.w * 0.08 - H * 0.04), this._groundBlocks(), 0.2);
+      const still = calmMotion() || U.w - rad(1) - rMax < pW * 0.35;
+      const run = !still && snowballRuns(S.r);
+      const B = still ? this._besideSpot(S.r(2), S.r(3), 2 * rad(3)) : null;
+      const dir = B ? B.dir : S.r(3) < 0.5 ? 1 : -1;
+      const travel = B ? 0 : U.w - rad(1) - rMax;
+      const c0 = B ? B.px : U.x - dir * (U.w / 2 - rad(1));
+      const fa = snowballPos(SNOWBALL_T.scrape + SNOWBALL_T.leg, run).f;
+      const fb = snowballPos(t4, run).f;
+      const xAt = (f2, s) => B ? B.x : clamp(c0 + dir * (f2 * travel - pW * 0.4 - rad(s) * 0.9), pW * 0.45, xR);
+      const el = this._aprop("sbp", "", c0 + dir * travel / 2, travel + 2 * rMax, 2 * rMax, false, pH * 0.03);
+      const part = (cls, parent) => {
+        const d = document.createElement("div");
+        d.className = cls;
+        parent.appendChild(d);
+        return d;
+      };
+      const track = part("sb-track", el);
+      Object.assign(track.style, {
+        left: `${rMax.toFixed(1)}px`,
+        width: `${travel.toFixed(1)}px`,
+        height: `${(pH * 0.1).toFixed(1)}px`,
+        bottom: `${(pH * 0.045).toFixed(1)}px`,
+        transformOrigin: dir > 0 ? "0 50%" : "100% 50%",
+        display: travel > 0 ? "" : "none"
+      });
+      const ball = part("sb-ball", el);
+      Object.assign(ball.style, { left: `${(dir > 0 ? 0 : travel).toFixed(1)}px`, width: `${(2 * rMax).toFixed(1)}px`, height: `${(2 * rMax).toFixed(1)}px` });
+      const size = part("sb-size", part("sb-sink", ball));
+      size.innerHTML = SNOWBALL_SVG;
+      const marks = size.querySelector(".sb-rot");
+      const turn = travel / rad(2) * 57.3;
+      const put = (f2, s, ms = 0, ease = "linear", skip = 0) => {
+        const tr = `transform ${Math.round(ms)}ms ${ease} ${-Math.round(skip)}ms`;
+        const set = (node, v) => node && Object.assign(node.style, { transition: tr, transform: v });
+        set(ball, `translateX(${(dir * f2 * travel).toFixed(1)}px)`);
+        set(size, `scale(${(rad(s) / rMax).toFixed(3)})`);
+        set(marks, `rotate(${(dir * f2 * turn).toFixed(0)}deg)`);
+        set(track, `scaleX(${f2.toFixed(3)})`);
+      };
+      const roll = (a, b, t0, ms, ease = "linear") => {
+        const late = now() - t0;
+        if (late >= ms) return put(...b);
+        put(...a);
+        void ball.offsetWidth;
+        put(...b, ms, ease, Math.max(0, late));
+      };
+      const P0 = snowballPos(Math.max(0, now()), run);
+      const chasing = run && now() > t4 && now() < t4 + SNOWBALL_T.gasp + SNOWBALL_T.chase - 600;
+      put(P0.f, P0.s);
+      await this._goSpot(S, chasing ? xAt(fb, 3) : xAt(P0.f, Math.max(1, P0.s)), 0.9);
+      this._face(dir);
+      if (now() < SNOWBALL_T.scrape - 300) {
+        if (now() < 300) this._say(line(20, ["Ein Schneeball!", "Rollen!", "Eine Kugel!"]), 1200);
+        await this._at(T0 + 150);
+        p.classList.add("sniff");
+        await this._at(T0 + SNOWBALL_T.dig);
+        p.classList.remove("sniff");
+        p.classList.add("sb-pat");
+        roll([0, 0], [0, 1], SNOWBALL_T.dig, SNOWBALL_T.scrape - SNOWBALL_T.dig);
+        await this._at(T0 + SNOWBALL_T.scrape);
+        p.classList.remove("sb-pat");
+      }
+      for (const [i, ts, a, b] of [[0, SNOWBALL_T.scrape, [0, 1], [fa, 2]], [1, t3, [fa, 2], [fb, 3]]]) {
+        const te = ts + SNOWBALL_T.leg;
+        if (now() >= te - HOP_MS.trip) {
+          put(...b);
+          continue;
+        }
+        await this._at(T0 + ts);
+        roll(a, b, ts, SNOWBALL_T.leg);
+        if (still) {
+          p.classList.add("sb-pat");
+          await this._at(T0 + te);
+          p.classList.remove("sb-pat");
+        } else {
+          const ms = hopRound(T0 + te - this._planNow(), HOP_MS.trip);
+          p.classList.add("sb-push", "trip");
+          p.style.transition = `transform ${ms}ms linear`;
+          this._setX(xAt(b[0], b[1]));
+          p.classList.toggle("walking", true);
+          await this._wait(ms);
+          p.classList.remove("walking", "trip", "sb-push");
+        }
+        if (i === 0 && now() < te + 300) this._say(line(21, ["uff!", "sie wächst!", "noch ein Stück!"]), 900);
+      }
+      await this._at(T0 + t4);
+      if (run) {
+        const t5 = t4 + SNOWBALL_T.gasp;
+        const t6 = t5 + SNOWBALL_T.chase;
+        roll([fb, 3], [1, SNOWBALL_BIG], t4, SNOWBALL_T.away, `cubic-bezier(${SNOWBALL_EASE.join(", ")})`);
+        if (now() < t5 - 200) {
+          this._mimik("awe", 1500);
+          this._say(line(22, ["oh!", "huch!", "oh, oh!"]), 500);
+        }
+        await this._at(T0 + t5);
+        if (now() < t6 - 600) {
+          this._say(line(23, ["halt!", "Halt!", "bleib hier!"]), 1e3);
+          const to = xAt(1, SNOWBALL_BIG);
+          await this._hopTo((this._x + to) / 2, 0, false);
+          await this._hopTo(to, 0, false);
+          this._face(dir);
+        }
+        await this._at(T0 + t6);
+        p.classList.add("spat");
+        if (now() < t6 + 400) this._say(line(24, ["hab dich!", "gefangen!", "puh!"]), 1e3);
+        await this._at(T0 + t6 + SNOWBALL_T.hold);
+      } else {
+        p.classList.add("spat");
+        await this._at(T0 + t4 + SNOWBALL_T.pat);
+      }
+      p.classList.remove("spat");
+      if (this._planNow() < S.end - 800) {
+        p.classList.add("sb-lean");
+        this._happy(Math.min(2200, S.end - this._planNow()));
+        this._say(line(25, ["so groß!", "So groß!", "so groß! ♥"]), 1600);
+        await this._at(S.end);
+        p.classList.remove("sb-lean");
+      }
+      p.classList.add("look-f");
+      await this._wait(SNOWBALL_T.stay + S.r(7) * SNOWBALL_T.stayMore);
       p.classList.remove("look-f");
       this._apropsAway(el);
       await this._wait(700);

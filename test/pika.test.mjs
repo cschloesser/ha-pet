@@ -1596,7 +1596,7 @@ test('Requisiten: hervorkramen und wegräumen über .kram und .stow, beim Abbruc
 
 const LAGE = { wet: false, rain: 0, storm: false, shelter: false, snowcover: false, cold: false, wind: 10, hayFull: false, winter: false };
 const TROCKEN = ['rope', 'weights', 'gather', 'hula', 'yoyo', 'puste', 'purzel', 'stones', 'juggle', 'crown', 'glider'];
-const SCHNEE = ['weights', 'hula', 'yoyo', 'purzel', 'juggle', 'glider', 'snowpika'];
+const SCHNEE = ['weights', 'hula', 'yoyo', 'purzel', 'juggle', 'glider', 'snowpika', 'angel', 'snowball'];
 // Die Kette mit den festen Zahlen der Karte (wie _miniAct); has: in welchen Fenstern es eine kleine gibt
 const kette = (m, L, has = () => true) => T.miniChain(m, { ...LAGE, ...L }, has, (j) => T.seedRnd('mini', j, 2), (j) => T.seedRnd('mini', j, 3),
   (j, k) => T.seedRnd('mini', j, 4 + k));
@@ -1646,7 +1646,7 @@ const buehne = (W, Hs, areal = 'huegel') => {
 const GROESSEN = [[600, 248], [380, 184], [340, 248], [320, 400], [1000, 200]];
 
 test('Kleine Beschäftigungen: jede wählbare hat Methode, Länge, Wetter-Abbruch und räumt ihre Klassen ab', () => {
-  assert.equal(T.MINI_ACTS.length, 14);
+  assert.equal(T.MINI_ACTS.length, 16);
   const raeumt = quell.match(/const all = \['walking'([\s\S]*?)\];/)[1] + quell.match(/const ACT_CLS = \[([\s\S]*?)\];/)[1]
     + quell.match(/const CUTE_CLS = \[([\s\S]*?)\];/)[1];
   let geprueft = 0;

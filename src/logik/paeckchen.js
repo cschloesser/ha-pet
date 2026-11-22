@@ -8,7 +8,7 @@ import { seedRnd } from './hilfen.js';
 // zählen nur hoch. Verschenkt schwebt es arrive ms lang an einem Ballon herein, der Pika schießt ihn vom Aussichtsstein
 // mit der Zwille herunter und packt aus. Leckerli bringen treat Satt, jedes Päckchen joy Glück.
 const GIFT = { min: 50, grace: 60 * 6e4, every: 6 * 36e5, max: 3, goldDays: 7, goldMax: 2, arrive: 12000, treat: 15, joy: 15 };
-const GIFT_TRE = 8; // GIFT_ITEMS 0–7 sind Schätze (Album, ein Bit je Schatz), danach Leckerli
+const GIFT_TRE = 8; // GIFT_ITEMS 0–7 sind Schätze (Album, ein Bit je Schatz), danach Leckerli (8–15, mehr fasst gift.i nicht)
 // Stufe des Schatzes t im Plan: 0 fehlt, 1 Schatz, 2 mit Trick, 3 golden (u: Bit t, v: Bit t und Bit 8 + t)
 const giftLv = (G, t) => (!G || !(G.u & (1 << t)) ? 0 : !(G.v & (1 << t)) ? 1 : G.v & (1 << (8 + t)) ? 3 : 2);
 // Stufen aller Schätze, wie sie schon ausgepackt sind: Die Stufe kommt beim Verschenken, fliegt der Ballon noch,
@@ -31,10 +31,17 @@ const giftTre = (z) => {
   }
   return giftTreM[z];
 };
+// Leckerli für Päckchen Nummer z im Monat mo (0 = Januar): eins von denen, die es dann gibt (items: GIFT_ITEMS, dort
+// steht je Leckerli mo, ohne mo gibt es das Leckerli immer). Hängt nur an z und am Monat. Die Nummer steht danach im
+// Tagesplan (gift.i), die anderen Geräte würfeln nicht selbst.
+const giftTreat = (items, z, mo) => {
+  const ok = items.map((it, n) => n).filter((n) => n >= GIFT_TRE && (!items[n].mo || items[n].mo.includes(mo)));
+  return ok[Math.floor(seedRnd('gtreat', z) * ok.length)];
+};
 // Meilensteine: das 10., 25., 50. und 100. ausgepackte Päckchen, danach jedes 100.
 const giftMile = (o) => o === 10 || o === 25 || o === 50 || (o >= 100 && o % 100 === 0);
 // Alle acht Schätze golden (Stufe 3)
 const giftAllGold = (G) => !!G && (G.u & 255) === 255 && ((G.v || 0) & 0xffff) === 0xffff;
 const GIFT_CLS = ['sling', 'aim', 'snap', 'spy', 'wcan', 'pour', 'shup', 'wink', 'hswing', 'puffy'];
 
-export { GIFT, GIFT_TRE, giftLv, giftLvs, giftOwned, giftTre, giftMile, giftAllGold, GIFT_CLS };
+export { GIFT, GIFT_TRE, giftLv, giftLvs, giftOwned, giftTre, giftTreat, giftMile, giftAllGold, GIFT_CLS };

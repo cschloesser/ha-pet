@@ -2,11 +2,13 @@
 
 import { rnd, pick, clamp, seeded } from '../logik/hilfen.js';
 import { calmMotion } from '../logik/bewegung-reduzieren.js';
-import { festDay, festEaster, festAdvent1, FEST_AHEAD, festMoments, festBirthdate, festNames } from '../logik/feste.js';
+import {
+  festDay, festEaster, festAdvent1, festCandleOff, FEST_ADVENT, FEST_AHEAD, festMoments, festBirthdate, festNames,
+} from '../logik/feste.js';
 import { OUT } from '../grafik/pika.js';
 import {
   FEST_COLORS, FEST_FW_COLORS, festF1, festSvg, FEST_EDGE, FEST_LIGHTS, FEST_STREAMERS, FEST_PUMPKIN, FEST_LANTERN,
-  FEST_CARRY, FEST_WREATH, FEST_BOOT, FEST_TREE, FEST_GIFT, FEST_MAI, FEST_CAKE, FEST_EGG, FEST_STICK, FEST_BAT,
+  FEST_CARRY, FEST_CANDLES, FEST_WREATH, FEST_BOOT, FEST_TREE, FEST_GIFT, FEST_MAI, FEST_CAKE, FEST_EGG, FEST_STICK, FEST_BAT,
 } from '../grafik/feste.js';
 import { RAND_SVG } from '../grafik/areale.js';
 
@@ -132,6 +134,9 @@ export class Feste {
     if (f.martin?.walk) out.push([dry && ok('festLantern', 3) ? 3 : 0, 'festLantern']);
     if (f.boot && pos.boot) out.push([ok('festBoot', 5) ? 1.6 : 0, 'festBoot']);
     if (f.xmas && pos.tree) out.push([ok('festTree', 4) ? 2 : 0, 'festTree']);
+    // Advent: ab und zu die Pfoten am Kranz wärmen. Wartet am Adventssonntag die neue Kerze aufs Anzünden, kommt er
+    // bald und ohne Pause (auch wenn ihn beim ersten Anlauf etwas unterbrochen hat)
+    if (f.advent && pos.wreath) out.push([this._festCandleOff() ? 12 : ok('festAdvent', 8) ? 1.3 : 0, 'festAdvent']);
     if (f.fireworks) out.push([ok('festFireworks', 2) ? 12 : 0, 'festFireworks']);
     if (f.karneval) out.push([dry && ok('festConfetti', 4) ? 1.6 : 0, 'festConfetti']);
     if (f.ostern && this._festEggs?.length) out.push([ok('festEgg', 3) ? 2 : 0, 'festEgg']);
@@ -192,7 +197,11 @@ export class Feste {
       if (md === 1031 || hwNight) f.witch = true;
       if (md === 1111) f.martin = { walk: hm >= this._festEve(now, 16 * 60, 90) };
       const adv = festAdvent1(y);
-      if (day >= adv && md <= 1224) f.advent = { candles: Math.min(4, 1 + Math.floor((day - adv) / 7)) };
+      if (day >= adv && md <= 1224) {
+        f.advent = { candles: Math.min(4, 1 + Math.floor((day - adv) / 7)) };
+        // Adventssonntag: Heute kommt eine Kerze dazu (Tagesnummer; ob sie schon brennt, weiß _festCandleOff)
+        if ((day - adv) % 7 === 0) f.advent.neu = day;
+      }
       if (day >= adv || md <= 106) f.lights = true; // Lichterkette vom 1. Advent bis Heilige Drei Könige
       if ((md === 1205 && hm >= this._festEve(now, 18 * 60, 120)) || md === 1206) f.boot = { full: md === 1206 };
       if (md >= 1224 && md <= 1226) f.xmas = true;
@@ -256,6 +265,7 @@ export class Feste {
       this._el.friends.classList.toggle('fest-xmas', !!f.xmas);
       this._festRender();
     }
+    this._festCandleSync();
     this._festFwSync();
   }
 
@@ -320,7 +330,9 @@ export class Feste {
     if (f.xmas) used.add('M');
     if (f.halloween) ground('fpump', ['M', 'R', 'L'], gy + 1, H * 0.14, FEST_PUMPKIN, 'pumpkin');
     if (f.boot) ground('fboot', ['M', 'R', 'L'], gy + 1, H * 0.11, FEST_BOOT(f.boot.full), 'boot');
-    if (f.advent) ground('fwreath', ['R', 'L', 'M'], gy, H * 0.2, FEST_WREATH(f.advent.candles), 'wreath');
+    if (f.advent) {
+      ground(`fwreath${this._festCandleOff() ? ' unlit' : ''}`, ['R', 'L', 'M'], gy, H * 0.2, FEST_WREATH(f.advent.candles, !!f.advent.neu), 'wreath');
+    }
     if (f.birthday) ground(`fcake${this._festCakeOut ? ' out' : ''}`, ['R', 'L', 'M'], gy + 1, H * 0.14, FEST_CAKE, 'cake');
     if (f.lights) on.push(onBur('flights', FEST_LIGHTS(edge)));
     if (f.karneval) on.push(onBur('fstream', FEST_STREAMERS(edge)));
@@ -404,6 +416,7 @@ export class Feste {
     E.front.innerHTML = front.join('');
     this._festPos = pos;
     this._festCakeEl = E.front.querySelector('.fcake');
+    this._festWreathEl = E.front.querySelector('.fwreath');
     this._festEggs = [...E.front.querySelectorAll('.fegg')].map((el, i) => {
       el.addEventListener('click', (e) => (e.stopPropagation(), this._festWobble(el)));
       this._keyTap(el);
@@ -672,6 +685,30 @@ export class Feste {
     }, 20000);
   }
 
+  // Adventssonntag: Ist die neue Kerze auf diesem Gerät noch aus? Sie brennt, sobald er sie angezündet hat
+  // (_festLit: Tagesnummer dieses Sonntags, je Gerät und Tag wie die ausgepustete Kuchenkerze; nach dem Neuladen
+  // zündet er sie noch einmal an), sonst von selbst ab der Abenddämmerung (festCandleOff).
+  _festCandleOff() {
+    const neu = this._fest?.advent?.neu;
+    return !!neu && festCandleOff(neu, this._festLit === neu, new Date(this._festNow()).getHours(), this._festDark());
+  }
+
+  // Der Kranz folgt dem Stand (im Takt, nach dem Anzünden): .unlit blendet Schein und Flamme der neuen Kerze aus
+  _festCandleSync() {
+    this._festWreathEl?.classList.toggle('unlit', this._festCandleOff());
+  }
+
+  // Die neue Kerze brennt. pop: Die Flamme springt kurz auf (sonst blendet sie nur ein)
+  _festLight(pop) {
+    this._festLit = this._fest?.advent?.neu;
+    const el = this._festWreathEl;
+    if (pop && el) {
+      el.classList.add('lit');
+      this._festLater(() => el.classList.remove('lit'), 900);
+    }
+    this._festCandleSync();
+  }
+
   // ---- Aktionen ----
 
   // Halloween: am Kürbis schnuppern, vor dem Gesicht erschrecken, kichern
@@ -747,6 +784,62 @@ export class Feste {
       this._say(pick(['noch leer…', 'morgen?']), 1500);
       p.classList.add('look-up');
       await this._wait(1700);
+    }
+  }
+
+  // Advent: zum Kranz hoppeln, daran schnuppern, die Pfoten an den Kerzen wärmen. Am Adventssonntag zündet er zuerst
+  // die neue Kerze an: Pfoten an den Docht, ein Funke, die Flamme springt auf, „Zweiter Advent!“ und ein Hüpfer.
+  // Der Kranz steht vor ihm (.fest-f) und reicht ihm bis zur Brust: Er setzt sich daneben, nicht dahinter.
+  // Bewegung reduzieren: ohne Funken und Hüpfer, die Flamme blendet nur ein.
+  async _festAdvent() {
+    const it = this._festPos?.wreath;
+    const a = this._fest?.advent;
+    if (!it || !a || this._urlaubFern()) return;
+    this._festMark('festAdvent');
+    const p = this._el.pika;
+    const { pW, pH, gy } = this._g;
+    const calm = calmMotion();
+    // Docht der neuen Kerze in px
+    const [cx, cy] = FEST_CANDLES[a.candles - 1];
+    const kx = it.l + (cx / 44) * it.w;
+    const ky = it.top + ((cy - 10.3) / 28) * it.h;
+    try {
+      // Zum Anzünden auf die Seite der neuen Kerze (1 und 3 stehen links, 2 und 4 rechts), so weit weg, dass die
+      // vorgestreckte Pfote (in der Pika-Grafik bei x 113 von 120) über dem Docht ist; sonst von dort, wo er gerade ist
+      const off = this._festCandleOff();
+      const dir = off ? (cx < 22 ? 1 : -1) : this._x > it.x ? -1 : 1;
+      await this._walkTo((off ? kx : it.x) - dir * pW * (off ? 0.445 : 0.52), 0.9);
+      this._face(dir);
+      // … und so tief, dass sie den Docht berührt (Boden bei y 94,5 von 100, die Pfote hängt bei 61 und ist 5 hoch)
+      p.style.setProperty('--fky', `${(94.5 - ((gy - ky) / pH) * 100 - 4 - 61).toFixed(1)}px`);
+      await this._wait(350);
+      p.classList.add('sniff');
+      await this._wait(rnd(900, 1400));
+      p.classList.remove('sniff');
+      p.classList.add('look-f', 'fest-warm');
+      if (this._festCandleOff()) {
+        await this._wait(300);
+        p.classList.add('fest-reach');
+        await this._wait(650);
+        if (!calm) this._sparkle(kx, ky, 2);
+        this._festLight(!calm);
+        await this._wait(800);
+        p.classList.remove('fest-reach');
+        this._say(`${FEST_ADVENT[a.candles - 1]} Advent!`, 2200);
+        if (!calm) this._jump('hop1');
+        await this._wait(1900);
+      }
+      this._festWreathEl?.classList.add('warm');
+      await this._wait(rnd(1300, 1900));
+      p.classList.add('happy');
+      this._say(pick(a.candles > 3 && !this._fest.xmas ? ['bald ist Weihnachten!', 'schön warm!'] : ['schön warm!', 'mmh, Tannenduft!']), 1800);
+      if (!calm) this._sparkle(it.x, it.top + it.h * 0.2, 2);
+      await this._wait(rnd(2400, 3200));
+      p.classList.remove('happy');
+      await this._wait(rnd(400, 900));
+    } finally {
+      p.classList.remove('fest-warm', 'fest-reach');
+      this._festWreathEl?.classList.remove('warm');
     }
   }
 

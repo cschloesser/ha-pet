@@ -1,24 +1,29 @@
 // Kleine Beschäftigungen: Auswahl nach Wetter, Takt, Pfütze, Schiffchen, Jo-Jo, Purzelbaum, Papierflieger,
-// Platz am Boden
+// Schneeengel, Schneeball, Platz am Boden
 
 import { clamp, weightedR, clearSpot } from './hilfen.js';
 
 // Grundgewichte. Bis 0.31 wechselten sich Seil und Hantel rund 40-mal am Tag ab; jetzt teilen sich elf den Tag,
-// und Regen und Schnee haben ihr eigenes Programm (Pfützenspringen, Papierschiffchen; Schnee-Pika). Die Reihenfolge
-// ist Teil der Wahl (weightedR): nicht umsortieren, sonst wählen Geräte mit altem und neuem Stand Verschiedenes.
+// und Regen und Schnee haben ihr eigenes Programm (Pfützenspringen, Papierschiffchen; Schnee-Pika, ab 0.43 auch
+// Schneeengel und Schneeball). Die Reihenfolge ist Teil der Wahl (weightedR): nicht umsortieren und Neues hinten
+// anhängen, sonst wählen Geräte mit altem und neuem Stand Verschiedenes.
 const MINI_W = {
   rope: 0.7, weights: 0.6, gather: 1, hula: 0.9, yoyo: 0.9, puste: 0.9, purzel: 0.8, stones: 0.8, juggle: 0.8, crown: 0.6,
-  glider: 0.8, puddle: 1.5, boat: 1.2, snowpika: 1.3,
+  glider: 0.8, puddle: 1.5, boat: 1.2, snowpika: 1.3, angel: 0.9, snowball: 0.9,
 };
 const MINI_ACTS = Object.keys(MINI_W);
 // Bei liegendem Schnee geht nur, was keinen freien Boden und keine Blumen braucht
 const MINI_SNOW = new Set(['weights', 'hula', 'yoyo', 'purzel', 'juggle', 'glider']);
+// Nur bei Regen bzw. nur bei liegendem Schnee: Das Schneeprogramm ist MINI_SNOW und dazu Schnee-Pika, Schneeengel
+// und Schneeball
+const MINI_RAIN = ['puddle', 'boat'];
+const MINI_SNOWONLY = new Set(['snowpika', 'angel', 'snowball']);
 // Jedes Wetter hat sein Programm: trocken (dry), Regen (rain), Schnee liegt (snow). Gewählt wird aus der ganzen
 // Liste des Programms, mit den Gewichten aus MINI_W (miniChain).
 const MINI_PROG = {
-  dry: MINI_ACTS.filter((a) => !['puddle', 'boat', 'snowpika'].includes(a)),
-  rain: ['puddle', 'boat'],
-  snow: MINI_ACTS.filter((a) => MINI_SNOW.has(a) || a === 'snowpika'),
+  dry: MINI_ACTS.filter((a) => !MINI_RAIN.includes(a) && !MINI_SNOWONLY.has(a)),
+  rain: MINI_RAIN,
+  snow: MINI_ACTS.filter((a) => MINI_SNOW.has(a) || MINI_SNOWONLY.has(a)),
 };
 // Bei Regen bleibt gut die Hälfte der Fenster leer (Gewicht für „nichts“): Pfütze und Schiffchen wechselten sich
 // an einem Regentag sonst so oft ab wie früher Seil und Hantel
@@ -32,10 +37,10 @@ const miniProg = (L) => (L.shelter ? null : L.rain > 0 && !L.snowcover ? 'rain' 
 // Festtagshut gehört nicht dazu: Er hängt an der Konfiguration der einzelnen Karte (_actOk).
 const miniOk = (act, L) => {
   if (L.shelter) return false;
-  if (act === 'puddle' || act === 'boat') return L.rain > 0 && !L.snowcover;
+  if (MINI_RAIN.includes(act)) return L.rain > 0 && !L.snowcover;
   if (act === 'gather') return !L.wet && !L.snowcover && !L.hayFull;
   if (L.wet || L.storm) return false;
-  if (act === 'snowpika') return !!L.snowcover;
+  if (MINI_SNOWONLY.has(act)) return !!L.snowcover;
   if (act === 'glider') return (L.wind || 0) < 40;
   if (L.snowcover) return MINI_SNOW.has(act);
   if (act === 'crown') return !L.cold && !L.winter; // Gänseblümchen
@@ -160,6 +165,49 @@ const gliderThrows = (x, us, { W, pW, pH, xR, hayR }) => {
     return T;
   });
 };
+// Schneeengel (ms): umschauen (look), auf den Rücken plumpsen (flop), je Schwung mit Armen und Beinen (sweep),
+// aufstehen (up), zur Seite hüpfen (hop), den Abdruck stolz anschauen (proud). Danach bleibt der Abdruck noch
+// stay bis stay + stayMore ms liegen und verweht in drift ms.
+const ANGEL_T = { look: 1400, flop: 700, sweep: 1500, up: 800, hop: 800, proud: 2400, stay: 3000, stayMore: 2000, drift: 1600 };
+const angelSweeps = (r) => 2 + Math.floor(r(1) * 2);
+const angelLen = (r) => ANGEL_T.look + ANGEL_T.flop + angelSweeps(r) * ANGEL_T.sweep + ANGEL_T.up + ANGEL_T.hop + ANGEL_T.proud;
+// Schneeball (ms ab Beginn des Hauptteils): Schnee zusammenscharren (bis dig bückt er sich, bis scrape wächst die
+// erste Kugel), zwei Etappen schieben (leg) mit einer Verschnaufpause dazwischen (rest), festklopfen (pat),
+// anlehnen (lean). Wird die Kugel zu groß (snowballRuns), rollt sie von selbst weiter (away), er erschrickt (gasp),
+// hüpft hinterher (chase) und hält sie fest (hold); dann erst lehnt er sich an. Danach bleibt sie stay bis
+// stay + stayMore ms stehen und sackt zusammen.
+const SNOWBALL_T = {
+  dig: 700, scrape: 1800, leg: 2400, rest: 600, pat: 1300, lean: 2600, away: 900, gasp: 500, chase: 1240, hold: 1100, stay: 3000, stayMore: 2000,
+};
+const SNOWBALL_EASE = [0.2, 0.7, 0.4, 1]; // von selbst rollend wird sie langsamer
+const snowballRuns = (r) => r(6) < 0.3;
+const snowballLen = (r) => SNOWBALL_T.scrape + 2 * SNOWBALL_T.leg + SNOWBALL_T.rest
+  + (snowballRuns(r) ? SNOWBALL_T.gasp + SNOWBALL_T.chase + SNOWBALL_T.hold : SNOWBALL_T.pat) + SNOWBALL_T.lean;
+// Radius der Kugel als Anteil der Pika-Höhe in den Stufen 0 (nichts), 1 (zusammengescharrt), 2 (nach der ersten
+// Etappe) und 3 (nach der zweiten); dazwischen und darüber hinaus (zu groß geworden: bis SNOWBALL_BIG) gleichmäßig.
+const SNOWBALL_R = [0, 0.1, 0.17, 0.25];
+const SNOWBALL_BIG = 3.3;
+const snowballR = (s) => {
+  const i = clamp(Math.floor(s), 0, 2);
+  return SNOWBALL_R[i] + (SNOWBALL_R[i + 1] - SNOWBALL_R[i]) * (s - i);
+};
+// Wo ist die Kugel t ms nach Beginn des Hauptteils (Planzeit)? f: Anteil ihres Wegs (0 = dort, wo er sie
+// zusammenscharrt, 1 = am Ende), s: Größenstufe (snowballR). run: Sie wird zu groß und rollt das letzte Stück von
+// selbst. Ein Gerät, das später einsteigt, setzt sie genau dorthin, wo sie auf den anderen gerade ist (wie boatPos).
+const snowballPos = (t, run) => {
+  const T = SNOWBALL_T;
+  const [fa, fb] = run ? [0.38, 0.76] : [0.5, 1];
+  const t2 = T.scrape + T.leg;
+  const t3 = t2 + T.rest;
+  const t4 = t3 + T.leg;
+  if (t < T.scrape) return { f: 0, s: clamp((t - T.dig) / (T.scrape - T.dig), 0, 1) };
+  if (t < t2) return { f: (fa * (t - T.scrape)) / T.leg, s: 1 + (t - T.scrape) / T.leg };
+  if (t < t3) return { f: fa, s: 2 };
+  if (t < t4) return { f: fa + ((fb - fa) * (t - t3)) / T.leg, s: 2 + (t - t3) / T.leg };
+  if (!run) return { f: 1, s: 3 };
+  const k = bezAt(...SNOWBALL_EASE, (t - t4) / T.away);
+  return { f: fb + (1 - fb) * k, s: 3 + (SNOWBALL_BIG - 3) * k };
+};
 // Platz eines Requisits am Boden (Pfütze, Schnee-Pika, Steintürmchen): Mitte aus der festen Zahl u so zwischen a
 // und b, dass es mit seiner Breite w ganz dazwischen liegt. Ist dort zu wenig Platz (schmale Karte), wird es
 // schmaler (bis kMin · w) und liegt notfalls mittig. Sperren [l, r] (Geräte des Haus-Boten, Festdeko, Schätze,
@@ -176,4 +224,5 @@ export {
   MINI_W, MINI_ACTS, MINI_PROG, MINI_REST, miniProg, miniOk, miniBase, miniSwap, miniChain, PUDDLE_MS, puddleJumps,
   BOAT_T, BOAT_EASE, boatPuffs, bezAt, boatPos, YOYO_MS, YOYO_DEAD, yoyoThrows, yoyoDead, PUSTE_MS, PURZEL_MS,
   PURZEL_ROLL, purzelRolls, STONE_MS, GLIDER_FLY, GLIDER_WALK, GLIDER_STEP, gliderThrows, groundSpot,
+  ANGEL_T, angelSweeps, angelLen, SNOWBALL_T, SNOWBALL_EASE, SNOWBALL_BIG, snowballRuns, snowballLen, snowballR, snowballPos,
 };

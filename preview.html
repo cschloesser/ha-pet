@@ -119,6 +119,7 @@
   <button data-fest="halloween">Halloween</button>
   <button data-fest="martin">St. Martin</button>
   <button data-fest="advent">2. Advent</button>
+  <button data-fest="kerze">Adventssonntag (Kerze anzünden)</button>
   <button data-fest="nikolaus">Nikolaus</button>
   <button data-fest="heiligabend">Heiligabend</button>
   <button data-fest="silvester">Silvester 23:59</button>
@@ -269,6 +270,8 @@
   <button data-act="puddle">Pfützenspringen (Regen)</button>
   <button data-act="boat">Papierschiffchen (Regen)</button>
   <button data-act="snowpika">Schnee-Pika (Schnee)</button>
+  <button data-act="angel">Schneeengel (Schnee)</button>
+  <button data-act="snowball">Schneeball (Schnee)</button>
   <button id="act-show">Bildschirm an (Begrüßung)</button>
   <button id="act-mood">Tagesform + Plan anzeigen</button>
   <button id="act-big">Uhr vor: nächste große</button>
@@ -337,6 +340,11 @@
   <button id="gift-swing">Schaukeln</button>
   <button id="gift-rbow">Regenbogen (Gießen)</button>
   <button data-gift="giftTune">Glockenspiel</button>
+  <i style="flex-basis:100%"></i><b>Leckerli</b>
+  <button data-treat="12">Haselnüsse</button>
+  <button data-treat="13">Bratapfel</button>
+  <button data-treat="14">Plätzchen</button>
+  <button data-treat="15">Möhre</button>
 </div>
 <!-- ==================== Ende Päckchen ==================== -->
 
@@ -876,11 +884,26 @@
     const xmas = new Date(Y, 11, 25);
     const adv4 = new Date(Y, 11, 25 - (xmas.getDay() || 7));
     const today = new Date();
+    // Der nächste Adventssonntag (heute zählt mit), morgens um 9: Die neue Kerze ist noch aus, er zündet sie an
+    const kerze = () => {
+      const t0 = new Date(today.getFullYear(), today.getMonth(), today.getDate()).getTime();
+      for (const y of [Y, Y + 1]) {
+        const x = new Date(y, 11, 25);
+        for (const w of [3, 2, 1, 0]) {
+          const t = new Date(y, 11, 25 - (x.getDay() || 7) - 7 * w, 9).getTime();
+          if (t >= t0) return t;
+        }
+      }
+    };
+    // „Aktion!“ nimmt die Aktion zum zuletzt gedrückten Knopf (am 6. 12. 2026 sind Nikolaus und 2. Advent zugleich)
+    const AKT = { advent: 'festAdvent', kerze: 'festAdvent', nikolaus: 'festBoot', heiligabend: 'festTree' };
+    let akt = null;
     const SUN = { day: [180, 28, false], dusk: [250, -2, false], night: [300, -25, false], sleep: [330, -25, true] };
     const FEST = {
       halloween: [() => at(Y, 10, 31, 20), 'night'],
       martin: [() => at(Y, 11, 11, 17, 30), 'dusk'],
       advent: [() => rel(adv4, -14, 18), 'night'],
+      kerze: [kerze, 'day'],
       nikolaus: [() => at(Y, 12, 6, 10), 'day'],
       heiligabend: [() => at(Y, 12, 24, 18, 30), 'night'],
       silvester: [() => at(Y, 12, 31, 23, 59), 'sleep'],
@@ -896,6 +919,7 @@
     document.querySelectorAll('[data-fest]').forEach((btn) =>
       btn.addEventListener('click', () => {
         const k = btn.dataset.fest;
+        akt = AKT[k] || null;
         for (const c of cards) {
           if (k === 'heute') {
             c._dbgDate = c._dbgSleep = c._dbgElev = c._dbgAz = null;
@@ -911,7 +935,9 @@
             c.setConfig({ name: 'Pika', entity: 'input_text.pika_status', plan_entity: 'input_text.pika_plan', appliances: c._cfg?.appliances, coffee: c._cfg?.coffee, birthdays: [{ name: 'Mia', date: `${pad(today.getMonth() + 1)}-${pad(today.getDate())}` }] });
           }
           if (k === 'mitternacht') c._festMidY = null; // Finale und Aufwachen bei jedem Klick
+          if (k === 'kerze') c._festLit = null; // bei jedem Klick ist die neue Kerze wieder aus
           c._tick(); // ruft auch c._tickFest()
+          c._festCandleSync?.(); // (der Takt ruht, solange die Karte nicht zu sehen ist)
           if (k === 'halloween') c._festBat();
           if (k === 'karneval') c._festConfettiRain();
         }
@@ -926,7 +952,7 @@
       if (c._asleep) {
         if (acts.includes('festFireworks')) c._festForce('festFireworks');
       } else {
-        c._next = acts[0];
+        c._next = acts.includes(akt) ? akt : acts[0];
         c._interrupt();
       }
     }));
@@ -1367,6 +1393,21 @@
     cards.forEach((c) => { c._dbgSwing = true; cuteGo(c, 'giftHammock'); });
   });
   document.getElementById('gift-rbow').addEventListener('click', () => cards.forEach((c) => cuteGo(c, 'giftWater')));
+  // Leckerli: ein Päckchen mit genau diesem verschenken, gleich welcher Monat ist (_dbgTreat gilt statt des Würfelns).
+  // Wie giftSetGive unten: gdbg erst aus den eigenen Änderungen nehmen, dann verschenken. Rechts kommt es über den
+  // Helfer an wie auf einem zweiten Gerät.
+  document.querySelectorAll('[data-treat]').forEach((b) => b.addEventListener('click', () => {
+    const c = cards[0];
+    if (gift().z > gift().o) return log('Es ist noch ein Päckchen unterwegs: erst auspacken lassen');
+    giftSet({ n: Math.max(1, gift().n) });
+    setTimeout(() => {
+      c._planOps = c._planOps.filter((o) => o.t !== 'gdbg');
+      c._dbgTreat = Number(b.dataset.treat);
+      c._onGiftBtn();
+      c._dbgTreat = null;
+      giftLog();
+    }, 1000);
+  }));
   // ==================== Ende Päckchen ====================
 
   // ==================== Faire Päckchen ====================
@@ -1391,7 +1432,7 @@
     const c = cards[0];
     if (c._urlaubOn()) c._urlaubEnde();
     setTimeout(() => {
-      c._planOp({ t: 'vclear', t0: c._plan.ur?.t });
+      if (c._plan.ur) c._planOp({ t: 'vclear', t0: c._plan.ur.t });
       c._planOp({ t: 'von', t0: Math.floor((c._haNow() - 3 * 864e5) / 1000) * 1000 });
       setTimeout(fairLog, 600);
     }, 300);

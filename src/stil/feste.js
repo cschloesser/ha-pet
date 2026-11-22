@@ -41,6 +41,25 @@ const STYLE_FEST = `
   .fcake.out .flm, .fcake.out .khalo { display: none; }
   .fcake.out .smk { animation: fsmk 2.6s ease-out forwards; }
   @keyframes fsmk { 0% { opacity: .9; stroke-dashoffset: 22; } 50% { opacity: .7; } 100% { opacity: 0; stroke-dashoffset: 0; transform: translate(1px, -4px); } }
+  /* Adventssonntag: Die neue Kerze (.fnew: Schein und Flamme, nur die neue) ist aus, bis der Pika sie anzündet
+     (.unlit, gesetzt von _festCandleSync); danach blendet sie ein. .lit: Beim Anzünden ist sie sofort da, und die
+     Flamme springt kurz auf. */
+  .fwreath .fnew { transition: opacity .9s; }
+  .fwreath.unlit .fnew { opacity: 0; }
+  .fwreath.unlit .fnew .flm { animation: none; }
+  .fwreath.lit .fnew { transition-duration: .2s; }
+  .fwreath.lit .fpop { transform-box: fill-box; transform-origin: 50% 100%; animation: fwlit .7s ease-out; }
+  @keyframes fwlit { 0% { transform: scale(.1); } 55% { transform: scale(1.5); } 100% { transform: scale(1); } }
+  /* Pfoten wärmen: Solange er davor sitzt, ist der Schein der Kerzen auch am Tag zu ahnen (abends leuchtet er ohnehin) */
+  .scene:not(.dusk):not(.night) .fwreath.warm .nite { opacity: .55; transition: opacity 1s; }
+  /* Pfoten vorgestreckt über den Flammen (.fest-warm), zum Anzünden hinunter an den Docht (.fest-reach; --fky: so
+     weit, hintere und vordere Kerzen sind verschieden hoch) */
+  .pika.fest-warm .paws { display: inline; transform: translate(13.5px, 6px); transition: transform .45s ease-out; }
+  .pika.fest-warm:not(.fest-reach) .paws { animation: fwarm 1s ease-in-out infinite alternate; }
+  .pika.fest-warm.fest-reach .paws { transform: translate(15px, var(--fky, 8px)); }
+  /* Bei Regen hält die vordere Pfote das Blatt (.wet blendet sie aus): Dann reicht die andere bis an den Docht */
+  .pika.wet:not(.inside).fest-warm.fest-reach .paws { transform: translate(29px, var(--fky, 8px)); }
+  @keyframes fwarm { from { transform: translate(13px, 6.8px); } to { transform: translate(14px, 5.2px); } }
   /* Maibaum: Bänder wehen in Windrichtung (--wd) */
   .fmai .rd { transform-box: view-box; transform-origin: 20px 46px; transform: scaleX(var(--wd, 1)); transition: transform 3s; }
   .fmai .rb { transform-box: view-box; transform-origin: 20px 46px; animation: frib 1.2s ease-in-out infinite alternate; }
@@ -102,6 +121,8 @@ const STYLE_FEST = `
   /* Weniger Bewegung gewünscht: Wimpel und Maibaum-Bänder hängen still (Teilchen spart das Skript, calmMotion) */
   @media (prefers-reduced-motion: reduce) {
     .fpn, .fmai .rb { animation: none !important; }
+    /* Advent: Die neue Flamme blendet nur ein, die Pfoten halten still */
+    .fwreath.lit .fpop, .pika.fest-warm:not(.fest-reach) .paws { animation: none; }
   }
   `;
 

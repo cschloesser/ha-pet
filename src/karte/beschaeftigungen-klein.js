@@ -1,24 +1,28 @@
-// Kleine Beschäftigungen: Pfütze, Schiffchen, Schnee-Pika, Hula-Hoop, Jo-Jo, Pusteblume, Purzelbaum, Steintürmchen,
-// Jonglieren, Blumenkranz, Papierflieger
+// Kleine Beschäftigungen: Pfütze, Schiffchen, Schnee-Pika, Schneeengel, Schneeball, Hula-Hoop, Jo-Jo, Pusteblume,
+// Purzelbaum, Steintürmchen, Jonglieren, Blumenkranz, Papierflieger
 
 import { rnd, pick, clamp } from '../logik/hilfen.js';
 import { calmMotion } from '../logik/bewegung-reduzieren.js';
 import { seasonKey } from '../logik/wetter.js';
 import { HAY_MAX } from '../logik/tagesplan.js';
-import { ACT_WALK, walkSpeed, JUMPS } from '../logik/beschaeftigungen.js';
+import { ACT_WALK, walkSpeed, JUMPS, HOP_MS, hopRound } from '../logik/beschaeftigungen.js';
 import {
   PUDDLE_MS, puddleJumps, BOAT_T, BOAT_EASE, boatPuffs, boatPos, YOYO_MS, YOYO_DEAD, yoyoThrows, yoyoDead, PUSTE_MS,
   PURZEL_MS, PURZEL_ROLL, purzelRolls, STONE_MS, GLIDER_FLY, GLIDER_WALK, GLIDER_STEP, gliderThrows, groundSpot,
+  ANGEL_T, angelSweeps, SNOWBALL_T, SNOWBALL_EASE, SNOWBALL_BIG, snowballRuns, snowballR, snowballPos,
 } from '../logik/beschaeftigungen-klein.js';
-import { DROP_SVG, PUDDLE_SVG, BOAT_SVG, SNOWPIKA_SVG, STONES_SVG, GLIDER_SVG } from '../grafik/beschaeftigungen.js';
+import {
+  DROP_SVG, PUDDLE_SVG, BOAT_SVG, SNOWPIKA_SVG, STONES_SVG, GLIDER_SVG, ANGEL_SVG, SNOWBALL_SVG,
+} from '../grafik/beschaeftigungen.js';
 import { GIFT_ITEMS } from '../grafik/paeckchen.js';
 
 export class BeschaeftigungenKlein {
   // ==================== Kleine Beschäftigungen ab 0.32 ====================
   // Hula-Hoop, Jo-Jo, Pusteblume, Purzelbaum, Steintürmchen, Jonglieren, Blumenkranz und Papierflieger bei trockenem
-  // Wetter, Pfützenspringen und Papierschiffchen bei Regen, der Schnee-Pika bei liegendem Schnee. Auswahl: miniChain
-  // (MINI_PROG, MINI_W, miniOk). Alle kommen aus dem Tagesplan (_miniAt) und stehen nicht im Helfer. Die drei für
-  // Regen und Schnee laufen nach der Planzeit: Ein Gerät, das später dazukommt, steigt mitten hinein ein.
+  // Wetter, Pfützenspringen und Papierschiffchen bei Regen, Schnee-Pika, Schneeengel und Schneeball bei liegendem
+  // Schnee. Auswahl: miniChain (MINI_PROG, MINI_W, miniOk). Alle kommen aus dem Tagesplan (_miniAt) und stehen nicht
+  // im Helfer. Pfütze, Schiffchen, Schnee-Pika und Schneeball laufen nach der Planzeit: Ein Gerät, das später
+  // dazukommt, steigt mitten hinein ein.
 
   // Lage für die Wahl der kleinen Beschäftigungen (miniProg, miniOk): Wetter, Wind und Kälte kommen von der
   // Wetter-Entität und sind auf allen Geräten gleich, die Jahreszeit hängt am Datum. Der Vorrat ist nur mit
@@ -309,6 +313,282 @@ export class BeschaeftigungenKlein {
     this._say(pick(['Fertig!', 'Hallo, du!', 'Mein Zwilling!', '♥']), 1500);
     this._jump('hop1');
     await this._wait(4000 + S.r(7) * 3000);
+    p.classList.remove('look-f');
+    this._apropsAway(el);
+    await this._wait(700);
+  }
+
+  // ---------- Schnee: Schneeengel ----------
+
+  // Platz für den Abdruck und ihn daneben: { px: Mitte des Abdrucks, w: seine Breite, x: dort steht er danach,
+  // dir: sein Blick von dort zum Abdruck }. Der Abdruck liegt zwischen Vorrat und Stein (_groundSpot), eine gute
+  // Pika-Breite groß; ist die Wiese schmaler (schmale Karte), wird er kleiner, höchstens bis auf 0,62 Pika-Breiten
+  // (dann ragt er vor Vorrat und Stein). Auf welche Seite er zum Anschauen hüpft, steht mit dem Fenster fest; ist
+  // dort kein Platz oder die Wiese schmal, nach links (vor den Vorrat, wie beim Schnee-Pika).
+  _angelSpot(S) {
+    const { pW, hayR, rock, xR } = this._g;
+    const room = rock.l - hayR - this._H * 0.04;
+    const w = clamp(room, pW * 0.62, pW * 1.05);
+    const px = this._groundSpot(S.r(2), w, 1).x;
+    const off = w / 2 + pW * 0.42;
+    const dir = room < w + pW * 0.9 || S.r(3) < 0.5 || px + off > xR ? 1 : -1;
+    return { px, w, dir, x: clamp(px - dir * off, pW * 0.45, xR) };
+  }
+
+  // Schnee stiebt auf: n Flöckchen links und rechts von x am Boden. Wie _puff, aber weiß und mit den festen Zahlen
+  // u(0), u(1) … des Fensters statt gewürfelt. Bewegung reduzieren: keine.
+  _snowPuff(x, n, u) {
+    if (calmMotion()) return;
+    const { pW, gy } = this._g;
+    const H = this._H;
+    for (let i = 0; i < n; i++) {
+      const el = document.createElement('span');
+      el.className = 'puff snowy';
+      const side = i % 2 ? 1 : -1;
+      el.style.left = `${(x + side * pW * (0.2 + u(2 * i) * 0.3)).toFixed(1)}px`;
+      el.style.top = `${(gy - H * 0.04).toFixed(1)}px`;
+      el.style.setProperty('--px', `${(side * H * (0.04 + u(2 * i + 1) * 0.05)).toFixed(1)}px`);
+      this._el.fx.appendChild(el);
+      setTimeout(() => el.remove(), 650);
+    }
+  }
+
+  // Er schaut sich um, plumpst rückwärts in den Schnee, schwingt zwei- oder dreimal Arme und Beine (der Abdruck
+  // bekommt mit jedem Schwung breitere Flügel), rappelt sich auf, hüpft zur Seite und schaut sich den Engel stolz
+  // an. Der Abdruck bleibt noch ein paar Sekunden, dann weht Schnee darüber. Zahl der Schwünge, Platz, Seite und
+  // Sprüche stehen mit dem Fenster fest. Ein Gerät, das später dazukommt, steigt nicht ein (ACT_NOJOIN).
+  // Bewegung reduzieren: Er legt sich nicht hin; der Abdruck blendet neben ihm ein.
+  async _angel() {
+    const S = this._slotFor('angel');
+    const p = this._el.pika;
+    const calm = calmMotion();
+    const n = angelSweeps(S.r);
+    const A = this._angelSpot(S);
+    const h = A.w * 0.48;
+    const line = (i, list) => list[Math.floor(S.r(i) * list.length)];
+    // Der Abdruck liegt von Anfang an da (noch leer): Ändert sich die Größe der Karte, bricht _layout damit ab
+    const el = this._aprop('angelp', ANGEL_SVG, A.px, A.w, h, false, h * 0.1);
+    await this._goSpot(S, calm ? A.x : A.px, 0.9);
+    this._face(calm ? A.dir : S.r(4) < 0.5 ? -1 : 1);
+    // Alle Geräte beginnen zur selben Planzeit (wie beim Seil)
+    if (S.k >= 0) await this._at(S.start + ACT_WALK);
+    this._say(line(20, ['Schnee!', 'So viel Schnee!', 'hui, Schnee!']), 1100);
+    p.classList.add('look-b');
+    await this._wait(ANGEL_T.look / 2);
+    p.classList.remove('look-b');
+    p.classList.add('look-f');
+    await this._wait(ANGEL_T.look / 2);
+    p.classList.remove('look-f');
+    if (calm) {
+      // er schaut zu, wie der ganze Abdruck langsam erscheint (so lange, wie er sonst im Schnee läge)
+      el.style.setProperty('--ag', `${ANGEL_T.flop + n * ANGEL_T.sweep}ms`);
+      el.classList.add('b', 'w');
+      p.classList.add('look-f');
+      await this._wait(ANGEL_T.flop + n * ANGEL_T.sweep + ANGEL_T.up + ANGEL_T.hop);
+    } else {
+      p.classList.add('angel-dn');
+      await this._wait(ANGEL_T.flop * 0.75);
+      // gelandet: Der Abdruck von Bauch, Kopf und Ohren ist da
+      el.classList.add('b');
+      this._snowPuff(this._x, 4, (i) => S.r(30 + i));
+      this._say(line(21, ['plumps!', 'uff!', 'hihi']), 800);
+      await this._wait(ANGEL_T.flop * 0.25);
+      p.classList.add('angel-go', 'happy');
+      for (let k = 1; k <= n; k++) {
+        el.style.setProperty('--aw', (0.2 + (0.8 * k) / n).toFixed(2));
+        el.classList.add('w');
+        this._snowPuff(this._x, 2, (i) => S.r(40 + k * 8 + i));
+        if (k === 2) this._say(line(22, ['wusch, wusch!', 'und nochmal!', 'hui!']), 900);
+        await this._wait(ANGEL_T.sweep / 2);
+        this._snowPuff(this._x, 2, (i) => S.r(44 + k * 8 + i));
+        await this._wait(ANGEL_T.sweep / 2);
+      }
+      p.classList.remove('angel-go', 'happy', 'angel-dn');
+      p.classList.add('angel-up');
+      await this._wait(ANGEL_T.up);
+      p.classList.remove('angel-up');
+      // zur Seite, damit man ihn sieht
+      await this._hopTo(A.x, 0, false);
+      await this._wait(Math.max(0, ANGEL_T.hop - 620));
+    }
+    this._face(A.dir);
+    p.classList.add('look-f');
+    this._happy(1400);
+    this._mimik('proud', ANGEL_T.proud);
+    this._say(line(23, ['Ein Schneeengel!', 'Ein Schneeengel!', 'Mein Schneeengel! ♥']), 1700);
+    if (!calm) this._jump('hop1');
+    await this._wait(ANGEL_T.proud);
+    // er bleibt noch liegen, dann weht Schnee darüber
+    const stay = ANGEL_T.stay + S.r(7) * ANGEL_T.stayMore;
+    await this._wait(stay * 0.4);
+    p.classList.add('tilt');
+    await this._wait(stay * 0.6);
+    p.classList.remove('tilt', 'look-f');
+    el.classList.add('drift');
+    await this._wait(ANGEL_T.drift);
+    this._apropsAway(el);
+    await this._wait(300);
+  }
+
+  // ---------- Schnee: Schneeball rollen ----------
+
+  // Er scharrt einen kleinen Schneeball zusammen und schiebt ihn mit Nase und Pfoten in zwei Etappen über die Wiese:
+  // Die Kugel wächst mit dem Weg (drei Größen, snowballR) und hinterlässt eine Spur. Am Ende klopft er sie fest und
+  // lehnt sich an („so groß!“). Manchmal (snowballRuns, steht mit dem Fenster fest) wird sie zu groß und rollt das
+  // letzte Stück von selbst: Er hüpft hinterher („halt!“). Wo die Kugel ist und wie groß, steht mit der Planzeit fest
+  // (snowballPos): Wer später einsteigt, sieht sie an derselben Stelle. Sie bleibt noch kurz stehen und sackt dann
+  // zusammen wie der Schnee-Pika.
+  // Der Weg liegt zwischen Vorrat und Stein (_groundSpot, höchstens 1,5 Pika-Breiten) und wird kürzer, wenn dort
+  // weniger Platz ist. Bleibt kaum ein Weg (schmale Karte) oder gilt „Bewegung reduzieren“, wächst die Kugel an Ort
+  // und Stelle (still): Er steht daneben und klopft, nichts rollt.
+  async _snowball() {
+    const S = this._slotFor('snowball');
+    const { pW, pH, xR, hayR, rock } = this._g;
+    const H = this._H;
+    const p = this._el.pika;
+    const T0 = S.start + ACT_WALK;
+    const t3 = SNOWBALL_T.scrape + SNOWBALL_T.leg + SNOWBALL_T.rest;
+    const t4 = t3 + SNOWBALL_T.leg;
+    const rad = (s) => snowballR(s) * pH;
+    const rMax = rad(SNOWBALL_BIG);
+    const line = (i, list) => list[Math.floor(S.r(i) * list.length)];
+    const now = () => this._planNow() - T0;
+    // Weg der Kugelmitte von c0 aus in Richtung dir: Am Anfang ist sie klein, am Ende groß, beides bleibt im Streifen
+    // zwischen Vorrat und Stein, links von der Klo-Ecke am Steinfuß (wie _besideSpot), neben allem, was dort steht
+    const lo = hayR + H * 0.03;
+    const U = groundSpot(S.r(2), pW * 1.5 + rad(1) + rMax, lo, Math.max(lo, rock.l - rock.w * 0.08 - H * 0.04), this._groundBlocks(), 0.2);
+    const still = calmMotion() || U.w - rad(1) - rMax < pW * 0.35;
+    const run = !still && snowballRuns(S.r);
+    const B = still ? this._besideSpot(S.r(2), S.r(3), 2 * rad(3)) : null;
+    const dir = B ? B.dir : S.r(3) < 0.5 ? 1 : -1;
+    const travel = B ? 0 : U.w - rad(1) - rMax;
+    const c0 = B ? B.px : U.x - dir * (U.w / 2 - rad(1));
+    const fa = snowballPos(SNOWBALL_T.scrape + SNOWBALL_T.leg, run).f;
+    const fb = snowballPos(t4, run).f;
+    // dort steht er, wenn die Kugel bei f ist und die Größe s hat: mit Nase und Pfoten an ihr
+    const xAt = (f, s) => (B ? B.x : clamp(c0 + dir * (f * travel - pW * 0.4 - rad(s) * 0.9), pW * 0.45, xR));
+    // Das Requisit überspannt den ganzen Weg: darin die Spur und die Kugel (Kasten für die größte Kugel)
+    const el = this._aprop('sbp', '', c0 + (dir * travel) / 2, travel + 2 * rMax, 2 * rMax, false, pH * 0.03);
+    const part = (cls, parent) => {
+      const d = document.createElement('div');
+      d.className = cls;
+      parent.appendChild(d);
+      return d;
+    };
+    const track = part('sb-track', el);
+    Object.assign(track.style, {
+      left: `${rMax.toFixed(1)}px`, width: `${travel.toFixed(1)}px`, height: `${(pH * 0.1).toFixed(1)}px`, bottom: `${(pH * 0.045).toFixed(1)}px`,
+      transformOrigin: dir > 0 ? '0 50%' : '100% 50%', display: travel > 0 ? '' : 'none',
+    });
+    const ball = part('sb-ball', el);
+    Object.assign(ball.style, { left: `${(dir > 0 ? 0 : travel).toFixed(1)}px`, width: `${(2 * rMax).toFixed(1)}px`, height: `${(2 * rMax).toFixed(1)}px` });
+    const size = part('sb-size', part('sb-sink', ball));
+    size.innerHTML = SNOWBALL_SVG;
+    const marks = size.querySelector('.sb-rot');
+    const turn = (travel / rad(2)) * 57.3; // Grad über den ganzen Weg
+    // Kugel bei f (Weg 0 … 1) mit Größe s: schieben, wachsen, Kerben drehen, Spur aufziehen. ms: so lange braucht
+    // sie dorthin; skip: so viele ms davon sind schon um (negative Verzögerung, wie beim Schiffchen)
+    const put = (f, s, ms = 0, ease = 'linear', skip = 0) => {
+      const tr = `transform ${Math.round(ms)}ms ${ease} ${-Math.round(skip)}ms`;
+      const set = (node, v) => node && Object.assign(node.style, { transition: tr, transform: v });
+      set(ball, `translateX(${(dir * f * travel).toFixed(1)}px)`);
+      set(size, `scale(${(rad(s) / rMax).toFixed(3)})`);
+      set(marks, `rotate(${(dir * f * turn).toFixed(0)}deg)`);
+      set(track, `scaleX(${f.toFixed(3)})`);
+    };
+    // Von a nach b ([f, s]), begonnen zur Planzeit t0 (ms ab T0), Dauer ms: Wer später dazukommt, sieht die Kugel
+    // dort, wo sie auf den anderen Geräten gerade ist
+    const roll = (a, b, t0, ms, ease = 'linear') => {
+      const late = now() - t0;
+      if (late >= ms) return put(...b);
+      put(...a);
+      void ball.offsetWidth;
+      put(...b, ms, ease, Math.max(0, late));
+    };
+    // Späteinstieg: Die Kugel liegt gleich dort, wo sie nach der Planzeit gerade ist, er steht an ihr. Rollt sie
+    // gerade von selbst davon, steht er noch dort, wo die zweite Etappe endete (gleich hüpft er hinterher).
+    const P0 = snowballPos(Math.max(0, now()), run);
+    const chasing = run && now() > t4 && now() < t4 + SNOWBALL_T.gasp + SNOWBALL_T.chase - 600;
+    put(P0.f, P0.s);
+    await this._goSpot(S, chasing ? xAt(fb, 3) : xAt(P0.f, Math.max(1, P0.s)), 0.9);
+    this._face(dir);
+    // 1. Schnee zusammenscharren: bücken, festklopfen, die erste Kugel wächst
+    if (now() < SNOWBALL_T.scrape - 300) {
+      if (now() < 300) this._say(line(20, ['Ein Schneeball!', 'Rollen!', 'Eine Kugel!']), 1200);
+      await this._at(T0 + 150);
+      p.classList.add('sniff');
+      await this._at(T0 + SNOWBALL_T.dig);
+      p.classList.remove('sniff');
+      p.classList.add('sb-pat');
+      roll([0, 0], [0, 1], SNOWBALL_T.dig, SNOWBALL_T.scrape - SNOWBALL_T.dig);
+      await this._at(T0 + SNOWBALL_T.scrape);
+      p.classList.remove('sb-pat');
+    }
+    // 2. zwei Etappen schieben (still: klopfen), die Kugel wächst von Stufe zu Stufe
+    for (const [i, ts, a, b] of [[0, SNOWBALL_T.scrape, [0, 1], [fa, 2]], [1, t3, [fa, 2], [fb, 3]]]) {
+      const te = ts + SNOWBALL_T.leg;
+      if (now() >= te - HOP_MS.trip) {
+        put(...b); // schon geschoben
+        continue;
+      }
+      await this._at(T0 + ts);
+      roll(a, b, ts, SNOWBALL_T.leg);
+      if (still) {
+        p.classList.add('sb-pat');
+        await this._at(T0 + te);
+        p.classList.remove('sb-pat');
+      } else {
+        // in ganzen Trippelschritten bis ans Ende der Etappe (wie _walkTo, nur mit der Dauer der Etappe statt einem
+        // Tempo); .walking hält ihn bei einem Abbruch dort an, wo er gerade ist (_cleanup, _freeze)
+        const ms = hopRound(T0 + te - this._planNow(), HOP_MS.trip);
+        p.classList.add('sb-push', 'trip');
+        p.style.transition = `transform ${ms}ms linear`;
+        this._setX(xAt(b[0], b[1]));
+        p.classList.toggle('walking', true);
+        await this._wait(ms);
+        p.classList.remove('walking', 'trip', 'sb-push');
+      }
+      if (i === 0 && now() < te + 300) this._say(line(21, ['uff!', 'sie wächst!', 'noch ein Stück!']), 900);
+    }
+    await this._at(T0 + t4);
+    if (run) {
+      // 3a. zu groß geworden: Sie rollt von selbst weiter, er erschrickt, hüpft hinterher und hält sie fest
+      const t5 = t4 + SNOWBALL_T.gasp;
+      const t6 = t5 + SNOWBALL_T.chase;
+      roll([fb, 3], [1, SNOWBALL_BIG], t4, SNOWBALL_T.away, `cubic-bezier(${SNOWBALL_EASE.join(', ')})`);
+      if (now() < t5 - 200) {
+        this._mimik('awe', 1500);
+        this._say(line(22, ['oh!', 'huch!', 'oh, oh!']), 500);
+      }
+      await this._at(T0 + t5);
+      if (now() < t6 - 600) {
+        this._say(line(23, ['halt!', 'Halt!', 'bleib hier!']), 1000);
+        const to = xAt(1, SNOWBALL_BIG);
+        await this._hopTo((this._x + to) / 2, 0, false);
+        await this._hopTo(to, 0, false);
+        this._face(dir);
+      }
+      await this._at(T0 + t6);
+      p.classList.add('spat');
+      if (now() < t6 + 400) this._say(line(24, ['hab dich!', 'gefangen!', 'puh!']), 1000);
+      await this._at(T0 + t6 + SNOWBALL_T.hold);
+    } else {
+      // 3b. festklopfen
+      p.classList.add('spat');
+      await this._at(T0 + t4 + SNOWBALL_T.pat);
+    }
+    p.classList.remove('spat');
+    // 4. anlehnen und stolz sein
+    if (this._planNow() < S.end - 800) {
+      p.classList.add('sb-lean');
+      this._happy(Math.min(2200, S.end - this._planNow()));
+      this._say(line(25, ['so groß!', 'So groß!', 'so groß! ♥']), 1600);
+      await this._at(S.end);
+      p.classList.remove('sb-lean');
+    }
+    // sie bleibt noch stehen, dann sackt sie zusammen
+    p.classList.add('look-f');
+    await this._wait(SNOWBALL_T.stay + S.r(7) * SNOWBALL_T.stayMore);
     p.classList.remove('look-f');
     this._apropsAway(el);
     await this._wait(700);

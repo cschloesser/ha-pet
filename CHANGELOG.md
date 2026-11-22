@@ -2,6 +2,23 @@
 
 Jede Version der Pika Pet Card, die neueste zuerst.
 
+## 0.43.0 (2026-11-22)
+
+Winter: Im Advent hat der Pika etwas zu tun, in den Päckchen stecken Leckerli für Winter und Frühling, und bei Schnee gibt es zwei neue Beschäftigungen.
+
+- **Advent:** Ab und zu hoppelt er zum Kranz, schnuppert daran und wärmt sich die Pfoten an den Kerzen: „schön warm!“, „mmh, Tannenduft!“, nach dem 4. Advent auch „bald ist Weihnachten!“. Solange er davor sitzt, ist der Schein der Kerzen auch am Tag zu ahnen.
+- **Kerze anzünden:** Am Adventssonntag brennt die neue Kerze erst, wenn er sie angezündet hat: Er setzt sich neben den Kranz, streckt die Pfote an den Docht, ein Funke, die Flamme springt auf, „Zweiter Advent!“ und ein Hüpfer. Das merkt sich jedes Gerät für sich und nur für diesen Tag (wie die ausgepustete Kuchenkerze); nach dem Neuladen zündet er sie noch einmal an. Kommt er nicht dazu (er schläft, ist verreist, die Karte ist nicht zu sehen, Gewitter), brennt sie ab der Abenddämmerung von selbst, spätestens ab 17 Uhr. Mit „Bewegung reduzieren“ gibt es keinen Funken und keinen Hüpfer, die Flamme blendet nur ein.
+- **Leckerli für Winter und Frühling:** In den Päckchen stecken vier neue Leckerli: Haselnüsse (November bis Februar), Bratapfel (Dezember bis Februar), Plätzchen (im Dezember) und eine Möhre (März und April). Von Dezember bis April gab es bisher nur das Blumensträußchen, jetzt bietet jeder Monat mindestens zwei. Er hält sie hoch, frisst sie gleich, und im Tagebuch stehen sie mit Bild und Namen. Satt +15 und Glück +15 wie bisher.
+- **Tagesplan unverändert:** Die vier neuen belegen die Nummern 12 bis 15 in `gift.i`, damit sind die vier Bits voll. Gewürfelt wird weiter nur auf dem Gerät, das verschenkt (`giftTreat`, nur Nummer und Monat), alle anderen lesen die Nummer aus dem Plan.
+- **Geräte, die noch 0.42 zeigen:** Verschenkt ein Gerät mit 0.43 eins der neuen Leckerli, springt auf einem noch nicht neu geladenen Gerät der Deckel ab, es kommt aber nichts heraus, und im Fuß des Tagebuchs steht einmal „Schleife (giftOpen)“. Das Päckchen gilt als ausgepackt, Satt und Glück stimmen. Neu laden behebt es. Eine Nummer, die die Karte nicht kennt, zeigt künftig das Blumensträußchen, statt einen Fehler zu werfen (`giftItem`).
+- **Schneeengel:** Liegt Schnee, schaut sich der Pika um, plumpst rückwärts hinein und schwingt zwei- oder dreimal Arme und Beine, dass der Schnee stiebt. Dann rappelt er sich auf, hüpft zur Seite und schaut sich den Abdruck stolz an („Ein Schneeengel!“): Bauch, Kopf, zwei runde Ohren, Flügel. Der Abdruck bleibt noch ein paar Sekunden, dann weht Schnee darüber.
+- **Schneeball rollen:** Er scharrt eine kleine Kugel zusammen und schiebt sie mit Nase und Pfoten in zwei Etappen über die Wiese; sie wächst mit dem Weg (drei Größen) und hinterlässt eine Spur. Am Ende klopft er sie fest und lehnt sich an („so groß!“). In drei von zehn Fenstern wird sie zu groß und rollt das letzte Stück von selbst, er hüpft hinterher („halt!“ … „hab dich!“). Sie bleibt noch kurz stehen und sackt zusammen wie der Schnee-Pika.
+- **Wie die anderen kleinen:** Beide gibt es nur bei liegendem Schnee, nicht bei Regen auf Schnee und nicht bei Gewitter. Zahl der Schwünge, Platz, Richtung, Sprüche und das Davonrollen stehen mit dem Fenster des Tagesplans fest, alle Geräte zeigen dasselbe. In den Schneeball steigt ein später geladenes Gerät mittendrin ein, in den Schneeengel nicht. Bei Schnee sind es jetzt neun kleine Beschäftigungen; der Schnee-Pika bleibt die häufigste. `MINI_W` wächst hinten um `angel` und `snowball`, trocken und bei Regen ändert sich keine Wahl.
+- **Schmale Karten und „Bewegung reduzieren“:** Der Abdruck wird auf schmaler Wiese kleiner. Der Schneeball rollt höchstens 1,5 Pika-Breiten und sonst so weit, wie zwischen Vorrat und Stein Platz ist; auf noch schmaleren Karten wächst er am Platz. Mit „Bewegung reduzieren“ legt sich der Pika nicht hin (der Abdruck blendet neben ihm ein), und die Kugel wächst am Platz, ohne zu rollen.
+- **Vorschau:** Neue Knöpfe „Adventssonntag (Kerze anzünden)“, je einer für Haselnüsse, Bratapfel, Plätzchen und Möhre, „Schneeengel (Schnee)“ und „Schneeball (Schnee)“. „Aktion!“ startet die Aktion zum zuletzt gedrückten Festtags-Knopf.
+- **Tests:** `test/advent.test.mjs`, `test/leckerli.test.mjs` und `test/schnee.test.mjs`. 219 Tests.
+- **Tagesplan:** Ein Urlaubs-Schritt ohne Urlaub im Plan (nur aus der Vorschau, Knopf „Urlaub seit 3 Tagen“) warf einen Fehler und blockierte danach jede weitere Änderung am Plan dieser Karte. `planApply` übergeht ihn jetzt.
+
 ## 0.42.2 (2026-11-22)
 
 Zehn Fehler aus dem Audit vom 22.11.: Der Tagesplan geht nicht mehr verloren, der Urlaub ist still, die Freunde sind vollständig.
