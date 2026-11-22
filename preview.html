@@ -382,6 +382,14 @@
   <button data-treat="13">Bratapfel</button>
   <button data-treat="14">Plätzchen</button>
   <button data-treat="15">Möhre</button>
+  <!-- Album 2 (seit 0.46): Knöpfe je gebautem Schatz entstehen aus dbg in src/grafik/album2/<key>.js (siehe unten) -->
+  <i style="flex-basis:100%"></i><b>Album 2</b>
+  <button id="a2-begin">Album 2 beginnen (A1 alle mit Trick)</button>
+  <button id="a2-trick">A2 alle mit Trick</button>
+  <button id="a2-gilt">A2 alle golden</button>
+  <button id="a2-reset">A2 zurücksetzen</button>
+  <button id="a2-album">Album zeigen</button>
+  <span id="a2-btns" style="display:contents"></span>
 </div>
 <!-- ==================== Ende Päckchen ==================== -->
 
@@ -1546,6 +1554,55 @@
       giftLog();
     }, 1000);
   }));
+  // Album 2 (seit 0.46): Stufen in gift.w (Bit t2 da, 8 + t2 Trick, 16 + t2 golden). „Alle“ meint die gebauten. Die
+  // Knöpfe je Schatz kommen aus seinen Daten (dbg: [Text, Aktion, Stufe]): erst bekommt er die Stufe (links, rechts
+  // über den Helfer), nach einer Sekunde läuft die Aktion auf beiden Karten (Stufe 3 mit _dbgGold wie oben).
+  const A2 = cards[0]._a2Items?.() || []; // (eine alte Karte zum Vergleich, ?karte=…, kennt Album 2 nicht)
+  const a2Bits = (lv, only = null) => A2.reduce((w, it, t) => (it.built && (only == null || only === t)
+    ? w | (lv >= 1 ? 1 << t : 0) | (lv >= 2 ? 1 << (8 + t) : 0) | (lv >= 3 ? 1 << (16 + t) : 0) : w), 0);
+  const a2Log = () => {
+    const G = cards[0]._plan.gift;
+    const w = G?.w || 0;
+    log(`Album 2: ${A2.map((it, t) => `${it.name} ${cards[0]._a2Lv(t)}${it.built ? '' : ' (nicht gebaut)'}`).join(' · ')}`
+      + ` · w ${w.toString(2).padStart(24, '0')} · Plan ${String(cards[0]._planSt || '').length} Zeichen`);
+  };
+  document.getElementById('a2-begin').addEventListener('click', () => { giftSet({ u: 255, v: (gift().v || 0) | 255 }); a2Log(); });
+  document.getElementById('a2-trick').addEventListener('click', () => { giftSet({ u: 255, v: (gift().v || 0) | 255, w: (gift().w || 0) | a2Bits(2) }); a2Log(); });
+  document.getElementById('a2-gilt').addEventListener('click', () => { giftSet({ u: 255, v: 0xffff, w: (gift().w || 0) | a2Bits(3) }); a2Log(); });
+  document.getElementById('a2-reset').addEventListener('click', () => { giftSet({ w: 0 }); a2Log(); });
+  document.getElementById('a2-album').addEventListener('click', () => cards[0]._diaryOpen('schatz'));
+  const a2Box = document.getElementById('a2-btns');
+  A2.forEach((it, t) => {
+    if (!it.built) return;
+    // ein Päckchen mit genau diesem Schatz verschenken (nächste Stufe, wie es giftApply rechnet)
+    const g = document.createElement('button');
+    g.textContent = `${it.name} schenken`;
+    g.addEventListener('click', () => {
+      const c = cards[0];
+      if (gift().z > gift().o) return log('Es ist noch ein Päckchen unterwegs: erst auspacken lassen');
+      giftSet({ n: Math.max(1, gift().n) });
+      setTimeout(() => {
+        c._planOps = c._planOps.filter((o) => o.t !== 'gdbg');
+        c._dbgTreat = 32 + t;
+        c._onGiftBtn();
+        c._dbgTreat = null;
+        a2Log();
+      }, 1000);
+    });
+    a2Box.appendChild(g);
+    for (const [label, act, lv] of it.dbg || []) {
+      const b = document.createElement('button');
+      b.textContent = label;
+      b.addEventListener('click', () => {
+        const w = gift().w || 0;
+        const keep = w & ~a2Bits(3, t);
+        giftSet({ u: 255, v: (gift().v || 0) | 255, w: keep | a2Bits(lv, t) });
+        setTimeout(() => cards.forEach((c) => { if (lv >= 3) c._dbgGold = true; cuteGo(c, act); }), 1000);
+        a2Log();
+      });
+      a2Box.appendChild(b);
+    }
+  });
   // ==================== Ende Päckchen ====================
 
   // ==================== Faire Päckchen ====================

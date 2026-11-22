@@ -3,7 +3,9 @@
 import { rnd, pick, clamp, seeded, seedRnd } from '../logik/hilfen.js';
 import { RATE, sec } from '../logik/zustand.js';
 import { PLAN_MIN, MEM_GUT, pikaDay, planParse } from '../logik/tagesplan.js';
-import { GIFT, GIFT_TRE, GOLD, giftLv, giftLvs, giftOwned, giftTre, giftTreat, giftMile, giftAllGold } from '../logik/paeckchen.js';
+import { GIFT, GIFT_TRE, GOLD, giftKind, giftLv, giftLvs, giftOwned, giftTreat, giftMile, giftAllGold } from '../logik/paeckchen.js';
+import { giftLv2, giftLvs2, a2Begun, a2AllGold, giftPickTre } from '../logik/album2.js';
+import { A2_INFO } from '../grafik/album2.js';
 import {
   GIFT_LOW, GIFT_ITEMS, giftItem, GIFT_PAPER, GIFT_BALLOONS, GIFT_GOLD, GIFT_TRICK, GIFT_GILT, GIFT_PARCEL, GIFT_BALLOON,
   GIFT_HAMMOCK, GIFT_HAM_W, GIFT_HAM_MS, GIFT_WHEEL,
@@ -239,26 +241,26 @@ export class Paeckchen {
       this._giftOwn = null;
       // (r fehlt, wenn eine ältere Karte den Plan inzwischen geschrieben hat: dann wie bisher)
       if (G.z !== o.z || G.x !== o.x || G.i !== o.i || (G.r != null && G.r !== o.r)) return;
-      if ((o.i & 15) >= GIFT_TRE) this._add('s', GIFT.treat, true);
+      // (nur ein Leckerli macht satt, auch keiner der Schätze aus Album 2)
+      if (giftKind(o.i).alb === 0) this._add('s', GIFT.treat, true);
       this._add('g', GIFT.joy, true);
     } else if (this._haNow() - o.at > 30 * 6e4) this._giftOwn = null;
   }
 
   // Inhalt des Päckchens Nummer z, auf allen Geräten gleich: Das erste und eins von je dreien ist ein Schatz (goldene
-  // immer), nie mehr als zwei Leckerli in Folge (giftTre), sonst ein Leckerli der Jahreszeit. Schatz heißt: erst einer, der noch fehlt, dann ein Trick für einen, der
-  // noch keinen hat. Goldene vergolden lieber einen mit Trick, bevor sie einen neuen Trick bringen. Hat jeder Schatz
-  // alles, was er aus solchen Päckchen bekommen kann, gibt es nur noch Leckerli.
+  // immer), nie mehr als zwei Leckerli in Folge (giftTre), sonst ein Leckerli der Jahreszeit. Schatz heißt: erst einer,
+  // der noch fehlt, dann ein Trick für einen, der noch keinen hat. Goldene vergolden lieber einen mit Trick, bevor sie
+  // einen neuen Trick bringen. Seit 0.46 geht es danach mit Album 2 weiter (Regeln: giftPickTre in
+  // src/logik/album2.js); hat jeder gebaute Schatz alles, was er aus solchen Päckchen bekommen kann, gibt es nur noch
+  // Leckerli. → Wert für gift.i ohne „golden“ (Album 2: 32 + t2)
   // Gewürfelt wird nur auf dem Gerät, das verschenkt (sein Monat gilt): Die Nummer steht danach im Tagesplan (gift.i),
   // alle anderen lesen sie dort. Nummern ab 12 (seit 0.43) kennt eine Karte bis 0.42.2 nicht, siehe giftItem.
   _giftPick(G, z, gold) {
-    if (this._dbgTreat != null) return this._dbgTreat; // Vorschau: dieses Leckerli, gleich welcher Monat
-    const T = [...Array(GIFT_TRE).keys()];
-    const at = (lv) => T.filter((t) => giftLv(G, t) === lv);
-    const miss = at(0).length ? at(0) : gold && at(2).length ? at(2) : at(1);
-    const tre = miss.length && (gold || giftTre(z));
-    if (tre) return miss[Math.floor(seedRnd('gtre', z) * miss.length)];
+    if (this._dbgTreat != null) return this._dbgTreat; // Vorschau: dieses Leckerli (oder dieser Schatz), gleich welcher Monat
     const south = (this._hass?.config?.latitude ?? 50) < 0;
-    return this._giftTreat(z, (new Date().getMonth() + (south ? 6 : 0)) % 12);
+    const mo = (new Date().getMonth() + (south ? 6 : 0)) % 12;
+    const tre = giftPickTre(G, z, gold, A2_INFO, mo);
+    return tre != null ? tre : this._giftTreat(z, mo);
   }
 
   // Leckerli für Päckchen z im Monat mo (für die Tests ohne Uhr)
@@ -285,7 +287,8 @@ export class Paeckchen {
     const B = this._gb;
     // Abgeschaltet oder ein anderes Päckchen: weg. Auf einem anderen Gerät schon ausgepackt: Schaut hier jemand zu,
     // packt er es auch hier noch aus (sonst verschwände es vor den Augen), sonst ist es weg.
-    const mine = !!B && this._giftOn() && !!G && B.z === G.z && B.item === (G.i & 15);
+    const k = G ? giftKind(G.i) : null;
+    const mine = !!B && this._giftOn() && !!G && B.z === G.z && B.item === k.t && (B.alb === 2) === (k.alb === 2);
     const watch = this._running && !this._asleep && !this._away();
     if (B && B.stage !== 'open' && !(mine && (pend || watch))) this._giftDrop();
     if (pend && !this._gb) this._giftBalloon(G);
@@ -319,7 +322,8 @@ export class Paeckchen {
   // Stelle, wo das Päckchen landen wird, bis der Pika wach ist und ihn herunterholt
   _giftBalloon(G) {
     const z = G.z;
-    const gold = G.i >= 16;
+    const k = giftKind(G.i);
+    const gold = k.gold;
     const H = this._H;
     const w = H * 0.17;
     const x = this._giftBalloonX(z);
@@ -332,7 +336,8 @@ export class Paeckchen {
       + `left:${(x - w / 2).toFixed(1)}px;top:${(y - w * 2 * (66 / 80)).toFixed(1)}px`;
     el.innerHTML = `<div class="gdrift"><div class="gbob">${GIFT_BALLOON}</div></div>`;
     this._el.gifts.appendChild(el);
-    const B = { z, el, x, gold, pp, pr, bc, item: G.i & 15, stage: 'hover' };
+    // item: Nummer in GIFT_ITEMS (Album 1, Leckerli), bei Album 2 (alb 2) die Nummer dort
+    const B = { z, el, x, gold, pp, pr, bc, item: k.t, alb: k.alb, stage: 'hover' };
     this._gb = B;
     const left = G.x + GIFT.arrive - this._haNow();
     const calm = ['idle', 'look', 'wander', 'groom', 'squeak', 'curious', 'nibble'];
@@ -512,12 +517,15 @@ export class Paeckchen {
     // Ab hier gilt es als ausgepackt, auch auf den anderen Geräten
     B.stage = 'open';
     // Stufe nach dem Auspacken (1 neu, 2 Trick, 3 golden); bis zum Verstauen zeigt die Szene noch die alte
+    // (a2: ein Schatz aus Album 2, B.item ist dann seine Nummer t2, siehe src/karte/album2.js)
+    const a2 = B.alb === 2;
     const PG = this._plan?.gift;
-    const lv = B.item < GIFT_TRE && PG?.z === B.z ? giftLv(PG, B.item) : 1;
-    this._giftHide = B.item < GIFT_TRE ? B.item : null;
+    const lv = PG?.z !== B.z ? 1 : a2 ? Math.max(1, giftLv2(PG, B.item)) : B.item < GIFT_TRE ? giftLv(PG, B.item) : 1;
+    if (a2) this._a2Hide = B.item;
+    else this._giftHide = B.item < GIFT_TRE ? B.item : null;
     this._planOp({ t: 'gopen', z: B.z });
     // (eine Nummer aus einer späteren Version: giftItem zeigt dann das Sträußchen, statt hier zu werfen)
-    const it = giftItem(B.item);
+    const it = a2 ? this._a2Item(B.item) : giftItem(B.item);
     let ie = null;
     try {
       B.el.querySelector('.gp-bow').classList.add('off');
@@ -527,7 +535,7 @@ export class Paeckchen {
       this._sparkle(B.x, gy - this._H * 0.1, B.gold ? 8 : 4);
       ie = document.createElement('div');
       ie.className = `gitem rise${B.gold ? ' gold' : ''}${lv === 3 ? ' gilt' : ''}`;
-      ie.innerHTML = it.svg;
+      ie.innerHTML = a2 ? it.icon : it.svg;
       ie.style.left = `${B.x.toFixed(1)}px`;
       ie.style.top = `${(gy - this._H * 0.2).toFixed(1)}px`;
       this._el.fx.appendChild(ie);
@@ -535,7 +543,8 @@ export class Paeckchen {
       this._mimik('awe', 1000);
       await this._wait(1000);
       B.el.classList.add('fade');
-      if (B.item >= GIFT_TRE) {
+      if (a2) await this._a2Unpack(B.item, ie, lv, B);
+      else if (B.item >= GIFT_TRE) {
         this._say(`${it.name}!`, 1400);
         await this._wait(1100);
         ie.classList.add('eat');
@@ -554,15 +563,16 @@ export class Paeckchen {
         await this._wait(1900);
         await this._giftStow(B.item, ie, lv);
       }
-      // Meilenstein (10., 25., 50., 100. Päckchen) und „alles golden“: eine kleine Feier hinterher
-      const all = lv === 3 && giftAllGold(this._plan?.gift);
-      if (all || giftMile(B.z)) await this._giftFeier(all ? 'gold' : B.z);
+      // Meilenstein (10., 25., 50., 100. Päckchen) und „alles golden“ (je Album): eine kleine Feier hinterher
+      const all = lv === 3 && (a2 ? a2AllGold(this._plan?.gift) : giftAllGold(this._plan?.gift));
+      if (all || giftMile(B.z)) await this._giftFeier(all ? (a2 ? 'gold2' : 'gold') : B.z);
     } finally {
       B.el.classList.add('fade');
       const el = B.el;
       setTimeout(() => el.remove(), 900);
       ie?.remove();
       this._giftHide = null;
+      this._a2Hide = null;
       if (this._gb === B) this._gb = null;
       // Nicht nur die Schätze nachziehen: Wurde während des Auspackens schon das nächste Päckchen verschenkt, stand
       // dieses hier dem neuen Ballon im Weg (_giftFromPlan legt nur einen an, wenn keiner da ist). Jetzt kommt er.
@@ -570,10 +580,12 @@ export class Paeckchen {
     }
   }
 
-  // Feier: Konfetti um ihn herum, Luftsprünge, ein Satz. what: 'gold' (alle Schätze golden) oder die Nummer des Päckchens
+  // Feier: Konfetti um ihn herum, Luftsprünge, ein Satz. what: 'gold' (alle Schätze golden), 'gold2' (alle aus Album 2
+  // golden) oder die Nummer des Päckchens
   async _giftFeier(what) {
     const { gy, pH } = this._g;
-    const gold = what === 'gold';
+    const gold = what === 'gold' || what === 'gold2';
+    const els = what === 'gold2' ? this._a2Els : this._gtEls;
     const cols = gold ? ['#f2c230', '#fff2b0', '#ffd75a', '#ffffff'] : GIFT_BALLOONS;
     const burst = () => {
       for (let i = 0; i < 14; i++) {
@@ -589,15 +601,15 @@ export class Paeckchen {
     };
     burst();
     this._happy(2400);
-    this._say(gold ? 'Alles golden!' : `Mein ${what}. Päckchen!`, 2200);
+    this._say(what === 'gold2' ? 'Album 2 ganz golden!' : gold ? 'Alles golden!' : `Mein ${what}. Päckchen!`, 2200);
     this._jump('binky');
-    if (gold) for (const el of this._gtEls?.values() || []) el.classList.add('new');
+    if (gold) for (const el of els?.values() || []) el.classList.add('new');
     await this._wait(900);
     burst();
     this._hearts(gold ? 5 : 3);
     this._jump('binky');
     await this._wait(1400);
-    for (const el of this._gtEls?.values() || []) el.classList.remove('new');
+    for (const el of els?.values() || []) el.classList.remove('new');
   }
 
   // Neuer Schatz an seinen Platz: fliegt hin und ploppt dort auf. Getragene probiert er gleich aus, einen neuen Trick
@@ -683,7 +695,7 @@ export class Paeckchen {
     // ohne den noch nicht ausgepackten, und den gerade ausgepackten noch auf seiner alten Stufe
     // ebenso der, der hier noch am Ballon hängt oder im Päckchen liegt (woanders schon ausgepackt)
     const B = this._gb;
-    const hide = this._giftHide ?? (B && !B.stowed && B.item < GIFT_TRE && G && B.z === G.z ? B.item : null);
+    const hide = this._giftHide ?? (B && !B.stowed && B.alb !== 2 && B.item < GIFT_TRE && G && B.z === G.z ? B.item : null);
     const lvs = this._giftOn() ? giftLvs(G, hide) : [];
     const has = (t) => lvs[t] > 0;
     const want = new Set([0, 6].filter(has));
@@ -729,6 +741,7 @@ export class Paeckchen {
       this._goldWheel();
     }
     this._giftDress(lvs);
+    this._a2Scene(); // Album 2 (src/karte/album2.js)
   }
 
   _giftPlace(t, el) {
@@ -826,6 +839,7 @@ export class Paeckchen {
     clearTimeout(this._bellT);
     clearTimeout(this._giftArrT);
     this._goldClear();
+    this._a2Detach();
     this._albumHeld = false;
     this._gtEls?.get(7)?.classList.remove('ring');
     const B = this._gb;
@@ -858,6 +872,8 @@ export class Paeckchen {
     if (cool && sunny) this._goldSheen();
     if (!this._asleep && (this._wind || 0) >= GOLD.wheelWind.min) this._goldWheel('wheelWind');
     if (this._asleep && this._plushX == null) this._goldHeart(null, true);
+    this._a2Tick(); // Album 2: was von selbst kommt
+
     // Voller Vorrat: der Knopf wackelt ab und zu
     const b = this._el.gbtn;
     if (G.n >= GIFT.max && !b.hidden && !this._urlaubOn() && Math.random() < 0.25) {
@@ -914,6 +930,8 @@ export class Paeckchen {
       friends: f, dots: f % GIFT.goldDays, today: this._careToday(),
       mile: [10, 25, 50, 100].find((m) => m > G.o) ?? (Math.floor(G.o / 100) + 1) * 100,
       allGold: giftAllGold(G),
+      // Album 2 (seit 0.46): begonnen, Stufen wie ausgepackt, wie viele da, alle golden
+      a2: a2Begun(G), lvs2: giftLvs2(G), have2: giftLvs2(G).filter((lv) => lv > 0).length, allGold2: a2AllGold(G),
     };
   }
 }

@@ -9,13 +9,31 @@ import { seedRnd } from './hilfen.js';
 // mit der Zwille herunter und packt aus. Leckerli bringen treat Satt, jedes Päckchen joy Glück.
 const GIFT = { min: 50, grace: 60 * 6e4, every: 6 * 36e5, max: 3, goldDays: 7, goldMax: 2, arrive: 12000, treat: 15, joy: 15 };
 const GIFT_TRE = 8; // GIFT_ITEMS 0–7 sind Schätze (Album, ein Bit je Schatz), danach Leckerli (8–15, mehr fasst gift.i nicht)
+// Was im Päckchen gift.i steckt. Bis 0.45: 0–7 ein Schatz aus Album 1, 8–15 ein Leckerli (Nummer in GIFT_ITEMS), +16
+// golden verpackt. Seit 0.46 Album 2: 32 + t2, golden 48 + t2 (t2 = 0–7, Reihenfolge wie A2_KEYS in src/logik/album2.js).
+// Was diese Version nicht kennt (ein Schatz aus Album 2 über 7, ab 64 etwas noch Neueres), gilt als unbekanntes Leckerli
+// (t 99: giftItem zeigt das Sträußchen). Alle Stellen, die den Inhalt brauchen, fragen hier, nicht mit „i & 15“.
+// → { alb: 0 Leckerli | 1 Album 1 | 2 Album 2, t: Nummer im Album bzw. in GIFT_ITEMS, gold: golden verpackt }
+const giftKind = (i) => {
+  const n = Math.max(0, Math.floor(Number(i) || 0));
+  if (n >= 32) return n < 64 && ((n - 32) & 15) < 8 ? { alb: 2, t: (n - 32) & 15, gold: n >= 48 } : { alb: 0, t: 99, gold: n >= 48 && n < 64 };
+  return { alb: (n & 15) < GIFT_TRE ? 1 : 0, t: n & 15, gold: n >= 16 };
+};
+// … und zurück: der Wert für gift.i
+const giftCode = (alb, t, gold = false) => (alb === 2 ? 32 + t : t) + (gold ? 16 : 0);
 // Stufe des Schatzes t im Plan: 0 fehlt, 1 Schatz, 2 mit Trick, 3 golden (u: Bit t, v: Bit t und Bit 8 + t)
 const giftLv = (G, t) => (!G || !(G.u & (1 << t)) ? 0 : !(G.v & (1 << t)) ? 1 : G.v & (1 << (8 + t)) ? 3 : 2);
+// Fliegt gerade ein Päckchen mit dem Schatz t aus Album alb (verschenkt, noch nicht ausgepackt)?
+const giftFlying = (G, alb, t) => {
+  if (!G || !(G.z > G.o)) return false;
+  const k = giftKind(G.i);
+  return k.alb === alb && k.t === t;
+};
 // Stufen aller Schätze, wie sie schon ausgepackt sind: Die Stufe kommt beim Verschenken, fliegt der Ballon noch,
 // zählt sie nicht (hide: diesen Schatz ebenfalls eine Stufe tiefer, solange er ausgepackt wird)
 const giftLvs = (G, hide = null) => [...Array(GIFT_TRE).keys()].map((t) => {
   const lv = giftLv(G, t);
-  return Math.max(0, lv - ((G && G.z > G.o && (G.i & 15) === t) || hide === t ? 1 : 0));
+  return Math.max(0, lv - (giftFlying(G, 1, t) || hide === t ? 1 : 0));
 });
 // Schätze, die schon ausgepackt sind, als Bits
 const giftOwned = (G) => giftLvs(G).reduce((m, lv, t) => (lv ? m | (1 << t) : m), 0);
@@ -71,6 +89,6 @@ const goldHamGuest = (L) => (!L.dark && L.mo >= 3 && L.mo <= 8 && !L.wet && !L.c
 const GIFT_CLS = ['sling', 'aim', 'snap', 'spy', 'wcan', 'pour', 'shup', 'wink', 'hswing', 'puffy', 'gsheen', 'gglow'];
 
 export {
-  GIFT, GIFT_TRE, giftLv, giftLvs, giftOwned, giftTre, giftTreat, giftMile, giftAllGold, GIFT_CLS, GOLD, goldDue, GOLD_BLOOM,
+  GIFT, GIFT_TRE, giftKind, giftCode, giftFlying, giftLv, giftLvs, giftOwned, giftTre, giftTreat, giftMile, giftAllGold, GIFT_CLS, GOLD, goldDue, GOLD_BLOOM,
   goldHamGuest,
 };

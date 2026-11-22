@@ -237,6 +237,8 @@ export class Lebensschleife {
       this._hamOut = false;
       this._giftScene();
     }
+    // Album 2: jeder Schatz räumt auf, was zu seiner Aktion gehörte (Hook Cleanup, src/karte/album2.js)
+    this._a2Cleanup();
     this._mouth(null);
     this._bubble(this._el.think, false);
     this._action = null;
@@ -368,6 +370,7 @@ export class Lebensschleife {
       ...this._boteActs(ctx),
       ...this._coffeeActs(ctx),
       ...this._giftActs(ctx),
+      ...this._a2Acts(ctx), // Album 2 (src/karte/album2.js)
       ...this._sigActs(ctx),
     ]);
     return this._run(act);

@@ -567,6 +567,7 @@ export class Interaktion {
     const E = this._gtEls;
     if (E?.has(0)) add('yarn', E.get(0), 8);
     if (E?.has(1)) add('wheel', E.get(1), 4);
+    this._a2Zones(Z, sr); // Album 2: Schätze mit einem Hook Tap (src/karte/album2.js)
     if (!sc.classList.contains('snowcover')) {
       for (const f of this._flowers) if (!f.el.classList.contains('picked')) add('flower', f.el, 6);
     }
@@ -717,6 +718,9 @@ export class Interaktion {
       this._peep(cx, z.t + pad + 2, 'surr!');
     } else if (z.k === 'yarn') {
       if (!this._yarnTap(z.el, cx)) return;
+    } else if (z.a2) {
+      // Album 2: Der Schatz antwortet selbst (Entdeckung: sein key)
+      if (!this._a2Tap(z)) return;
     } else if (z.k === 'rock') {
       // Tock, tock. Die Maus linst kurz hinter dem Stein hervor; kann sie gerade nicht, hüpft ein Kiesel davon.
       const R = z.rect;

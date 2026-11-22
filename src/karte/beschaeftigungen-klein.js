@@ -53,6 +53,10 @@ export class BeschaeftigungenKlein {
       if (GIFT_ITEMS[t]?.key === 'yarn') continue;
       if (el.parentElement === this._el.gifts && !el.style.top) out.push([el.offsetLeft - pad, el.offsetLeft + el.offsetWidth + pad]);
     }
+    // (Album 2: was dauerhaft am Boden steht, z. B. das Vogelhäuschen)
+    for (const el of this._a2Els?.values() || []) {
+      if (el.parentElement === this._el.gifts && !el.style.top) out.push([el.offsetLeft - pad, el.offsetLeft + el.offsetWidth + pad]);
+    }
     for (const q of this._poops().piles) out.push([this._pileX(q) - H * 0.05, this._pileX(q) + H * 0.05]);
     return out;
   }

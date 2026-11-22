@@ -61,7 +61,7 @@
  */
 (() => {
   // src/version.js
-  var VERSION = "0.45.2";
+  var VERSION = "0.46.0";
 
   // src/logik/hilfen.js
   var Cancel = class extends Error {
@@ -528,10 +528,21 @@
   // src/logik/paeckchen.js
   var GIFT = { min: 50, grace: 60 * 6e4, every: 6 * 36e5, max: 3, goldDays: 7, goldMax: 2, arrive: 12e3, treat: 15, joy: 15 };
   var GIFT_TRE = 8;
+  var giftKind = (i) => {
+    const n = Math.max(0, Math.floor(Number(i) || 0));
+    if (n >= 32) return n < 64 && (n - 32 & 15) < 8 ? { alb: 2, t: n - 32 & 15, gold: n >= 48 } : { alb: 0, t: 99, gold: n >= 48 && n < 64 };
+    return { alb: (n & 15) < GIFT_TRE ? 1 : 0, t: n & 15, gold: n >= 16 };
+  };
+  var giftCode = (alb, t, gold = false) => (alb === 2 ? 32 + t : t) + (gold ? 16 : 0);
   var giftLv = (G, t) => !G || !(G.u & 1 << t) ? 0 : !(G.v & 1 << t) ? 1 : G.v & 1 << 8 + t ? 3 : 2;
+  var giftFlying = (G, alb, t) => {
+    if (!G || !(G.z > G.o)) return false;
+    const k = giftKind(G.i);
+    return k.alb === alb && k.t === t;
+  };
   var giftLvs = (G, hide = null) => [...Array(GIFT_TRE).keys()].map((t) => {
     const lv = giftLv(G, t);
-    return Math.max(0, lv - (G && G.z > G.o && (G.i & 15) === t || hide === t ? 1 : 0));
+    return Math.max(0, lv - (giftFlying(G, 1, t) || hide === t ? 1 : 0));
   });
   var giftOwned = (G) => giftLvs(G).reduce((m, lv, t) => lv ? m | 1 << t : m, 0);
   var giftTreM = [false];
@@ -572,6 +583,36 @@
   var goldHamGuest = (L) => !L.dark && L.mo >= 3 && L.mo <= 8 && !L.wet && !L.cold && (L.wind || 0) < 30 ? "bfly" : L.dark && L.summer && !L.wet && L.flies !== false ? "ff" : "shim";
   var GIFT_CLS = ["sling", "aim", "snap", "spy", "wcan", "pour", "shup", "wink", "hswing", "puffy", "gsheen", "gglow"];
 
+  // src/logik/album2.js
+  var A2_KEYS = ["feeder", "lantern", "sled", "camera", "radio", "tramp", "picnic", "pool"];
+  var A2_N = A2_KEYS.length;
+  var A2_FULL = 16777215;
+  var giftLv2 = (G, t) => {
+    const w = G?.w || 0;
+    return !(w & 1 << t) ? 0 : !(w & 1 << 8 + t) ? 1 : w & 1 << 16 + t ? 3 : 2;
+  };
+  var giftLvs2 = (G, hide = null) => A2_KEYS.map((k, t) => Math.max(0, giftLv2(G, t) - (giftFlying(G, 2, t) || hide === t ? 1 : 0)));
+  var a2Begun = (G) => !!G && ((G.w || 0) > 0 || [...Array(GIFT_TRE).keys()].every((t) => giftLv(G, t) >= 2));
+  var a2AllGold = (G) => !!G && ((G.w || 0) & A2_FULL) === A2_FULL;
+  var giftPickTre = (G, z, gold, info, mo) => {
+    if (!gold && !giftTre(z)) return null;
+    const T = [...Array(GIFT_TRE).keys()];
+    const at = (lv) => T.filter((t) => giftLv(G, t) === lv);
+    const one = (list) => list[Math.floor(seedRnd("gtre", z) * list.length)];
+    const a1 = at(0).length ? at(0) : gold && at(2).length ? at(2) : at(1);
+    if (a1.length) return one(a1);
+    const at2 = (lv) => {
+      const all = A2_KEYS.map((k, t) => t).filter((t) => info[t]?.built && giftLv2(G, t) === lv);
+      const sea = all.filter((t) => !info[t].mo || info[t].mo.includes(mo));
+      return sea.length ? sea : all;
+    };
+    for (const lv of gold ? [0, 2, 1] : [0, 1]) {
+      const L = at2(lv);
+      if (L.length) return 32 + one(L);
+    }
+    return null;
+  };
+
   // src/logik/tagesplan.js
   var HAY_MAX = 12;
   var PLAN_REC = 4;
@@ -593,6 +634,7 @@
   var giftU = (G) => (G.u & 255) + (G.f != null ? (G.f + 1) * 256 : 0);
   var planSer = (P) => {
     const h = P.hay;
+    const w = P.gift?.w > 0 ? P.gift.w & A2_FULL : 0;
     const f2 = P.fl;
     const fs = f2 ? `_${Math.round(f2.t / 1e3).toString(36)}_${f2.c}${f2.x.toString(36).padStart(2, "0")}${f2.k ? 1 : 0}` : "";
     return [
@@ -602,14 +644,22 @@
       P.rec.map(([k, a, v]) => v ? `${k.toString(36)}:${a}:${v}` : `${k.toString(36)}:${a}`).join(",") || "-",
       (P.cute ? [P.cute.d, P.cute.n, P.cute.m].map((x) => x.toString(36)).join(".") : "-") + (P.fu ? `_${Math.round(P.fu / 1e3).toString(36)}` : ""),
       ...P.gift ? [GIFT_F.map((f3) => P.gift[f3] == null ? "-" : (f3 === "u" ? giftU(P.gift) : Math.round(GIFT_T.has(f3) ? P.gift[f3] / 1e3 : P.gift[f3])).toString(36) + (f3 === "a" && P.gift.p != null ? `_${Math.round(P.gift.p / 1e3).toString(36)}` : "") + (f3 === "u" && P.gift.v != null ? `_${P.gift.v.toString(36)}` : "") + (f3 === "x" && P.gift.r != null ? `_${P.gift.r.toString(36)}` : "")).join(".")] : P.ur ? ["-"] : [],
-      ...P.ur ? [`u${Math.round(P.ur.t / 1e3).toString(36)}${P.ur.d != null ? `.${Math.round(P.ur.d / 6e4).toString(36)}` : ""}`] : []
+      ...P.ur ? [`u${Math.round(P.ur.t / 1e3).toString(36)}${P.ur.d != null ? `.${Math.round(P.ur.d / 6e4).toString(36)}` : ""}`] : w ? ["-"] : [],
+      ...w ? [`a${w.toString(36)}`] : []
     ].join("|");
   };
   var planParse = (str) => {
     const p = String(str ?? "").split("|");
-    if (p.length < 4 || p.length > 7 || p[0] !== "p1") return null;
+    if (p.length < 4 || p.length > 8 || p[0] !== "p1") return null;
     let ur = null;
-    if (p.length === 7) {
+    let w = 0;
+    if (p.length === 8) {
+      const a = /^a([0-9a-z]+)$/.exec(p[7]);
+      if (!a) return null;
+      w = parseInt(a[1], 36);
+      if (!(w <= A2_FULL)) return null;
+    }
+    if (p.length === 7 || p.length === 8 && p[6] !== "-") {
       const m2 = /^u([0-9a-z]+)(?:\.([0-9a-z]+))?$/.exec(p[6]);
       if (!m2) return null;
       ur = { t: parseInt(m2[1], 36) * 1e3, d: m2[2] != null ? parseInt(m2[2], 36) * 6e4 : null };
@@ -640,6 +690,7 @@
       }
       const gr = parseInt(gq[7].split("_")[1] ?? "", 36);
       G.r = Number.isFinite(gr) ? gr : null;
+      G.w = w;
       if (GIFT_F.every((f2) => f2 === "b" || Number.isFinite(G[f2]))) P.gift = G;
     }
     const [cq, fuq] = (p[4] || "-").split("_");
@@ -667,7 +718,7 @@
   var giftApply = (out, op) => {
     const G = out.gift;
     if (op.t === "gstart") {
-      if (!G) out.gift = { k: op.k, a: 0, n: 0, u: 0, v: 0, z: 0, o: 0, b: null, x: 0, y: 0, d: 0, i: 0, p: op.k, f: 0, r: null };
+      if (!G) out.gift = { k: op.k, a: 0, n: 0, u: 0, v: 0, z: 0, o: 0, b: null, x: 0, y: 0, d: 0, i: 0, p: op.k, f: 0, r: null, w: 0 };
       return;
     }
     if (!G) return;
@@ -689,12 +740,16 @@
       if (op.gold) G.y--;
       else G.n--;
       Object.assign(G, { z: op.z, x: op.x, i: op.i, r: op.r ?? null });
-      const t = op.i & 15;
-      if (t < GIFT_TRE) {
+      const { alb, t } = giftKind(op.i);
+      if (alb === 1) {
         const lv = giftLv(G, t);
         if (!lv) G.u |= 1 << t;
         else if (lv === 1) G.v = (G.v || 0) | 1 << t;
         else if (lv === 2 && op.gold) G.v = (G.v || 0) | 1 << 8 + t;
+      } else if (alb === 2) {
+        const lv = giftLv2(G, t);
+        const bit = !lv ? t : lv === 1 ? 8 + t : lv === 2 && op.gold ? 16 + t : -1;
+        if (bit >= 0) G.w = (G.w || 0) | 1 << bit;
       }
     } else if (op.t === "gopen") {
       G.o = Math.max(G.o, Math.min(op.z, G.z));
@@ -817,12 +872,13 @@
       g.u = G.u | A.u;
       g.v = (G.v || 0) | (A.v || 0);
       if (g.v !== G.v) g.nov = void 0;
+      g.w = (G.w || 0) | (A.w || 0);
       const gold = (f2) => Math.floor((f2 ?? -1) / GIFT.goldDays);
       if (A.f != null && (G.f == null || G.f < A.f)) {
         g.f = A.f;
         if (gold(A.f) > gold(G.f)) g.y = Math.max(G.y, A.y);
       }
-      if (GIFT_F.some((f2) => g[f2] !== G[f2]) || g.v !== G.v || g.f !== G.f || g.r !== G.r) {
+      if (GIFT_F.some((f2) => g[f2] !== G[f2]) || g.v !== G.v || g.f !== G.f || g.r !== G.r || g.w !== (G.w || 0)) {
         out.gift = g;
         diff = true;
       }
@@ -6172,6 +6228,245 @@
   }
 `;
 
+  // src/grafik/album2/feeder.js
+  var HOLZ = "#9a6a3c";
+  var HOLZ_HELL = "#c98e4e";
+  var DACH = "#e8584e";
+  var KORN = "#f3d58a";
+  var ICON = `<svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M12 16.6 V23.2" stroke="${HOLZ}" stroke-width="2" stroke-linecap="round"/>
+      <path d="M12 20 L9.4 23.2 M12 20 L14.6 23.2" stroke="${HOLZ}" stroke-width="1.1" stroke-linecap="round"/>
+      <rect x="6.6" y="9.8" width="10.8" height="6" fill="#6e4a30"/>
+      <path d="M6 9.8 V15.8 M18 9.8 V15.8" stroke="${HOLZ}" stroke-width="1.5"/>
+      <path d="M8.2 15.6 Q12 12.4 15.8 15.6Z" fill="${KORN}" stroke="#c9a24a" stroke-width=".5" stroke-linejoin="round"/>
+      <rect x="3.8" y="15.4" width="16.4" height="2.2" rx=".7" fill="${HOLZ_HELL}" stroke="${OUT}" stroke-width=".8"/>
+      <path d="M2.2 10.9 L12 3 L21.8 10.9 L20.6 11.9 L12 5.4 L3.4 11.9Z" fill="${DACH}" stroke="${OUT}" stroke-width=".9" stroke-linejoin="round"/>
+      <path d="M5.8 8.6 L11 4.6" stroke="#ffa497" stroke-width=".9" stroke-linecap="round" opacity=".8"/></svg>`;
+  var FEEDER_SVG = `<svg viewBox="0 0 32 64" aria-hidden="true">
+      <path d="M16 30 V63.4" stroke="${OUT}" stroke-width="4.6" stroke-linecap="round"/>
+      <path d="M16 30 V63.4" stroke="${HOLZ}" stroke-width="3" stroke-linecap="round"/>
+      <path d="M16 42 L9 31 M16 42 L23 31" stroke="${OUT}" stroke-width="2.6" stroke-linecap="round"/>
+      <path d="M16 42 L9 31 M16 42 L23 31" stroke="${HOLZ}" stroke-width="1.4" stroke-linecap="round"/>
+      <path d="M16 57 q-2 4 -5.6 6.4 M16 57 q2.4 4 6 6.2" stroke="#6bab4c" stroke-width="1.3" fill="none" stroke-linecap="round"/>
+      <g class="a2fh">
+        <rect x="7.4" y="14.6" width="17.2" height="13.4" fill="#6e4a30" stroke="${OUT}" stroke-width=".8"/>
+        <path d="M9 17 H23" stroke="#5a3a22" stroke-width=".7" opacity=".7"/>
+        <g class="a2fs">
+          <path d="M9.4 28 Q16 21.6 22.6 28Z" fill="${KORN}" stroke="#c9a24a" stroke-width=".6" stroke-linejoin="round"/>
+          <g fill="#b98a3e"><circle cx="13" cy="26.4" r=".55"/><circle cx="16.4" cy="25" r=".55"/><circle cx="19.2" cy="26.6" r=".55"/>
+            <circle cx="5.6" cy="27.4" r=".5"/><circle cx="26.8" cy="27.3" r=".5"/></g>
+          <g fill="${KORN}"><circle cx="6.6" cy="27.3" r=".7"/><circle cx="25.4" cy="27.4" r=".7"/><circle cx="24" cy="27.2" r=".6"/></g>
+        </g>
+        <path d="M6.6 14.6 V28 M25.4 14.6 V28" stroke="${OUT}" stroke-width="2.8"/>
+        <path d="M6.6 14.6 V28 M25.4 14.6 V28" stroke="${HOLZ}" stroke-width="1.5"/>
+        <rect x="2.6" y="27.6" width="26.8" height="3.4" rx="1" fill="${HOLZ_HELL}" stroke="${OUT}" stroke-width=".9"/>
+        <path d="M4.4 29 H27.6" stroke="#e0b47c" stroke-width=".8" stroke-linecap="round"/>
+        <path d="M.6 16.2 L16 2.6 L31.4 16.2 L29.4 17.8 L16 6.4 L2.6 17.8Z" fill="${DACH}" stroke="${OUT}" stroke-width="1" stroke-linejoin="round"/>
+        <path d="M5.4 12.6 L13.8 5.2" stroke="#ffa497" stroke-width="1.1" stroke-linecap="round" opacity=".8"/>
+      </g></svg>`;
+  var FEEDER_SPOTS = [[5.6 / 32, 27.8 / 64], [26.4 / 32, 27.8 / 64], [16 / 32, 5 / 64]];
+  var FEEDER_W = 0.12;
+  var GIMPEL = { name: "Gimpel", body: "#9a9ca6", head: "#9a9ca6", wing: "#3a3a44", breast: "#e5654f", face: "#e5654f", cap: "#1f1f26", beak: "#1f1a17" };
+  var SEED_SVG = `<svg viewBox="0 0 4 4" aria-hidden="true"><ellipse cx="2" cy="2" rx="1.3" ry="1.7" fill="${KORN}" stroke="#b98a3e" stroke-width=".5"/></svg>`;
+  var A2_FEEDER = {
+    key: "feeder",
+    name: "Vogelhäuschen",
+    say: "ein Vogelhäuschen!",
+    built: true,
+    mo: null,
+    icon: ICON,
+    trick: "Körner nachfüllen",
+    gilt: "ein goldenes %",
+    use: "Da picken die Vögel, ich schau zu.",
+    gold: "ein Gimpel kommt",
+    find: { t: "Vogelhäuschen", h: "Tipp mein Vogelhäuschen an. Es wackelt, und ein paar Körner rieseln heraus." },
+    // Vorschau (Leiste „Päckchen“, Album 2): [Knopf, Aktion, Stufe, die der Schatz dafür bekommt]
+    dbg: [["Vögel picken", "a2FeederPlay", 1], ["Körner nachfüllen", "a2FeederFill", 2], ["Gimpel (golden)", "a2FeederPlay", 3]]
+  };
+
+  // src/stil/album2-feeder.js
+  var STYLE_A2_FEEDER = `
+  /* Häuschen auf dem Pfahl, Fuß auf der hinteren Reihe (LANE_DY über der Bodenlinie) */
+  .a2-feeder { width: calc(var(--H) * ${FEEDER_W}); margin-left: calc(var(--H) * ${-FEEDER_W / 2}); bottom: calc(var(--gb) + var(--H) * ${LANE_DY});
+    transition: opacity .4s, filter 2.5s; }
+  .a2-feeder.a2out { opacity: 0; }
+  .a2-feeder .a2fh { transform-box: view-box; transform-origin: 16px 30px; }
+  .a2-feeder.a2tap .a2fh { animation: a2fwob .6s ease-out; }
+  @keyframes a2fwob { 20% { transform: rotate(-6deg); } 45% { transform: rotate(4.5deg); } 70% { transform: rotate(-2deg); } }
+  /* Körner: leer, solange er nachfüllt; frisch gefüllt ploppen sie auf */
+  .a2-feeder .a2fs { transform-box: view-box; transform-origin: 16px 28px; transition: opacity .3s; }
+  .a2-feeder.leer .a2fs { opacity: 0; }
+  .a2-feeder.fill .a2fs { animation: a2ffill .5s cubic-bezier(.3, 1.6, .5, 1); }
+  @keyframes a2ffill { from { transform: scale(.4, .2); } }
+  .bird.a2b { --bw: calc(var(--H) * .065); }
+  .a2seed { position: absolute; width: calc(var(--H) * .022); margin: calc(var(--H) * -.011); pointer-events: none; z-index: 1; }
+  .a2seed svg { display: block; width: 100%; height: auto; }
+  .a2seed.still { animation: gfx-still 1.2s ease-in-out both; }
+  @media (prefers-reduced-motion: reduce) { .a2-feeder.a2tap .a2fh, .a2-feeder.fill .a2fs { animation: none !important; } }
+`;
+
+  // src/grafik/album2/lantern.js
+  var PAL = { rot: "#e8584e", rotD: "#b8433b", hell: "#ffa497", blech: "#4d515c", henkel: "#9aa0ad" };
+  var PAL_GOLD = { rot: "#f2c230", rotD: "#c9971c", hell: "#fff1a8", blech: "#8a6a1c", henkel: "#e6c35a" };
+  var GLAS = "#ffe9a6";
+  var LANTERN_G = (cls = true, P = PAL) => `
+      <path d="M4.6 10.4 Q4.4 1.2 10 1.2 Q15.6 1.2 15.4 10.4" stroke="${OUT}" stroke-width="1.9" fill="none" stroke-linecap="round"/>
+      <path d="M4.6 10.4 Q4.4 1.2 10 1.2 Q15.6 1.2 15.4 10.4" stroke="${P.henkel}" stroke-width=".8" fill="none" stroke-linecap="round"/>
+      <circle cx="10" cy="5.8" r="1.3" fill="${P.blech}" stroke="${OUT}" stroke-width=".7"/>
+      <path d="M4.4 11.4 L10 6.6 L15.6 11.4Z" fill="${P.rot}" stroke="${OUT}" stroke-width=".9" stroke-linejoin="round"/>
+      <path d="M7.2 9.6 L10 7.3" stroke="${P.hell}" stroke-width=".8" stroke-linecap="round" opacity=".85"/>
+      <rect x="3.8" y="11.2" width="12.4" height="2" rx=".7" fill="${P.rotD}" stroke="${OUT}" stroke-width=".8"/>
+      <rect x="5.4" y="13.2" width="9.2" height="11.6" fill="${GLAS}" stroke="${OUT}" stroke-width=".8"/>
+      <path d="M6.6 14.4 V23.4" stroke="#fff8dc" stroke-width=".9" stroke-linecap="round" opacity=".9"/>
+      <rect x="8.9" y="19.6" width="2.2" height="4.6" rx=".4" fill="#f6f1ea" stroke="#c9b9a0" stroke-width=".4"/>
+      <g${cls ? ' class="a2lfl"' : ""}>
+        <path d="M10 13.9 Q12.6 17.2 10 19.8 Q7.4 17.2 10 13.9Z" fill="#ffb43a"/>
+        <path d="M10 15.9 Q11.3 17.8 10 19.4 Q8.7 17.8 10 15.9Z" fill="#fff3c0"/>
+      </g>
+      <path d="M5.4 13.2 V24.8 M14.6 13.2 V24.8" stroke="${OUT}" stroke-width="2"/>
+      <path d="M5.4 13.2 V24.8 M14.6 13.2 V24.8" stroke="${P.blech}" stroke-width="1.1"/>
+      <rect x="3.8" y="24.6" width="12.4" height="3" rx=".8" fill="${P.rot}" stroke="${OUT}" stroke-width=".8"/>
+      <path d="M5.2 25.6 H14.8" stroke="${P.hell}" stroke-width=".6" stroke-linecap="round" opacity=".8"/>
+      <rect x="5" y="27.6" width="10" height="2" rx=".5" fill="${P.blech}" stroke="${OUT}" stroke-width=".7"/>`;
+  var ICON2 = `<svg viewBox="0 0 24 24" aria-hidden="true">
+      <circle cx="12" cy="14.6" r="8.6" fill="#ffe27a" opacity=".32"/>
+      <circle cx="12" cy="14.6" r="5.4" fill="#ffe27a" opacity=".38"/>
+      <g transform="translate(4.4 .4) scale(.76)">${LANTERN_G(false)}</g></svg>`;
+  var LANTERN_W = 0.08;
+  var LANTERN_FOOT = 0.02;
+  var LANTERN_GLASS = (30 - 19) / 30;
+  var LANTERN_SVG = `<svg viewBox="0 0 20 30" aria-hidden="true">${LANTERN_G(true)}</svg>`;
+  var CARRY_ROT = -8;
+  var CARRY_S = LANTERN_W / 20 / (0.68 * 4e-3);
+  var carry = (P) => `<svg viewBox="0 0 24 24" aria-hidden="true"><g transform="translate(-5.6 7.8) rotate(${CARRY_ROT})"><g><g transform="scale(${CARRY_S.toFixed(3)}) translate(-10 -1.2)">${LANTERN_G(false, P)}</g></g></g></svg>`;
+  var LANTERN_CARRY = carry(PAL);
+  var LANTERN_CARRY_GOLD = carry(PAL_GOLD);
+  var CARRY_GLASS = [17.8 * CARRY_S * Math.sin(-CARRY_ROT * Math.PI / 180), 17.8 * CARRY_S * Math.cos(CARRY_ROT * Math.PI / 180)];
+  var A2_LANTERN = {
+    key: "lantern",
+    name: "Laterne",
+    say: "eine Laterne!",
+    built: true,
+    mo: null,
+    icon: ICON2,
+    trick: "Laternenlauf",
+    gilt: "eine goldene %",
+    use: "Abends trag ich sie über die Wiese.",
+    gold: "Glühwürmchen-Licht",
+    find: { t: "Laterne", h: "Steht meine Laterne abends am Bau, tipp sie an. Die Flamme flackert auf." },
+    // Vorschau (Leiste „Päckchen“, Album 2): [Knopf, Aktion, Stufe, die der Schatz dafür bekommt]. Das Licht zeigt sich
+    // erst in der Dämmerung (Leiste „Sonne“).
+    dbg: [["Laterne tragen", "a2LanternPlay", 1], ["Laternenlauf", "a2LanternRun", 2], ["Glühwürmchen (golden)", "a2LanternPlay", 3]]
+  };
+
+  // src/stil/album2-lantern.js
+  var STYLE_A2_LANTERN = `
+  .a2-lantern { width: calc(var(--H) * ${LANTERN_W}); margin-left: calc(var(--H) * ${-LANTERN_W / 2}); transition: opacity .5s, filter 2.5s; }
+  .a2-lantern svg { display: block; width: 100%; height: auto; overflow: visible; }
+  .a2-lantern.a2out { opacity: 0; }
+  /* Antippen: Die Flamme schießt hoch und duckt sich, die Laterne wackelt auf ihrem Fuß */
+  .a2-lantern .a2lfl { transform-box: fill-box; transform-origin: 50% 100%; }
+  .a2-lantern.a2ltap .a2lfl { animation: a2lflame .7s ease-out; }
+  @keyframes a2lflame { 25% { transform: scale(1.35, 1.6); } 55% { transform: scale(.85, .75); } 80% { transform: scale(1.1, 1.15); } }
+  .a2-lantern.a2ltap svg { transform-origin: 50% 100%; animation: a2lwob .6s ease-out; }
+  @keyframes a2lwob { 25% { transform: rotate(-5deg); } 55% { transform: rotate(3.5deg); } 80% { transform: rotate(-1.5deg); } }
+
+  /* Im Maul: beim Gehen pendelt sie leicht, beim Laternenlauf schwingt sie (.a2lsw), am Ende der Wiese weit (.a2lbig) */
+  .pika.a2lc .mf-item > g > g { transform-box: fill-box; transform-origin: 50% 0%; }
+  .pika.a2lc.walking .mf-item > g > g { animation: a2lsway .5s ease-in-out infinite alternate; }
+  .pika.a2lc.a2lsw .mf-item > g > g { animation: a2lswing .8s ease-in-out infinite alternate; }
+  .pika.a2lc.a2lbig .mf-item > g > g { animation: a2lswing-big .7s ease-in-out infinite alternate; }
+  @keyframes a2lsway { from { transform: rotate(-5deg); } to { transform: rotate(5deg); } }
+  @keyframes a2lswing { from { transform: rotate(-16deg); } to { transform: rotate(16deg); } }
+  @keyframes a2lswing-big { from { transform: rotate(-30deg); } to { transform: rotate(30deg); } }
+
+  /* Lichtschein: ein warmer Hof um das Glas, ohne filter (Safari schneidet dessen Überstand ab). Bei Tag aus, in der
+     Dämmerung schwach, sobald die Sonne unter dem Horizont ist und nachts voll. Flackern nur, solange er sie trägt. */
+  .a2lglow { position: absolute; width: 0; height: 0; pointer-events: none; transition: opacity .6s; }
+  .a2lglow.off { opacity: 0; }
+  .a2lh { position: absolute; left: calc(var(--H) * -.28); top: calc(var(--H) * -.28); width: calc(var(--H) * .56); height: calc(var(--H) * .56);
+    border-radius: 50%; opacity: 0; transition: opacity 1.2s, transform .25s;
+    background: radial-gradient(circle, rgba(255, 248, 212, .95) 0, rgba(255, 226, 146, .7) 8%, rgba(255, 204, 110, .34) 30%, rgba(255, 196, 100, .12) 52%, rgba(255, 190, 90, 0) 70%); }
+  .dusk .a2lh { opacity: .6; }
+  .dusk.sun-down .a2lh { opacity: .9; }
+  .night .a2lh { opacity: 1; }
+  .a2lglow.mv .a2lh { animation: a2lflk 2.8s ease-in-out infinite alternate; }
+  @keyframes a2lflk { 0% { transform: scale(1); } 35% { transform: scale(.95); } 60% { transform: scale(1.04); } 100% { transform: scale(.98); } }
+  .a2lglow.flare .a2lh { transform: scale(1.3); }
+
+  /* Glühwürmchen der goldenen Laterne (GOLD_FIREFLY, Aussehen von .gfx.hff): kreisen um das Glas, ohne den Anflug der
+     Hängematte; .rev andersherum. Ruhig (.still) sitzen sie still (Platz setzt das Skript) und blenden ein. */
+  .gfx.hff.a2lff { margin: calc(var(--H) * -.012); opacity: 1;
+    animation: a2lffin 1s ease-out backwards, a2lorb var(--d, 3.4s) linear infinite, gfx-ffglow 1.9s ease-in-out infinite alternate; }
+  .gfx.hff.a2lff.rev { animation-direction: normal, reverse, alternate; }
+  @keyframes a2lffin { from { opacity: 0; } }
+  @keyframes a2lorb {
+    from { transform: rotate(var(--a0, 0deg)) translateX(var(--r, 16px)) translateY(0); }
+    50% { transform: rotate(calc(var(--a0, 0deg) + 180deg)) translateX(var(--r, 16px)) translateY(calc(var(--H) * .015)); }
+    to { transform: rotate(calc(var(--a0, 0deg) + 360deg)) translateX(var(--r, 16px)) translateY(0); }
+  }
+  .gfx.hff.a2lff.still { animation: gfx-in .9s ease-out both; }
+  .gfx.hff.a2lff.off { transition: opacity .75s ease-in; opacity: 0; }
+  @media (prefers-reduced-motion: reduce) {
+    .a2-lantern.a2ltap .a2lfl, .a2-lantern.a2ltap svg, .pika.a2lc .mf-item > g > g, .a2lglow .a2lh { animation: none !important; }
+    .a2lglow.flare .a2lh { transform: none; }
+  }
+`;
+
+  // src/stil/album2-sled.js
+  var STYLE_A2_SLED = `
+  .a2-sled { left: 0; transform-origin: 50% 100%; transition: opacity .4s, filter 2.5s; }
+  .a2-sled.a2out { opacity: 0; }
+  .a2-sled .a2slw, .a2-sled .a2slf { width: 100%; height: 100%; transform-origin: 50% 100%; }
+  .a2-sled .a2slf { transition: transform .4s ease-in-out; }
+  .a2-sled .a2slf.left { transform: scaleX(-1); }
+  .gifts .a2-sled svg { width: 100%; height: 100%; }
+  /* (ploppt innen auf: .gt.new skalierte das transform des Elements, und das trägt hier den Stand) */
+  .a2-sled .a2slw.pop { animation: grow .7s cubic-bezier(.3, 1.6, .5, 1); }
+  .a2-sled .a2slw.a2tap { animation: a2slwob .6s ease-out; }
+  @keyframes a2slwob { 20% { transform: rotate(-5deg) translateY(-6%); } 45% { transform: rotate(3.5deg); } 70% { transform: rotate(-1.5deg); } }
+  /* Seil vom Haken zum Maul (Länge und Winkel setzt das Skript) */
+  .a2slrope { position: absolute; height: 1.6px; margin-top: -.8px; transform-origin: 0 50%; border-radius: 1px;
+    box-shadow: 0 0 0 .6px rgba(90, 64, 48, .55); pointer-events: none; transition: filter 2.5s; }
+  .shade .a2slrope { filter: brightness(var(--lbp, 1)) saturate(var(--ls, 1)); }
+  /* Auf dem Schlitten: Er sitzt (bzw. liegt) um --a2sly höher und neigt sich mit dem Hang (--a2sla, um die Füße);
+     sein Schatten ist der des Schlittens */
+  .pika.a2sl-sit .clipw, .pika.a2sl-belly .clipw { transform: rotate(var(--a2sla, 0deg)) translateY(calc(var(--a2sly, 0px) * -1)); }
+  .pika.a2sl-sit .shadow, .pika.a2sl-belly .shadow { opacity: 0; }
+  .pika.a2sl-sit .hop { transform: scale(1.05, .9); transition: transform .2s ease-out; }
+  .pika.a2sl-belly .hop { transform: scale(1.16, .72); transition: transform .25s ease-out; }
+  /* Schneefunken der goldenen Spur: blitzen auf und verglimmen an ihrer Stelle */
+  .a2sls { position: absolute; width: calc(var(--H) * .046 * var(--sk, 1)); margin: calc(var(--H) * -.023 * var(--sk, 1));
+    pointer-events: none; animation: a2sls 1.2s ease-out both; }
+  .a2sls svg { display: block; width: 100%; height: auto; }
+  .a2sls path { fill: #fff2a8; filter: drop-shadow(0 0 2.5px rgba(255, 214, 90, 1)); }
+  @keyframes a2sls {
+    0% { transform: scale(0) rotate(0deg); opacity: 0; }
+    20% { transform: scale(1.15) rotate(30deg); opacity: 1; }
+    100% { transform: translateY(calc(var(--H) * .015)) scale(.2) rotate(80deg); opacity: 0; }
+  }
+  .a2sls.still { animation: gfx-still 1.2s ease-in-out both; }
+  @media (prefers-reduced-motion: reduce) { .a2-sled .a2slw.a2tap, .a2-sled .a2slw.pop, .a2-sled .a2slf { animation: none !important; transition: none !important; } }
+`;
+
+  // src/stil/album2-camera.js
+  var STYLE_A2_CAMERA = "";
+
+  // src/stil/album2-radio.js
+  var STYLE_A2_RADIO = "";
+
+  // src/stil/album2-tramp.js
+  var STYLE_A2_TRAMP = "";
+
+  // src/stil/album2-picnic.js
+  var STYLE_A2_PICNIC = "";
+
+  // src/stil/album2-pool.js
+  var STYLE_A2_POOL = "";
+
+  // src/stil/album2.js
+  var STYLE_A2 = [STYLE_A2_FEEDER, STYLE_A2_LANTERN, STYLE_A2_SLED, STYLE_A2_CAMERA, STYLE_A2_RADIO, STYLE_A2_TRAMP, STYLE_A2_PICNIC, STYLE_A2_POOL].join("");
+
   // src/logik/tagebuch.js
   var DIARY = { keep: 3 * 864e5, max: 400, close: 6e4, gap: 100 * 6e4, acts: 2 };
   var FIND_GROUPS = ["Streicheln", "Kümmern", "Meine Welt"];
@@ -6211,9 +6506,10 @@
     { k: "plane", g: 2, t: "Flugzeug", h: "Tipp ein Flugzeug an. Ein Fähnchen zeigt, wohin es fliegt.", need: "flight" },
     { k: "device", g: 2, t: "Haushaltsgerät", h: "Tipp ein Gerät am Bau an. Ein Fähnchen zeigt, wie weit es ist.", need: "bote" }
   ];
-  var FIND_IDS = new Set(FINDS.map((f2) => f2.k));
+  var FIND_KEYS = [...FINDS.map((f2) => f2.k), ...A2_KEYS];
+  var FIND_IDS = new Set(FIND_KEYS);
   var findsParse = (s) => new Set(String(s || "").split(",").filter((k) => FIND_IDS.has(k)));
-  var findsSer = (set) => FINDS.filter((f2) => set.has(f2.k)).map((f2) => f2.k).join(",");
+  var findsSer = (set) => FIND_KEYS.filter((k) => set.has(k)).join(",");
   var DIARY_TXT = {
     wake: ["Aufgewacht! Erst mal strecken und gähnen.", "Guten Morgen! Die Nase zuerst aus dem Bau gesteckt.", "Zipfelmütze ab, der Tag kann losgehen."],
     sleep: ["Zipfelmütze auf und ab in den Bau. Gute Nacht!", "Müde. Ich hab mich im Bau eingekuschelt.", "Augen zu. Schlaf gut, liebes Tagebuch."],
@@ -6291,6 +6587,7 @@
     tonne: ["Die Tonne steht an der Straße. Danke fürs Rausstellen!", "Die Müllabfuhr kann kommen. Die Tonne steht schon draußen."],
     sauger: ["Der Saugroboter war unterwegs. Ich bin hinterhergehoppelt.", "Der Saugroboter hat geputzt. Vielleicht bin ich ein Stück mitgefahren!"],
     allGold: ["Jetzt sind alle meine Schätze golden. Was für ein Fest!"],
+    allGold2: ["Jetzt ist auch mein zweites Album ganz golden. Was für ein Fest!"],
     flowerTaken: ["Ich hab dir eine Blume gepflückt und ins Gras gelegt. Du hast sie genommen!", "Für dich: eine Blume mit Schleife. Du hast sie angenommen, da hab ich mich gefreut."],
     flowerWait: ["Ich hab dir eine Blume ins Gras gelegt. Sie wartet auf dich."],
     flowerWilt: ["Ich hab dir eine Blume hingelegt. Sie ist leider verwelkt. Ich pflück dir bald eine neue."],
@@ -6446,17 +6743,23 @@
         maxK = Math.max(maxK, g1.k);
         if (g1.z > maxZ) {
           maxZ = g1.z;
-          const it = g1.i & 15;
+          const { alb, t: it, gold } = giftKind(g1.i);
           const bit = 1 << it;
-          const v0 = g0.v || 0;
-          const v1 = g1.v || 0;
-          pend = { z: g1.z, it, gold: !!(g1.i & 16), what: it >= GIFT_TRE ? "treat" : !(g0.u & bit) ? "new" : v1 & bit << 8 && !(v0 & bit << 8) ? "gilt" : v1 & bit && !(v0 & bit) ? "trick" : "new" };
+          if (alb === 2) {
+            const w0 = g0.w || 0;
+            const w1 = g1.w || 0;
+            pend = { z: g1.z, it, alb, gold, what: !(w0 & bit) ? "new" : w1 & bit << 16 && !(w0 & bit << 16) ? "gilt" : w1 & bit << 8 && !(w0 & bit << 8) ? "trick" : "new" };
+          } else {
+            const v0 = g0.v || 0;
+            const v1 = g1.v || 0;
+            pend = { z: g1.z, it, gold, what: !alb ? "treat" : !(g0.u & bit) ? "new" : v1 & bit << 8 && !(v0 & bit << 8) ? "gilt" : v1 & bit && !(v0 & bit) ? "trick" : "new" };
+          }
         }
         if (g1.o > maxO) {
           maxO = g1.o;
-          const it = g1.i & 15;
-          const e = pend && pend.z <= g1.o ? pend : { it, gold: !!(g1.i & 16), what: it >= GIFT_TRE ? "treat" : "new" };
-          add(t, "parcel", { ...e, o: g1.o, mile: giftMile(g1.o), all: e.what === "gilt" && giftAllGold(g1) });
+          const { alb, t: it, gold } = giftKind(g1.i);
+          const e = pend && pend.z <= g1.o ? pend : { it, ...alb === 2 ? { alb } : {}, gold, what: !alb ? "treat" : "new" };
+          add(t, "parcel", { ...e, o: g1.o, mile: giftMile(g1.o), all: e.what === "gilt" && (e.alb === 2 ? a2AllGold(g1) : giftAllGold(g1)) });
           pend = null;
         }
       }
@@ -7510,7 +7813,7 @@
       <rect x="6" y="51" width="48" height="3.4" rx="1" fill="#a0703f" stroke="${OUT}" stroke-width=".8"/>
       <rect x="26" y="2" width="8" height="5" rx="1" fill="#a0703f" stroke="${OUT}" stroke-width=".8"/>
     </svg>`;
-  var SEED_SVG = `<svg viewBox="0 0 12 16" aria-hidden="true"><path d="M6 6 V15" stroke="#b9ad8e" stroke-width=".8"/>
+  var SEED_SVG2 = `<svg viewBox="0 0 12 16" aria-hidden="true"><path d="M6 6 V15" stroke="#b9ad8e" stroke-width=".8"/>
     <path d="M6 6 L1 2 M6 6 L3 .8 M6 6 L6 0 M6 6 L9 .8 M6 6 L11 2" stroke="#fff" stroke-width=".7" stroke-linecap="round"/>
     <ellipse cx="6" cy="15" rx=".9" ry="1.3" fill="#8a6a4a"/></svg>`;
   var DROP_SVG = '<svg viewBox="0 0 10 14" aria-hidden="true"><path d="M5 0 Q10 8 5 13.4 Q0 8 5 0Z" fill="#9fdcff" stroke="#5a9cc8" stroke-width=".7"/></svg>';
@@ -7684,7 +7987,7 @@
         [18, 0.95, 120, -95]
       ].map(([top, s, d, dl]) => `<div class="cloud" style="top:${top}%;--s:${s};--d:${d}s;--dl:${dl}s"></div>`).join("");
       this.shadowRoot.innerHTML = `
-        <style>${STYLE}${STYLE_SKY}${STYLE_FEST}${STYLE_FRIEND}${STYLE_BOTE}${STYLE_COFFEE}${STYLE_ACT}${STYLE_GIFT}${STYLE_DIARY_BTN}${STYLE_URLAUB}${STYLE_SIG}${STYLE_FEN}</style>
+        <style>${STYLE}${STYLE_SKY}${STYLE_FEST}${STYLE_FRIEND}${STYLE_BOTE}${STYLE_COFFEE}${STYLE_ACT}${STYLE_GIFT}${STYLE_DIARY_BTN}${STYLE_URLAUB}${STYLE_SIG}${STYLE_FEN}${STYLE_A2}</style>
         <ha-card>
           <div class="scene day">
             <div class="sky sky-day"></div><div class="sky sky-dusk"></div><div class="sky sky-night"></div>
@@ -8487,6 +8790,7 @@
         this._hamOut = false;
         this._giftScene();
       }
+      this._a2Cleanup();
       this._mouth(null);
       this._bubble(this._el.think, false);
       this._action = null;
@@ -8590,6 +8894,8 @@
         ...this._boteActs(ctx),
         ...this._coffeeActs(ctx),
         ...this._giftActs(ctx),
+        ...this._a2Acts(ctx),
+        // Album 2 (src/karte/album2.js)
         ...this._sigActs(ctx)
       ]);
       return this._run(act);
@@ -11857,7 +12163,7 @@
         const o = at ? this._svgPt(at[0] + rnd(-3, 3), at[1] + rnd(-4, 4)) : this._svgPt(pick([67, 115]) + rnd(-4, 4), 11 + rnd(-4, 4));
         const s = document.createElement("span");
         s.className = "seed";
-        s.innerHTML = SEED_SVG;
+        s.innerHTML = SEED_SVG2;
         s.style.left = `${o.x.toFixed(1)}px`;
         s.style.top = `${o.y.toFixed(1)}px`;
         s.style.setProperty("--dx", `${(kd * rnd(0.15, 0.45) * this._W).toFixed(1)}px`);
@@ -12707,6 +13013,7 @@
       const E = this._gtEls;
       if (E?.has(0)) add("yarn", E.get(0), 8);
       if (E?.has(1)) add("wheel", E.get(1), 4);
+      this._a2Zones(Z, sr);
       if (!sc.classList.contains("snowcover")) {
         for (const f2 of this._flowers) if (!f2.el.classList.contains("picked")) add("flower", f2.el, 6);
       }
@@ -12843,6 +13150,8 @@
         this._peep(cx, z.t + pad + 2, "surr!");
       } else if (z.k === "yarn") {
         if (!this._yarnTap(z.el, cx)) return;
+      } else if (z.a2) {
+        if (!this._a2Tap(z)) return;
       } else if (z.k === "rock") {
         const R2 = z.rect;
         this._peep(cx, R2.t + (R2.b - R2.t) * 0.25, "tock, tock");
@@ -13136,6 +13445,171 @@
   </svg>`
   };
 
+  // src/grafik/album2/sled.js
+  var HOLZ2 = "#9a6a3c";
+  var HOLZ_HELL2 = "#c98e4e";
+  var KUFE = "#e8584e";
+  var KUFE_HINTEN = "#b8443c";
+  var SEIL = "#d8b98a";
+  var ICON3 = `<svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M19.4 13.4 Q15.4 6.2 8.6 8.4" stroke="${OUT}" stroke-width="1.7" fill="none" stroke-linecap="round"/>
+      <path d="M19.4 13.4 Q15.4 6.2 8.6 8.4" stroke="${SEIL}" stroke-width=".9" fill="none" stroke-linecap="round"/>
+      <path d="M5.6 14 V19.6 M11.4 14 V19.6 M17 14 V19.6" stroke="${OUT}" stroke-width="2.4"/>
+      <path d="M5.6 14 V19.6 M11.4 14 V19.6 M17 14 V19.6" stroke="${HOLZ2}" stroke-width="1.2"/>
+      <path d="M1.8 19.6 H18.2 Q22.6 19.6 22.3 15.6 Q22 12.8 19.4 13.4" stroke="${OUT}" stroke-width="3" fill="none" stroke-linecap="round"/>
+      <path d="M1.8 19.6 H18.2 Q22.6 19.6 22.3 15.6 Q22 12.8 19.4 13.4" stroke="${KUFE}" stroke-width="1.6" fill="none" stroke-linecap="round"/>
+      <rect x="2.4" y="11.4" width="16.6" height="3" rx=".9" fill="${HOLZ_HELL2}" stroke="${OUT}" stroke-width=".8"/>
+      <path d="M8.2 11.7 V14.1 M13.6 11.7 V14.1" stroke="#a87442" stroke-width=".6"/>
+      <path d="M3.8 12.3 H17.6" stroke="#e0b47c" stroke-width=".7" stroke-linecap="round"/></svg>`;
+  var SLED_SVG = `<svg viewBox="0 0 48 22" aria-hidden="true">
+      <path d="M1.6 18.4 H35.6 Q43 18.4 42.7 11.4 Q42.5 7.6 38.8 8.2" stroke="${OUT}" stroke-width="3.2" fill="none" stroke-linecap="round"/>
+      <path d="M1.6 18.4 H35.6 Q43 18.4 42.7 11.4 Q42.5 7.6 38.8 8.2" stroke="${KUFE_HINTEN}" stroke-width="1.8" fill="none" stroke-linecap="round"/>
+      <path d="M8 13 V19.6 M20 13 V19.6 M32 13 V19.6" stroke="${OUT}" stroke-width="2.8"/>
+      <path d="M8 13 V19.6 M20 13 V19.6 M32 13 V19.6" stroke="${HOLZ2}" stroke-width="1.5"/>
+      <path d="M3 19.6 H37 Q44.6 19.6 44.3 12.6 Q44.1 8.6 40.2 9.4" stroke="${OUT}" stroke-width="3.4" fill="none" stroke-linecap="round"/>
+      <path d="M3 19.6 H37 Q44.6 19.6 44.3 12.6 Q44.1 8.6 40.2 9.4" stroke="${KUFE}" stroke-width="2" fill="none" stroke-linecap="round"/>
+      <path d="M5 19.1 H35" stroke="#ff9a8f" stroke-width=".7" stroke-linecap="round" opacity=".8"/>
+      <rect x="4" y="10.4" width="33" height="3.6" rx="1.2" fill="${HOLZ_HELL2}" stroke="${OUT}" stroke-width=".9"/>
+      <path d="M15 10.8 V13.6 M26 10.8 V13.6" stroke="#a87442" stroke-width=".7"/>
+      <path d="M6 11.5 H35" stroke="#e0b47c" stroke-width=".8" stroke-linecap="round"/></svg>`;
+  var SLED_W = 0.8;
+  var SLED_HOOK = [40.4 / 48, 9.4 / 22];
+  var SLED_SEAT = (20.6 - 10.6) / 22;
+  var SLED_SINK = (22 - 20.6) / 22;
+  var ROPE_MOUTH = `<svg viewBox="0 0 24 24"><path d="M3 9 Q10 15 19 11.6" stroke="${OUT}" stroke-width="3.6" fill="none" stroke-linecap="round"/>
+      <path d="M3 9 Q10 15 19 11.6" stroke="${SEIL}" stroke-width="2" fill="none" stroke-linecap="round"/></svg>`;
+  var DRIFT_TOP = 30;
+  var DRIFT_K = 1.6;
+  var DRIFT_U0 = -45;
+  var driftY = (u, u0) => {
+    if (u >= DRIFT_TOP) return 13;
+    if (u <= u0) return 46;
+    const t = (DRIFT_TOP - u) / (DRIFT_TOP - u0);
+    return 46 - 33 * (1 - t) ** DRIFT_K;
+  };
+  var DRIFT_SVG = (u0) => {
+    const pts = [];
+    for (let i = 0; i <= 16; i++) {
+      const u = u0 + (DRIFT_TOP - u0) * i / 16;
+      pts.push(`${u.toFixed(2)} ${driftY(u, u0).toFixed(2)}`);
+    }
+    const top = `M${pts.join(" L")}`;
+    const x0 = (u0 - 2).toFixed(2);
+    return `<svg viewBox="${x0} 11 ${(40 - u0).toFixed(2)} 36" preserveAspectRatio="none" aria-hidden="true">
+      <path d="M${x0} 47 L${pts.join(" L")} Q35 13.2 36.4 17.6 Q37.8 25 34.6 32 Q32.4 39 37 47Z" fill="#f4f8fb"/>
+      <path d="M${(u0 + 4).toFixed(2)} 47 Q${((u0 + 30) / 2).toFixed(2)} 41.8 31 37.5 Q33 42 37 47Z" fill="#dfe8f1" opacity=".85"/>
+      <path d="${top} Q35 13.2 36.4 17.6" stroke="#c3d1df" stroke-width=".7" fill="none" stroke-linejoin="round"/>
+      <path d="M${(u0 * 0.35 + 30 * 0.65).toFixed(2)} ${(driftY(u0 * 0.35 + 30 * 0.65, u0) + 1.6).toFixed(2)} Q22 16.6 28.4 14.6" stroke="#fff" stroke-width="1.4" fill="none" stroke-linecap="round" opacity=".9"/></svg>`;
+  };
+  var FUNKE_SVG = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 1 Q13.4 10.6 23 12 Q13.4 13.4 12 23 Q10.6 13.4 1 12 Q10.6 10.6 12 1Z"/></svg>';
+  var A2_SLED = {
+    key: "sled",
+    name: "Schlitten",
+    say: "ein Schlitten!",
+    built: true,
+    mo: [10, 11, 0, 1, 2],
+    icon: ICON3,
+    trick: "Bauchrutscher",
+    gilt: "ein goldener %",
+    use: "Für Tage, an denen Schnee liegt.",
+    gold: "eine Spur aus Schneefunken",
+    find: { t: "Schlitten", h: "Tipp den Schlitten an, wenn er ihn bei Schnee herausholt. Er wackelt, und Schnee stiebt auf." },
+    // Vorschau (Leiste „Päckchen“, Album 2): [Knopf, Aktion, Stufe, die der Schatz dafür bekommt]. Die Knöpfe gehen
+    // auch ohne Schnee (_forced); von selbst rodelt er nur, wenn Schnee liegt.
+    dbg: [["Rodeln", "a2SledPlay", 1], ["Bauchrutscher", "a2SledBelly", 2], ["Schneefunken (golden)", "a2SledPlay", 3]]
+  };
+
+  // src/grafik/album2/platzhalter.js
+  var A2_PLATZHALTER = `<svg viewBox="0 0 24 24" aria-hidden="true">
+      <rect x="3.6" y="9" width="16.8" height="12.6" rx="1.6" fill="#d8cbb4" stroke="${OUT}" stroke-width="1"/>
+      <path d="M3.6 13 H20.4" stroke="${OUT}" stroke-width=".7" opacity=".5"/>
+      <path d="M9.4 14.6 q0 -2.4 2.6 -2.4 q2.6 0 2.6 2 q0 1.4 -1.6 2 q-1 .4 -1 1.4" stroke="#8a6d4a" stroke-width="1.5" fill="none" stroke-linecap="round"/>
+      <circle cx="12" cy="19.4" r=".95" fill="#8a6d4a"/></svg>`;
+
+  // src/grafik/album2/camera.js
+  var A2_CAMERA = {
+    key: "camera",
+    name: "Kamera",
+    say: "eine Kamera!",
+    built: false,
+    mo: null,
+    icon: A2_PLATZHALTER,
+    trick: "Selfie",
+    gilt: "eine goldene %",
+    use: "Klick! Ein Foto für dich.",
+    gold: "eine goldene Zugabe",
+    find: null,
+    dbg: []
+  };
+
+  // src/grafik/album2/radio.js
+  var A2_RADIO = {
+    key: "radio",
+    name: "Radio",
+    say: "ein Radio!",
+    built: false,
+    mo: null,
+    icon: A2_PLATZHALTER,
+    trick: "Drehtanz",
+    gilt: "ein goldenes %",
+    use: "Musik zum Tanzen.",
+    gold: "Noten fliegen",
+    find: null,
+    dbg: []
+  };
+
+  // src/grafik/album2/tramp.js
+  var A2_TRAMP = {
+    key: "tramp",
+    name: "Trampolin",
+    say: "ein Trampolin!",
+    built: false,
+    mo: null,
+    icon: A2_PLATZHALTER,
+    trick: "Salto",
+    gilt: "ein goldenes %",
+    use: "Hüpf, hüpf!",
+    gold: "Sternchen beim Sprung",
+    find: null,
+    dbg: []
+  };
+
+  // src/grafik/album2/picnic.js
+  var A2_PICNIC = {
+    key: "picnic",
+    name: "Picknickdecke",
+    say: "eine Picknickdecke!",
+    built: false,
+    mo: [3, 4, 5, 6, 7, 8],
+    icon: A2_PLATZHALTER,
+    trick: "Teilen",
+    gilt: "eine goldene %",
+    use: "Für ein Picknick in der Sonne.",
+    gold: "Schmetterlinge kommen",
+    find: null,
+    dbg: []
+  };
+
+  // src/grafik/album2/pool.js
+  var A2_POOL = {
+    key: "pool",
+    name: "Planschbecken",
+    say: "ein Planschbecken!",
+    built: false,
+    mo: [5, 6, 7],
+    icon: A2_PLATZHALTER,
+    trick: "Arschbombe",
+    gilt: "ein goldenes %",
+    use: "Für heiße Tage ab 25 Grad.",
+    gold: "eine Gummiente schwimmt",
+    find: null,
+    dbg: []
+  };
+
+  // src/grafik/album2.js
+  var A2_ITEMS = [A2_FEEDER, A2_LANTERN, A2_SLED, A2_CAMERA, A2_RADIO, A2_TRAMP, A2_PICNIC, A2_POOL];
+  var A2_INFO = A2_ITEMS.map((it) => ({ built: !!it.built, mo: it.mo || null }));
+
   // src/grafik/urlaub.js
   var OUT4 = "#5a4030";
   var URLAUB_SIGN = (name) => `<svg viewBox="0 0 60 34" aria-hidden="true">
@@ -13345,6 +13819,12 @@
       const it = GIFT_ITEMS[e.it];
       const fr = this._frName();
       const lead = e.gold ? "Ein goldenes Päckchen! Ich hab es mit der Zwille vom Himmel geholt." : diaryPick(DIARY_TXT.parcel, "parcel", Math.floor(t / 6e4));
+      if (e.alb === 2) {
+        const a = this._a2Item(e.it);
+        if (e.what === "trick") return `${lead} Jetzt kann ich einen neuen Trick: ${a.trick}!`;
+        if (e.what === "gilt") return `${lead} Jetzt hab ich ${a.gilt.replace("%", a.name).replace(/^ein goldener /, "einen goldenen ")}.`;
+        return `${lead} Drin war ${a.say}`;
+      }
       if (!it) return e.what === "treat" ? `${lead} Drin war ein Leckerli. Sofort aufgefuttert!` : lead;
       const nm = it.key === "plush" ? `Plüsch-${fr}` : it.name;
       if (e.what === "treat") return `${lead} Drin war ein Leckerli: ${nm}. Sofort aufgefuttert!`;
@@ -13414,8 +13894,9 @@
           else if (e.b === "tonne" && house) put(t, "tonne", tx(T.tonne, "tonne", t), { svg: SIG_BIN("#7d848c") });
         } else if (e.k === "parcel") {
           one.add("parcel");
-          put(t, "parcel", this._diaryParcel(e, t), { svg: giftItem(e.it)?.svg });
-          if (e.all) put(t + 1, "parcel", tx(T.allGold, "allg", t), { svg: giftItem(e.it)?.svg });
+          const svg = e.alb === 2 ? this._a2Item(e.it).icon : giftItem(e.it)?.svg;
+          put(t, "parcel", this._diaryParcel(e, t), { svg });
+          if (e.all) put(t + 1, "parcel", tx(e.alb === 2 ? T.allGold2 : T.allGold, "allg", t), { svg });
           else if (e.mile) put(t + 1, "parcel", tx(T.mile, "mile", t).replace("{z}", e.o), { svg: GIFT_PARCEL });
         } else if (e.k === "urlaub") {
           put(t, "urlaub", tx(T.urlaub, "ur", t), { svg: URLAUB_SIGN(fr) });
@@ -13536,7 +14017,8 @@
       const ask = !!this._dia?.urAsk && !busy;
       return `<div class="ur"><i>${URLAUB_CARD(false)}</i><div><b>Ferien bei ${fr}</b><span>${ask ? "Wirklich? Dann packe ich meine Sachen. Das gilt für alle Geräte." : `Fahrt ihr weg? Dann besuche ich so lange ${fr}. Hunger, Glück, Häufchen und meine Päckchen-Serie ruhen, bis ihr mich zurückholt.`}</span><div class="bt">${ask ? '<button data-ur="go">Ja, los</button><button data-ur="no" class="no">Nein</button>' : `<button data-ur="ask"${busy ? " disabled" : ""}>Zu ${fr} schicken</button>`}</div>${busy ? '<span class="nt">Erst das Päckchen auspacken.</span>' : ""}</div></div>`;
     }
-    // Reiter „Schätze“ (früher das Album am Päckchen-Knopf): alle acht mit Stufe, Päckchen, Serie, Vorrat
+    // Reiter „Schätze“ (früher das Album am Päckchen-Knopf): alle acht mit Stufe, Päckchen, Serie, Vorrat. Darunter
+    // seit 0.46 Album 2, sobald es begonnen hat (vorher nicht: Es bliebe nur eine Seite voller Fragezeichen).
     _diaryTreasures() {
       const I = this._giftOn() ? this._giftInfo() : null;
       const fr = this._frName();
@@ -13544,13 +14026,21 @@
       let h = "";
       if (I) {
         const G = I.G;
-        h += `<p class="fazit">${!I.have ? "Noch hab ich keine Schätze. Sie stecken in den Päckchen." : I.have === GIFT_TRE ? "Das sind meine Schätze. Ich hab alle acht!" : `Das sind meine Schätze. ${I.have} von ${GIFT_TRE} hab ich schon.`}</p>`;
+        const zwei = !I.a2 ? "" : I.have2 === GIFT_TRE ? " Im zweiten Album auch alle acht!" : ` Im zweiten Album: ${I.have2} von ${GIFT_TRE}.`;
+        h += `<p class="fazit">${!I.have ? "Noch hab ich keine Schätze. Sie stecken in den Päckchen." : I.have === GIFT_TRE && I.a2 && I.have2 && I.have2 < GIFT_TRE ? `Das sind meine Schätze. Ich hab alle acht, und ${I.have2} von ${GIFT_TRE} im zweiten Album.` : I.have === GIFT_TRE ? `Das sind meine Schätze. Ich hab alle acht!${zwei}` : `Das sind meine Schätze. ${I.have} von ${GIFT_TRE} hab ich schon.${zwei}`}</p>`;
+        const platz = (svg, lv, name, sub) => `<div class="t ${["miss", "", "lv2", "lv2 gilt"][lv]}"><i>${svg}</i><div><b>${esc(lv ? name : "???")}</b><span>${esc(lv ? sub : "noch ein Geheimnis")}</span></div></div>`;
         h += `<div class="tre">${GIFT_ITEMS.slice(0, GIFT_TRE).map((it, t) => {
           const lv = I.lvs[t];
           const nm = it.key === "plush" ? `Plüsch-${fr}` : it.name;
-          const sub = !lv ? "noch ein Geheimnis" : lv >= 3 ? `golden: ${DIARY_TXT.gold[t]} · Trick: ${GIFT_TRICK[t]}` : lv === 2 ? `Trick: ${GIFT_TRICK[t]}` : DIARY_TXT.treasure[t];
-          return `<div class="t ${["miss", "", "lv2", "lv2 gilt"][lv]}"><i>${it.svg}</i><div><b>${esc(lv ? nm : "???")}</b><span>${esc(sub)}</span></div></div>`;
+          const sub = lv >= 3 ? `golden: ${DIARY_TXT.gold[t]} · Trick: ${GIFT_TRICK[t]}` : lv === 2 ? `Trick: ${GIFT_TRICK[t]}` : DIARY_TXT.treasure[t];
+          return platz(it.svg, lv, nm, sub);
         }).join("")}</div>`;
+        if (I.a2) {
+          h += `<h3>Album 2</h3><div class="tre a2">${A2_ITEMS.map((it, t) => {
+            const lv = I.lvs2[t];
+            return platz(it.icon, lv, it.name, lv >= 3 ? `golden: ${it.gold} · Trick: ${it.trick}` : lv === 2 ? `Trick: ${it.trick}` : it.use);
+          }).join("")}</div>`;
+        }
         const n = G.n + G.y;
         h += row(GIFT_PARCEL, "Päckchen", esc(`${n ? `${n} im Vorrat${G.y ? ` (${G.y === n ? "golden" : `${G.y} golden`})` : ""}` : "gerade keins da"} · ${I.next}`), I.warn);
         const T = I.today;
@@ -13558,7 +14048,8 @@
         const left = GIFT.goldDays - I.dots;
         const dots2 = [...Array(GIFT.goldDays).keys()].map((i) => `<u${i < I.dots ? ' class="on"' : ""}></u>`).join("");
         h += row(ICON_HEART, "Gute Tage", `<span class="d7">${dots2}</span>${esc(`${I.away ? "ruhen gerade" : left === 1 ? "noch einer bis zum goldenen Päckchen" : `noch ${left} bis zum goldenen Päckchen`} · ${I.friends === 1 ? "1 Freundschaftstag" : `${I.friends} Freundschaftstage`}`)}<span>${esc(I.away ? "" : T.good ? "Heute ist ein guter Tag ✓" : `Heute: ${ck(T.fed, "gefüttert")} · ${ck(T.pet, "gestreichelt")} · ${ck(T.ok, "alles über 50 %")}`)}</span>`);
-        h += row(GIFT_PARCEL, "Ausgepackt", esc(`${G.o === 1 ? "1 Päckchen" : `${G.o} Päckchen`}${I.allGold ? " · alle Schätze golden!" : ` · nächster Meilenstein beim ${I.mile}.`}`));
+        const gold = I.allGold && I.allGold2 ? " · beide Alben golden!" : I.allGold ? ` · ${I.a2 ? "Album 1" : "alle Schätze"} golden!` : "";
+        h += row(GIFT_PARCEL, "Ausgepackt", esc(`${G.o === 1 ? "1 Päckchen" : `${G.o} Päckchen`}${gold || ` · nächster Meilenstein beim ${I.mile}.`}`));
       } else h += '<p class="fazit">Hier sammle ich, was mir gehört.</p>';
       const dots = this._blooms.map((b) => `<u style="background:${esc(b.color)}"></u>`).join("");
       const k = this._blooms.length;
@@ -13581,7 +14072,9 @@
         vac: !!this._sigCfg().vacuum
       };
       const fr = this._frName();
-      const list = FINDS.filter((f2) => !f2.need || have[f2.need]);
+      const lv2 = this._giftOn() ? giftLvs2(this._plan?.gift) : [];
+      const a2 = A2_ITEMS.filter((it, t) => it.find && lv2[t] > 0).map((it) => ({ k: it.key, g: 2, t: it.find.t, h: it.find.h }));
+      const list = [...FINDS.filter((f2) => !f2.need || have[f2.need]), ...a2];
       const n = list.filter((f2) => S.has(f2.k)).length;
       let h = `<p class="fazit">${!n ? "Probier aus, was du mit mir und meiner Welt machen kannst!" : n >= list.length ? "Du hast alles ausprobiert, was es bei mir gibt!" : `Das kannst du mit mir und meiner Welt machen. ${n} von ${list.length} hast du schon ausprobiert.`}</p>`;
       FIND_GROUPS.forEach((g, i) => {
@@ -20067,25 +20560,24 @@
       if (G && G.z >= o.z) {
         this._giftOwn = null;
         if (G.z !== o.z || G.x !== o.x || G.i !== o.i || G.r != null && G.r !== o.r) return;
-        if ((o.i & 15) >= GIFT_TRE) this._add("s", GIFT.treat, true);
+        if (giftKind(o.i).alb === 0) this._add("s", GIFT.treat, true);
         this._add("g", GIFT.joy, true);
       } else if (this._haNow() - o.at > 30 * 6e4) this._giftOwn = null;
     }
     // Inhalt des Päckchens Nummer z, auf allen Geräten gleich: Das erste und eins von je dreien ist ein Schatz (goldene
-    // immer), nie mehr als zwei Leckerli in Folge (giftTre), sonst ein Leckerli der Jahreszeit. Schatz heißt: erst einer, der noch fehlt, dann ein Trick für einen, der
-    // noch keinen hat. Goldene vergolden lieber einen mit Trick, bevor sie einen neuen Trick bringen. Hat jeder Schatz
-    // alles, was er aus solchen Päckchen bekommen kann, gibt es nur noch Leckerli.
+    // immer), nie mehr als zwei Leckerli in Folge (giftTre), sonst ein Leckerli der Jahreszeit. Schatz heißt: erst einer,
+    // der noch fehlt, dann ein Trick für einen, der noch keinen hat. Goldene vergolden lieber einen mit Trick, bevor sie
+    // einen neuen Trick bringen. Seit 0.46 geht es danach mit Album 2 weiter (Regeln: giftPickTre in
+    // src/logik/album2.js); hat jeder gebaute Schatz alles, was er aus solchen Päckchen bekommen kann, gibt es nur noch
+    // Leckerli. → Wert für gift.i ohne „golden“ (Album 2: 32 + t2)
     // Gewürfelt wird nur auf dem Gerät, das verschenkt (sein Monat gilt): Die Nummer steht danach im Tagesplan (gift.i),
     // alle anderen lesen sie dort. Nummern ab 12 (seit 0.43) kennt eine Karte bis 0.42.2 nicht, siehe giftItem.
     _giftPick(G, z, gold) {
       if (this._dbgTreat != null) return this._dbgTreat;
-      const T = [...Array(GIFT_TRE).keys()];
-      const at = (lv) => T.filter((t) => giftLv(G, t) === lv);
-      const miss = at(0).length ? at(0) : gold && at(2).length ? at(2) : at(1);
-      const tre = miss.length && (gold || giftTre(z));
-      if (tre) return miss[Math.floor(seedRnd("gtre", z) * miss.length)];
       const south = (this._hass?.config?.latitude ?? 50) < 0;
-      return this._giftTreat(z, ((/* @__PURE__ */ new Date()).getMonth() + (south ? 6 : 0)) % 12);
+      const mo = ((/* @__PURE__ */ new Date()).getMonth() + (south ? 6 : 0)) % 12;
+      const tre = giftPickTre(G, z, gold, A2_INFO, mo);
+      return tre != null ? tre : this._giftTreat(z, mo);
     }
     // Leckerli für Päckchen z im Monat mo (für die Tests ohne Uhr)
     _giftTreat(z, mo) {
@@ -20107,7 +20599,8 @@
       if (!this._g) return;
       const pend = this._giftOn() && !!G && G.z > G.o;
       const B = this._gb;
-      const mine = !!B && this._giftOn() && !!G && B.z === G.z && B.item === (G.i & 15);
+      const k = G ? giftKind(G.i) : null;
+      const mine = !!B && this._giftOn() && !!G && B.z === G.z && B.item === k.t && B.alb === 2 === (k.alb === 2);
       const watch = this._running && !this._asleep && !this._away();
       if (B && B.stage !== "open" && !(mine && (pend || watch))) this._giftDrop();
       if (pend && !this._gb) this._giftBalloon(G);
@@ -20138,7 +20631,8 @@
     // Stelle, wo das Päckchen landen wird, bis der Pika wach ist und ihn herunterholt
     _giftBalloon(G) {
       const z = G.z;
-      const gold = G.i >= 16;
+      const k = giftKind(G.i);
+      const gold = k.gold;
       const H = this._H;
       const w = H * 0.17;
       const x = this._giftBalloonX(z);
@@ -20150,7 +20644,7 @@
       el.style.cssText = `--gpp:${pp};--gpr:${pr};--gbc:${bc};--gsw:${clamp((this._wind || 0) / 30, 0.35, 1.6).toFixed(2)};left:${(x - w / 2).toFixed(1)}px;top:${(y - w * 2 * (66 / 80)).toFixed(1)}px`;
       el.innerHTML = `<div class="gdrift"><div class="gbob">${GIFT_BALLOON}</div></div>`;
       this._el.gifts.appendChild(el);
-      const B = { z, el, x, gold, pp, pr, bc, item: G.i & 15, stage: "hover" };
+      const B = { z, el, x, gold, pp, pr, bc, item: k.t, alb: k.alb, stage: "hover" };
       this._gb = B;
       const left = G.x + GIFT.arrive - this._haNow();
       const calm = ["idle", "look", "wander", "groom", "squeak", "curious", "nibble"];
@@ -20321,11 +20815,13 @@
       p.classList.add("groom");
       await this._wait(1e3);
       B.stage = "open";
+      const a2 = B.alb === 2;
       const PG = this._plan?.gift;
-      const lv = B.item < GIFT_TRE && PG?.z === B.z ? giftLv(PG, B.item) : 1;
-      this._giftHide = B.item < GIFT_TRE ? B.item : null;
+      const lv = PG?.z !== B.z ? 1 : a2 ? Math.max(1, giftLv2(PG, B.item)) : B.item < GIFT_TRE ? giftLv(PG, B.item) : 1;
+      if (a2) this._a2Hide = B.item;
+      else this._giftHide = B.item < GIFT_TRE ? B.item : null;
       this._planOp({ t: "gopen", z: B.z });
-      const it = giftItem(B.item);
+      const it = a2 ? this._a2Item(B.item) : giftItem(B.item);
       let ie = null;
       try {
         B.el.querySelector(".gp-bow").classList.add("off");
@@ -20335,7 +20831,7 @@
         this._sparkle(B.x, gy - this._H * 0.1, B.gold ? 8 : 4);
         ie = document.createElement("div");
         ie.className = `gitem rise${B.gold ? " gold" : ""}${lv === 3 ? " gilt" : ""}`;
-        ie.innerHTML = it.svg;
+        ie.innerHTML = a2 ? it.icon : it.svg;
         ie.style.left = `${B.x.toFixed(1)}px`;
         ie.style.top = `${(gy - this._H * 0.2).toFixed(1)}px`;
         this._el.fx.appendChild(ie);
@@ -20343,7 +20839,8 @@
         this._mimik("awe", 1e3);
         await this._wait(1e3);
         B.el.classList.add("fade");
-        if (B.item >= GIFT_TRE) {
+        if (a2) await this._a2Unpack(B.item, ie, lv, B);
+        else if (B.item >= GIFT_TRE) {
           this._say(`${it.name}!`, 1400);
           await this._wait(1100);
           ie.classList.add("eat");
@@ -20361,22 +20858,25 @@
           await this._wait(1900);
           await this._giftStow(B.item, ie, lv);
         }
-        const all = lv === 3 && giftAllGold(this._plan?.gift);
-        if (all || giftMile(B.z)) await this._giftFeier(all ? "gold" : B.z);
+        const all = lv === 3 && (a2 ? a2AllGold(this._plan?.gift) : giftAllGold(this._plan?.gift));
+        if (all || giftMile(B.z)) await this._giftFeier(all ? a2 ? "gold2" : "gold" : B.z);
       } finally {
         B.el.classList.add("fade");
         const el = B.el;
         setTimeout(() => el.remove(), 900);
         ie?.remove();
         this._giftHide = null;
+        this._a2Hide = null;
         if (this._gb === B) this._gb = null;
         this._giftFromPlan();
       }
     }
-    // Feier: Konfetti um ihn herum, Luftsprünge, ein Satz. what: 'gold' (alle Schätze golden) oder die Nummer des Päckchens
+    // Feier: Konfetti um ihn herum, Luftsprünge, ein Satz. what: 'gold' (alle Schätze golden), 'gold2' (alle aus Album 2
+    // golden) oder die Nummer des Päckchens
     async _giftFeier(what) {
       const { gy, pH } = this._g;
-      const gold = what === "gold";
+      const gold = what === "gold" || what === "gold2";
+      const els = what === "gold2" ? this._a2Els : this._gtEls;
       const cols = gold ? ["#f2c230", "#fff2b0", "#ffd75a", "#ffffff"] : GIFT_BALLOONS;
       const burst = () => {
         for (let i = 0; i < 14; i++) {
@@ -20391,15 +20891,15 @@
       };
       burst();
       this._happy(2400);
-      this._say(gold ? "Alles golden!" : `Mein ${what}. Päckchen!`, 2200);
+      this._say(what === "gold2" ? "Album 2 ganz golden!" : gold ? "Alles golden!" : `Mein ${what}. Päckchen!`, 2200);
       this._jump("binky");
-      if (gold) for (const el of this._gtEls?.values() || []) el.classList.add("new");
+      if (gold) for (const el of els?.values() || []) el.classList.add("new");
       await this._wait(900);
       burst();
       this._hearts(gold ? 5 : 3);
       this._jump("binky");
       await this._wait(1400);
-      for (const el of this._gtEls?.values() || []) el.classList.remove("new");
+      for (const el of els?.values() || []) el.classList.remove("new");
     }
     // Neuer Schatz an seinen Platz: fliegt hin und ploppt dort auf. Getragene probiert er gleich aus, einen neuen Trick
     // führt er gleich vor, golden funkelt er.
@@ -20479,7 +20979,7 @@
       if (!this._el || !this._g) return;
       const G = this._plan?.gift;
       const B = this._gb;
-      const hide = this._giftHide ?? (B && !B.stowed && B.item < GIFT_TRE && G && B.z === G.z ? B.item : null);
+      const hide = this._giftHide ?? (B && !B.stowed && B.alb !== 2 && B.item < GIFT_TRE && G && B.z === G.z ? B.item : null);
       const lvs = this._giftOn() ? giftLvs(G, hide) : [];
       const has = (t) => lvs[t] > 0;
       const want = new Set([0, 6].filter(has));
@@ -20519,6 +21019,7 @@
         this._goldWheel();
       }
       this._giftDress(lvs);
+      this._a2Scene();
     }
     _giftPlace(t, el) {
       const { hole } = this._g;
@@ -20607,6 +21108,7 @@
       clearTimeout(this._bellT);
       clearTimeout(this._giftArrT);
       this._goldClear();
+      this._a2Detach();
       this._albumHeld = false;
       this._gtEls?.get(7)?.classList.remove("ring");
       const B = this._gb;
@@ -20634,6 +21136,7 @@
       if (cool && sunny) this._goldSheen();
       if (!this._asleep && (this._wind || 0) >= GOLD.wheelWind.min) this._goldWheel("wheelWind");
       if (this._asleep && this._plushX == null) this._goldHeart(null, true);
+      this._a2Tick();
       const b = this._el.gbtn;
       if (G.n >= GIFT.max && !b.hidden && !this._urlaubOn() && Math.random() < 0.25) {
         b.classList.remove("wig");
@@ -20688,7 +21191,12 @@
         dots: f2 % GIFT.goldDays,
         today: this._careToday(),
         mile: [10, 25, 50, 100].find((m) => m > G.o) ?? (Math.floor(G.o / 100) + 1) * 100,
-        allGold: giftAllGold(G)
+        allGold: giftAllGold(G),
+        // Album 2 (seit 0.46): begonnen, Stufen wie ausgepackt, wie viele da, alle golden
+        a2: a2Begun(G),
+        lvs2: giftLvs2(G),
+        have2: giftLvs2(G).filter((lv) => lv > 0).length,
+        allGold2: a2AllGold(G)
       };
     }
   };
@@ -21435,7 +21943,7 @@
     // Golden: ab und zu ein Funkeln (auch an der goldenen Blume der Gießkanne)
     _giftGlint() {
       if (this._asleep || !this._gtEls || Math.random() > 0.2) return;
-      const gl = [...this._gtEls.values()].filter((el2) => el2.classList.contains("gilt") && el2.isConnected);
+      const gl = [...this._gtEls.values(), ...this._a2Els?.values() || []].filter((el2) => el2.classList.contains("gilt") && el2.isConnected);
       for (const f2 of this._flowers || []) if (this._goldIsBloom(f2) && f2.el.isConnected) gl.push(f2.el);
       if (!gl.length) return;
       const el = pick(gl);
@@ -21880,6 +22388,9 @@
       for (const [n, q] of Object.entries(this._festPos || {})) if (!/^(egg|stick)/.test(n)) out.push([q.l - pad, q.l + q.w + pad]);
       for (const [t, el] of this._gtEls || []) {
         if (GIFT_ITEMS[t]?.key === "yarn") continue;
+        if (el.parentElement === this._el.gifts && !el.style.top) out.push([el.offsetLeft - pad, el.offsetLeft + el.offsetWidth + pad]);
+      }
+      for (const el of this._a2Els?.values() || []) {
         if (el.parentElement === this._el.gifts && !el.style.top) out.push([el.offsetLeft - pad, el.offsetLeft + el.offsetWidth + pad]);
       }
       for (const q of this._poops().piles) out.push([this._pileX(q) - H * 0.05, this._pileX(q) + H * 0.05]);
@@ -24534,6 +25045,1575 @@
     }
   };
 
+  // src/karte/album2.js
+  var cap = (k) => k[0].toUpperCase() + k.slice(1);
+  var Album2 = class {
+    // Daten des Schatzes t (0–7) oder key. Unbekannt: ein Platzhalter (wirft nicht)
+    _a2Item(t) {
+      const it = typeof t === "string" ? A2_ITEMS.find((x) => x.key === t) : A2_ITEMS[t];
+      return it || { key: "?", name: "Schatz", say: "ein Schatz!", built: false, icon: A2_PLATZHALTER, trick: "Trick", gilt: "ein goldener %", use: "", gold: "" };
+    }
+    // Für die Vorschau (preview.html baut daraus ihre Knöpfe)
+    _a2Items() {
+      return A2_ITEMS;
+    }
+    // Hook name des Schatzes key aufrufen, wenn es ihn gibt (sonst undefined)
+    _a2Hook(key, name, ...args) {
+      const f2 = this[`_a2${cap(key)}${name}`];
+      return typeof f2 === "function" ? this._guard(`Album 2 ${key}`, () => f2.apply(this, args)) : void 0;
+    }
+    // Stufen aller acht, wie sie ausgepackt sind. Wie bei Album 1 (_giftScene): ohne den, der noch am Ballon hängt oder
+    // im Päckchen liegt, und der gerade ausgepackte noch auf seiner alten Stufe (_a2Hide), bis er verstaut ist.
+    _a2Lvs() {
+      if (!this._giftOn()) return A2_KEYS.map(() => 0);
+      const G = this._plan?.gift;
+      const B = this._gb;
+      const hide = this._a2Hide ?? (B && !B.stowed && B.alb === 2 && G && B.z === G.z ? B.item : null);
+      return giftLvs2(G, hide);
+    }
+    // Stufe eines Schatzes (key oder t2)
+    _a2Lv(k) {
+      const t = typeof k === "string" ? A2_KEYS.indexOf(k) : k;
+      return this._a2Lvs()[t] || 0;
+    }
+    // Darf die goldene Zugabe des Schatzes key jetzt? Wie _goldOk (src/karte/schaetze.js); name: welche Zugabe (für den
+    // Abstand, wenn ein Schatz mehrere hat)
+    _a2GoldOk(key, R2 = null, name = key) {
+      if (!this._g || !this._giftOn() || this._urlaubFern() || this._away()) return false;
+      if (!(this._a2Lv(key) >= 3)) return false;
+      if (!R2 || this._dbgGold) return true;
+      const at = this._goldAt ??= {};
+      const k = `a2:${name}`;
+      const now = Date.now();
+      if (!goldDue(R2, at[k], now, Math.random())) return false;
+      at[k] = now;
+      return true;
+    }
+    // Dauerhaftes Element des Schatzes key in der Szene (Ebene .gifts), html beim Anlegen. → das Element
+    _a2El(key, html, cls = "") {
+      const E = this._a2Els ??= /* @__PURE__ */ new Map();
+      let el = E.get(key);
+      if (!el) {
+        el = document.createElement("div");
+        el.className = `gt a2-${key}${cls ? ` ${cls}` : ""}`;
+        el.innerHTML = html;
+        this._el.gifts.appendChild(el);
+        E.set(key, el);
+      }
+      return el;
+    }
+    _a2Drop(key) {
+      const el = this._a2Els?.get(key);
+      if (!el) return;
+      this._a2Els.delete(key);
+      el.remove();
+    }
+    // Szene: jeder Schatz zieht seine nach (Hook Scene), dann golden markieren
+    _a2Scene() {
+      if (!this._el || !this._g) return;
+      const lvs = this._a2Lvs();
+      A2_ITEMS.forEach((it, t) => this._a2Hook(it.key, "Scene", lvs[t]));
+      for (const [key, el] of this._a2Els || []) el.classList.toggle("gilt", lvs[A2_KEYS.indexOf(key)] >= 3);
+    }
+    // Was er von sich aus mit den Schätzen aus Album 2 tun mag (zur Wahl in _step, neben _giftActs)
+    _a2Acts(ctx) {
+      const G = this._plan?.gift;
+      if (!this._giftOn() || !G?.w || this._gb || this._urlaubFern()) return [];
+      const lvs = this._a2Lvs();
+      const out = [];
+      A2_ITEMS.forEach((it, t) => {
+        if (!(lvs[t] > 0)) return;
+        const A = this._a2Hook(it.key, "Acts", ctx, lvs[t]);
+        if (Array.isArray(A)) out.push(...A.filter((a) => Array.isArray(a) && a[0] > 0 && typeof this[`_${a[1]}`] === "function"));
+      });
+      return out;
+    }
+    // Aus _cleanup (Ende oder Abbruch einer Aktion)
+    _a2Cleanup() {
+      for (const it of A2_ITEMS) this._a2Hook(it.key, "Cleanup");
+    }
+    // Aus _tickGift
+    _a2Tick() {
+      const lvs = this._a2Lvs();
+      A2_ITEMS.forEach((it, t) => lvs[t] > 0 && this._a2Hook(it.key, "Tick", lvs[t]));
+    }
+    // Aus _detachGift
+    _a2Detach() {
+      for (const it of A2_ITEMS) this._a2Hook(it.key, "Detach");
+    }
+    // Tippflächen für _worldZones: jedes Element aus _a2El, dessen Schatz einen Hook Tap hat
+    _a2Zones(Z, sr) {
+      for (const [key, el] of this._a2Els || []) {
+        if (typeof this[`_a2${cap(key)}Tap`] !== "function" || !el.isConnected) continue;
+        const r = el.getBoundingClientRect();
+        if (!r.width && !r.height) continue;
+        const pad = 6;
+        Z.push({ k: key, a2: true, el, l: r.left - sr.left - pad, t: r.top - sr.top - pad, r: r.right - sr.left + pad, b: r.bottom - sr.top + pad, pad });
+      }
+    }
+    // Tipp auf eine Zone aus _a2Zones → true, wenn der Schatz geantwortet hat
+    _a2Tap(z) {
+      return !!this._a2Hook(z.k, "Tap", z);
+    }
+    // Ausgepackt (aus _giftOpen): freuen, sagen, was es ist, an seinen Platz bringen, vorführen. ie: das Bild über dem
+    // Päckchen, lv: die neue Stufe, B: das Päckchen
+    async _a2Unpack(t, ie, lv, B) {
+      const it = this._a2Item(t);
+      const { gy } = this._g;
+      this._happy(1800);
+      this._jump(B.gold ? "binky" : "hop1");
+      this._say(lv === 2 ? `neuer Trick: ${it.trick}!` : lv === 3 ? `${it.gilt.replace("%", it.name)}!` : it.say, 1800);
+      if (lv === 3) for (let i = 0; i < 3; i++) setTimeout(() => this._g && this._sparkle(B.x, gy - this._H * 0.25, 2), 300 + i * 400);
+      await this._wait(1900);
+      await this._a2Stow(t, ie, lv);
+    }
+    // An seinen Platz: Steht der Schatz in der Szene (Element aus _a2El), fliegt das Bild dorthin und er ploppt auf,
+    // sonst schwebt es zum Pika und verblasst (er holt ihn später für seinen Moment). Danach führt er vor (Hook Stow).
+    async _a2Stow(t, ie, lv) {
+      const it = this._a2Item(t);
+      const sc = this._el.scene.getBoundingClientRect();
+      this._a2Hide = null;
+      if (this._gb) this._gb.stowed = true;
+      this._giftScene();
+      const tgt = this._a2Els?.get(it.key);
+      const from = ie.getBoundingClientRect();
+      let to;
+      if (tgt) {
+        tgt.style.opacity = "0";
+        to = tgt.getBoundingClientRect();
+      } else {
+        const { pW, pH, gy } = this._g;
+        to = { left: sc.left + this._x + this._dir * pW * 0.25 - 4, top: sc.top + gy - pH * 0.55 - 4, width: 8, height: 8 };
+      }
+      const k = clamp(to.width / Math.max(1, from.width), 0.1, 3);
+      const cur = getComputedStyle(ie).transform;
+      ie.animate([
+        { transform: cur === "none" ? "none" : cur },
+        { transform: `translate(${(to.left + to.width / 2 - from.left - from.width / 2).toFixed(1)}px, ${(to.top + to.height / 2 - from.top - from.height / 2).toFixed(1)}px) scale(${k.toFixed(2)})`, opacity: tgt ? 1 : 0.2 }
+      ], { duration: calmMotion() ? 1 : 750, easing: "cubic-bezier(.4, 0, .3, 1)", fill: "forwards" });
+      try {
+        await this._wait(750);
+      } finally {
+        if (tgt) tgt.style.opacity = "";
+      }
+      ie.remove();
+      if (tgt) {
+        tgt.classList.add("new");
+        setTimeout(() => tgt.classList.remove("new"), 800);
+        this._sparkle(to.left - sc.left + to.width / 2, to.top - sc.top + to.height * 0.3, 3);
+      }
+      if (typeof this[`_a2${cap(it.key)}Stow`] === "function") await this[`_a2${cap(it.key)}Stow`](lv);
+      else {
+        this._say(pick(["ooh!", "hübsch!", "♥"]), 1300);
+        await this._wait(rnd(1200, 1600));
+      }
+    }
+  };
+
+  // src/karte/album2-feeder.js
+  var FEEDER_GOLD = { cd: 3 * 6e4, p: 0.5 };
+  var FEEDER_Z = () => buehneZ(-LANE_DY, "schatz");
+  var FEEDER_BZ = () => buehneZ(-LANE_DY, "vogel");
+  var Album2Feeder = class {
+    // ---------- Platz und Szene ----------
+    // Wo es steht (px der Szene): Mitte x, Breite w, Höhe h, linke und obere Kante, Fuß des Pfahls
+    _a2FeederPos() {
+      const { rock, gy, hayR } = this._g;
+      const H = this._H;
+      const w = H * FEEDER_W;
+      const h = w * 2;
+      const foot = gy - H * LANE_DY;
+      const x = Math.max(hayR + w, rock.l + rock.ku * 6);
+      return { x, w, h, left: x - w / 2, top: foot - h, foot };
+    }
+    // Ist dort ein ruhiger Platz? Genug Wiese zwischen Vorrat und Stein (auf schmalen Karten nicht) und keine Festdeko
+    _a2FeederRoom() {
+      const { rock, hayR, pW } = this._g;
+      if (rock.l - hayR < pW * 1.5) return false;
+      const F = this._a2FeederPos();
+      return !Object.values(this._festPos || {}).some((q) => q && q.l < F.x + F.w && q.l + q.w > F.x - F.w);
+    }
+    // Szene (Hook): da, solange der Schatz da ist und Platz hat, oder für seinen Moment (_a2FeederTemp)
+    _a2FeederScene(lv) {
+      if (!(lv > 0 && (this._a2FeederTemp || this._a2FeederRoom()))) {
+        if (!this._a2FeederBusy) this._a2Drop("feeder");
+        return;
+      }
+      const el = this._a2El("feeder", FEEDER_SVG);
+      el.style.left = `${this._a2FeederPos().x.toFixed(1)}px`;
+      el.style.zIndex = String(FEEDER_Z());
+    }
+    // Für eine Aktion: steht es nicht, holt er es heraus (ploppt auf). → true, wenn es nur für diesen Moment da ist
+    _a2FeederShow() {
+      const old = this._a2Els?.get("feeder");
+      if (old && !old.classList.contains("a2out")) return false;
+      this._a2FeederTemp = true;
+      old?.classList.remove("a2out");
+      this._a2Scene();
+      const el = this._a2Els?.get("feeder");
+      if (!old && el) {
+        el.classList.add("new");
+        setTimeout(() => el.classList.remove("new"), 800);
+      }
+      return true;
+    }
+    // Moment vorbei: Vögel fliegen weg, ein nur hervorgeholtes Häuschen verschwindet wieder
+    _a2FeederEnd() {
+      this._a2FeederShoo();
+      if (!this._a2FeederTemp) return;
+      this._a2FeederTemp = false;
+      const el = this._a2Els?.get("feeder");
+      if (this._a2FeederRoom() || !el) return;
+      el.classList.add("a2out");
+      setTimeout(() => !this._a2FeederTemp && el.isConnected && this._a2Scene(), 450);
+    }
+    // ---------- Was er damit tut ----------
+    // Hook: Vögel füttern mag er bei Tag, ohne Regen und Sturm; im Winter (November bis Februar, Südhalbkugel versetzt)
+    // und bei Schnee öfter, in der Dämmerung selten
+    _a2FeederActs({ wx }, lv) {
+      const sc = this._el.scene.classList;
+      if (wx.wet || wx.storm || sc.contains("night") || (this._wind || 0) >= 40) return [];
+      const w = (this._a2FeederWinter() || wx.snowcover ? 0.7 : 0.3) * (sc.contains("dusk") ? 0.3 : 1);
+      return [[w, "a2FeederPlay"], [lv >= 2 ? w * 0.5 : 0, "a2FeederFill"]];
+    }
+    _a2FeederWinter() {
+      const south = (this._hass?.config?.latitude ?? 50) < 0;
+      const mo = (new Date(this._dbgDate ?? Date.now()).getMonth() + (south ? 6 : 0)) % 12;
+      return mo >= 10 || mo <= 1 || !!this._wx?.snowcover;
+    }
+    // Wo er zuschaut: links vom Häuschen mit Abstand (so sieht man es), auf schmalen Karten so weit es geht
+    async _a2FeederGo(near = false) {
+      const F = this._a2FeederPos();
+      const { pW, hayR } = this._g;
+      const x = Math.max(hayR + pW * 0.3, F.x - pW * (near ? 0.62 : 1.15));
+      await this._walkTo(x, 0.9);
+      this._face(F.x >= this._x ? 1 : -1);
+    }
+    // Stufe 1 (Aktion 'a2FeederPlay'): hin, Vögel kommen, picken, er schaut zu und piepst, sie fliegen wieder.
+    // o: { n: so viele Vögel, gimpel: der Gimpel kommt sicher, short: kurz (nach dem Auspacken) }
+    async _a2FeederPlay(o = {}) {
+      if (!this._a2Lv("feeder")) return;
+      this._a2FeederBusy = true;
+      try {
+        this._a2FeederShow();
+        await this._a2FeederGo();
+        await this._wait(300);
+        await this._a2FeederWatch(o);
+      } finally {
+        this._a2FeederBusy = false;
+        this._a2FeederEnd();
+      }
+    }
+    // Zuschauen (er steht schon da): Vögel kommen nacheinander, der Gimpel (golden) zuletzt aufs Dach
+    async _a2FeederWatch(o = {}) {
+      const p = this._el.pika;
+      const lv = this._a2Lv("feeder");
+      const gold = !!o.gimpel || this._dbgGimpel || lv >= 3 && this._a2GoldOk("feeder", FEEDER_GOLD);
+      this._dbgGimpel = false;
+      const n = clamp(o.n ?? 1 + (Math.random() < 0.6 ? 1 : 0) + (!gold && this._a2FeederWinter() && Math.random() < 0.6 ? 1 : 0), 1, gold ? 2 : 3);
+      const plan = [...Array(n).keys()].map((i) => [i, pick(BIRDS)]);
+      if (gold) plan.push([2, GIMPEL]);
+      p.classList.add("look-up");
+      this._say(pick(["piep?", "Vögelchen?", "Futterzeit!"]), 1100);
+      const B = [];
+      for (const [i, v] of plan) {
+        await this._wait(rnd(700, 1300));
+        B.push(this._a2FeederBird(i, v));
+      }
+      await this._wait(1700);
+      if (gold) {
+        const g = B.at(-1);
+        this._mimik("awe", 1400);
+        this._say(pick(["ein Gimpel!", "oh, ein Gimpel!", "so ein rotes Bäuchlein!"]), 1700);
+        if (g) for (let i = 0; i < 3; i++) setTimeout(() => this._g && !g.gone && this._sparkle(g.x, g.y - this._H * 0.05, 1), i * 350);
+        await this._wait(1900);
+      } else if (Math.random() < 0.6) {
+        p.classList.add("calling");
+        this._say(pick(["iiep!", "mip!"]), 900);
+        await this._wait(650);
+        p.classList.remove("calling");
+        const b = pick(B);
+        setTimeout(() => b?.sitting && this._tweet(b), 400);
+      }
+      p.classList.add("tilt");
+      await this._wait(o.short ? 1600 : rnd(3500, 6500));
+      p.classList.remove("tilt");
+      p.classList.add("content");
+      this._happy(1e3);
+      await this._wait(o.short ? 700 : rnd(1500, 2600));
+      for (const b of B) {
+        this._a2FeederFly(b);
+        await this._wait(260);
+      }
+      await this._wait(700);
+      p.classList.remove("look-up", "content");
+    }
+    // Stufe 2, der Trick (Aktion 'a2FeederFill'): Das Brett ist leer, er hüpft hoch und füllt Körner nach, dann kommen
+    // die Vögel
+    async _a2FeederFill() {
+      if (this._a2Lv("feeder") < 2) return;
+      this._a2FeederBusy = true;
+      const p = this._el.pika;
+      let el = null;
+      try {
+        this._a2FeederShow();
+        el = this._a2Els?.get("feeder");
+        el?.classList.add("leer");
+        await this._a2FeederGo(true);
+        this._say(pick(["leer!", "Nachschub!", "Körner!"]), 1100);
+        await this._wait(600);
+        p.classList.add("look-up", "crouch");
+        await this._wait(280);
+        p.classList.remove("crouch");
+        this._jump("hop1");
+        await this._wait(180);
+        this._a2FeederSeeds(true);
+        await this._wait(650);
+        el?.classList.remove("leer");
+        el?.classList.add("fill");
+        setTimeout(() => el?.classList.remove("fill"), 700);
+        const F = this._a2FeederPos();
+        this._peep(F.x, F.top + F.h * 0.3, "riesel!");
+        await this._wait(800);
+        this._happy(900);
+        p.classList.remove("look-up");
+        await this._wait(500);
+        await this._a2FeederGo();
+        await this._a2FeederWatch({ n: 2 });
+      } finally {
+        el?.classList.remove("leer", "fill");
+        this._a2FeederBusy = false;
+        this._a2FeederEnd();
+      }
+    }
+    // Nach dem Auspacken (Hook): Stufe 1 ein Vogel kommt gleich, 2 der Trick, 3 der Gimpel
+    async _a2FeederStow(lv) {
+      if (lv === 2) return this._a2FeederFill();
+      this._say(lv >= 3 ? pick(["goldig!", "glänzt!"]) : pick(["für die Vögel!", "ein Futterhaus!"]), 1400);
+      await this._wait(1e3);
+      await this._a2FeederPlay({ n: 1, gimpel: lv >= 3, short: true });
+    }
+    // ---------- Vögel und Körner ----------
+    // Ein Vogel (Farben v, BIRDS oder GIMPEL) fliegt an Platz i des Häuschens (FEEDER_SPOTS) und pickt dort, bis er
+    // wegfliegt (_a2FeederFly). → { el, x, y, dir, sitting, gone }
+    _a2FeederBird(i, v) {
+      const F = this._a2FeederPos();
+      const [fx, fy] = FEEDER_SPOTS[i];
+      const x = F.left + fx * F.w;
+      const y = F.top + fy * F.h;
+      const calm = calmMotion();
+      const el = document.createElement("div");
+      el.className = `bird a2b${calm ? " a2still" : " flying"}`;
+      el.innerHTML = `<div class="bw" role="button" aria-label="${v.name}"><div class="bf"><div class="bb">${BIRD_SVG(v)}</div></div></div>`;
+      el.style.left = `${x.toFixed(1)}px`;
+      el.style.top = `${y.toFixed(1)}px`;
+      el.style.zIndex = String(FEEDER_BZ());
+      const b = { el, x, y, dir: 1, sitting: false, gone: false, roof: i === 2, t: null };
+      el.querySelector(".bw").addEventListener("click", (e) => {
+        e.stopPropagation();
+        this._found("visitor");
+        this._a2FeederFly(b, true);
+      });
+      this._keyTap?.(el.querySelector(".bw"));
+      (this._a2FeederBirds ??= /* @__PURE__ */ new Set()).add(b);
+      this._el.birds.appendChild(el);
+      this._a2FeederFace(b, i === 0 ? 1 : i === 1 ? -1 : this._x >= x ? 1 : -1);
+      const land = () => {
+        if (b.gone) return;
+        el.classList.remove("flying");
+        if (!calm) el.classList.add("land");
+        b.sitting = true;
+        b.t = setTimeout(() => this._a2FeederPeck(b), 350);
+      };
+      if (calm) {
+        el.animate?.([{ opacity: 0 }, { opacity: 1 }], { duration: 500, fill: "backwards" });
+        b.t = setTimeout(land, 500);
+      } else {
+        const side = -b.dir;
+        const dx = side * this._W * rnd(0.3, 0.5);
+        const dy = -y - this._H * 0.1;
+        b.dir = -side;
+        el.classList.toggle("left", b.dir < 0);
+        const dur = rnd(1300, 1800);
+        b.fly = el.animate?.([
+          { transform: `translate(${dx.toFixed(1)}px, ${dy.toFixed(1)}px)` },
+          { transform: `translate(${(dx * 0.4).toFixed(1)}px, ${(dy * 0.3).toFixed(1)}px)`, offset: 0.55 },
+          { transform: `translate(${(dx * 0.08).toFixed(1)}px, ${(-this._H * 0.04).toFixed(1)}px)`, offset: 0.88 },
+          { transform: "translate(0, 0)" }
+        ], { duration: dur, easing: "ease-out" });
+        b.t = setTimeout(() => {
+          b.fly = null;
+          this._a2FeederFace(b, i === 0 ? 1 : i === 1 ? -1 : this._x >= x ? 1 : -1);
+          land();
+        }, dur);
+      }
+      return b;
+    }
+    _a2FeederFace(b, dir) {
+      b.dir = dir;
+      b.el.classList.toggle("left", dir < 0);
+    }
+    // Sitzt er: picken (am Brett), Kopf schief, hüpfen, umdrehen, ab und zu ein Zwitschern
+    _a2FeederPeck(b) {
+      if (b.gone || !b.sitting) return;
+      const calm = calmMotion();
+      const el = b.el;
+      el.classList.remove("land", "peck", "tilt", "hop");
+      const r = Math.random();
+      let ms = 500;
+      if (r < (b.roof ? 0.25 : 0.5) && !calm) {
+        el.classList.add("peck");
+        ms = 460;
+      } else if (r < 0.72) {
+        el.classList.add("tilt");
+        ms = rnd(700, 1400);
+      } else if (r < 0.82 && !calm) {
+        el.classList.add("hop");
+        ms = 340;
+      } else if (r < 0.92) {
+        if (!b.roof) this._a2FeederFace(b, -b.dir);
+      } else this._tweet(b);
+      b.t = setTimeout(() => {
+        el.classList.remove("peck", "tilt", "hop");
+        b.t = setTimeout(() => this._a2FeederPeck(b), rnd(150, 900));
+      }, ms);
+    }
+    // Wegfliegen (fast: erschrocken), danach ist er weg
+    _a2FeederFly(b, fast = false) {
+      if (!b || b.gone) return;
+      b.gone = true;
+      b.sitting = false;
+      clearTimeout(b.t);
+      b.fly?.cancel();
+      const el = b.el;
+      el.classList.remove("land", "peck", "tilt", "hop");
+      const done = () => {
+        el.remove();
+        this._a2FeederBirds?.delete(b);
+      };
+      if (calmMotion() || !el.animate) {
+        el.animate?.([{ opacity: 1 }, { opacity: 0 }], { duration: 400, fill: "forwards" });
+        setTimeout(done, 420);
+        return;
+      }
+      el.classList.add("flying");
+      const out = b.x > this._W / 2 ? 1 : -1;
+      this._a2FeederFace(b, out);
+      const dur = fast ? 800 : rnd(1100, 1500);
+      el.animate([
+        { transform: "translate(0, 0)" },
+        { transform: `translate(${(out * this._W * 0.06).toFixed(1)}px, ${(-this._H * 0.07).toFixed(1)}px)`, offset: 0.25 },
+        { transform: `translate(${(out * this._W * 0.55).toFixed(1)}px, ${(-b.y - this._H * 0.2).toFixed(1)}px)` }
+      ], { duration: dur, easing: "ease-in", fill: "forwards" });
+      setTimeout(done, dur + 40);
+    }
+    // Alle Vögel am Häuschen fliegen weg
+    _a2FeederShoo() {
+      for (const b of [...this._a2FeederBirds || []]) this._a2FeederFly(b);
+    }
+    // Körner: fill = er wirft sie aus den Pfoten aufs Brett, sonst rieseln ein paar vom Brett ins Gras (Antippen)
+    _a2FeederSeeds(fill) {
+      const F = this._a2FeederPos();
+      const { pW, pH, gy } = this._g;
+      const tray = F.top + F.h * (28 / 64);
+      const n = calmMotion() ? 1 : fill ? 8 : 3;
+      for (let i = 0; i < n; i++) {
+        const s = document.createElement("span");
+        s.className = `a2seed${calmMotion() ? " still" : ""}`;
+        s.innerHTML = SEED_SVG;
+        const x0 = fill ? this._x + this._dir * pW * 0.25 : F.left + F.w * pick([0.15, 0.85]) + rnd(-2, 2);
+        const y0 = fill ? gy - pH * 0.55 : tray;
+        const x1 = fill ? F.left + F.w * rnd(0.22, 0.78) : x0 + rnd(-6, 6);
+        const y1 = fill ? tray - 1 : F.foot + this._H * LANE_DY * 0.6;
+        s.style.left = `${x0.toFixed(1)}px`;
+        s.style.top = `${y0.toFixed(1)}px`;
+        this._el.fx.appendChild(s);
+        const ms = fill ? 520 : 650;
+        if (!calmMotion() && s.animate) {
+          const up = fill ? -this._H * 0.08 : 0;
+          s.animate([
+            { transform: "translate(0, 0)", opacity: 1 },
+            { transform: `translate(${((x1 - x0) / 2).toFixed(1)}px, ${(Math.min(0, y1 - y0) + up).toFixed(1)}px)`, opacity: 1, offset: 0.5 },
+            { transform: `translate(${(x1 - x0).toFixed(1)}px, ${(y1 - y0).toFixed(1)}px)`, opacity: fill ? 1 : 0 }
+          ], { duration: ms, delay: i * 70, easing: "ease-in", fill: "both" });
+        }
+        (this._a2FeederFx ??= /* @__PURE__ */ new Set()).add(s);
+        setTimeout(() => {
+          s.remove();
+          this._a2FeederFx?.delete(s);
+        }, ms + i * 70 + (calmMotion() ? 600 : 60));
+      }
+    }
+    // ---------- Hooks: Tipp, Aufräumen, Abhängen ----------
+    // Tipp aufs Häuschen: Es wackelt am Pfahl, ein paar Körner rieseln, Vögel darauf hüpfen kurz
+    _a2FeederTap(z) {
+      const el = z.el;
+      if (!calmMotion()) {
+        el.classList.remove("a2tap");
+        void el.offsetWidth;
+        el.classList.add("a2tap");
+        clearTimeout(this._a2FeederTapT);
+        this._a2FeederTapT = setTimeout(() => el.classList.remove("a2tap"), 700);
+      }
+      this._a2FeederSeeds(false);
+      const F = this._a2FeederPos();
+      this._peep(F.x, F.top - 2, "riesel!");
+      for (const b of this._a2FeederBirds || []) {
+        if (!b.sitting || calmMotion()) continue;
+        b.el.classList.add("hop");
+        setTimeout(() => b.el.classList.remove("hop"), 340);
+      }
+      return true;
+    }
+    // Ende jeder Aktion: Vögel weg, hervorgeholtes Häuschen weg
+    _a2FeederCleanup() {
+      if (this._a2FeederBusy) return;
+      this._a2FeederShoo();
+      if (this._a2FeederTemp) this._a2FeederEnd();
+      this._a2Els?.get("feeder")?.classList.remove("leer", "fill");
+    }
+    // Karte aus dem DOM: alles sofort weg
+    _a2FeederDetach() {
+      clearTimeout(this._a2FeederTapT);
+      for (const b of [...this._a2FeederBirds || []]) {
+        clearTimeout(b.t);
+        b.gone = true;
+        b.el.remove();
+      }
+      this._a2FeederBirds?.clear();
+      for (const s of this._a2FeederFx || []) s.remove();
+      this._a2FeederFx?.clear();
+      this._a2FeederBusy = false;
+      this._a2FeederTemp = false;
+    }
+  };
+
+  // src/karte/album2-lantern.js
+  var LANTERN_GOLD = { cd: 3 * 6e4, p: 0.5 };
+  var LANTERN_STAY = 4 * 6e4;
+  var LANTERN_TAP_MORE = 6e4;
+  var LANTERN_EVE = 30 * 6e4;
+  var LANTERN_V = 0.6;
+  var LANTERN_RUN_V = 0.75;
+  var Album2Lantern = class {
+    // ---------- Lage ----------
+    // Dämmerung oder Nacht (dann leuchtet sie)
+    _a2LanternDark() {
+      const sc = this._el.scene.classList;
+      return sc.contains("dusk") || sc.contains("night");
+    }
+    // Letzte halbe Stunde vor der Schlafenszeit (Wachfenster wie in _bedOf). Stellt die Vorschau die Schlafenszeit von
+    // Hand (_dbgSleep), gilt das nicht.
+    _a2LanternEve() {
+      if (this._dbgSleep != null || !this._cfg || typeof this._wakeWins !== "function") return false;
+      const t = this._haNow();
+      const w = this._wakeWins(t, t).find(([ws, we]) => t >= ws && t < we);
+      return !!w && w[1] - t <= LANTERN_EVE;
+    }
+    // Morgens (3 bis 12 Uhr, Uhr von HA; die Vorschau stellt sie mit _dbgDate): Die Dämmerung ist dann die vor Sonnenaufgang,
+    // .dusk unterscheidet das nicht. Die Laterne ist fürs Abendlicht (so steht es auch im Album).
+    _a2LanternMorning() {
+      const h = new Date(this._dbgDate ?? this._haNow()).getHours();
+      return h >= 3 && h < 12;
+    }
+    // Hook: Er mag sie in der Abenddämmerung und abends im Dunkeln, in der Abendrunde am liebsten; nicht morgens, nicht bei
+    // Regen, Gewitter, Sturm. Steht sie schon brennend am Bau, seltener.
+    _a2LanternActs({ wx }, lv) {
+      if (wx.wet || wx.storm || wx.shelter || (this._wind || 0) >= 40 || this._a2LanternBusy) return [];
+      const dark = this._a2LanternDark();
+      const eve = this._a2LanternEve();
+      if (!dark && !eve || !eve && this._a2LanternMorning()) return [];
+      let w = this._el.scene.classList.contains("night") ? 0.4 : 0.5;
+      if (eve) w = dark ? 1 : 0.5;
+      if (this._a2LanternStand) w *= 0.4;
+      return [[w, "a2LanternPlay"], [lv >= 2 ? w * 0.6 : 0, "a2LanternRun"]];
+    }
+    // Platz am Bau: rechts neben der Tür, mitten zwischen Tür und Heu bzw. Nische (an allen vier Arealen frei: links der
+    // Tür steht am Erdhügel schon dessen Laterne). Steht dort Festdeko, links der Tür. → { x, foot, home }
+    _a2LanternSpot() {
+      const { hole, hayL } = this._g;
+      const w = this._H * LANTERN_W;
+      const gap = hayL - hole.r;
+      const R2 = gap >= w * 1.5 ? hole.r + gap / 2 : hole.r + w * 0.75;
+      const L = Math.max(w * 0.6, hole.l - w * 0.9);
+      const frei = (x) => !Object.values(this._festPos || {}).some((q) => q && q.l < x + w * 0.6 && q.l + q.w > x - w * 0.6);
+      return { x: frei(R2) || !frei(L) ? R2 : L, foot: LANTERN_FOOT, home: true };
+    }
+    // Mitte des Glases, während er sie im Maul trägt (px der Szene): vom Maul (_nosePos) aus nach vorn und unten, auf dem
+    // Stein und auf der hinteren Spur kleiner wie er
+    _a2LanternGlass() {
+      const n = this._nosePos();
+      const s = (this._lift > 0 ? 0.9 : 1) * (this._laneDy() ? LANE_S : 1);
+      const k = 0.68 * this._g.pH / 100 * s;
+      return { x: n.x + this._dir * CARRY_GLASS[0] * k, y: n.y + CARRY_GLASS[1] * k };
+    }
+    // ---------- Szene ----------
+    // Hook: Die abgestellte Laterne steht, solange sie brennt (oder er gerade mit ihr beschäftigt ist); schläft er, ist er
+    // verreist oder ist der Schatz nicht (mehr) da, geht sie aus
+    _a2LanternScene(lv) {
+      const S = this._a2LanternStand;
+      if (!S) return;
+      if (!(lv > 0) || this._asleep || this._urlaubFern() || !this._a2LanternBusy && Date.now() >= S.until) {
+        this._a2LanternOut();
+        return;
+      }
+      const { pW, xR } = this._g;
+      S.x = S.home ? this._a2LanternSpot().x : clamp(S.x, pW * 0.2, xR + pW * 0.25);
+      if (!this._cfg.depth && S.foot === LANE_DY) S.foot = 0;
+      const el = this._a2El("lantern", LANTERN_SVG);
+      el.classList.remove("a2out");
+      el.style.left = `${S.x.toFixed(1)}px`;
+      el.style.bottom = `calc(var(--gb) + var(--H) * ${S.foot})`;
+      el.style.zIndex = String(buehneZ(-S.foot, "schatz"));
+      const H = this._H;
+      this._a2LanternGlowAt(S.x, this._g.gy - S.foot * H - LANTERN_W * 1.5 * H * LANTERN_GLASS, false);
+    }
+    // Lichtschein in .fx an x/y (mv: er trägt sie, der Schein flackert ein wenig mit). → das Element
+    _a2LanternGlowAt(x, y, mv) {
+      let g = this._a2LanternGlow;
+      if (!g || !g.isConnected) {
+        g = document.createElement("span");
+        g.className = "a2lglow";
+        g.innerHTML = '<i class="a2lh"></i>';
+        this._el.fx.appendChild(g);
+        this._a2LanternGlow = g;
+      }
+      g.classList.remove("off");
+      g.style.left = `${x.toFixed(1)}px`;
+      g.style.top = `${y.toFixed(1)}px`;
+      g.classList.toggle("mv", !!mv && !calmMotion());
+      return g;
+    }
+    // Schein (und Glühwürmchen) folgen der Laterne im Maul, Bild für Bild, solange er sie trägt
+    _a2LanternFollow(on) {
+      if (this._a2LanternRaf) cancelAnimationFrame(this._a2LanternRaf);
+      this._a2LanternRaf = 0;
+      if (!on || typeof requestAnimationFrame !== "function") return;
+      const step = () => {
+        this._a2LanternRaf = 0;
+        if (!this._a2LanternCarry || !this._g || !this._a2LanternGlow) return;
+        const q = this._a2LanternGlass();
+        this._a2LanternGlowAt(q.x, q.y, true);
+        this._a2LanternRaf = requestAnimationFrame(step);
+      };
+      step();
+    }
+    // Ins Maul nehmen (on) bzw. aus dem Maul (off). glow: der Schein kommt gleich mit (nicht, solange er noch im Bau ist)
+    _a2LanternHold(on, glow = true) {
+      const p = this._el.pika;
+      if (on) {
+        if (this._a2LanternStand) {
+          this._a2LanternStand = null;
+          this._a2Drop("lantern");
+        }
+        this._a2LanternCarry = true;
+        this._mouth("#e8584e", this._a2Lv("lantern") >= 3 ? LANTERN_CARRY_GOLD : LANTERN_CARRY);
+        p.classList.add("carry", "a2lc");
+        if (glow) this._a2LanternLight();
+        return;
+      }
+      this._a2LanternCarry = false;
+      this._a2LanternFollow(false);
+      this._mouth(null);
+      p.classList.remove("carry", "a2lc", "a2lsw", "a2lbig");
+    }
+    // Der Schein geht an (er trägt sie). Ging sie eben erst aus (_a2LanternOut blendet noch aus), bleiben Schein und
+    // Glühwürmchen
+    _a2LanternLight() {
+      if (!this._a2LanternCarry) return;
+      const q = this._a2LanternGlass();
+      this._a2LanternGlowAt(q.x, q.y, true);
+      for (const f2 of this._a2LanternFF || []) f2.classList.remove("off");
+      this._a2LanternFollow(true);
+    }
+    // Abstellen: am Platz S { x, foot, home: ihr Platz am Bau }, sie brennt dort noch LANTERN_STAY
+    _a2LanternSet(S) {
+      this._a2LanternHold(false);
+      this._a2LanternStand = { x: S.x, foot: S.foot, home: !!S.home, until: Date.now() + LANTERN_STAY };
+      this._a2Scene();
+    }
+    // Abgebrochen, während er sie trägt (Futter, Tipp, Schlafenszeit): Er stellt sie ab, wo er gerade ist (im Bau: an
+    // ihren Platz neben der Tür)
+    _a2LanternDropHere() {
+      if (!this._a2LanternCarry || !this._g) return;
+      if (this._inside) return this._a2LanternSet(this._a2LanternSpot());
+      const n = this._nosePos();
+      const { pW, xR } = this._g;
+      this._a2LanternSet({ x: clamp(n.x, pW * 0.2, xR + pW * 0.25), foot: this._laneDy() ? LANE_DY : 0 });
+    }
+    // Sie geht aus: Schein und Glühwürmchen blenden aus, die Laterne verschwindet (er hat sie weggeräumt)
+    _a2LanternOut() {
+      this._a2LanternStand = null;
+      const gen = this._a2LanternGen = (this._a2LanternGen || 0) + 1;
+      const el = this._a2Els?.get("lantern");
+      el?.classList.add("a2out");
+      if (!this._a2LanternCarry) {
+        this._a2LanternGlow?.classList.add("off");
+        for (const f2 of this._a2LanternFF || []) f2.classList.add("off");
+      }
+      setTimeout(() => {
+        if (gen !== this._a2LanternGen || this._a2LanternStand) return;
+        if (this._a2Els?.get("lantern") === el) this._a2Drop("lantern");
+        if (this._a2LanternCarry) return;
+        this._a2LanternGlow?.remove();
+        this._a2LanternGlow = null;
+        this._a2LanternFlyOff();
+      }, 600);
+    }
+    // ---------- Glühwürmchen (Stufe 3) ----------
+    // n Glühwürmchen kommen zum Licht und kreisen um die Laterne (Kinder des Scheins, so folgen sie ihr). Die Teilchen
+    // sind die der goldenen Hängematte (GOLD_FIREFLY, Stil .gfx.hff), mit eigener Bahn (.a2lff). Ohne die Option
+    // fireflies glitzert stattdessen ein goldener Funkenkranz um die Laterne. → true, wenn welche gekommen sind
+    _a2LanternFlies(n = 3) {
+      const g = this._a2LanternGlow;
+      if (!g) return false;
+      if (this._cfg?.fireflies === false) {
+        const r = g.getBoundingClientRect?.();
+        const s = this._el.scene.getBoundingClientRect?.();
+        const x = r && s ? r.left - s.left : this._x;
+        const y = r && s ? r.top - s.top : this._g.gy - this._H * 0.15;
+        for (let i = 0; i < 5; i++) {
+          const a = i / 5 * Math.PI * 2;
+          this._goldFx("trail", x + Math.cos(a) * this._H * 0.08, y + Math.sin(a) * this._H * 0.06, { ms: 900, delay: i * 140 });
+        }
+        return false;
+      }
+      const F = this._a2LanternFF = (this._a2LanternFF || []).filter((f2) => f2.isConnected);
+      const calm = calmMotion();
+      for (let i = 0; i < n && F.length < 4; i++) {
+        const f2 = this._goldFx("hff a2lff", 0, 0, { ms: LANTERN_STAY + 12e4, html: GOLD_FIREFLY });
+        f2.style.left = f2.style.top = "0";
+        const r = this._H * rnd(0.075, 0.13);
+        f2.style.setProperty("--r", `${r.toFixed(1)}px`);
+        f2.style.setProperty("--a0", `${Math.round(rnd(0, 360))}deg`);
+        f2.style.setProperty("--d", `${rnd(2.6, 4.2).toFixed(2)}s`);
+        f2.style.animationDelay = `${(i * 0.45).toFixed(2)}s, 0s, ${(1 + i * 0.45).toFixed(2)}s`;
+        if (Math.random() < 0.4) f2.classList.add("rev");
+        if (calm) {
+          const a = (F.length + 0.5) / 4 * Math.PI * 2;
+          f2.style.transform = `translate(${(Math.cos(a) * r).toFixed(1)}px, ${(Math.sin(a) * r * 0.7).toFixed(1)}px)`;
+        }
+        g.appendChild(f2);
+        F.push(f2);
+      }
+      return true;
+    }
+    // Die Glühwürmchen fliegen davon (blenden aus)
+    _a2LanternFlyOff() {
+      const F = this._a2LanternFF || [];
+      this._a2LanternFF = [];
+      for (const f2 of F) f2.classList.add("off");
+      setTimeout(() => this._goldDrop(F), 800);
+    }
+    // Kommen sie jetzt? sure: sicher (Auspacken). Sonst nur golden, und dann in der Vorschau mit _dbgGold immer, von
+    // selbst nur, wenn es dunkel genug ist, mit Abstand und Würfel
+    _a2LanternGoldNow(sure) {
+      if (sure) return true;
+      if (this._a2Lv("lantern") < 3) return false;
+      if (this._dbgGold) return true;
+      return this._a2LanternDark() && this._a2GoldOk("lantern", LANTERN_GOLD);
+    }
+    // ---------- Was er damit tut ----------
+    // Holen: Steht sie (am Bau oder wo er sie abgestellt hat), hingehen, bücken, aufnehmen; sonst aus dem Bau holen (er
+    // kommt mit ihr im Maul heraus)
+    async _a2LanternFetch() {
+      if (this._a2LanternCarry) return;
+      const p = this._el.pika;
+      if (this._lane) await this._walkTo(this._x, 1, true, 0);
+      const S = this._a2LanternStand;
+      if (S) {
+        const { pW, xR } = this._g;
+        let side = this._x >= S.x ? 1 : -1;
+        if (S.x + side * pW * 0.26 > xR || S.x + side * pW * 0.26 < pW * 0.45) side = -side;
+        await this._walkTo(S.x + side * pW * 0.26, 0.9);
+        this._face(-side);
+        p.classList.add("crouch");
+        await this._wait(380);
+        this._a2LanternHold(true);
+        p.classList.remove("crouch");
+        await this._wait(300);
+        return;
+      }
+      await this._enterBurrow(0.9);
+      const { home, hole } = this._g;
+      this._peep(home, hole.top, pick(["kram, kram…", "wo ist sie…", "raschel…"]));
+      await this._wait(rnd(800, 1200));
+      this._a2LanternHold(true, false);
+      await this._comeOut();
+      this._a2LanternLight();
+    }
+    // Zurück an ihren Platz neben der Tür: so hinstellen, dass das Maul über dem Platz ist (von rechts, zum Bau gewandt),
+    // bücken, abstellen
+    async _a2LanternPut() {
+      const S = this._a2LanternSpot();
+      const { pW, xR } = this._g;
+      const p = this._el.pika;
+      let side = 1;
+      if (S.x + pW * 0.26 > xR) side = -1;
+      await this._walkTo(S.x + side * pW * 0.26, LANTERN_V);
+      this._face(-side);
+      await this._wait(200);
+      p.classList.add("crouch");
+      await this._wait(320);
+      this._a2LanternSet(S);
+      p.classList.remove("crouch");
+      await this._wait(250);
+      await this._walkTo(S.x + side * pW * 0.95, 0.8, true, 0, true);
+    }
+    // Bei Regen (nur aus der Vorschau, von sich aus geht er da nicht): in der Tür in den Regen leuchten, wieder abstellen
+    async _a2LanternWet() {
+      this._face(1);
+      this._say(pick(["brr, zu nass!", "heute keine Runde…"]), 1600);
+      this._el.pika.classList.add("look-up");
+      await this._wait(1800);
+      this._el.pika.classList.remove("look-up");
+      await this._a2LanternPut();
+    }
+    // Stufe 1 (Aktion 'a2LanternPlay'): holen, ein Stück über die Wiese tragen, sich im Licht umschauen, neben den Bau
+    // stellen, kurz daneben sitzen. o: { hold: hat sie schon im Maul (Auspacken), short: kurz, gold: Glühwürmchen sicher }
+    async _a2LanternPlay(o = {}) {
+      if (!this._a2Lv("lantern")) return;
+      this._a2LanternBusy = true;
+      const p = this._el.pika;
+      try {
+        if (o.hold) this._a2LanternHold(true);
+        else await this._a2LanternFetch();
+        if (this._wx?.wet) return await this._a2LanternWet();
+        const gold = this._a2LanternGoldNow(o.gold);
+        const { fMin, fMax } = this._g;
+        const W = this._W;
+        const x = clamp(rnd(fMin + (fMax - fMin) * 0.3, fMax) * W, this._g.home + this._g.pW, this._g.xR);
+        await this._walkTo(x, LANTERN_V);
+        await this._wait(300);
+        if (gold) this._a2LanternFlies(3);
+        p.classList.add("look-up");
+        const sc = this._el.scene.classList;
+        this._say(gold ? pick(["Glühwürmchen!", "oh, sie kommen zum Licht!"]) : sc.contains("night") ? pick(["so hell!", "da, die Sterne!", "mein Licht!"]) : this._a2LanternDark() ? pick(["Abendrunde!", "schön hell!", "gleich ist es dunkel"]) : pick(["Abendrunde!", "bald ist Schlafenszeit"]), 1700);
+        if (gold) this._mimik("awe", 1600);
+        await this._wait(o.short ? 1500 : rnd(1800, 2600));
+        p.classList.remove("look-up");
+        if (!o.short) {
+          this._face(-this._dir);
+          await this._wait(rnd(900, 1500));
+          this._face(-this._dir);
+          await this._wait(rnd(400, 800));
+        }
+        await this._a2LanternPut();
+        p.classList.add("content");
+        this._happy(1e3);
+        await this._wait(o.short ? 900 : rnd(1500, 2400));
+        p.classList.remove("content");
+      } finally {
+        this._a2LanternBusy = false;
+        this._a2LanternDropHere();
+      }
+    }
+    // Stufe 2, der Trick (Aktion 'a2LanternRun'): Laternenlauf. Er trägt sie eine Runde über die Wiese und lässt sie
+    // schwingen: mit depth vorn hin und auf der hinteren Spur zurück, ohne hin und zurück. Am Ende hält er sie hoch
+    // (Hüpfer), dann stellt er sie neben den Bau. o wie bei _a2LanternPlay.
+    async _a2LanternRun(o = {}) {
+      if (this._a2Lv("lantern") < 2) return;
+      this._a2LanternBusy = true;
+      const p = this._el.pika;
+      const calm = calmMotion();
+      try {
+        if (o.hold) this._a2LanternHold(true);
+        else await this._a2LanternFetch();
+        if (this._wx?.wet) return await this._a2LanternWet();
+        const gold = this._a2LanternGoldNow(o.gold);
+        if (gold) this._a2LanternFlies(3);
+        const { home, pW, xR, rock } = this._g;
+        const near = Math.max(home + pW * 0.9, this._g.fMin * this._W);
+        const back = Math.max(near, this._laneRange()[0]);
+        const turn = Math.min(this._W * 0.8, rock.l - pW * 0.25);
+        const ring = !!this._cfg.depth && turn - back > pW * 0.8;
+        const far = ring ? turn : clamp(this._W * 0.8, near + pW * 1.2, xR);
+        if (!calm) p.classList.add("a2lsw");
+        this._say(pick(["Laternenlauf!", "♪ ich geh mit meiner Laterne…"]), 1800);
+        await this._walkTo(near, LANTERN_RUN_V, true);
+        await this._walkTo(far, LANTERN_RUN_V, true);
+        this._note(pick(["♪", "♫"]));
+        if (ring) {
+          await this._walkTo(far, LANTERN_RUN_V, true, 1);
+          this._note("♪");
+          await this._walkTo(back, LANTERN_RUN_V, true, 1);
+          this._note("♫");
+          await this._walkTo(back, LANTERN_RUN_V, true, 0);
+        } else {
+          if (!calm) p.classList.add("a2lbig");
+          this._say("♪ ♫ ♪", 1300);
+          await this._wait(1400);
+          p.classList.remove("a2lbig");
+          await this._walkTo(near, LANTERN_RUN_V, true);
+          this._note("♫");
+        }
+        p.classList.remove("a2lsw");
+        p.classList.add("look-up");
+        if (!calm) this._jump("hop1");
+        this._say(pick(["Laterne, Laterne!", "…Sonne, Mond und Sterne!", "tadaa!"]), 1600);
+        const q = this._a2LanternGlass();
+        this._sparkle(q.x, q.y - this._H * 0.04, 2);
+        await this._wait(o.short ? 1200 : 1700);
+        p.classList.remove("look-up");
+        await this._a2LanternPut();
+        this._happy(1100);
+        p.classList.add("content");
+        await this._wait(o.short ? 800 : rnd(1300, 2e3));
+        p.classList.remove("content");
+      } finally {
+        this._a2LanternBusy = false;
+        p.classList.remove("a2lsw", "a2lbig");
+        this._a2LanternDropHere();
+      }
+    }
+    // Nach dem Auspacken (Hook): Das Bild ist beim Pika verblasst, er hat sie schon im Maul. Stufe 1 die Runde kurz, 2 der
+    // Laternenlauf, 3 mit Glühwürmchen
+    // Steht sie noch brennend neben dem Bau (Stufe 2 und 3), holt er sie dort.
+    async _a2LanternStow(lv) {
+      const hold = !this._a2LanternStand;
+      if (lv === 2) return this._a2LanternRun({ hold, short: true });
+      if (hold) this._a2LanternHold(true);
+      this._say(lv >= 3 ? pick(["goldig!", "die glänzt!"]) : pick(["für den Abend!", "mein Licht!"]), 1400);
+      await this._wait(900);
+      await this._a2LanternPlay({ hold, short: true, gold: lv >= 3 });
+    }
+    // ---------- Hooks: Tipp, Aufräumen, Abhängen ----------
+    // Tipp auf die brennende Laterne: Die Flamme flackert auf, der Schein mit, sie wackelt am Fuß; golden kommt (bis zu
+    // vier) ein Glühwürmchen dazu. Sie brennt danach eine Minute länger (höchstens LANTERN_STAY ab jetzt).
+    _a2LanternTap(z) {
+      const el = z.el;
+      const S = this._a2LanternStand;
+      if (!S) return false;
+      const calm = calmMotion();
+      if (!calm) {
+        el.classList.remove("a2ltap");
+        void el.offsetWidth;
+        el.classList.add("a2ltap");
+      }
+      this._a2LanternGlow?.classList.add("flare");
+      clearTimeout(this._a2LanternTapT);
+      this._a2LanternTapT = setTimeout(() => {
+        el.classList.remove("a2ltap");
+        this._a2LanternGlow?.classList.remove("flare");
+      }, 800);
+      const H = this._H;
+      this._peep(S.x, this._g.gy - S.foot * H - LANTERN_W * 1.5 * H - 2, pick(["flacker!", "flacker, flacker"]));
+      S.until = Math.min(S.until + LANTERN_TAP_MORE, Date.now() + LANTERN_STAY);
+      if (this._a2Lv("lantern") >= 3 && (this._a2LanternFF?.length || 0) < 4) this._a2LanternFlies(1);
+      return true;
+    }
+    // Ende jeder Aktion: Was zu einer eigenen Aktion gehört, räumt deren finally ab (sie stellt die Laterne ab). Hier nur,
+    // was ohne sie übrig wäre.
+    _a2LanternCleanup() {
+      if (this._a2LanternBusy) return;
+      if (this._a2LanternCarry) this._a2LanternDropHere();
+      this._el.pika.classList.remove("a2lc", "a2lsw", "a2lbig");
+    }
+    // Karte aus dem DOM: alles sofort weg
+    _a2LanternDetach() {
+      clearTimeout(this._a2LanternTapT);
+      this._a2LanternFollow(false);
+      this._a2LanternGen = (this._a2LanternGen || 0) + 1;
+      this._a2LanternStand = null;
+      this._a2LanternCarry = false;
+      this._a2LanternBusy = false;
+      this._el?.pika.classList.remove("a2lc", "a2lsw", "a2lbig");
+      this._a2Drop("lantern");
+      this._a2LanternGlow?.remove();
+      this._a2LanternGlow = null;
+      this._goldDrop(this._a2LanternFF || []);
+      this._a2LanternFF = [];
+    }
+  };
+
+  // src/karte/album2-sled.js
+  var SLED_Z = () => buehneZ(REIHE.vorn, "vogel");
+  var DRIFT_Z = () => buehneZ(REIHE.stein, "schatz");
+  var SLED_V = { sit: 2.1, belly: 2.6 };
+  var SLED_ROPE = 0.75;
+  var SLED_CLS = ["a2sl-sit", "a2sl-belly"];
+  var Album2Sled = class {
+    // ---------- Szene ----------
+    // Szene (Hook): Er steht nie dauerhaft. Nur, solange er ihn benutzt (_a2SledS), bleibt das Element; sonst weg. Hat
+    // sich die Größe der Karte geändert, stehen Schlitten und Seil an alten Pixeln: abbrechen (wie _layout bei Requisiten)
+    _a2SledScene(lv) {
+      const S = this._a2SledS;
+      if (S && S.W !== this._W && this._a2SledBusy) this._interrupt();
+      else if (!S || !(lv > 0)) this._a2SledEnd();
+    }
+    // Maße des Schlittens (px): Breite, Höhe, Sitzhöhe über dem Schnee (um die Kufendicke tiefer: Er sitzt im Schlitten,
+    // nicht obenauf)
+    _a2SledDim() {
+      const w = this._g.pW * SLED_W;
+      const h = w * 22 / 48;
+      return { w, h, seat: h * (SLED_SEAT - SLED_SINK) };
+    }
+    // Schlitten anlegen (Element aus _a2El: Tippfläche, Licht, golden) bei x, Spitze nach fdir. pop: ploppt auf
+    _a2SledMake(x, fdir, pop = true) {
+      const old = this._a2SledS;
+      if (old) this._a2SledEnd(true);
+      const { w, h } = this._a2SledDim();
+      const el = this._a2El("sled", `<div class="a2slw"><div class="a2slf">${SLED_SVG}</div></div>`);
+      el.classList.remove("a2out");
+      el.style.width = `${w.toFixed(1)}px`;
+      el.style.height = `${h.toFixed(1)}px`;
+      el.style.bottom = `calc(var(--gb) - ${(h * SLED_SINK).toFixed(1)}px)`;
+      el.style.zIndex = String(SLED_Z());
+      const rope = document.createElement("div");
+      rope.className = "a2slrope";
+      rope.style.zIndex = String(SLED_Z());
+      rope.style.background = SEIL;
+      rope.hidden = true;
+      this._el.gifts.appendChild(rope);
+      const S = { W: this._W, el, rope, x, fdir: 0, ang: 0, ride: false, tow: false, line: false, drive: null, ctl: false, u0: DRIFT_U0, drift: null, raf: 0, fx: /* @__PURE__ */ new Set(), t: [] };
+      this._a2SledS = S;
+      this._a2SledFace(fdir, true);
+      this._a2Scene();
+      if (pop && !calmMotion()) {
+        const w2 = el.querySelector(".a2slw");
+        w2?.classList.add("pop");
+        S.t.push(setTimeout(() => w2?.classList.remove("pop"), 800));
+      } else if (el.animate) el.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 500, fill: "backwards" });
+      this._a2SledPlace();
+      this._a2SledRun();
+      return S;
+    }
+    // Spitze nach dir (1 rechts, −1 links). Umdrehen dreht ihn sichtbar (außer instant und bei reduzierter Bewegung)
+    _a2SledFace(dir, instant = false) {
+      const S = this._a2SledS;
+      if (!S || S.fdir === dir) return;
+      S.fdir = dir;
+      const f2 = S.el.querySelector(".a2slf");
+      if (!f2) return;
+      f2.style.transition = instant || calmMotion() ? "none" : "";
+      f2.classList.toggle("left", dir < 0);
+    }
+    // Schneewehe am Stein (Requisit: Ändert sich die Größe der Karte, bricht _layout die Aktion ab). Ihr Fuß liegt auf
+    // breiten Karten bei DRIFT_U0, auf schmalen näher am Stein, aber nie weniger als 0,6 Pika-Breiten rechts vom Vorrat.
+    _a2SledDrift() {
+      const S = this._a2SledS;
+      if (!S || S.drift) return;
+      const { rock } = this._g;
+      const ku = rock.ku;
+      const u0 = this._a2SledU0();
+      S.u0 = u0;
+      const w = (40 - u0) * ku;
+      S.drift = this._aprop("a2sl-drift", DRIFT_SVG(u0), rock.l + (u0 - 2) * ku + w / 2, w, 36 * ku, false, ku);
+      S.drift.style.zIndex = String(DRIFT_Z());
+    }
+    // Fuß der Wehe in Einheiten des Steins (negativ, links von ihm), auch bevor sie liegt
+    _a2SledU0() {
+      const { rock, hayR, pW } = this._g;
+      return Math.min(-20, (Math.max(rock.l + DRIFT_U0 * rock.ku, hayR + pW * 0.6) - rock.l) / rock.ku);
+    }
+    // Fuß der Wehe (px)
+    _a2SledFoot() {
+      const { rock } = this._g;
+      return rock.l + (this._a2SledS?.drift ? this._a2SledS.u0 : this._a2SledU0()) * rock.ku;
+    }
+    // Höhe des Schnees über der Bodenlinie bei x (px): Wehe, oben der Stein, sonst 0. Ohne Wehe ist alles eben.
+    _a2SledH(x) {
+      const S = this._a2SledS;
+      if (!S?.drift) return 0;
+      const { rock } = this._g;
+      const u = (x - rock.l) / rock.ku;
+      if (u > 80) return 0;
+      return Math.max(0, (46 - driftY(u, S.u0)) * rock.ku);
+    }
+    // Neigung der Oberfläche bei x in Grad (CSS: negativ = links tiefer)
+    _a2SledAng(x) {
+      const d = 2;
+      return -Math.atan2(this._a2SledH(x + d) - this._a2SledH(x - d), 2 * d) * 180 / Math.PI;
+    }
+    // Pika selbst stellen (statt _setX): bei x in der Höhe lift, Neigung ang (für das Sitzen auf dem Schlitten). Auf dem
+    // Stein steht er um 0,9 verkleinert (weiter hinten, wie _setX); dazwischen gleitet die Größe mit der Höhe, sonst
+    // schnappte er am Fuß der Wehe um 10 % größer.
+    _a2SledPika(x, lift, ang = 0) {
+      const p = this._el.pika;
+      const { pW, rock } = this._g;
+      this._x = x;
+      this._lift = lift;
+      this._lane = 0;
+      const s = 1 - 0.1 * clamp(lift / rock.lift, 0, 1);
+      const tr = `translate(${(x - pW / 2).toFixed(1)}px, ${(-lift).toFixed(1)}px)${s !== 1 ? ` scale(${s.toFixed(3)})` : ""}`;
+      p.style.transition = "none";
+      p.style.transform = tr;
+      const t = this._el.psay.style;
+      t.transition = "none";
+      t.transform = tr;
+      p.style.setProperty("--a2sla", `${ang.toFixed(1)}deg`);
+      if (this._a2SledS) this._a2SledS.ang = ang;
+    }
+    // Wieder normal stellen (_setX), auf dem Boden oder, falls er noch oben ist, dort (dann hüpft _step herunter)
+    _a2SledLand() {
+      const S = this._a2SledS;
+      if (S) S.ctl = false;
+      if (!(this._lift > 1)) this._lift = 0;
+      this._setX(this._x, true);
+      this._el.pika.style.removeProperty("--a2sla");
+    }
+    // ---------- Takt ----------
+    // Bild für Bild: laufender Abschnitt (drive), Seil ziehen, Schlitten und Seil stellen
+    _a2SledRun() {
+      const S = this._a2SledS;
+      if (!S || S.raf || typeof requestAnimationFrame !== "function") return;
+      const frame = (now) => {
+        if (this._a2SledS !== S) return;
+        S.raf = 0;
+        try {
+          if (S.drive) S.drive.step(clamp((now - S.drive.t0) / S.drive.ms, 0, 1));
+          if (S.tow) this._a2SledTow();
+          this._a2SledPlace();
+        } catch (e) {
+          this._err?.("Album 2 sled", e);
+          return;
+        }
+        S.raf = requestAnimationFrame(frame);
+      };
+      S.raf = requestAnimationFrame(frame);
+    }
+    // Ein Abschnitt von ms Dauer: step(f) mit f von 0 bis 1 stellt alles; am Ende gilt step(1) sicher
+    async _a2SledDrive(ms, step) {
+      const S = this._a2SledS;
+      if (!S) return;
+      const t0 = typeof performance !== "undefined" ? performance.now() : Date.now();
+      S.drive = { t0, ms, step };
+      step(0);
+      try {
+        await this._wait(ms);
+      } finally {
+        if (S.drive?.step === step) S.drive = null;
+      }
+      step(1);
+      this._a2SledPlace();
+    }
+    // Das Seil zieht: Wird es länger als SLED_ROPE, rutscht der Schlitten nach (nur gezogen, nie geschoben)
+    _a2SledTow() {
+      const S = this._a2SledS;
+      if (!S) return;
+      const N = this._a2SledMouth();
+      const hx = this._a2SledHook().x;
+      const L = this._g.pW * SLED_ROPE;
+      const dx = N.x - hx;
+      if (Math.abs(dx) > L) S.x += dx - Math.sign(dx) * L;
+    }
+    // Wo das Seil im Maul steckt (Szene-Pixel): etwas unter der Nasenspitze
+    _a2SledMouth() {
+      const n = this._nosePos();
+      return { x: n.x - this._dir * this._g.pW * 0.02, y: n.y + this._g.pH * 0.06 };
+    }
+    // Stand des Schlittens: unter ihm, wenn er drauf ist, sonst wo er liegt (auf dem Schnee)
+    _a2SledAt() {
+      const S = this._a2SledS;
+      if (S.ride) return { x: this._x, lift: this._lift, ang: S.ang };
+      return { x: S.x, lift: this._a2SledH(S.x), ang: this._a2SledAng(S.x) };
+    }
+    // Haken vorn an der Spitze (Szene-Pixel)
+    _a2SledHook() {
+      const S = this._a2SledS;
+      const { w, h } = this._a2SledDim();
+      const A = this._a2SledAt();
+      const s = 1 - 0.1 * clamp(A.lift / this._g.rock.lift, 0, 1);
+      const lx = (SLED_HOOK[0] - 0.5) * w * S.fdir * s;
+      const ly = -(1 - SLED_HOOK[1] - SLED_SINK) * h * s;
+      const r = A.ang * Math.PI / 180;
+      return { x: A.x + lx * Math.cos(r) - ly * Math.sin(r), y: this._g.gy - A.lift + lx * Math.sin(r) + ly * Math.cos(r) };
+    }
+    _a2SledPlace() {
+      const S = this._a2SledS;
+      if (!S) return;
+      const { w } = this._a2SledDim();
+      const A = this._a2SledAt();
+      const s = 1 - 0.1 * clamp(A.lift / this._g.rock.lift, 0, 1);
+      S.el.style.left = "0px";
+      S.el.style.transform = `translate(${(A.x - w / 2).toFixed(1)}px, ${(-A.lift).toFixed(1)}px) rotate(${A.ang.toFixed(1)}deg)${s !== 1 ? ` scale(${s.toFixed(3)})` : ""}`;
+      S.rope.hidden = !S.line;
+      if (!S.line) return;
+      const H = this._a2SledHook();
+      const N = this._a2SledMouth();
+      const dx = N.x - H.x;
+      const dy = N.y - H.y;
+      S.rope.style.left = `${H.x.toFixed(1)}px`;
+      S.rope.style.top = `${H.y.toFixed(1)}px`;
+      S.rope.style.width = `${Math.hypot(dx, dy).toFixed(1)}px`;
+      S.rope.style.transform = `rotate(${Math.atan2(dy, dx).toFixed(3)}rad)`;
+    }
+    // Seil ins Maul (an) oder loslassen
+    _a2SledHold(on) {
+      const S = this._a2SledS;
+      const p = this._el.pika;
+      if (S) S.tow = S.line = on;
+      p.classList.toggle("carry", on);
+      this._mouth(on ? SEIL : null, on ? ROPE_MOUTH : null);
+      this._a2SledPlace();
+    }
+    // ---------- Was er damit tut ----------
+    // Rodelwetter: Schnee liegt, kein Regen darauf (wie bei Schneeengel und Schneeball, miniProg), kein Sturm, nicht
+    // nachts, kein starker Wind
+    _a2SledWeather(wx = this._wx || {}) {
+      return !!wx.snowcover && !wx.wet && !wx.storm && !wx.shelter && !this._el.scene.classList.contains("night") && (this._wind || 0) < 40;
+    }
+    // Hook: nur bei Rodelwetter; in der Dämmerung selten
+    _a2SledActs({ wx }, lv) {
+      if (!this._a2SledWeather(wx)) return [];
+      const w = 0.5 * (this._el.scene.classList.contains("dusk") ? 0.4 : 1);
+      return [[w, "a2SledPlay"], [lv >= 2 ? w * 0.7 : 0, "a2SledBelly"]];
+    }
+    // Stufe 1 (Aktion 'a2SledPlay'). o: { short: nach dem Auspacken (der Schlitten kommt gleich neben ihm, kein
+    // Zurückziehen), gold: Schneefunken sicher }
+    async _a2SledPlay(o = {}) {
+      return this._a2SledGo("sit", o);
+    }
+    // Stufe 2, der Trick (Aktion 'a2SledBelly')
+    async _a2SledBelly(o = {}) {
+      if (this._a2Lv("sled") < 2) return;
+      return this._a2SledGo("belly", o);
+    }
+    async _a2SledGo(mode, o) {
+      const lv = this._a2Lv("sled");
+      if (!lv || !this._a2SledWeather() && !this._forced && !o.short) return;
+      const gold = !!o.gold || lv >= 3 && this._a2GoldOk("sled");
+      this._a2SledBusy = true;
+      try {
+        if (calmMotion()) await this._a2SledCalm(mode, gold, o);
+        else await this._a2SledRide(mode, gold, o);
+      } finally {
+        this._a2SledBusy = false;
+        this._a2SledEnd(true);
+      }
+    }
+    // Holen: zum Bau, der Schlitten ploppt vor dem Eingang auf, Seil ins Maul. short: gleich neben ihm, erst links vor
+    // die Wehe (er zieht ihn nach rechts hinauf), mit Platz für den Schlitten links von ihm
+    async _a2SledFetch(short) {
+      const { hole, pW } = this._g;
+      if (short) {
+        const x = Math.max(Math.min(this._x, this._a2SledFoot() - pW * 0.5), pW * 1.55);
+        if (Math.abs(x - this._x) > 4) await this._walkTo(x, 1.1);
+        this._a2SledMake(this._x - pW * 0.73, 1);
+        this._a2SledDrift();
+        this._face(-1);
+        this._say(pick(["schnell!", "auf geht's!", "Schlitten!"]), 1100);
+        await this._wait(700);
+        this._face(1);
+      } else {
+        await this._walkTo(hole.cx + pW * 0.75, 1.1);
+        this._face(-1);
+        this._say(pick(["Schlitten holen!", "wo ist er…", "Schnee! Schlitten!"]), 1300);
+        await this._wait(600);
+        this._a2SledMake(hole.cx + pW * 0.05, 1);
+        this._a2SledDrift();
+        await this._wait(800);
+        this._face(1);
+      }
+      this._el.pika.classList.add("crouch");
+      await this._wait(260);
+      this._el.pika.classList.remove("crouch");
+      this._a2SledHold(true);
+      await this._wait(200);
+    }
+    // Spiel und Trick mit Bewegung: holen, zur Wehe ziehen, hinauf, umdrehen, drauf, rodeln, zurück
+    async _a2SledRide(mode, gold, o) {
+      const p = this._el.pika;
+      const { pW, rock, hayR } = this._g;
+      const H = this._H;
+      await this._a2SledFetch(!!o.short);
+      const S = this._a2SledS;
+      this._a2SledDrift();
+      const foot = this._a2SledFoot();
+      if (this._x > foot) {
+        await this._walkTo(Math.max(hayR + pW * 0.3, foot - pW * 0.5), 1);
+        this._face(1);
+      }
+      await this._walkTo(foot, 0.9);
+      if (this._bird?.perch === "rock") {
+        this._bird.scare();
+        await this._wait(600);
+      }
+      const top = rock.cx + rock.ku * 4;
+      const x0 = this._x;
+      S.ctl = true;
+      p.classList.add("walking", "trip");
+      this._say(pick(["hau ruck!", "hinauf!", "uff…"]), 1200);
+      await this._a2SledDrive(Math.abs(top - x0) / (pW * 0.5) * 1e3, (f2) => {
+        const x = x0 + (top - x0) * f2;
+        this._a2SledPika(x, this._a2SledH(x));
+      });
+      p.classList.remove("walking", "trip");
+      await this._wait(400);
+      this._face(-1);
+      await this._wait(250);
+      const sx = rock.l + (DRIFT_TOP - 6) * rock.ku;
+      const s0 = S.x;
+      S.tow = false;
+      p.classList.add("crouch");
+      await this._a2SledDrive(650, (f2) => {
+        S.x = s0 + (sx - s0) * (1 - (1 - f2) ** 2);
+      });
+      p.classList.remove("crouch");
+      this._a2SledHold(false);
+      await this._wait(250);
+      p.classList.add("crouch");
+      this._a2SledFace(-1);
+      await this._wait(420);
+      p.classList.remove("crouch");
+      this._say(mode === "belly" ? pick(["Bauch voraus!", "jetzt bäuchlings!", "Kopf voran!"]) : pick(["eins, zwei…", "festhalten!", "achtung…"]), 1200);
+      await this._wait(500);
+      const xa = this._x;
+      const la = this._lift;
+      this._jump("hop1", true);
+      await this._a2SledDrive(420, (f2) => {
+        const x = xa + (sx - xa) * f2;
+        this._a2SledPika(x, la + (this._a2SledH(sx) - la) * f2, this._a2SledAng(sx) * f2);
+      });
+      const { seat } = this._a2SledDim();
+      p.style.setProperty("--a2sly", `${(seat * (mode === "belly" ? 0.7 : 1)).toFixed(1)}px`);
+      p.classList.add(mode === "belly" ? "a2sl-belly" : "a2sl-sit");
+      S.ride = true;
+      await this._wait(mode === "belly" ? 500 : 350);
+      const far = mode === "belly" ? 1.9 : 1.5;
+      const xEnd = Math.min(foot - pW * 0.3, Math.max(foot - pW * far, hayR + pW * 0.25, pW * 0.5));
+      const v1 = pW * SLED_V[mode] / 1e3;
+      const L1 = Math.max(1, sx - foot);
+      const L2 = Math.max(1, foot - xEnd);
+      const tA = 2 * L1 / v1;
+      const tB = 2 * L2 / v1;
+      const at = (t) => t < tA ? sx - v1 / tA * t * t / 2 : foot - (v1 * (t - tA) - v1 / tB * (t - tA) ** 2 / 2);
+      const speed = (t) => t < tA ? v1 * t / tA : v1 * (1 - (t - tA) / tB);
+      this._say(mode === "belly" ? pick(["wuiii!", "juhuuu!", "schneller!"]) : pick(["juhuu!", "wiii!", "hui!"]), 1400);
+      p.classList.add("happy");
+      let tick = 0;
+      await this._a2SledDrive(tA + tB, (f2) => {
+        const t = f2 * (tA + tB);
+        const x = f2 >= 1 ? xEnd : at(t);
+        this._a2SledPika(x, this._a2SledH(x), this._a2SledAng(x));
+        const n = Math.floor(t / 70);
+        if (n > tick && f2 < 1) {
+          tick = n;
+          const v = speed(t) / v1;
+          const rx = x + pW * SLED_W * 0.42;
+          const ry = this._g.gy - this._a2SledH(rx);
+          if (v > 0.35 && n % 2) this._a2SledSpray(rx, ry, 1, v);
+          if (gold && v > 0.12) this._a2SledSpark(rx, ry - H * 0.02);
+        }
+      });
+      S.ride = false;
+      S.x = xEnd;
+      this._a2SledSpray(xEnd - pW * 0.3, this._g.gy, 4, 1);
+      p.classList.remove("happy", "a2sl-sit", "a2sl-belly");
+      if (mode === "belly") {
+        const xb = Math.max(pW * 0.45, xEnd - pW * 0.45);
+        p.classList.add("lying");
+        await this._a2SledDrive(450, (f2) => this._a2SledPika(xEnd + (xb - xEnd) * (1 - (1 - f2) ** 2), 0));
+        this._a2SledSpray(xb - pW * 0.25, this._g.gy, 4, 1);
+        this._say(pick(["plumps!", "pfff!", "Schnee im Gesicht!"]), 1100);
+        await this._wait(900);
+        p.classList.remove("lying");
+        this._a2SledLand();
+        this._jump("hop1");
+        this._say(pick(["brrr!", "hihi!", "nochmal!"]), 1100);
+      } else {
+        this._a2SledLand();
+        await this._wait(300);
+        const xs = Math.max(pW * 0.45, this._x - pW * 0.5);
+        await this._hopTo(xs, 0, false);
+        this._say(pick(["nochmal!", "juhu!", "so schnell!"]), 1100);
+      }
+      this._a2SledLand();
+      this._happy(1200);
+      if (gold) this._sparkle(S.x, this._g.gy - H * 0.12, 2);
+      await this._wait(1300);
+      if (o.short) return;
+      this._face(1);
+      await this._wait(300);
+      this._face(-1);
+      this._a2SledHold(true);
+      this._apropsAway(S.drift);
+      S.drift = null;
+      await this._walkTo(this._g.hole.cx + pW * 0.9, 0.9);
+      await this._wait(300);
+    }
+    // Reduzierte Bewegung: neben ihm blendet er ein, er setzt bzw. legt sich hinein, freut sich, steht auf
+    async _a2SledCalm(mode, gold, o) {
+      const p = this._el.pika;
+      const { pW, rock, hayR, xR } = this._g;
+      if (!o.short) await this._walkTo(clamp(rock.l - pW * 0.7, hayR + pW * 0.5, xR), 0.9);
+      const S = this._a2SledMake(this._x, -1, false);
+      S.ride = true;
+      this._face(-1);
+      await this._wait(600);
+      const { seat } = this._a2SledDim();
+      p.style.setProperty("--a2sly", `${(seat * (mode === "belly" ? 0.7 : 1)).toFixed(1)}px`);
+      p.style.setProperty("--a2sla", "0deg");
+      p.classList.add(mode === "belly" ? "a2sl-belly" : "a2sl-sit");
+      if (mode === "belly") p.classList.add("lying");
+      this._say(mode === "belly" ? pick(["Bauchrutscher!", "bäuchlings!"]) : pick(["juhuu!", "Schlitten!"]), 1300);
+      if (gold) for (let i = 0; i < 3; i++) this._a2SledSpark(this._x + (i - 1) * pW * 0.25, this._g.gy - this._H * 0.06);
+      p.classList.add("happy");
+      await this._wait(2200);
+      p.classList.remove("happy", "lying", ...SLED_CLS);
+      S.ride = false;
+      S.x = this._x;
+      await this._wait(400);
+      this._happy(1e3);
+      await this._wait(900);
+    }
+    // Nach dem Auspacken (Hook): Bei Rodelwetter gleich eine kurze Fahrt (Stufe 1 rodeln, 2 Bauchrutscher, 3 mit Funken).
+    // Sonst nur zeigen: Der Schlitten kommt neben ihn, er setzt sich kurz hinein, schaut sich um und vertröstet.
+    async _a2SledStow(lv) {
+      if (this._a2SledWeather()) return lv === 2 ? this._a2SledBelly({ short: true }) : this._a2SledPlay({ short: true, gold: lv >= 3 });
+      this._a2SledBusy = true;
+      const p = this._el.pika;
+      try {
+        const { pW, hole } = this._g;
+        const d = this._x - pW * 0.9 > hole.r ? -1 : 1;
+        const S = this._a2SledMake(this._x + d * pW * 0.73, -d, !calmMotion());
+        this._face(d);
+        this._say(lv >= 3 ? pick(["goldig!", "der glänzt!"]) : pick(["zum Rodeln!", "für den Winter!"]), 1300);
+        await this._wait(1e3);
+        if (calmMotion()) {
+          S.x = this._x;
+        } else {
+          await this._hopTo(S.x, 0, false);
+        }
+        S.ride = true;
+        this._face(-d);
+        const { seat } = this._a2SledDim();
+        p.style.setProperty("--a2sly", `${(seat * (lv === 2 ? 0.7 : 1)).toFixed(1)}px`);
+        p.style.setProperty("--a2sla", "0deg");
+        p.classList.add(lv === 2 ? "a2sl-belly" : "a2sl-sit");
+        if (lv === 2) p.classList.add("lying");
+        if (lv >= 3) for (let i = 0; i < 3; i++) S.t.push(setTimeout(() => this._a2SledS === S && this._a2SledSpark(this._x + rnd(-0.3, 0.3) * pW, this._g.gy - this._H * rnd(0.03, 0.09)), i * 300));
+        await this._wait(900);
+        p.classList.add("look-up");
+        const snow = !!this._wx?.snowcover;
+        this._say(lv === 2 ? pick(["so geht der Bauchrutscher!", "bäuchlings!"]) : snow ? pick(["heute nicht mehr…", "gleich morgen!"]) : pick(["kein Schnee…", "wo bleibt der Schnee?"]), 1500);
+        await this._wait(1700);
+        p.classList.remove("look-up", "lying", ...SLED_CLS);
+        S.ride = false;
+        this._say(snow ? pick(["bald!", "im Schnee!"]) : pick(["wenn's schneit!", "bald!", "im Schnee!"]), 1300);
+        this._happy(1e3);
+        await this._wait(1400);
+      } finally {
+        this._a2SledBusy = false;
+        this._a2SledEnd(true);
+      }
+    }
+    // ---------- Schnee und Funken ----------
+    // Schnee stiebt bei x, y (Szene-Pixel): n Flöckchen, v: wie schnell er gerade ist (0–1). Bewegung reduzieren: keine.
+    _a2SledSpray(x, y, n, v = 1) {
+      const S = this._a2SledS;
+      if (calmMotion() || !S) return;
+      const H = this._H;
+      for (let i = 0; i < n; i++) {
+        const el = document.createElement("span");
+        el.className = "puff snowy a2slsp";
+        const side = n > 1 ? i % 2 ? 1 : -1 : 1;
+        el.style.left = `${(x + side * rnd(0, H * 0.03)).toFixed(1)}px`;
+        el.style.top = `${(y - H * 0.03).toFixed(1)}px`;
+        el.style.setProperty("--px", `${(side * H * (0.03 + v * 0.05) * rnd(0.6, 1)).toFixed(1)}px`);
+        this._el.fx.appendChild(el);
+        S.fx.add(el);
+        S.t.push(setTimeout(() => (el.remove(), S.fx.delete(el)), 650));
+      }
+    }
+    // Ein Schneefunke der goldenen Spur: blitzt auf und verglimmt an seiner Stelle
+    _a2SledSpark(x, y) {
+      const S = this._a2SledS;
+      if (!S) return;
+      const el = document.createElement("span");
+      el.className = `a2sls${calmMotion() ? " still" : ""}`;
+      el.innerHTML = FUNKE_SVG;
+      el.style.left = `${(x + rnd(-3, 3)).toFixed(1)}px`;
+      el.style.top = `${(y + rnd(-3, 3)).toFixed(1)}px`;
+      el.style.setProperty("--sk", rnd(0.6, 1.1).toFixed(2));
+      this._el.fx.appendChild(el);
+      S.fx.add(el);
+      S.t.push(setTimeout(() => (el.remove(), S.fx.delete(el)), 1300));
+    }
+    // ---------- Hooks: Tipp, Aufräumen, Abhängen ----------
+    // Tipp auf den Schlitten (nur, solange er draußen ist): Er wackelt, Schnee stiebt auf
+    _a2SledTap(z) {
+      const S = this._a2SledS;
+      if (!S) return false;
+      const w = S.el.querySelector(".a2slw");
+      if (w && !calmMotion()) {
+        w.classList.remove("a2tap");
+        void w.offsetWidth;
+        w.classList.add("a2tap");
+        clearTimeout(this._a2SledTapT);
+        this._a2SledTapT = setTimeout(() => w.classList.remove("a2tap"), 700);
+      }
+      const A = this._a2SledAt();
+      this._a2SledSpray(A.x, this._g.gy - A.lift, 3, 0.6);
+      this._peep(A.x, this._g.gy - A.lift - this._a2SledDim().h * 1.2, pick(["rutsch!", "klonk!", "schlitt!"]));
+      return true;
+    }
+    // Ende der Aktion oder Abbruch (auch aus _cleanup nach jeder Aktion): Schlitten, Seil, Wehe, Teilchen, Zeitgeber
+    // weg; stellte er den Pika selbst, steht der wieder normal (auf dem Boden oder oben, dann hüpft _step herunter)
+    // (force: aus der eigenen Aktion. Sonst, mitten in ihr, aus Szene oder Aufräumen: nichts, sie räumt in ihrem finally
+    // selbst auf; nur nach einem Abbruch gleich)
+    _a2SledEnd(force = false) {
+      const S = this._a2SledS;
+      if (!S) return;
+      if (!force && this._a2SledBusy && !this._ac?.signal?.aborted) return;
+      this._a2SledS = null;
+      if (S.raf && typeof cancelAnimationFrame === "function") cancelAnimationFrame(S.raf);
+      for (const t of S.t) clearTimeout(t);
+      for (const el2 of S.fx) el2.remove();
+      S.rope.remove();
+      const p = this._el.pika;
+      p.classList.remove(...SLED_CLS);
+      p.style.removeProperty("--a2sly");
+      if (S.line) {
+        p.classList.remove("carry");
+        this._mouth(null);
+      }
+      if (S.ctl) {
+        this._a2SledS = S;
+        this._a2SledLand();
+        this._a2SledS = null;
+      }
+      p.style.removeProperty("--a2sla");
+      if (S.drift) this._apropsAway(S.drift);
+      const el = S.el;
+      if (el.isConnected && !calmMotion() && this._a2Els?.get("sled") === el) {
+        el.classList.add("a2out");
+        setTimeout(() => !this._a2SledS && this._a2Drop("sled"), 450);
+      } else this._a2Drop("sled");
+    }
+    _a2SledCleanup() {
+      this._a2SledEnd();
+    }
+    // Karte aus dem DOM: alles sofort weg
+    _a2SledDetach() {
+      clearTimeout(this._a2SledTapT);
+      this._a2SledBusy = false;
+      const S = this._a2SledS;
+      this._a2SledEnd(true);
+      if (S) this._a2Drop("sled");
+    }
+  };
+
+  // src/karte/album2-camera.js
+  var Album2Camera = class {
+  };
+
+  // src/karte/album2-radio.js
+  var Album2Radio = class {
+  };
+
+  // src/karte/album2-tramp.js
+  var Album2Tramp = class {
+  };
+
+  // src/karte/album2-picnic.js
+  var Album2Picnic = class {
+  };
+
+  // src/karte/album2-pool.js
+  var Album2Pool = class {
+  };
+
   // src/karte.js
   var LAYOUT_GAP = 100;
   var PikaPetCard = class extends HTMLElement {
@@ -24912,7 +26992,17 @@
     Urlaub,
     Signale,
     Fenster,
-    Messung
+    Messung,
+    // Album 2 (seit 0.46): die Schnittstelle und je Schatz ein Teil (leer, solange er nicht gebaut ist)
+    Album2,
+    Album2Feeder,
+    Album2Lantern,
+    Album2Sled,
+    Album2Camera,
+    Album2Radio,
+    Album2Tramp,
+    Album2Picnic,
+    Album2Pool
   ];
   for (const Teil of TEILE) {
     for (const k of Reflect.ownKeys(Teil.prototype)) {
@@ -24924,7 +27014,7 @@
   }
 
   // src/index.js
-  var STYLES = [STYLE, STYLE_SKY, STYLE_FEST, STYLE_FRIEND, STYLE_BOTE, STYLE_COFFEE, STYLE_ACT, STYLE_GIFT, STYLE_DIARY_BTN, STYLE_URLAUB, STYLE_SIG, STYLE_FEN].join("");
+  var STYLES = [STYLE, STYLE_SKY, STYLE_FEST, STYLE_FRIEND, STYLE_BOTE, STYLE_COFFEE, STYLE_ACT, STYLE_GIFT, STYLE_DIARY_BTN, STYLE_URLAUB, STYLE_SIG, STYLE_FEN, STYLE_A2].join("");
   if (!customElements.get("pika-pet-card")) {
     customElements.define("pika-pet-card", PikaPetCard);
     window.customCards = window.customCards || [];
@@ -24968,6 +27058,18 @@
       giftTre,
       giftMile,
       giftAllGold,
+      giftKind,
+      giftCode,
+      A2_KEYS,
+      A2_N,
+      A2_FULL,
+      giftLv2,
+      giftLvs2,
+      a2Begun,
+      a2AllGold,
+      giftPickTre,
+      planKeep,
+      planOld,
       URLAUB,
       urlaubAt,
       urlaubCut,

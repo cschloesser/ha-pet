@@ -800,7 +800,7 @@ export class Schaetze {
   // Golden: ab und zu ein Funkeln (auch an der goldenen Blume der Gießkanne)
   _giftGlint() {
     if (this._asleep || !this._gtEls || Math.random() > 0.2) return;
-    const gl = [...this._gtEls.values()].filter((el) => el.classList.contains('gilt') && el.isConnected);
+    const gl = [...this._gtEls.values(), ...(this._a2Els?.values() || [])].filter((el) => el.classList.contains('gilt') && el.isConnected);
     for (const f of this._flowers || []) if (this._goldIsBloom(f) && f.el.isConnected) gl.push(f.el);
     if (!gl.length) return;
     const el = pick(gl);

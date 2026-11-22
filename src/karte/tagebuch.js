@@ -9,6 +9,8 @@ import { coffeeBrews } from '../logik/kaffee.js';
 import { vacRuns } from '../logik/signale.js';
 import { SIG_BIN } from '../grafik/signale.js';
 import { GIFT, GIFT_TRE, giftLvs } from '../logik/paeckchen.js';
+import { giftLvs2 } from '../logik/album2.js';
+import { A2_ITEMS } from '../grafik/album2.js';
 import { urlaubEnd, urlaubDauer } from '../logik/urlaub.js';
 import {
   DIARY, FIND_GROUPS, FINDS, FIND_IDS, findsParse, findsSer, DIARY_TXT, diaryPick, diaryTime, diaryDerive,
@@ -222,6 +224,13 @@ export class Tagebuch {
     const it = GIFT_ITEMS[e.it];
     const fr = this._frName();
     const lead = e.gold ? 'Ein goldenes Päckchen! Ich hab es mit der Zwille vom Himmel geholt.' : diaryPick(DIARY_TXT.parcel, 'parcel', Math.floor(t / 60000));
+    // Album 2 (seit 0.46): Name, Trick und Gold aus den Daten des Schatzes
+    if (e.alb === 2) {
+      const a = this._a2Item(e.it);
+      if (e.what === 'trick') return `${lead} Jetzt kann ich einen neuen Trick: ${a.trick}!`;
+      if (e.what === 'gilt') return `${lead} Jetzt hab ich ${a.gilt.replace('%', a.name).replace(/^ein goldener /, 'einen goldenen ')}.`;
+      return `${lead} Drin war ${a.say}`;
+    }
     // Ein Leckerli, das diese Version noch nicht kennt (aus einer späteren): ohne Namen, das Bild ist das Sträußchen
     if (!it) return e.what === 'treat' ? `${lead} Drin war ein Leckerli. Sofort aufgefuttert!` : lead;
     const nm = it.key === 'plush' ? `Plüsch-${fr}` : it.name;
@@ -300,8 +309,9 @@ export class Tagebuch {
         else if (e.b === 'tonne' && house) put(t, 'tonne', tx(T.tonne, 'tonne', t), { svg: SIG_BIN('#7d848c') });
       } else if (e.k === 'parcel') {
         one.add('parcel');
-        put(t, 'parcel', this._diaryParcel(e, t), { svg: giftItem(e.it)?.svg });
-        if (e.all) put(t + 1, 'parcel', tx(T.allGold, 'allg', t), { svg: giftItem(e.it)?.svg });
+        const svg = e.alb === 2 ? this._a2Item(e.it).icon : giftItem(e.it)?.svg;
+        put(t, 'parcel', this._diaryParcel(e, t), { svg });
+        if (e.all) put(t + 1, 'parcel', tx(e.alb === 2 ? T.allGold2 : T.allGold, 'allg', t), { svg });
         else if (e.mile) put(t + 1, 'parcel', tx(T.mile, 'mile', t).replace('{z}', e.o), { svg: GIFT_PARCEL });
       } else if (e.k === 'urlaub') {
         put(t, 'urlaub', tx(T.urlaub, 'ur', t), { svg: URLAUB_SIGN(fr) });
@@ -454,7 +464,8 @@ export class Tagebuch {
       + `${busy ? '<span class="nt">Erst das Päckchen auspacken.</span>' : ''}</div></div>`;
   }
 
-  // Reiter „Schätze“ (früher das Album am Päckchen-Knopf): alle acht mit Stufe, Päckchen, Serie, Vorrat
+  // Reiter „Schätze“ (früher das Album am Päckchen-Knopf): alle acht mit Stufe, Päckchen, Serie, Vorrat. Darunter
+  // seit 0.46 Album 2, sobald es begonnen hat (vorher nicht: Es bliebe nur eine Seite voller Fragezeichen).
   _diaryTreasures() {
     const I = this._giftOn() ? this._giftInfo() : null;
     const fr = this._frName();
@@ -462,14 +473,24 @@ export class Tagebuch {
     let h = '';
     if (I) {
       const G = I.G;
+      const zwei = !I.a2 ? '' : I.have2 === GIFT_TRE ? ' Im zweiten Album auch alle acht!' : ` Im zweiten Album: ${I.have2} von ${GIFT_TRE}.`;
       h += `<p class="fazit">${!I.have ? 'Noch hab ich keine Schätze. Sie stecken in den Päckchen.'
-        : I.have === GIFT_TRE ? 'Das sind meine Schätze. Ich hab alle acht!' : `Das sind meine Schätze. ${I.have} von ${GIFT_TRE} hab ich schon.`}</p>`;
+        : I.have === GIFT_TRE && I.a2 && I.have2 && I.have2 < GIFT_TRE ? `Das sind meine Schätze. Ich hab alle acht, und ${I.have2} von ${GIFT_TRE} im zweiten Album.`
+          : I.have === GIFT_TRE ? `Das sind meine Schätze. Ich hab alle acht!${zwei}` : `Das sind meine Schätze. ${I.have} von ${GIFT_TRE} hab ich schon.${zwei}`}</p>`;
+      const platz = (svg, lv, name, sub) => `<div class="t ${['miss', '', 'lv2', 'lv2 gilt'][lv]}"><i>${svg}</i><div><b>${esc(lv ? name : '???')}</b><span>${esc(lv ? sub : 'noch ein Geheimnis')}</span></div></div>`;
       h += `<div class="tre">${GIFT_ITEMS.slice(0, GIFT_TRE).map((it, t) => {
         const lv = I.lvs[t];
         const nm = it.key === 'plush' ? `Plüsch-${fr}` : it.name;
-        const sub = !lv ? 'noch ein Geheimnis' : lv >= 3 ? `golden: ${DIARY_TXT.gold[t]} · Trick: ${GIFT_TRICK[t]}` : lv === 2 ? `Trick: ${GIFT_TRICK[t]}` : DIARY_TXT.treasure[t];
-        return `<div class="t ${['miss', '', 'lv2', 'lv2 gilt'][lv]}"><i>${it.svg}</i><div><b>${esc(lv ? nm : '???')}</b><span>${esc(sub)}</span></div></div>`;
+        const sub = lv >= 3 ? `golden: ${DIARY_TXT.gold[t]} · Trick: ${GIFT_TRICK[t]}` : lv === 2 ? `Trick: ${GIFT_TRICK[t]}` : DIARY_TXT.treasure[t];
+        return platz(it.svg, lv, nm, sub);
       }).join('')}</div>`;
+      // Album 2: acht Plätze; was noch nicht da ist (auch, was diese Version noch nicht kennt), ist ein Geheimnis
+      if (I.a2) {
+        h += `<h3>Album 2</h3><div class="tre a2">${A2_ITEMS.map((it, t) => {
+          const lv = I.lvs2[t];
+          return platz(it.icon, lv, it.name, lv >= 3 ? `golden: ${it.gold} · Trick: ${it.trick}` : lv === 2 ? `Trick: ${it.trick}` : it.use);
+        }).join('')}</div>`;
+      }
       const n = G.n + G.y;
       h += row(GIFT_PARCEL, 'Päckchen', esc(`${n ? `${n} im Vorrat${G.y ? ` (${G.y === n ? 'golden' : `${G.y} golden`})` : ''}` : 'gerade keins da'} · ${I.next}`), I.warn);
       // Gute Tage: sieben Punkte bis zum nächsten goldenen, und was heute dafür fehlt
@@ -479,7 +500,8 @@ export class Tagebuch {
       const dots = [...Array(GIFT.goldDays).keys()].map((i) => `<u${i < I.dots ? ' class="on"' : ''}></u>`).join('');
       h += row(ICON_HEART, 'Gute Tage', `<span class="d7">${dots}</span>${esc(`${I.away ? 'ruhen gerade' : left === 1 ? 'noch einer bis zum goldenen Päckchen' : `noch ${left} bis zum goldenen Päckchen`} · ${I.friends === 1 ? '1 Freundschaftstag' : `${I.friends} Freundschaftstage`}`)}`
         + `<span>${esc(I.away ? '' : T.good ? 'Heute ist ein guter Tag ✓' : `Heute: ${ck(T.fed, 'gefüttert')} · ${ck(T.pet, 'gestreichelt')} · ${ck(T.ok, 'alles über 50 %')}`)}</span>`);
-      h += row(GIFT_PARCEL, 'Ausgepackt', esc(`${G.o === 1 ? '1 Päckchen' : `${G.o} Päckchen`}${I.allGold ? ' · alle Schätze golden!' : ` · nächster Meilenstein beim ${I.mile}.`}`));
+      const gold = I.allGold && I.allGold2 ? ' · beide Alben golden!' : I.allGold ? ` · ${I.a2 ? 'Album 1' : 'alle Schätze'} golden!` : '';
+      h += row(GIFT_PARCEL, 'Ausgepackt', esc(`${G.o === 1 ? '1 Päckchen' : `${G.o} Päckchen`}${gold || ` · nächster Meilenstein beim ${I.mile}.`}`));
     } else h += '<p class="fazit">Hier sammle ich, was mir gehört.</p>';
     const dots = this._blooms.map((b) => `<u style="background:${esc(b.color)}"></u>`).join('');
     const k = this._blooms.length;
@@ -498,7 +520,10 @@ export class Tagebuch {
       chimney: this._arealKey === 'huegel', vac: !!this._sigCfg().vacuum,
     };
     const fr = this._frName();
-    const list = FINDS.filter((f) => !f.need || have[f.need]);
+    // Album 2: je Schatz, der da ist und etwas zum Antippen hat, seine Zeile unter „Meine Welt“
+    const lv2 = this._giftOn() ? giftLvs2(this._plan?.gift) : [];
+    const a2 = A2_ITEMS.filter((it, t) => it.find && lv2[t] > 0).map((it) => ({ k: it.key, g: 2, t: it.find.t, h: it.find.h }));
+    const list = [...FINDS.filter((f) => !f.need || have[f.need]), ...a2];
     const n = list.filter((f) => S.has(f.k)).length;
     let h = `<p class="fazit">${!n ? 'Probier aus, was du mit mir und meiner Welt machen kannst!'
       : n >= list.length ? 'Du hast alles ausprobiert, was es bei mir gibt!'

@@ -4,7 +4,8 @@ import { seedRnd } from './hilfen.js';
 import { RATE } from './zustand.js';
 import { MEM_BITS } from './tagesplan.js';
 import { ACT_WIN } from './beschaeftigungen.js';
-import { GIFT, GIFT_TRE, giftMile, giftAllGold } from './paeckchen.js';
+import { GIFT, giftKind, giftMile, giftAllGold } from './paeckchen.js';
+import { A2_KEYS, a2AllGold } from './album2.js';
 import { URLAUB } from './urlaub.js';
 
 // Tippt man auf die Statusleiste, geht „Pikas Tagebuch“ auf: was er heute und gestern erlebt hat (aus seiner Sicht),
@@ -20,6 +21,8 @@ const DIARY = { keep: 3 * 864e5, max: 400, close: 60000, gap: 100 * 6e4, acts: 2
 // hier gibt (gift: Päckchen an, friend: Freund an, flight und bote: eingerichtet, wheel und yarn: Schatz ausgepackt).
 // {n} = Name des Freunds. Nichts davon läuft ab oder wird belohnt: Es ist ein Nachschlagen, keine Aufgabenliste.
 // Schornstein ('chimney': nur am Erdhügel) und Saugroboter ('vac': nur, wenn eingerichtet) haben seit 0.44 eine Zeile.
+// Die Schätze aus Album 2 (seit 0.46) bringen ihre Zeile selbst mit (find in src/grafik/album2/<key>.js, Kennung =
+// key); _diaryFinds hängt sie an „Meine Welt“, sobald der Schatz da ist. Hier stehen nur ihre Kennungen (FIND_IDS).
 const FIND_GROUPS = ['Streicheln', 'Kümmern', 'Meine Welt'];
 const FINDS = [
   { k: 'head', g: 0, t: 'Kopf', h: 'Tipp mir auf den Kopf. Ich lehne mich in deine Hand.' },
@@ -57,10 +60,11 @@ const FINDS = [
   { k: 'plane', g: 2, t: 'Flugzeug', h: 'Tipp ein Flugzeug an. Ein Fähnchen zeigt, wohin es fliegt.', need: 'flight' },
   { k: 'device', g: 2, t: 'Haushaltsgerät', h: 'Tipp ein Gerät am Bau an. Ein Fähnchen zeigt, wie weit es ist.', need: 'bote' },
 ];
-const FIND_IDS = new Set(FINDS.map((f) => f.k));
+const FIND_KEYS = [...FINDS.map((f) => f.k), ...A2_KEYS];
+const FIND_IDS = new Set(FIND_KEYS);
 // Im Browser gemerkt als „head,nose,…“. Unbekanntes (ältere oder neuere Karte) wird überlesen.
 const findsParse = (s) => new Set(String(s || '').split(',').filter((k) => FIND_IDS.has(k)));
-const findsSer = (set) => FINDS.filter((f) => set.has(f.k)).map((f) => f.k).join(',');
+const findsSer = (set) => FIND_KEYS.filter((k) => set.has(k)).join(',');
 // Texte aus seiner Sicht. Mehrere Fassungen je Ereignis: Welche erscheint, hängt an Ereignis und Minute (diaryPick),
 // so steht auf Tablet und Handy derselbe Satz, auch beim zweiten Öffnen. {n} = Name des Freunds.
 const DIARY_TXT = {
@@ -107,6 +111,7 @@ const DIARY_TXT = {
   tonne: ['Die Tonne steht an der Straße. Danke fürs Rausstellen!', 'Die Müllabfuhr kann kommen. Die Tonne steht schon draußen.'],
   sauger: ['Der Saugroboter war unterwegs. Ich bin hinterhergehoppelt.', 'Der Saugroboter hat geputzt. Vielleicht bin ich ein Stück mitgefahren!'],
   allGold: ['Jetzt sind alle meine Schätze golden. Was für ein Fest!'],
+  allGold2: ['Jetzt ist auch mein zweites Album ganz golden. Was für ein Fest!'],
   flowerTaken: ['Ich hab dir eine Blume gepflückt und ins Gras gelegt. Du hast sie genommen!', 'Für dich: eine Blume mit Schleife. Du hast sie angenommen, da hab ich mich gefreut.'],
   flowerWait: ['Ich hab dir eine Blume ins Gras gelegt. Sie wartet auf dich.'],
   flowerWilt: ['Ich hab dir eine Blume hingelegt. Sie ist leider verwelkt. Ich pflück dir bald eine neue.'],
@@ -234,18 +239,27 @@ const diaryDerive = (S, P, from, { decayAt, until }) => {
       maxK = Math.max(maxK, g1.k);
       if (g1.z > maxZ) {
         maxZ = g1.z;
-        const it = g1.i & 15;
+        // Inhalt (giftKind): Leckerli, Album 1 (Stufen in u und v) oder seit 0.46 Album 2 (alb: 2, Stufen in w)
+        const { alb, t: it, gold } = giftKind(g1.i);
         const bit = 1 << it;
-        const v0 = g0.v || 0;
-        const v1 = g1.v || 0;
-        pend = { z: g1.z, it, gold: !!(g1.i & 16), what: it >= GIFT_TRE ? 'treat' : !(g0.u & bit) ? 'new'
-          : v1 & (bit << 8) && !(v0 & (bit << 8)) ? 'gilt' : v1 & bit && !(v0 & bit) ? 'trick' : 'new' };
+        if (alb === 2) {
+          const w0 = g0.w || 0;
+          const w1 = g1.w || 0;
+          pend = { z: g1.z, it, alb, gold, what: !(w0 & bit) ? 'new'
+            : w1 & (bit << 16) && !(w0 & (bit << 16)) ? 'gilt' : w1 & (bit << 8) && !(w0 & (bit << 8)) ? 'trick' : 'new' };
+        } else {
+          const v0 = g0.v || 0;
+          const v1 = g1.v || 0;
+          pend = { z: g1.z, it, gold, what: !alb ? 'treat' : !(g0.u & bit) ? 'new'
+            : v1 & (bit << 8) && !(v0 & (bit << 8)) ? 'gilt' : v1 & bit && !(v0 & bit) ? 'trick' : 'new' };
+        }
       }
       if (g1.o > maxO) {
         maxO = g1.o;
-        const it = g1.i & 15;
-        const e = pend && pend.z <= g1.o ? pend : { it, gold: !!(g1.i & 16), what: it >= GIFT_TRE ? 'treat' : 'new' };
-        add(t, 'parcel', { ...e, o: g1.o, mile: giftMile(g1.o), all: e.what === 'gilt' && giftAllGold(g1) });
+        const { alb, t: it, gold } = giftKind(g1.i);
+        const e = pend && pend.z <= g1.o ? pend : { it, ...(alb === 2 ? { alb } : {}), gold, what: !alb ? 'treat' : 'new' };
+        // „alle golden“ je Album
+        add(t, 'parcel', { ...e, o: g1.o, mile: giftMile(g1.o), all: e.what === 'gilt' && (e.alb === 2 ? a2AllGold(g1) : giftAllGold(g1)) });
         pend = null;
       }
     }

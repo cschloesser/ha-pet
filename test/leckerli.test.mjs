@@ -99,7 +99,8 @@ const wuerfeln = (mo, lat, G, n = 200) => {
 };
 
 test('Auswahl: der Monat des Geräts, das verschenkt (Südhalbkugel um ein halbes Jahr versetzt), Schätze gehen vor', () => {
-  const voll = { u: 255, v: 0xffff }; // alle Schätze golden: Es gibt nur noch Leckerli
+  // alle Schätze golden, auch die aus Album 2 (seit 0.46): Es gibt nur noch Leckerli
+  const voll = { u: 255, v: 0xffff, w: 0xffffff };
   const arten = (mo, lat) => [...new Set(wuerfeln(mo, lat, voll).alle)].sort((a, b) => a - b);
   assert.deepEqual(arten(11, 50), [11, 12, 13, 14]);
   assert.deepEqual(arten(0, 50), [11, 12, 13]);

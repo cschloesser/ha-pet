@@ -91,7 +91,9 @@ export class Tagesplan {
     const P = this._planMax() < PLAN_MIN ? null : planParse(st);
     if (st !== undefined) this._planSeen = true;
     // Format einer neueren Karte (höheres Präfix oder mehr Felder, als diese Version kennt): nicht überschreiben.
-    // Dieses Gerät plant mit seinem letzten Stand weiter und schreibt nichts, bis es neu geladen ist.
+    // Dieses Gerät plant mit seinem letzten Stand weiter und schreibt nichts, bis es neu geladen ist. (Seit 0.46 kennt
+    // planParse acht Abschnitte, der achte ist Album 2: Mehr als acht, oder an achter Stelle etwas anderes, ist neuer.
+    // Karten bis 0.45.2 halten schon den Plan mit Album 2 für neuer und schweigen, statt es zu löschen.)
     if (typeof st === 'string' && st !== 'unknown' && st !== 'unavailable') {
       const newer = !P && /^p\d+\|/.test(st) && (!st.startsWith('p1|') || st.split('|').length > 6);
       if (newer && !this._planNewer) console.warn(`pika-pet-card: ${id} hat das Format einer neueren Karte, dieses Gerät schreibt den Tagesplan nicht mehr. Bitte neu laden.`);

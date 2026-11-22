@@ -35,6 +35,15 @@ import { Urlaub } from './karte/urlaub.js';
 import { Signale } from './karte/signale.js';
 import { Fenster } from './karte/fenster.js';
 import { Messung } from './karte/messung.js';
+import { Album2 } from './karte/album2.js';
+import { Album2Feeder } from './karte/album2-feeder.js';
+import { Album2Lantern } from './karte/album2-lantern.js';
+import { Album2Sled } from './karte/album2-sled.js';
+import { Album2Camera } from './karte/album2-camera.js';
+import { Album2Radio } from './karte/album2-radio.js';
+import { Album2Tramp } from './karte/album2-tramp.js';
+import { Album2Picnic } from './karte/album2-picnic.js';
+import { Album2Pool } from './karte/album2-pool.js';
 
 // So viele ms liegen mindestens zwischen zwei Auslegungen der Szene, die der ResizeObserver auslöst (siehe _resized)
 const LAYOUT_GAP = 100;
@@ -475,6 +484,8 @@ const TEILE = [
   Editor, Aufbau, Schlaf, Lebensschleife, Alltag, Wiese, Haeufchen, Besucher, Flugzeuge, Beschaeftigungen,
   BeschaeftigungenGross, Bausteine, Interaktion, Tagebuch, Momente, Feste, Zustand, Pino, Himmel, Wetter, HausBote,
   Kaffee, Paeckchen, Schaetze, Tagesplan, BeschaeftigungenKlein, Chronik, Urlaub, Signale, Fenster, Messung,
+  // Album 2 (seit 0.46): die Schnittstelle und je Schatz ein Teil (leer, solange er nicht gebaut ist)
+  Album2, Album2Feeder, Album2Lantern, Album2Sled, Album2Camera, Album2Radio, Album2Tramp, Album2Picnic, Album2Pool,
 ];
 for (const Teil of TEILE) {
   for (const k of Reflect.ownKeys(Teil.prototype)) {

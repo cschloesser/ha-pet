@@ -70,7 +70,9 @@ import {
   rainbow,
 } from './logik/wetter.js';
 import { flightAloft, flightGhost, planeLag, PLANE_OLD, planeStale, planeClock } from './logik/flugzeuge.js';
-import { HAY_MAX, PLAN_MIN, MEM_BITS, MEM_GUT, MEM_TONNE, MEM_TONNE2, planBlank, pikaDay, planSer, planParse, hayNow, planApply } from './logik/tagesplan.js';
+import {
+  HAY_MAX, PLAN_MIN, MEM_BITS, MEM_GUT, MEM_TONNE, MEM_TONNE2, planBlank, pikaDay, planSer, planParse, hayNow, planApply, planKeep, planOld,
+} from './logik/tagesplan.js';
 import { festDay, festEaster, festAdvent1, FEST_AHEAD, festMoments, festBirthdate } from './logik/feste.js';
 import { FRIEND_LAST, FRIENDS, FRIEND_KEYS, friendKind } from './logik/besucher.js';
 import { boteRow, boteEmptyOn, boteMap, boteLabel, boteLabelMode, boteSmell } from './logik/haus-bote.js';
@@ -84,7 +86,8 @@ import {
   MINI_W, MINI_ACTS, MINI_PROG, MINI_REST, miniProg, miniOk, miniBase, miniSwap, miniChain, BOAT_T, boatPuffs, bezAt,
   boatPos, GLIDER_STEP, gliderThrows, groundSpot,
 } from './logik/beschaeftigungen-klein.js';
-import { GIFT, giftLv, giftTre, giftMile, giftAllGold } from './logik/paeckchen.js';
+import { GIFT, giftLv, giftTre, giftMile, giftAllGold, giftKind, giftCode } from './logik/paeckchen.js';
+import { A2_KEYS, A2_N, A2_FULL, giftLv2, giftLvs2, a2Begun, a2AllGold, giftPickTre } from './logik/album2.js';
 import { coffeeBrews, coffeeLabel, coffeeQueue, COFFEE_NEXT_GAP } from './logik/kaffee.js';
 import { SIG, sigTime, binKind, binPlan, binDone, wardrobePick, vacMode, vacRuns } from './logik/signale.js';
 import { WIN, winIds, winName, winLage, winSeit, winText } from './logik/fenster.js';
@@ -102,9 +105,10 @@ import { STYLE_DIARY_BTN } from './stil/tagebuch.js';
 import { STYLE_URLAUB } from './stil/urlaub.js';
 import { STYLE_SIG } from './stil/signale.js';
 import { STYLE_FEN } from './stil/fenster.js';
+import { STYLE_A2 } from './stil/album2.js';
 
 // Das Stylesheet der Karte in der Reihenfolge von _build (src/karte/aufbau.js), für die Tests der Bühne
-const STYLES = [STYLE, STYLE_SKY, STYLE_FEST, STYLE_FRIEND, STYLE_BOTE, STYLE_COFFEE, STYLE_ACT, STYLE_GIFT, STYLE_DIARY_BTN, STYLE_URLAUB, STYLE_SIG, STYLE_FEN].join('');
+const STYLES = [STYLE, STYLE_SKY, STYLE_FEST, STYLE_FRIEND, STYLE_BOTE, STYLE_COFFEE, STYLE_ACT, STYLE_GIFT, STYLE_DIARY_BTN, STYLE_URLAUB, STYLE_SIG, STYLE_FEN, STYLE_A2].join('');
 import { FIND_GROUPS, FINDS, findsParse, findsSer, diaryDerive } from './logik/tagebuch.js';
 import {
   CHRONIK, chronikDatum, chronikTag, chronikStart, chronikVersatz, chronikZoneOk, chronikKod, chronikLies, chronikMisch, chronikBilanz,
@@ -136,7 +140,8 @@ if (!customElements.get('pika-pet-card')) {
 if (typeof globalThis !== 'undefined' && typeof globalThis.__pikaTest === 'function') {
   globalThis.__pikaTest({
     VERSION, PikaPetCard, STYLES, REIHE, RANG, RANG_N, buehneZ, BUEHNE_MAX, BUEHNE, BZ, PLAN_MIN, HAY_MAX, GIFT, ACT_LEN, hasKey, boteRow, clearSpot, sceneUnit,
-    planBlank, planSer, planParse, planApply, hayNow, giftLv, pikaDay, MEM_GUT, giftTre, giftMile, giftAllGold,
+    planBlank, planSer, planParse, planApply, hayNow, giftLv, pikaDay, MEM_GUT, giftTre, giftMile, giftAllGold, giftKind, giftCode,
+    A2_KEYS, A2_N, A2_FULL, giftLv2, giftLvs2, a2Begun, a2AllGold, giftPickTre, planKeep, planOld,
     URLAUB, urlaubAt, urlaubCut, chronikUrlaub, coffeeBrews, coffeeLabel, coffeeQueue, COFFEE_NEXT_GAP, boteEmptyOn, boteMap, boteLabel, boteLabelMode, boteSmell,
     SIG, sigTime, binKind, binPlan, binDone, wardrobePick, vacMode, vacRuns, MEM_TONNE, MEM_TONNE2,
     WIN, winIds, winName, winLage, winSeit, winText,

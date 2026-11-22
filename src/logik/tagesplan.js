@@ -1,7 +1,8 @@
 // Tagesplan (Helfer plan_entity): Felder, Grenzen, lesen, schreiben, Änderungen anwenden
 
 import { clamp } from './hilfen.js';
-import { GIFT, GIFT_TRE, giftLv } from './paeckchen.js';
+import { GIFT, giftKind, giftLv } from './paeckchen.js';
+import { A2_FULL, giftLv2 } from './album2.js';
 
 // Was alle Geräte gemeinsam wissen müssen, ohne es aus der Uhr rechnen zu können:
 // - hay: Vorrat (n Bündel, t letzte Änderung, c Blütenfarben als Ziffern der Areal-Palette, m letztes Sammel-Fenster)
@@ -35,13 +36,22 @@ import { GIFT, GIFT_TRE, giftLv } from './paeckchen.js';
 //   "u<t0>.<Minuten>". Ältere Karten halten einen siebten Abschnitt für das Format einer neueren und schreiben den Plan
 //   dann gar nicht mehr: Während des Urlaubs kann ein vergessenes altes Gerät so weder die Serie reißen noch den Urlaub
 //   herauslöschen. Fehlen Päckchen, steht davor "-".
-// Text: "p1|n.t.c.m_t_cxxk|d.k_t-xxf…|k:name:v,…|d.n.m_fu|k.a_p.n.u_v.z.o.b.x_r.y.d.i|u<t0>.<min>" (Zahlen zur Basis
-// 36), passt in die 255 Zeichen eines input_text.
+// Seit 0.46 (so gebaut, dass Geräte bis 0.45.2 nichts davon zerstören):
+// - gift.w: Album 2 (siehe src/logik/album2.js), als achter Abschnitt "a<w>", nur wenn w > 0. Bit t2 = Schatz da,
+//   Bit 8 + t2 = Trick, Bit 16 + t2 = golden. Fehlt der Urlaub, steht an siebter Stelle "-". Ältere Karten halten
+//   einen Plan mit acht Abschnitten für das Format einer neueren und schreiben ihn dann gar nicht mehr (wie beim
+//   Urlaub): Eine alte Karte verstummt, statt Album 2 zu löschen. gift.i ist für Album 2 32 + t2 (golden 48 + t2),
+//   siehe giftKind.
+// Text: "p1|n.t.c.m_t_cxxk|d.k_t-xxf…|k:name:v,…|d.n.m_fu|k.a_p.n.u_v.z.o.b.x_r.y.d.i|u<t0>.<min>|a<w>" (Zahlen zur
+// Basis 36), passt in die 255 Zeichen eines input_text.
 const HAY_MAX = 12;
 const PLAN_REC = 4;
 // Kürzer als so darf der Helfer für den Tagesplan nicht sein: Ohne Verlauf (den kürzt _planFit) sind es mit
 // Blumengeschenk, drei Futterstücken, Päckchen und dem Ende eines Urlaubs bis etwa 177 Zeichen, HA lehnte längere
-// Werte sonst endlos ab. (Bis 0.34: 165.)
+// Werte sonst endlos ab. (Bis 0.34: 165.) Mit vollem Album 2 können es bis etwa 186 werden; die Grenze bleibt trotzdem
+// 180, damit ein Helfer, der bis 0.45 reichte, nicht auf einmal gar nicht mehr gelesen wird. Passt ein Plan im
+// seltenen schlimmsten Fall nicht hinein, sendet die Karte ihn nicht und warnt einmal (_planSaveNow), wie bisher.
+// Empfohlen sind 255 (README).
 const PLAN_MIN = 180;
 const planBlank = (now = Date.now()) => ({ hay: { n: 3, t: now, c: '', m: 0 }, sport: null, rec: [], cute: null, gift: null, fl: null, fd: [], ur: null });
 const FOOD_MAX = 3;
@@ -71,6 +81,7 @@ const pikaDay = (t) => Math.floor((t - new Date(t).getTimezoneOffset() * 6e4 - 4
 const giftU = (G) => (G.u & 255) + (G.f != null ? (G.f + 1) * 256 : 0);
 const planSer = (P) => {
   const h = P.hay;
+  const w = P.gift?.w > 0 ? P.gift.w & A2_FULL : 0;
   const f = P.fl;
   const fs = f ? `_${Math.round(f.t / 1000).toString(36)}_${f.c}${f.x.toString(36).padStart(2, '0')}${f.k ? 1 : 0}` : '';
   return ['p1', [h.n, Math.round(h.t / 1000).toString(36), h.c || '-', h.m.toString(36) + fs].join('.'),
@@ -84,14 +95,26 @@ const planSer = (P) => {
       + (f === 'a' && P.gift.p != null ? `_${Math.round(P.gift.p / 1000).toString(36)}` : '')
       + (f === 'u' && P.gift.v != null ? `_${P.gift.v.toString(36)}` : '')
       + (f === 'x' && P.gift.r != null ? `_${P.gift.r.toString(36)}` : ''))).join('.')] : P.ur ? ['-'] : []),
-    ...(P.ur ? [`u${Math.round(P.ur.t / 1000).toString(36)}${P.ur.d != null ? `.${Math.round(P.ur.d / 6e4).toString(36)}` : ''}`] : []),
+    ...(P.ur ? [`u${Math.round(P.ur.t / 1000).toString(36)}${P.ur.d != null ? `.${Math.round(P.ur.d / 6e4).toString(36)}` : ''}`] : w ? ['-'] : []),
+    ...(w ? [`a${w.toString(36)}`] : []),
   ].join('|');
 };
 const planParse = (str) => {
   const p = String(str ?? '').split('|');
-  if (p.length < 4 || p.length > 7 || p[0] !== 'p1') return null;
+  if (p.length < 4 || p.length > 8 || p[0] !== 'p1') return null;
   let ur = null;
-  if (p.length === 7) {
+  // Album 2: "a<w>". Etwas anderes an achter Stelle, oder noch mehr Abschnitte, kennt diese Version nicht (das Format
+  // einer neueren Karte, siehe _hassPlan).
+  let w = 0;
+  if (p.length === 8) {
+    const a = /^a([0-9a-z]+)$/.exec(p[7]);
+    if (!a) return null;
+    // Mehr Bits, als Album 2 hat: ebenfalls das Format einer neueren Karte (nicht still abschneiden und so löschen)
+    w = parseInt(a[1], 36);
+    if (!(w <= A2_FULL)) return null;
+  }
+  // (vor Album 2 steht ohne Urlaub "-"; mit sieben Abschnitten muss es ein Urlaub sein, wie bis 0.45)
+  if (p.length === 7 || (p.length === 8 && p[6] !== '-')) {
     // Urlaub: "u<t0>" oder "u<t0>.<Minuten>". Etwas anderes an dieser Stelle kennt diese Version nicht.
     const m = /^u([0-9a-z]+)(?:\.([0-9a-z]+))?$/.exec(p[6]);
     if (!m) return null;
@@ -126,6 +149,8 @@ const planParse = (str) => {
     }
     const gr = parseInt(gq[7].split('_')[1] ?? '', 36);
     G.r = Number.isFinite(gr) ? gr : null;
+    // (ohne Päckchen gibt es kein Album 2: Ein Abschnitt "a" ohne sie wird überlesen)
+    G.w = w;
     if (GIFT_F.every((f) => f === 'b' || Number.isFinite(G[f]))) P.gift = G;
   }
   const [cq, fuq] = (p[4] || '-').split('_');
@@ -156,7 +181,7 @@ const urOn = (P) => !!P?.ur && P.ur.d == null;
 const giftApply = (out, op) => {
   const G = out.gift;
   if (op.t === 'gstart') {
-    if (!G) out.gift = { k: op.k, a: 0, n: 0, u: 0, v: 0, z: 0, o: 0, b: null, x: 0, y: 0, d: 0, i: 0, p: op.k, f: 0, r: null };
+    if (!G) out.gift = { k: op.k, a: 0, n: 0, u: 0, v: 0, z: 0, o: 0, b: null, x: 0, y: 0, d: 0, i: 0, p: op.k, f: 0, r: null, w: 0 };
     return;
   }
   if (!G) return;
@@ -182,13 +207,18 @@ const giftApply = (out, op) => {
     if (op.gold) G.y--;
     else G.n--;
     Object.assign(G, { z: op.z, x: op.x, i: op.i, r: op.r ?? null });
-    // Schatz: fehlt er, kommt er ins Album, sonst eine Stufe höher (Gold nur aus goldenen Päckchen)
-    const t = op.i & 15;
-    if (t < GIFT_TRE) {
+    // Schatz: fehlt er, kommt er ins Album, sonst eine Stufe höher (Gold nur aus goldenen Päckchen). Album 2 genauso
+    // in w (seit 0.46).
+    const { alb, t } = giftKind(op.i);
+    if (alb === 1) {
       const lv = giftLv(G, t);
       if (!lv) G.u |= 1 << t;
       else if (lv === 1) G.v = (G.v || 0) | (1 << t);
       else if (lv === 2 && op.gold) G.v = (G.v || 0) | (1 << (8 + t));
+    } else if (alb === 2) {
+      const lv = giftLv2(G, t);
+      const bit = !lv ? t : lv === 1 ? 8 + t : lv === 2 && op.gold ? 16 + t : -1;
+      if (bit >= 0) G.w = (G.w || 0) | (1 << bit);
     }
   } else if (op.t === 'gopen') {
     G.o = Math.max(G.o, Math.min(op.z, G.z));
@@ -293,8 +323,8 @@ const planApply = (P, op, now) => {
 // - Streicheln und Erlebnisse (cute) können an einem Pika-Tag nie weniger werden, und ein älterer Tag kommt nie
 //   wieder: der neuere Tag gilt, am selben Tag der höhere Zähler und alle Erlebnisse zusammen. Ein neuer Tag in neu
 //   fängt wie immer bei null an (cuteNew), der wird übernommen.
-// - Päckchen: verschenkte (z, samt x, i, r des letzten), ausgepackte (o), Album (u), Stufen (v) und Freundschaftstage
-//   (f) wachsen im Alltag auch nur. Die Vorschau darf sie aber senken („Päckchen zurücksetzen“, „Stufen weg“), und die
+// - Päckchen: verschenkte (z, samt x, i, r des letzten), ausgepackte (o), Album (u), Stufen (v), Album 2 (w) und
+//   Freundschaftstage (f) wachsen im Alltag auch nur. Die Vorschau darf sie aber senken („Päckchen zurücksetzen“, „Stufen weg“), und die
 //   kommt von einem frischen Stand. Darum nur, wenn neu erwiesen veraltet ist: wenn dort etwas fehlt, das keine
 //   Änderung je zurücknimmt (cute wie oben, die jüngste große Beschäftigung im Verlauf, das letzte Sammel-Fenster).
 //   Das Bit „gut“ in cute.m und f gehören zusammen (ggood setzt beide): Mit dem Bit kommt so auch f zurück.
@@ -355,12 +385,13 @@ const planKeep = (neu, alt, old = planOld(neu, alt)) => {
     g.u = G.u | A.u;
     g.v = (G.v || 0) | (A.v || 0);
     if (g.v !== G.v) g.nov = undefined; // die Stufen sind damit bekannt (siehe planParse)
+    g.w = (G.w || 0) | (A.w || 0);
     const gold = (f) => Math.floor((f ?? -1) / GIFT.goldDays);
     if (A.f != null && (G.f == null || G.f < A.f)) {
       g.f = A.f;
       if (gold(A.f) > gold(G.f)) g.y = Math.max(G.y, A.y);
     }
-    if (GIFT_F.some((f) => g[f] !== G[f]) || g.v !== G.v || g.f !== G.f || g.r !== G.r) {
+    if (GIFT_F.some((f) => g[f] !== G[f]) || g.v !== G.v || g.f !== G.f || g.r !== G.r || g.w !== (G.w || 0)) {
       out.gift = g;
       diff = true;
     }
