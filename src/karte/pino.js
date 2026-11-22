@@ -1459,7 +1459,7 @@ export class Pino {
   // Jagd auf das Wollknäuel: Der Pika stupst es an, es kullert auf Katzumi zu. Sie duckt sich, wackelt, springt
   // darauf und schlägt es zurück; beim letzten Mal hält sie es fest. Bewegt wird es genau wie in seinem eigenen
   // Spiel (_giftYarn: left mit Überblendung, _yarnXf, _yarnRot), es bleibt am Ende liegen, wo es hingerollt ist.
-  // Tippt jemand es zwischendurch weg (_yarnTap), geht es von dort weiter; ist es weg (Plan geändert), ist Schluss.
+  // Antippen rollt es währenddessen nicht (_yarnTap, _yarnHunt); ist es weg (Plan geändert), ist Schluss.
   async _frYarnHunt(fr, w, Y) {
     const { pW, gy, fMin, fMax } = this._g;
     const W = this._W;
@@ -1481,6 +1481,8 @@ export class Pino {
       if (svg) svg.style.transform = `rotate(${this._yarnRot.toFixed(0)}deg)`;
     };
     const lurk = clamp(home + dir * (Y.d + fW * 0.5), lo, hi);
+    // Solange die Jagd das Knäuel bewegt, lässt _yarnTap seine Überblendung stehen (die Federjagd rührt es nicht an)
+    this._yarnHunt = true;
     try {
       // der Pika hinter das Knäuel, Katzumi gegenüber auf die Lauer
       await Promise.all([this._walkTo(home - dir * pW * 0.36, 1.2), this._friendWalkTo(fr, lurk, 1.2, w)]);
@@ -1532,6 +1534,7 @@ export class Pino {
       this._say(pick(['gut gefangen!', 'hihi!']), 1100);
       await w(1300);
     } finally {
+      this._yarnHunt = false;
       el.style.transition = '';
     }
   }

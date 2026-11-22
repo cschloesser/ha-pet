@@ -61,7 +61,7 @@
  */
 (() => {
   // src/version.js
-  var VERSION = "0.45.1";
+  var VERSION = "0.45.2";
 
   // src/logik/hilfen.js
   var Cancel = class extends Error {
@@ -2383,6 +2383,12 @@
         <circle class="mbloom" cx="108" cy="61" r="4.4"/>
         <circle cx="108" cy="61" r="1.6" fill="#e0a032" opacity=".8"/>
       </g><g class="mf-item" transform="translate(94.8 52.2) scale(.68)"></g></g>
+      <g class="scarf">
+        <path d="M68 63 Q87 73 107 63" stroke="#d9534f" stroke-width="6.5" fill="none" stroke-linecap="round"/>
+        <path d="M70 64 Q87 73.5 105 64.6" stroke="#f6f1ea" stroke-width="1.6" fill="none" stroke-dasharray="3 4"/>
+        <path d="M73 66 L69 80 L76.5 80.6 L79 67.5Z" fill="#d9534f" stroke="#a83a37" stroke-width=".8" stroke-linejoin="round"/>
+        <path d="M70.5 75 L77.5 75.6" stroke="#f6f1ea" stroke-width="1.4"/>
+      </g>
       <g class="paws" fill="${PK("paw")}" stroke="${OUT}" stroke-width="1.4">
         <ellipse cx="84" cy="61" rx="4" ry="5"/>
         <ellipse cx="98" cy="61" rx="4" ry="5"/>
@@ -2466,12 +2472,6 @@
           <circle cx="92.5" cy="1.5" r="3.2" fill="#e8584e" stroke="${OUT}" stroke-width="1"/>
         </g>
       </g>${GIFT_SHADES}</g>
-      <g class="scarf">
-        <path d="M68 63 Q87 73 107 63" stroke="#d9534f" stroke-width="6.5" fill="none" stroke-linecap="round"/>
-        <path d="M70 64 Q87 73.5 105 64.6" stroke="#f6f1ea" stroke-width="1.6" fill="none" stroke-dasharray="3 4"/>
-        <path d="M73 66 L69 80 L76.5 80.6 L79 67.5Z" fill="#d9534f" stroke="#a83a37" stroke-width=".8" stroke-linejoin="round"/>
-        <path d="M70.5 75 L77.5 75.6" stroke="#f6f1ea" stroke-width="1.4"/>
-      </g>
       ${ACT_FRONT}
       ${GIFT_FRONT}
       ${CUP_SVG}
@@ -4000,9 +4000,9 @@
      weit, hintere und vordere Kerzen sind verschieden hoch) */
   .pika.fest-warm .paws { display: inline; transform: translate(13.5px, 6px); transition: transform .45s ease-out; }
   .pika.fest-warm:not(.fest-reach) .paws { animation: fwarm 1s ease-in-out infinite alternate; }
-  .pika.fest-warm.fest-reach .paws { transform: translate(15px, var(--fky, 8px)); }
+  .pika.fest-warm.fest-reach .paws { transform: translate(calc(15px - var(--fkx, 0px)), var(--fky, 8px)); }
   /* Bei Regen hält die vordere Pfote das Blatt (.wet blendet sie aus): Dann reicht die andere bis an den Docht */
-  .pika.wet:not(.inside).fest-warm.fest-reach .paws { transform: translate(29px, var(--fky, 8px)); }
+  .pika.wet:not(.inside).fest-warm.fest-reach .paws { transform: translate(calc(29px - var(--fkx, 0px)), var(--fky, 8px)); }
   @keyframes fwarm { from { transform: translate(13px, 6.8px); } to { transform: translate(14px, 5.2px); } }
   /* Maibaum: Bänder wehen in Windrichtung (--wd) */
   .fmai .rd { transform-box: view-box; transform-origin: 20px 46px; transform: scaleX(var(--wd, 1)); transition: transform 3s; }
@@ -13018,7 +13018,8 @@
     // Auspacken). → true, wenn es gerollt ist
     _yarnTap(el, x) {
       const flying = (a) => !(typeof CSSAnimation !== "undefined" && a instanceof CSSAnimation) && !(typeof CSSTransition !== "undefined" && a instanceof CSSTransition);
-      if (["giftYarn", "giftHeader", "pounceFriend"].includes(this._action) || el.getAnimations?.().some(flying)) return false;
+      const busy = () => ["giftYarn", "giftHeader"].includes(this._action) || this._action === "pounceFriend" && this._yarnHunt;
+      if (busy() || el.getAnimations?.().some(flying)) return false;
       const { fMin, fMax } = this._g;
       const W = this._W;
       const from = this._giftX(0);
@@ -13033,7 +13034,7 @@
       el.style.left = `${to.toFixed(1)}px`;
       el.querySelector("svg").style.transform = `rotate(${this._yarnRot.toFixed(0)}deg)`;
       clearTimeout(this._yarnT);
-      this._yarnT = setTimeout(() => !["giftYarn", "giftHeader", "pounceFriend"].includes(this._action) && (el.style.transition = ""), 950);
+      this._yarnT = setTimeout(() => !busy() && (el.style.transition = ""), 950);
       return true;
     }
     // Antwort des Pikas auf einen Tipp in die Welt, wo sie eine eigene Aktion braucht (nur, wenn er nichts vorhat)
@@ -15385,8 +15386,10 @@
       try {
         const off = this._festCandleOff();
         const dir = off ? cx < 22 ? 1 : -1 : this._x > it.x ? -1 : 1;
-        await this._walkTo((off ? kx : it.x) - dir * pW * (off ? 0.445 : 0.52), 0.9);
+        const tx = (off ? kx : it.x) - dir * pW * (off ? 0.445 : 0.52);
+        await this._walkTo(tx, 0.9);
         this._face(dir);
+        p.style.setProperty("--fkx", `${(off ? clamp((this._x - tx) * dir / pW * 120, -10, 15) : 0).toFixed(1)}px`);
         p.style.setProperty("--fky", `${(94.5 - (gy - ky) / pH * 100 - 4 - 61).toFixed(1)}px`);
         await this._wait(350);
         p.classList.add("sniff");
@@ -17308,7 +17311,7 @@
     // Jagd auf das Wollknäuel: Der Pika stupst es an, es kullert auf Katzumi zu. Sie duckt sich, wackelt, springt
     // darauf und schlägt es zurück; beim letzten Mal hält sie es fest. Bewegt wird es genau wie in seinem eigenen
     // Spiel (_giftYarn: left mit Überblendung, _yarnXf, _yarnRot), es bleibt am Ende liegen, wo es hingerollt ist.
-    // Tippt jemand es zwischendurch weg (_yarnTap), geht es von dort weiter; ist es weg (Plan geändert), ist Schluss.
+    // Antippen rollt es währenddessen nicht (_yarnTap, _yarnHunt); ist es weg (Plan geändert), ist Schluss.
     async _frYarnHunt(fr, w, Y) {
       const { pW, gy, fMin, fMax } = this._g;
       const W = this._W;
@@ -17329,6 +17332,7 @@
         if (svg) svg.style.transform = `rotate(${this._yarnRot.toFixed(0)}deg)`;
       };
       const lurk = clamp(home + dir * (Y.d + fW * 0.5), lo, hi);
+      this._yarnHunt = true;
       try {
         await Promise.all([this._walkTo(home - dir * pW * 0.36, 1.2), this._friendWalkTo(fr, lurk, 1.2, w)]);
         this._face(dir);
@@ -17375,6 +17379,7 @@
         this._say(pick(["gut gefangen!", "hihi!"]), 1100);
         await w(1300);
       } finally {
+        this._yarnHunt = false;
         el.style.transition = "";
       }
     }

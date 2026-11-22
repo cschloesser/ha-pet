@@ -2,6 +2,15 @@
 
 Jede Version der Pika Pet Card, die neueste zuerst.
 
+## 0.45.2 (2026-11-22)
+
+Drei Kleinigkeiten fürs Auge.
+
+- **Schal und Buch:** Trägt er bei Kälte den Schal, liegt der jetzt hinter dem, was er in den Pfoten hält: Buch, Spielkonsole, Tablet und die Pfoten selbst. Bis 0.45.1 lag der Schal darüber, vom Buch sah man nur die oberen Seitenkanten. Gilt auch für Kirby, Rufus und Katzumi.
+- **Advent, Pfote am Docht:** Auf „Stumpf“ und dem schmalen „Fels“ steht die linke Kerze so weit links, dass er nicht ganz hinkommt. Dann streckt er die Pfote um genau dieses Stück kürzer (`--fkx`), sie landet auf dem Docht statt bis zu 9 px daneben.
+- **Wollknäuel:** Tippt man es an und gleich danach jagt Katzumi die Feder, gleitet es danach nicht mehr bei jeder Neuplatzierung weich hinterher (auch nicht bei „Bewegung reduzieren“). Während der Federjagd lässt es sich wieder antippen; gesperrt ist es nur, solange sie wirklich das Knäuel jagt.
+- **Tests:** `test/schal.test.mjs` (4 Tests), je einer in `test/advent.test.mjs` und `test/freunde.test.mjs`. 400 Tests.
+
 ## 0.45.1 (2026-11-22)
 
 Nachbesserung aus dem Nach-Audit der Versionen 0.42.2 bis 0.45.0: Ein Gerät, das länger nicht zu sehen war, überschreibt kein Füttern mehr, und das Tagebuch behält den Fokus.

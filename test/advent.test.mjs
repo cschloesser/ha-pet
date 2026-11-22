@@ -392,3 +392,31 @@ test('Vorschau: Knopf „Adventssonntag (Kerze anzünden)“, „Aktion!“ nimm
   assert.match(html, /if \(k === 'kerze'\) c\._festLit = null;/);
   assert.match(html, /c\._next = acts\.includes\(akt\) \? akt : acts\[0\];/);
 });
+
+test('Adventssonntag: kommt er nicht ganz an die Kerze heran (Rand der Wiese), greift die Pfote um genau so viel kürzer (--fkx)', async () => {
+  const c = karte(am(12, 13)); // 3. Advent: die Kerze links vorn
+  const props = {};
+  c.pika.style.setProperty = (k, v) => (props[k] = v);
+  // _walkTo hält ihn 6 px zu weit rechts an (wie die Grenze pW · 0,45 auf „Stumpf“ oder dem schmalen „Fels“)
+  let ziel = null;
+  c._walkTo = async (x) => {
+    ziel = x;
+    c._x = x + 6;
+  };
+  await c._festAdvent();
+  // 6 px bei pW 119 sind 6,05 Einheiten der Pika-Grafik (120 breit), in Blickrichtung zurück
+  assert.equal(props['--fkx'], '6.1px');
+  // Pfote (bei x 113 von 120, um --fkx zurückgenommen) über dem Docht
+  const p = c._festPos.wreath;
+  const pfote = c._x + c._dir * c._g.pW * (113 / 120 - 0.5) - c._dir * (parseFloat(props['--fkx']) * c._g.pW) / 120;
+  assert.ok(Math.abs(pfote - (p.l + (9 / 44) * p.w)) < 0.5, `Pfote ${pfote.toFixed(1)}, Ziel ${ziel.toFixed(1)}`);
+  // steht er genau da, wohin er wollte, bleibt es bei der vollen Reichweite
+  const d = karte(am(12, 13));
+  const p2 = {};
+  d.pika.style.setProperty = (k, v) => (p2[k] = v);
+  await d._festAdvent();
+  assert.equal(p2['--fkx'], '0.0px');
+  // im Stil: die Reichweite nimmt --fkx zurück, auch bei Regen (die andere Pfote)
+  assert.match(T.STYLES, /\.pika\.fest-warm\.fest-reach \.paws \{ transform: translate\(calc\(15px - var\(--fkx, 0px\)\), var\(--fky, 8px\)\); \}/);
+  assert.match(T.STYLES, /\.fest-reach \.paws \{ transform: translate\(calc\(29px - var\(--fkx, 0px\)\)/);
+});

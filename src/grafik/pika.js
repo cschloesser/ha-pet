@@ -272,6 +272,8 @@ const GIFT_SHADES = `
           <path d="M78.8 45 l2.6 2.8 M95.8 45 l2.6 2.8" stroke="#fff" stroke-width=".9" opacity=".55" stroke-linecap="round"/>
         </g>`;
 
+// Der Winterschal (.scarf) steht direkt vor den Pfoten: hinter Pfoten, Buch, Spielkonsole und Tablet, denn was er hält,
+// hält er vor dem Schal (bis 0.45.1 stand er weiter unten und lag darüber)
 const PIKA_SVG = `
   <svg class="pk" viewBox="0 0 120 100" aria-hidden="true">
     <defs>
@@ -336,6 +338,12 @@ const PIKA_SVG = `
         <circle class="mbloom" cx="108" cy="61" r="4.4"/>
         <circle cx="108" cy="61" r="1.6" fill="#e0a032" opacity=".8"/>
       </g><g class="mf-item" transform="translate(94.8 52.2) scale(.68)"></g></g>
+      <g class="scarf">
+        <path d="M68 63 Q87 73 107 63" stroke="#d9534f" stroke-width="6.5" fill="none" stroke-linecap="round"/>
+        <path d="M70 64 Q87 73.5 105 64.6" stroke="#f6f1ea" stroke-width="1.6" fill="none" stroke-dasharray="3 4"/>
+        <path d="M73 66 L69 80 L76.5 80.6 L79 67.5Z" fill="#d9534f" stroke="#a83a37" stroke-width=".8" stroke-linejoin="round"/>
+        <path d="M70.5 75 L77.5 75.6" stroke="#f6f1ea" stroke-width="1.4"/>
+      </g>
       <g class="paws" fill="${PK('paw')}" stroke="${OUT}" stroke-width="1.4">
         <ellipse cx="84" cy="61" rx="4" ry="5"/>
         <ellipse cx="98" cy="61" rx="4" ry="5"/>
@@ -419,12 +427,6 @@ const PIKA_SVG = `
           <circle cx="92.5" cy="1.5" r="3.2" fill="#e8584e" stroke="${OUT}" stroke-width="1"/>
         </g>
       </g>${GIFT_SHADES}</g>
-      <g class="scarf">
-        <path d="M68 63 Q87 73 107 63" stroke="#d9534f" stroke-width="6.5" fill="none" stroke-linecap="round"/>
-        <path d="M70 64 Q87 73.5 105 64.6" stroke="#f6f1ea" stroke-width="1.6" fill="none" stroke-dasharray="3 4"/>
-        <path d="M73 66 L69 80 L76.5 80.6 L79 67.5Z" fill="#d9534f" stroke="#a83a37" stroke-width=".8" stroke-linejoin="round"/>
-        <path d="M70.5 75 L77.5 75.6" stroke="#f6f1ea" stroke-width="1.4"/>
-      </g>
       ${ACT_FRONT}
       ${GIFT_FRONT}
       ${CUP_SVG}

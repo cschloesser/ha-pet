@@ -1189,3 +1189,26 @@ test('Vorschau: Knöpfe für die drei eigenen Spiele (der passende Freund kommt 
   assert.match(vorschau, /c\._dbgMotif = b\.dataset\.frm;\s*c\._next = 'paint';/);
   assert.match(vorschau, /c\._dbgDream = b\.dataset\.dream;/);
 });
+
+test('Wollknäuel angetippt, gleich danach jagt Katzumi die Feder: Die Überblendung des Tipps bleibt nicht am Knäuel hängen', async () => {
+  // Federjagd, weil „Bewegung reduzieren“ an ist (ruhig); dazu die Gegenprobe mit der Jagd auf das Knäuel selbst.
+  // Bis 0.45.1 ließ der 950-ms-Zeitgeber die Überblendung während jeder Jagd stehen, danach glitt das Knäuel bei
+  // jeder Neuplatzierung, auch bei reduzierter Bewegung.
+  for (const still of [true, false]) {
+    ruhe.matches = still;
+    const F = { name: 'pounceFriend', kind: 'katzumi' };
+    const { c, fr } = auf(F, 600, 248);
+    const [lo] = c._frRange();
+    const x = still ? (lo + c._g.fMax * c._W) / 2 : Math.max(c._g.fMin * c._W, lo - c._g.pW * 0.6);
+    const el = garn(c, x);
+    c._action = null;
+    assert.equal(c._yarnTap(el, x - 5), true);
+    assert.match(el.style.transition, /^left \.9s/);
+    // (ruhig jagt sie immer die Feder; sonst rollt das Knäuel in ihren Bereich, und sie jagt es selbst)
+    void fr;
+    await spiel(c, F.name, { bei: (i) => { if (i === 0) klingeln(); } }); // der Zeitgeber läuft während der Jagd ab
+    klingeln();
+    assert.equal(el.style.transition, '', still ? 'ruhig' : 'normal');
+  }
+  ruhe.matches = false;
+});

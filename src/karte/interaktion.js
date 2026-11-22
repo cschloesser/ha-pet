@@ -911,7 +911,10 @@ export class Interaktion {
   _yarnTap(el, x) {
     const flying = (a) => !(typeof CSSAnimation !== 'undefined' && a instanceof CSSAnimation)
       && !(typeof CSSTransition !== 'undefined' && a instanceof CSSTransition);
-    if (['giftYarn', 'giftHeader', 'pounceFriend'].includes(this._action) || el.getAnimations?.().some(flying)) return false;
+    // (Katzumis Jagd sperrt nur, solange sie wirklich das Knäuel jagt, _yarnHunt: Bei der Federjagd liegt es still da.
+    // Bis 0.45.1 sperrte jede Jagd, und die Überblendung eines Tipps kurz davor blieb danach am Knäuel stehen.)
+    const busy = () => ['giftYarn', 'giftHeader'].includes(this._action) || (this._action === 'pounceFriend' && this._yarnHunt);
+    if (busy() || el.getAnimations?.().some(flying)) return false;
     const { fMin, fMax } = this._g;
     const W = this._W;
     const from = this._giftX(0);
@@ -926,7 +929,7 @@ export class Interaktion {
     el.style.left = `${to.toFixed(1)}px`;
     el.querySelector('svg').style.transform = `rotate(${this._yarnRot.toFixed(0)}deg)`;
     clearTimeout(this._yarnT);
-    this._yarnT = setTimeout(() => !['giftYarn', 'giftHeader', 'pounceFriend'].includes(this._action) && (el.style.transition = ''), 950);
+    this._yarnT = setTimeout(() => !busy() && (el.style.transition = ''), 950);
     return true;
   }
 

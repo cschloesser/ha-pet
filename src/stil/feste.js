@@ -56,9 +56,9 @@ const STYLE_FEST = `
      weit, hintere und vordere Kerzen sind verschieden hoch) */
   .pika.fest-warm .paws { display: inline; transform: translate(13.5px, 6px); transition: transform .45s ease-out; }
   .pika.fest-warm:not(.fest-reach) .paws { animation: fwarm 1s ease-in-out infinite alternate; }
-  .pika.fest-warm.fest-reach .paws { transform: translate(15px, var(--fky, 8px)); }
+  .pika.fest-warm.fest-reach .paws { transform: translate(calc(15px - var(--fkx, 0px)), var(--fky, 8px)); }
   /* Bei Regen hält die vordere Pfote das Blatt (.wet blendet sie aus): Dann reicht die andere bis an den Docht */
-  .pika.wet:not(.inside).fest-warm.fest-reach .paws { transform: translate(29px, var(--fky, 8px)); }
+  .pika.wet:not(.inside).fest-warm.fest-reach .paws { transform: translate(calc(29px - var(--fkx, 0px)), var(--fky, 8px)); }
   @keyframes fwarm { from { transform: translate(13px, 6.8px); } to { transform: translate(14px, 5.2px); } }
   /* Maibaum: Bänder wehen in Windrichtung (--wd) */
   .fmai .rd { transform-box: view-box; transform-origin: 20px 46px; transform: scaleX(var(--wd, 1)); transition: transform 3s; }

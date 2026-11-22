@@ -863,8 +863,13 @@ export class Feste {
       // vorgestreckte Pfote (in der Pika-Grafik bei x 113 von 120) über dem Docht ist; sonst von dort, wo er gerade ist
       const off = this._festCandleOff();
       const dir = off ? (cx < 22 ? 1 : -1) : this._x > it.x ? -1 : 1;
-      await this._walkTo((off ? kx : it.x) - dir * pW * (off ? 0.445 : 0.52), 0.9);
+      const tx = (off ? kx : it.x) - dir * pW * (off ? 0.445 : 0.52);
+      await this._walkTo(tx, 0.9);
       this._face(dir);
+      // Kommt er nicht ganz hin (am Rand der Wiese hält ihn _walkTo auf, auf „Stumpf“ und dem schmalen „Fels“ steht die
+      // linke Kerze so weit links), greift die Pfote um genau dieses Stück kürzer: Sie landet auf dem Docht statt
+      // daneben (bis 0.45.1 bis zu 9 px). In Einheiten der Pika-Grafik (120 breit), in Blickrichtung gemessen.
+      p.style.setProperty('--fkx', `${(off ? clamp(((this._x - tx) * dir / pW) * 120, -10, 15) : 0).toFixed(1)}px`);
       // … und so tief, dass sie den Docht berührt (Boden bei y 94,5 von 100, die Pfote hängt bei 61 und ist 5 hoch)
       p.style.setProperty('--fky', `${(94.5 - ((gy - ky) / pH) * 100 - 4 - 61).toFixed(1)}px`);
       await this._wait(350);
