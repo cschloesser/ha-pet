@@ -459,6 +459,8 @@ export class Momente {
       if (!calm) this._cls('mlem', 950, true); // schmatzen
       p.classList.add('rcap');
       await this._wait(RITUAL.cap);
+      // Album 2 (Hook Bed, src/karte/album2.js): z. B. die Laterne am Bau auspusten
+      await this._a2Bed();
       if (dbg !== 'star' && this._ritPlush(true)) await this._ritRead();
       else await this._ritStar();
       done = true;

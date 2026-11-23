@@ -67,7 +67,7 @@ export class Album2Picnic {
   _a2PicnicScene(lv) {
     const S = this._a2PicnicS;
     if (!S) return;
-    if ((S.W !== this._W || S.H !== this._H) && this._a2PicnicBusy) this._interrupt();
+    if (this._a2PicnicBusy && ((S.W !== this._W || S.H !== this._H) || this._a2WxTurned(S))) this._interrupt(); // (neue Größe; Regen setzt ein)
     else if (!(lv > 0) || !this._a2PicnicBusy) this._a2PicnicEnd();
   }
 
@@ -84,7 +84,9 @@ export class Album2Picnic {
   // Wo die Decke liegt: { d: sein Blick (zum Korb bzw. Freund), bx: Mitte, bw: Breite, px: sein Platz, kx: Mitte des
   // Korbs, fx: Platz des Freunds }. Die Decke ganz auf der Wiese (rechts vom Heu, das davor liegt, im Bild), am liebsten
   // vor dem Aussichtsstein zu Ende (sonst läge sie über seinem Fuß), er bis xR, der Freund in seinem Bereich
-  // (_frRange). Zu zweit nahe beim Freund, sonst irgendwo (near: neben ihm). → null, wenn es nicht passt
+  // (_frRange). Zu zweit nahe beim Freund, sonst irgendwo (near: neben ihm). Seit 0.48.1 nicht über dem, was schon am
+  // Boden steht (_a2Free): Lieber reicht sie bis vor den Stein als über das Windrad; geht beides nicht, wie bisher.
+  // → null, wenn es nicht passt
   _a2PicnicPlan(fr = null, near = false) {
     const { pW, hayR, xR, rock } = this._g;
     const bw = pW * (fr ? PK_W2 : PK_W1);
@@ -93,6 +95,8 @@ export class Album2Picnic {
     const hi0 = this._W - bw / 2 - 3;
     const pref = fr ? (fr.x >= this._x ? 1 : -1) : this._x < this._W * 0.55 ? 1 : -1;
     const ends = rock ? [rock.l + rock.w * 0.12 - bw / 2, Infinity] : [Infinity];
+    let first = null;
+    let soft = null;
     for (const [end, d] of ends.flatMap((e) => [[e, pref], [e, -pref]])) {
       let lo = Math.max(lo0, pW * 0.45 - d * O.p * bw);
       let hi = Math.min(hi0, end, xR - d * O.p * bw);
@@ -104,10 +108,13 @@ export class Album2Picnic {
       if (lo > hi + 0.01) continue;
       hi = Math.max(lo, hi);
       const want = fr ? fr.x - d * O.f * bw : near ? this._x - d * O.p * bw : lo + (hi - lo) * rnd(0.2, 0.8);
-      const bx = clamp(want, lo, hi);
-      return { d, bx, bw, px: bx + d * O.p * bw, kx: bx + d * O.k * bw, fx: fr ? bx + d * O.f * bw : null };
+      const bx = this._a2Free(lo, hi, bw, clamp(want, lo, hi), 'picnic');
+      const P = { d, bx, bw, px: bx + d * O.p * bw, kx: bx + d * O.k * bw, fx: fr ? bx + d * O.f * bw : null };
+      if (!this._a2Hit(bx, bw, 'picnic')) return P;
+      if (!this._a2Hit(bx, bw, 'picnic', [], true)) soft ??= P; // (nur vor dem Vogelhäuschen hinten)
+      first ??= P;
     }
-    return null;
+    return soft ?? first;
   }
 
   // Passt nicht einmal die Decke für einen (sehr schmale Wiese): so weit rechts vom Heu wie nötig
@@ -129,7 +136,7 @@ export class Album2Picnic {
     el.classList.remove('a2out', 'open', 'a2tap', 'a2roll', 'rolled', 'pop');
     el.classList.toggle('a2left', P.d < 0);
     el.style.zIndex = String(PK_Z());
-    const S = { W: this._W, H: this._H, el, P, lid: false, t: [], fx: new Set(), bf: new Set(), off: new Set(), treat: null };
+    const S = { W: this._W, H: this._H, wx0: this._a2WxBad(), el, P, lid: false, t: [], fx: new Set(), bf: new Set(), off: new Set(), treat: null };
     this._a2PicnicS = S;
     const fade = () => el.animate?.([{ opacity: 0 }, { opacity: 1 }], { duration: 500, fill: 'backwards' });
     if (mode.startsWith('bundle')) {
@@ -276,6 +283,8 @@ export class Album2Picnic {
   // ohnehin sauber gemacht (Vorschau und Auspacken dürfen trotzdem)
   _a2PicnicActs({ wx, piles }, lv) {
     if (!this._a2PicnicWeather(wx) || piles?.length) return [];
+    const P = this._a2PicnicPlan(null); // (kein freier Platz für die Decke: lieber nicht)
+    if (!P || !this._a2Room(P.bx, P.bw, 'picnic')) return [];
     const fr = !!this._a2PicnicFriend();
     return [[fr ? 0.8 : 0.3, 'a2PicnicPlay'], [lv >= 2 ? (fr ? 1 : this._a2PicnicGuest() ? 0.5 : 0.15) : 0, 'a2PicnicShare']];
   }
@@ -572,7 +581,7 @@ export class Album2Picnic {
   // Die Füße (Körper unten in der Mitte von BFLY_SVG, 20 × 16) auf dem Punkt
   _a2PicnicBfly(S, x, y, c, i) {
     const calm = calmMotion();
-    const w = this._H * 0.075;
+    const w = this._H * 0.1125; // (wie .a2pkb im Stil)
     const e = document.createElement('div');
     e.className = `a2pkb${calm ? ' still rest' : ''}`;
     e.innerHTML = BFLY_SVG(c);

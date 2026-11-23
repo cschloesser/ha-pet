@@ -5,7 +5,7 @@ import { RATE } from './zustand.js';
 import { MEM_BITS } from './tagesplan.js';
 import { ACT_WIN } from './beschaeftigungen.js';
 import { GIFT, giftKind, giftMile, giftAllGold } from './paeckchen.js';
-import { A2_KEYS, a2AllGold } from './album2.js';
+import { A2_KEYS, a2AllGold, a2Begun } from './album2.js';
 import { URLAUB } from './urlaub.js';
 
 // Tippt man auf die Statusleiste, geht „Pikas Tagebuch“ auf: was er heute und gestern erlebt hat (aus seiner Sicht),
@@ -111,6 +111,8 @@ const DIARY_TXT = {
   tonne: ['Die Tonne steht an der Straße. Danke fürs Rausstellen!', 'Die Müllabfuhr kann kommen. Die Tonne steht schon draußen.'],
   sauger: ['Der Saugroboter war unterwegs. Ich bin hinterhergehoppelt.', 'Der Saugroboter hat geputzt. Vielleicht bin ich ein Stück mitgefahren!'],
   allGold: ['Jetzt sind alle meine Schätze golden. Was für ein Fest!'],
+  // (Album 1 golden, und Album 2 hat schon begonnen: „alle“ wären es dann nicht)
+  allGold1: ['Mein erstes Album ist ganz golden. Was für ein Fest!'],
   allGold2: ['Jetzt ist auch mein zweites Album ganz golden. Was für ein Fest!'],
   flowerTaken: ['Ich hab dir eine Blume gepflückt und ins Gras gelegt. Du hast sie genommen!', 'Für dich: eine Blume mit Schleife. Du hast sie angenommen, da hab ich mich gefreut.'],
   flowerWait: ['Ich hab dir eine Blume ins Gras gelegt. Sie wartet auf dich.'],
@@ -258,8 +260,9 @@ const diaryDerive = (S, P, from, { decayAt, until }) => {
         maxO = g1.o;
         const { alb, t: it, gold } = giftKind(g1.i);
         const e = pend && pend.z <= g1.o ? pend : { it, ...(alb === 2 ? { alb } : {}), gold, what: !alb ? 'treat' : 'new' };
-        // „alle golden“ je Album
-        add(t, 'parcel', { ...e, o: g1.o, mile: giftMile(g1.o), all: e.what === 'gilt' && (e.alb === 2 ? a2AllGold(g1) : giftAllGold(g1)) });
+        // „alle golden“ je Album (a2: Album 1 ist golden, und Album 2 hat schon begonnen)
+        const all = e.what === 'gilt' && (e.alb === 2 ? a2AllGold(g1) : giftAllGold(g1));
+        add(t, 'parcel', { ...e, o: g1.o, mile: giftMile(g1.o), all, ...(all && e.alb !== 2 && a2Begun(g1) ? { a2: true } : {}) });
         pend = null;
       }
     }

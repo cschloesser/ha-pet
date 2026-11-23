@@ -47,24 +47,40 @@ export class Album2Tramp {
   // Größe der Karte geändert, steht es an alten Pixeln: abbrechen (wie der Schlitten)
   _a2TrampScene(lv) {
     const S = this._a2TrampS;
-    if (S && (S.W !== this._W || S.H !== this._H) && this._a2TrampBusy) this._interrupt();
+    if (S && this._a2TrampBusy && ((S.W !== this._W || S.H !== this._H) || this._a2WxTurned(S))) this._interrupt(); // (neue Größe; Regen setzt ein)
     else if (!S || !(lv > 0)) this._a2TrampEnd();
     if (S && this._a2TrampS === S) S.front.classList.toggle('gilt', lv >= 3);
   }
 
   // Wo es steht: auf der Wiese zwischen Vorrat und Stein, neben allem, was dort schon steht (_groundSpot, bevor es selbst
   // dort steht). Auf schmalen Karten, wo die Wiese nicht reicht, bis auf drei Viertel kleiner. → { x: Mitte, w: Breite }
+  // Seit 0.48.1: Steht es dort auf etwas (auf schmalen Karten das Windrad dicht am Heu), darf es nach rechts bis vor den
+  // Fuß des Steins rücken (der steht dahinter, wie beim Becken), wenn dort Platz ist (_a2Free).
   _a2TrampSpot() {
-    const { pW } = this._g;
+    const { pW, hayR, rock } = this._g;
     const U = this._groundSpot(Math.random(), pW * TRAMP_W * 1.06, 0.75);
-    return { x: U.x, w: U.w / 1.06 };
+    const w = U.w / 1.06;
+    if (!this._a2Hit(U.x, w, 'tramp', [], true)) return { x: U.x, w };
+    const lo = hayR + w / 2;
+    const hi = Math.min(this._W - w / 2 - 2, rock.l + rock.w * 0.3);
+    return { x: this._a2Free(lo, Math.max(lo, hi), w, clamp(U.x, lo, Math.max(lo, hi)), 'tramp'), w };
   }
 
   // Wie hoch er über dem Tuch höchstens springt (px): Der Kopf bleibt im Bild, auch quer im Salto (dann ragt er um
-  // etwa 0,13 Pika-Höhen weiter hinauf), mit einem Rand oben; höchstens 0,8 Pika-Höhen
-  _a2TrampTop(mat) {
-    const { gy, pH } = this._g;
-    const free = gy - pH * 0.945 - mat - Math.max(6, (this._Hs || this._H) * 0.04) - pH * 0.13;
+  // etwa 0,13 Pika-Höhen weiter hinauf), mit einem Rand oben; höchstens 0,8 Pika-Höhen. Seit 0.48.1 zählt oben die
+  // Unterkante der Statusleiste, wenn sie zu sehen ist und er unter ihr springt (x: Mitte des Trampolins; auf schmalen
+  // Karten tauchte er sonst hinter ihr durch)
+  _a2TrampTop(mat, x = null) {
+    const { gy, pH, pW } = this._g;
+    let top = 0;
+    const st = this._el?.stats;
+    if (x != null && st && !st.hidden) {
+      const l = st.offsetLeft;
+      const r = l + st.offsetWidth;
+      const b = st.offsetTop + st.offsetHeight;
+      if (Number.isFinite(l) && Number.isFinite(r) && Number.isFinite(b) && st.offsetHeight > 0 && x - pW * 0.6 < r && x + pW * 0.6 > l) top = b;
+    }
+    const free = gy - pH * 0.945 - mat - top - Math.max(6, (this._Hs || this._H) * 0.04) - pH * 0.13;
     return clamp(free, pH * 0.2, pH * 0.8);
   }
 
@@ -92,10 +108,10 @@ export class Album2Tramp {
     front.style.zIndex = String(TRAMP_FZ());
     this._el.gifts.appendChild(front);
     const S = {
-      W: this._W, H: this._H, el, front, x, w, s, mat: (TRAMP_FOOT - TRAMP_MAT) * s, mpath: el.querySelector('.a2trm'), msh: el.querySelector('.a2trs'),
+      W: this._W, H: this._H, wx0: this._a2WxBad(), el, front, x, w, s, mat: (TRAMP_FOOT - TRAMP_MAT) * s, mpath: el.querySelector('.a2trm'), msh: el.querySelector('.a2trs'),
       mode: 'off', y: 0, air: 0, dip: 0, rot: 0, ctl: false, spring: null, drive: null, raf: 0, F: [], t: [], hp: 0, folded: false,
     };
-    S.top = this._a2TrampTop(S.mat);
+    S.top = this._a2TrampTop(S.mat, x);
     this._a2TrampS = S;
     this._a2Scene(); // (golden: .gilt am Element; den vorderen Bogen setzt der Hook Scene)
     for (const e of [el, front]) e.classList.add(calmMotion() ? 'a2out' : 'fold');
@@ -116,7 +132,8 @@ export class Album2Tramp {
 
   // ---------- Takt ----------
 
-  // Bild für Bild: laufender Abschnitt (drive), dann Pika, Tuch und Schatten stellen
+  // Bild für Bild: laufender Abschnitt (drive), dann Pika, Tuch und Schatten stellen. Seit 0.48.1 nur, solange sich
+  // etwas bewegt (ein Abschnitt läuft oder das Tuch federt nach einem Tipp); Drive und Tipp starten den Takt wieder.
   _a2TrampRun() {
     const S = this._a2TrampS;
     if (!S || S.raf || typeof requestAnimationFrame !== 'function') return;
@@ -130,7 +147,7 @@ export class Album2Tramp {
         this._err?.('Album 2 tramp', e);
         return;
       }
-      S.raf = requestAnimationFrame(frame);
+      if (S.drive || S.spring) S.raf = requestAnimationFrame(frame);
     };
     S.raf = requestAnimationFrame(frame);
   }
@@ -140,6 +157,7 @@ export class Album2Tramp {
     const S = this._a2TrampS;
     if (!S) return;
     S.drive = { t0: now(), ms, step };
+    this._a2TrampRun();
     step(0);
     try {
       await this._wait(ms);
@@ -227,6 +245,8 @@ export class Album2Tramp {
   // Hook: nur bei Trampolinwetter; der Salto erst ab Stufe 2
   _a2TrampActs({ wx }, lv) {
     if (!this._a2TrampWeather(wx)) return [];
+    const T = this._a2TrampSpot(); // (kein freier Platz: lieber nicht)
+    if (!this._a2Room(T.x, T.w, 'tramp')) return [];
     return [[0.35, 'a2TrampPlay'], [lv >= 2 ? 0.25 : 0, 'a2TrampFlip']];
   }
 
@@ -263,6 +283,7 @@ export class Album2Tramp {
   async _a2TrampOut() {
     const { pW, xR } = this._g;
     const T = this._a2TrampSpot();
+    await this._a2FrAside(T.x - T.w / 2, T.x + T.w / 2); // (der Freund steht nicht darauf)
     const off = T.w / 2 + pW * 0.38;
     const ok = (x) => x >= pW * 0.45 && x <= xR;
     let side = this._x < T.x ? -1 : 1;
@@ -506,6 +527,11 @@ export class Album2Tramp {
 
   // ---------- Hooks: Tipp, Aufräumen, Abhängen ----------
 
+  // Der vordere Bogen liegt in einem eigenen Element (.a2-trampf): Seine Zeichnung gehört zur Tippfläche (seit 0.48.1)
+  _a2TrampParts() {
+    return [this._a2TrampS?.front];
+  }
+
   // Tipp aufs Trampolin (nur, solange es draußen steht): Das Tuch federt nach, steht er darauf, wippt er mit
   _a2TrampTap(z) {
     const S = this._a2TrampS;
@@ -513,6 +539,7 @@ export class Album2Tramp {
     const calm = calmMotion();
     S.spring = { t0: now(), amp: calm ? 1 : 2.6, calm };
     this._a2TrampPlace();
+    this._a2TrampRun(); // (der Takt ruht, solange nichts federt)
     // (am Rand des Tuchs: Steht er darauf, verdeckte der Schriftzug in der Mitte ihn)
     const off = Math.max(S.w * 0.46, this._g.pW * 0.56);
     if (z) this._peep(S.x + (S.x + off < this._W - 30 ? off : -off), this._g.gy - S.mat * 0.6, pick(['boing!', 'federt!', 'bouing!']));

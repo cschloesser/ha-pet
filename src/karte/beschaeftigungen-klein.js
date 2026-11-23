@@ -42,8 +42,8 @@ export class BeschaeftigungenKlein {
   // und liegende Häufchen. Das steht in der Regel überall an derselben Stelle; gerechnet wird aber mit dem, was
   // jetzt da ist: Ein Gerät, das später einsteigt, kann die Pfütze woanders hinlegen, wenn inzwischen ein Gerät des
   // Haus-Boten fertig wurde oder ein Häufchen dazukam. Das Wollknäuel zählt nicht: Es liegt nach einem Tipp auf
-  // jedem Gerät woanders.
-  _groundBlocks() {
+  // jedem Gerät woanders. skip: Elemente aus Album 2, die nicht zählen (Set; das eigene, wenn ein Schatz umzieht).
+  _groundBlocks(skip = null) {
     const H = this._H;
     const pad = H * 0.015;
     const out = [];
@@ -55,7 +55,7 @@ export class BeschaeftigungenKlein {
     }
     // (Album 2: was dauerhaft am Boden steht, z. B. das Vogelhäuschen)
     for (const el of this._a2Els?.values() || []) {
-      if (el.parentElement === this._el.gifts && !el.style.top) out.push([el.offsetLeft - pad, el.offsetLeft + el.offsetWidth + pad]);
+      if (!skip?.has?.(el) && el.parentElement === this._el.gifts && !el.style.top) out.push([el.offsetLeft - pad, el.offsetLeft + el.offsetWidth + pad]);
     }
     for (const q of this._poops().piles) out.push([this._pileX(q) - H * 0.05, this._pileX(q) + H * 0.05]);
     return out;

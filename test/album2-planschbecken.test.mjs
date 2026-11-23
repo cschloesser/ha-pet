@@ -123,7 +123,7 @@ const karte = (lv = 1, { geo = 'breit', temp = 28, wx = {}, can = true, date = J
       ruf.push(['steht', Math.round(x)]);
     },
     _pikaZ: leer,
-    _groundSpot: (u, w2) => ({ x: (G.hayR + G.rock.l) / 2, w: w2 }),
+    _groundSpot: (u, w2) => ({ x: (G.hayR + G.rock.l) / 2, w: w2 }), _poops: () => ({ piles: [] }),
     _nosePos: () => ({ x: c._x + c._dir * G.pW * 0.258, y: G.gy - G.pH * 0.43 }),
     _mouth: (col) => ruf.push(['maul', !!col]),
     _jump: (k) => ruf.push(['springt', k]), _puff: () => ruf.push(['staub']),
@@ -580,4 +580,61 @@ test('Planschbecken: Nur die Höhe der Karte ändert sich (pW, gy neu, das Becke
   };
   await g._a2PoolPlay();
   assert.equal(ab, 1);
+});
+
+// 0.48.1: Das Becken nimmt Rücksicht auf das, was schon am Boden steht (_a2Free über _groundBlocks): Auf der schmalen
+// Karte steht das Windrad dicht rechts vom Heu, das Becken liegt dann rechts davon, und er steht trotzdem daneben.
+test('Planschbecken: liegt nicht über dem Windrad (schmal: rechts davon), er steht daneben', () => {
+  for (const geo of ['schmal', 'breit']) {
+    const { c, G } = karte(1, { geo });
+    const wh = new El();
+    wh.offsetLeft = G.hayR - G.H * 0.07;
+    wh.offsetWidth = G.H * 0.14;
+    wh.parentElement = c._el.gifts;
+    c._gtEls = new Map([[1, wh]]);
+    for (let k = 0; k < 10; k++) {
+      const P = c._a2PoolSpot();
+      const msg = `(${geo}) ${JSON.stringify(P)}`;
+      assert.ok(P.cx - P.w / 2 >= wh.offsetLeft + wh.offsetWidth - 0.01, `rechts vom Windrad ${msg}`);
+      assert.ok(P.cx + P.w / 2 <= G.W, `im Bild ${msg}`);
+      assert.ok(P.sx >= G.pW * 0.45 - 0.01 && P.sx <= G.xR + 0.01, msg);
+      assert.ok(Math.abs(P.sx - P.cx) >= P.w / 2 + G.pW * 0.3 - 0.01, `er steht daneben ${msg}`);
+    }
+  }
+});
+
+// 0.48.1: Tippvorrang am Boden nach der Ebene (worldFront in src/logik/interaktion.js, aus _worldZones): Auf 380 px liegt
+// der linke Beckenrand über dem Windrad, der Tipp gehört dem Becken; das Vogelhäuschen auf der hinteren Spur schlägt
+// Knäuel und Windrad nicht.
+test('Planschbecken: Ein Tipp auf den Rand über dem Windrad gehört dem Becken (vorn gewinnt, nicht pauschal Album 2)', () => {
+  const wheel = { k: 'wheel', l: 140, t: 100, r: 170, b: 170, z: 12012 };
+  const yarn = { k: 'yarn', l: 300, t: 150, r: 330, b: 172, z: 12012 };
+  const pool = { k: 'pool', a2: true, l: 160, t: 130, r: 300, b: 172, z: 12016 };
+  const feeder = { k: 'feeder', a2: true, l: 290, t: 60, r: 320, b: 160, z: 7000 };
+  const alt = [wheel, yarn, pool, feeder];
+  assert.equal(T.worldPick(165, 150, alt).k, 'wheel', 'bis 0.48.0: das Windrad');
+  const Z = T.worldFront(alt);
+  assert.equal(T.worldPick(165, 150, Z).k, 'pool');
+  assert.equal(T.worldPick(310, 155, Z).k, 'yarn', 'das Häuschen hinten schlägt das Knäuel nicht');
+  assert.equal(T.worldPick(150, 110, Z).k, 'wheel', 'wo nur das Windrad ist, bleibt es beim Windrad');
+  // gleiche Ebene: Reihenfolge wie gegeben
+  assert.deepEqual(plain(T.worldFront([{ k: 'a', z: 1 }, { k: 'b', z: 1 }, { k: 'c' }]).map((z) => z.k)), ['a', 'b', 'c']);
+});
+
+// 0.48.1 (Nachtrag E): Im Regen planscht er weiter (das darf er), fängt es aber an zu schneien, endet das Planschen
+test('Planschbecken: Regen setzt ein – er planscht weiter; Schnee – die Aktion endet', () => {
+  const { c } = karte(1);
+  let ab = 0;
+  c._interrupt = () => ab++;
+  c._wx = {};
+  c._a2PoolBusy = true;
+  c._a2PoolMake(c._a2PoolSpot());
+  c._wx = { wet: true, rain: 20 };
+  c._a2Scene();
+  assert.equal(ab, 0);
+  c._wx = { snow: 1 };
+  c._a2Scene();
+  assert.equal(ab, 1);
+  c._a2PoolBusy = false;
+  c._a2PoolEnd(true);
 });

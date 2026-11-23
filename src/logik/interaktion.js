@@ -64,6 +64,10 @@ const worldPick = (x, y, zones) => {
   }
   return best;
 };
+// Dinge am Boden mit eigener Ebene (Wollknäuel, Windrad, Schätze aus Album 2) untereinander nach ihrer Ebene z, vorn
+// zuerst (seit 0.48.1): Liegen zwei übereinander, bekommt den Tipp, was man vorn sieht (bis 0.48.0 gewannen Knäuel und
+// Windrad pauschal, ein Tipp auf den Beckenrand drehte das Windrad dahinter). Gleiche Ebene: Reihenfolge wie gegeben.
+const worldFront = (zones) => zones.map((z, i) => [z, i]).sort((a, b) => (b[0].z || 0) - (a[0].z || 0) || a[1] - b[1]).map((x) => x[0]);
 // Kleine Ziele (Sonne, Mond, Schornstein, Saugroboter, ein fast leerer Heuhaufen) bekommen einen Hof, der ihre
 // Tippfläche auf mindestens WORLD_MIN px bringt. l, t, r, b: die gemalte Fläche, pad: Tipp-Rand, den sie ohnehin hat.
 const WORLD_MIN = 40;
@@ -85,5 +89,5 @@ const RITUAL_STORY = ['…und dann schliefen alle ein.', '…und alle Sterne gin
 export {
   WORLD_MIN, worldHalo, CHIMNEY, RITUAL, RITUAL_STORY,
   CUTE_SMALL, PET_FREE, TOUCH_NEXT, TOUCH_TTL, PET_NEXT, PET_HOLD, PET_CALM, petGain, KRAUL, PRESS_SLOP, kraulGain,
-  MIMIK, MIMIK_CLS, MIMIK_ON, CUTE_CLS, worldPick,
+  MIMIK, MIMIK_CLS, MIMIK_ON, CUTE_CLS, worldPick, worldFront,
 };

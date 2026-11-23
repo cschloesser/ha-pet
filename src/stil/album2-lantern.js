@@ -13,6 +13,19 @@ const STYLE_A2_LANTERN = `
   /* Antippen: Die Flamme schießt hoch und duckt sich, die Laterne wackelt auf ihrem Fuß */
   .a2-lantern .a2lfl { transform-box: fill-box; transform-origin: 50% 100%; }
   .a2-lantern.a2ltap .a2lfl { animation: a2lflame .7s ease-out; }
+  /* Auspusten im Abendritual (.a2lpuff): Die Flamme schrumpft und erlischt, ein Rauchfaden (.a2lsmoke in .fx) steigt
+     auf und verweht. Ruhig: Die Flamme blendet nur aus, der Rauch blendet am Platz ein und aus. */
+  .a2-lantern.a2lpuff .a2lfl { transition: transform .6s ease-in, opacity .6s ease-in; transform: scale(.3, .1); opacity: 0; }
+  .a2lsmoke { position: absolute; width: calc(var(--H) * .032); height: calc(var(--H) * .11); margin: calc(var(--H) * -.11) 0 0 calc(var(--H) * -.016);
+    pointer-events: none; transform-origin: 50% 100%; animation: a2lsmoke 1.5s ease-out forwards; }
+  .a2lsmoke svg { display: block; width: 100%; height: 100%; overflow: visible; }
+  @keyframes a2lsmoke {
+    from { opacity: 0; transform: translateY(2px) scaleY(.3); }
+    30% { opacity: .9; }
+    to { opacity: 0; transform: translate(calc(var(--H) * .012), calc(var(--H) * -.06)) scaleY(1.15); }
+  }
+  .a2lsmoke.still { animation: a2lsmoke-still 1.5s ease-in-out forwards; }
+  @keyframes a2lsmoke-still { 0%, 100% { opacity: 0; } 40% { opacity: .8; } }
   @keyframes a2lflame { 25% { transform: scale(1.35, 1.6); } 55% { transform: scale(.85, .75); } 80% { transform: scale(1.1, 1.15); } }
   .a2-lantern.a2ltap svg { transform-origin: 50% 100%; animation: a2lwob .6s ease-out; }
   @keyframes a2lwob { 25% { transform: rotate(-5deg); } 55% { transform: rotate(3.5deg); } 80% { transform: rotate(-1.5deg); } }
@@ -42,7 +55,7 @@ const STYLE_A2_LANTERN = `
 
   /* Glühwürmchen der goldenen Laterne (GOLD_FIREFLY, Aussehen von .gfx.hff): kreisen um das Glas, ohne den Anflug der
      Hängematte; .rev andersherum. Ruhig (.still) sitzen sie still (Platz setzt das Skript) und blenden ein. */
-  .gfx.hff.a2lff { margin: calc(var(--H) * -.012); opacity: 1;
+  .gfx.hff.a2lff { width: calc(var(--H) * .036); height: calc(var(--H) * .036); margin: calc(var(--H) * -.018); opacity: 1; /* anderthalbmal so groß wie .gfx.hff (seit 0.48.1) */
     animation: a2lffin 1s ease-out backwards, a2lorb var(--d, 3.4s) linear infinite, gfx-ffglow 1.9s ease-in-out infinite alternate; }
   .gfx.hff.a2lff.rev { animation-direction: normal, reverse, alternate; }
   @keyframes a2lffin { from { opacity: 0; } }
@@ -56,6 +69,7 @@ const STYLE_A2_LANTERN = `
   @media (prefers-reduced-motion: reduce) {
     .a2-lantern.a2ltap .a2lfl, .a2-lantern.a2ltap svg, .pika.a2lc .mf-item > g > g, .a2lglow .a2lh { animation: none !important; }
     .a2lglow.flare .a2lh { transform: none; }
+    .a2-lantern.a2lpuff .a2lfl { transform: none; }
   }
 `;
 

@@ -8,7 +8,7 @@ const STYLE_A2_FEEDER = `
   /* Häuschen auf dem Pfahl, Fuß auf der hinteren Reihe (LANE_DY über der Bodenlinie) */
   .a2-feeder { width: calc(var(--H) * ${FEEDER_W}); margin-left: calc(var(--H) * ${-FEEDER_W / 2}); bottom: calc(var(--gb) + var(--H) * ${LANE_DY});
     transition: opacity .4s, filter 2.5s; }
-  .a2-feeder.a2out { opacity: 0; }
+  .a2-feeder.a2out, .a2-feeder.a2hid { opacity: 0; } /* a2hid: ausgeblendet, solange die Schneewehe liegt */
   .a2-feeder .a2fh { transform-box: view-box; transform-origin: 16px 30px; }
   .a2-feeder.a2tap .a2fh { animation: a2fwob .6s ease-out; }
   @keyframes a2fwob { 20% { transform: rotate(-6deg); } 45% { transform: rotate(4.5deg); } 70% { transform: rotate(-2deg); } }

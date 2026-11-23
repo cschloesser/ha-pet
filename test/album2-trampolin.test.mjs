@@ -71,6 +71,7 @@ class El {
 // selbst (lauf() lässt die gestellten laufen)
 const ruhe = { matches: false };
 let wecker = [];
+let takt = null;
 let T = null;
 vm.runInNewContext(fs.readFileSync(new URL('../pika-pet-card.js', import.meta.url), 'utf8'), {
   window: { matchMedia: () => ruhe, customCards: [] },
@@ -85,6 +86,8 @@ vm.runInNewContext(fs.readFileSync(new URL('../pika-pet-card.js', import.meta.ur
     if (w && typeof w === 'object') w.aus = true;
   },
   setInterval: () => 0, clearInterval() {}, queueMicrotask, Date, Math, JSON, Promise, Intl, AbortController, performance,
+  // Bild-für-Bild-Takt nur, wenn ein Test ihn einschaltet (takt = []): er sammelt die Rückrufe, bild() lässt einen laufen
+  requestAnimationFrame: (f) => (takt ? takt.push(f) : 0), cancelAnimationFrame: (i) => takt && (takt[i - 1] = null),
   __pikaTest: (x) => (T = x),
 }, { filename: 'pika-pet-card.js' });
 const lauf = () => {
@@ -117,7 +120,7 @@ const karte = (lv = 1, { wx = {}, geo = 'breit', ...extra } = {}) => {
       c._x = x;
       ruf.push(['geht', Math.round(x)]);
     },
-    _setX: (x) => (c._x = x),
+    _setX: (x) => (c._x = x), _poops: () => ({ piles: [] }),
     // wie _groundSpot ohne andere Requisiten: zwischen Vorrat und Stein, in der Mitte
     _groundSpot: (u, wd, kMin = 0.6) => {
       const a = G.hayR + G.H * 0.03;
@@ -542,4 +545,86 @@ test('Trampolin: Nur die Höhe der Karte ändert sich (H, pW, gy mit ihr) mitten
   await c._a2TrampPlay();
   assert.ok(einmal);
   assert.ok(ruf.some((r) => r[0] === 'abbruch'), 'neue Höhe: abbrechen');
+});
+
+// 0.48.1: Auf schmalen Karten tauchte er im Salto hinter die Statusleiste oben links. Steht das Trampolin unter ihr, zählt
+// ihre Unterkante als oberer Rand; daneben oder ohne Leiste wie bisher.
+test('Trampolin: Er springt nicht hinter die Statusleiste (schmale Karte), daneben so hoch wie bisher', () => {
+  const { c, G } = karte(1, { geo: 'schmal' });
+  const mat = (G.pW * 1.2 / 64) * 12.4;
+  const frei = c._a2TrampTop(mat);
+  c._el.stats = { hidden: false, offsetLeft: 10, offsetTop: 10, offsetWidth: 255, offsetHeight: 26 };
+  const top = c._a2TrampTop(mat, 215);
+  const kopf = G.gy - mat - top - G.pH * 0.945 - G.pH * 0.13;
+  assert.ok(top < frei, JSON.stringify([top, frei]));
+  assert.ok(kopf >= 36 - 0.01 || top <= G.pH * 0.2 + 0.01, 'Kopf unter der Leiste: ' + kopf);
+  // rechts neben der Leiste, ohne Leiste, mit verborgener Leiste: wie bisher
+  assert.equal(c._a2TrampTop(mat, 340), frei);
+  c._el.stats.hidden = true;
+  assert.equal(c._a2TrampTop(mat, 215), frei);
+  c._el.stats = { hidden: false };
+  assert.equal(c._a2TrampTop(mat, 215), frei, 'ohne Maße (Attrappe): nichts');
+  // beim Aufstellen gilt sie
+  c._el.stats = { hidden: false, offsetLeft: 10, offsetTop: 10, offsetWidth: 255, offsetHeight: 26 };
+  const S = c._a2TrampMake(215, G.pW * 1.2);
+  assert.equal(S.top, top);
+  c._a2TrampEnd(true);
+});
+
+// Takt einschalten: wartend() zählt die angeforderten Bilder, bild() lässt sie laufen
+const taktAn = () => {
+  takt = [];
+  const wartend = () => takt.filter(Boolean).length;
+  const bild = () => {
+    const F = takt.map((f, i) => [f, i]).filter(([f]) => f);
+    for (const [, i] of F) takt[i] = null;
+    for (const [f] of F) f(performance.now());
+  };
+  return { wartend, bild };
+};
+
+// 0.48.1: Der Takt läuft nur, solange ein Abschnitt läuft oder das Tuch nach einem Tipp federt
+test('Trampolin: Bild-für-Bild-Takt nur während eines Abschnitts oder des Nachfederns', async () => {
+  const { c, G } = karte(1);
+  const { wartend, bild } = taktAn();
+  try {
+    const S = c._a2TrampMake(330, G.pW * 1.2);
+    bild();
+    assert.equal(wartend(), 0, 'steht still: kein Takt');
+    c._a2TrampTap(null);
+    assert.equal(wartend(), 1, 'federt: Takt');
+    bild();
+    assert.equal(wartend(), 1);
+    S.spring.t0 -= 2000; // (ausgefedert)
+    bild();
+    assert.equal(wartend(), 0);
+    let n = 0;
+    c._wait = async () => {
+      bild();
+      bild();
+    };
+    await c._a2TrampDrive(400, () => n++);
+    assert.ok(n >= 3);
+    bild();
+    assert.equal(wartend(), 0);
+    c._a2TrampEnd(true);
+  } finally {
+    takt = null;
+  }
+});
+
+// 0.48.1 (Nachtrag C): Auf 380 px steht das Windrad dicht am Heu, zwischen ihm und dem Stein ist kein Platz: Das
+// Trampolin rückt bis vor den Fuß des Steins (wie das Becken) und wird angeboten; ist auch dort nichts frei, nicht.
+test('Trampolin: schmale Karte mit Windrad am Heu – es rückt vor den Stein; ganz ohne Platz kein Angebot', () => {
+  const { c, G } = karte(1, { geo: 'schmal' });
+  const wh = { parentElement: c._el.gifts, offsetLeft: G.hayR - 12, offsetWidth: 26, style: {} };
+  c._gtEls = new Map([[1, wh]]);
+  for (let k = 0; k < 10; k++) {
+    const T = c._a2TrampSpot();
+    assert.ok(T.x - T.w / 2 >= wh.offsetLeft + wh.offsetWidth - 0.01, JSON.stringify(T));
+    assert.ok(T.x <= G.rock.l + G.rock.w * 0.3 + 0.01 && T.x + T.w / 2 <= G.W);
+  }
+  assert.equal(c._a2TrampActs({ wx: {} }, 1).length, 2);
+  c._gtEls = new Map([[1, { parentElement: c._el.gifts, offsetLeft: 0, offsetWidth: G.W, style: {} }]]);
+  assert.deepEqual(plain(c._a2TrampActs({ wx: {} }, 1)), []);
 });

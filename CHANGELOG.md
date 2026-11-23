@@ -2,6 +2,53 @@
 
 Jede Version der Pika Pet Card, die neueste zuerst.
 
+## 0.48.1 (2026-11-23)
+
+Nachbesserung aus dem Abschluss-Audit von Album 2: Beim gleichzeitigen Wiederverbinden geht kein Päckchen mehr verloren, die acht Schätze nehmen in der Szene Rücksicht und kommen seltener, und im Abendritual pustet er die Laterne aus. Am Format von Tagesplan und Zustand ändert sich nichts.
+
+**Speicher**
+
+- **Wiederverbinden:** Verbanden sich zwei Geräte im selben Augenblick wieder (etwa nach einem Neustart von HA), konnte ein Päckchen, das eines davon ohne Verbindung verschenkt und ausgepackt hatte, dauerhaft aus dem Tagesplan fallen; schenkte es danach noch einmal, kam dasselbe Päckchen ein zweites Mal, mit noch einmal Glück. Eigene, schon bestätigte Änderungen kommen jetzt 15 Sekunden ab ihrer Bestätigung (statt ab ihrem Entstehen) noch einmal auf einen fremden Stand, höchstens bis 30 Minuten nach ihrem Entstehen.
+- **Neuere Version im Helfer:** Ein Gerät, das den Tagesplan einer neueren Version findet und ihn darum nicht mehr schreibt, verdient, verschenkt und belohnt keine Päckchen mehr; bis 0.48.0 konnte es Päckchen „verschenken“, die nur auf ihm galten, mit echtem Satt und Glück. Der Knopf ist blass wie im Urlaub, im Tagebuch unter Schätze steht „bitte neu laden“.
+- **Zu kurzer Helfer:** Ist die max. Länge des Helfers kleiner als 180, warnt die Karte nicht mehr fälschlich vor dem „Format einer neueren Karte“, sobald der Plan sieben oder acht Abschnitte hat (Urlaub, Album 2); ein beendeter Urlaub blieb dann im Plan stehen. Die Päckchen gehen auf so einem Gerät weiter.
+- **Helfergröße:** Ohne Verlauf wird ein Plan mit vollem Album 2 bis 184 Zeichen lang. Die README empfiehlt darum für den Tagesplan mindestens etwa 185 Zeichen (besser wie bisher 255); die Untergrenze von 180 bleibt, damit ein Helfer, der bis 0.45 reichte, weiter gelesen wird.
+- **Album 1 ganz golden:** Feier und Tagebuch sagen jetzt „Album 1 ganz golden!“ bzw. „Mein erstes Album ist ganz golden“ statt „Alles golden!“ und „alle meine Schätze“: Wenn Album 1 golden ist, läuft Album 2 schon. Fällt ein Meilenstein auf dasselbe Päckchen, stehen beide im Tagebuch (bis 0.48.0 ging der Meilenstein darin unter).
+- **Schätze:** „golden!“, „beide Alben golden!“ und ob Album 2 schon zu sehen ist, richten sich nach den ausgepackten Stufen; was noch am Ballon hängt, zählt noch nicht. Album 1 hat eine Überschrift, sobald Album 2 darunter steht.
+- **Bekannte Grenzen:** Verschenken zwei Geräte ohne Verbindung aus demselben Vorrat, bleibt beim Zusammenführen nur eines der beiden Päckchen (die Vorräte werden nicht zusammengezählt). Verschenken zwei Geräte in derselben Sekunde und würfeln dabei dieselbe Kennung (1 zu 36), belohnen ausnahmsweise beide.
+
+**Rücksicht in der Szene**
+
+- **Platz am Boden:** Kamera, Radio, Picknickdecke und Planschbecken stellen sich nicht mehr über Windrad, abgestellte Laterne, Festdeko, Geräte des Haus-Boten oder andere Schätze, vor das Vogelhäuschen auf der hinteren Reihe nur, wenn sonst nirgends Platz ist. Auf schmalen Karten liegt das Becken rechts vom Windrad, das Trampolin rückt bis vor den Stein. Findet sich auch so kein Platz, bietet er die Aktion nicht an (das gilt auch fürs Trampolin).
+- **Tippen:** Liegen zwei Dinge am Boden übereinander, bekommt den Tipp, was vorn liegt; bis 0.48.0 gewannen Wollknäuel und Windrad immer, ein Tipp auf den Beckenrand drehte das Windrad dahinter. Die Tippflächen der Schätze aus Album 2 folgen ihrer Zeichnung (bis 0.48.0 die ganze Box: Ein Tipp rechts neben den Pfahl des Vogelhäuschens traf das Häuschen statt des Steins), auch am vorderen Rand des Beckens und am vorderen Bogen des Trampolins; was gerade ausblendet, nimmt keinen Tipp an.
+- **Der Freund geht beiseite:** Steht er im Weg, hoppelt er beiseite, bevor Schlitten, Radio, Vogelhäuschen, Kamera, Trampolin oder Becken drankommen, und bleibt bis zum Ende der Aktion draußen (beim Selfie und beim Picknick stellt die Aktion ihn selbst hin). Ist er gerade beschäftigt, kommt er erst oder geht er schon, bietet der Pika diese sechs nicht an.
+- **Vogelhäuschen bei Schnee:** Liegt Schnee und ist der Schlitten da, steht es links neben dem Fuß der Schneewehe statt darin; ist dort kein Platz, blendet es aus, solange die Wehe liegt.
+- **Schlitten nach dem Auspacken:** Der vorgeführte Schlitten parkt nicht mehr vor der Tür des Baus, der Laterne oder anderem am Boden; steht der Pika selbst davor, geht er erst ein Stück.
+- **Trampolin:** Er springt nicht mehr in die Statusleiste hinein (auf schmalen Karten tauchte er hinter ihr durch).
+- **Wetterumschwung:** Setzt mitten im Picknick, beim Radio oder auf dem Trampolin Regen, Schneefall, Starkregen, Hagel oder Gewitter ein, hört er auf. Beim Planschen erst bei Schneefall, Starkregen, Hagel oder Gewitter (im Regen planscht er ja auch). War das Wetter schon beim Aufbau so (Vorschau-Knopf, Auspacken), bleibt es dabei.
+
+**Gleichgewicht**
+
+- **Seltener:** Bis 0.48.0 nahmen die Schätze aus Album 2 an trockenen Tagen im Dauerlauf 35–50 % der freien Zeit ein, weil ihr Gewicht ihre Dauer nicht mitzählte (Becken, Picknick und Radio dauern 30–50 s, Herumhoppeln und Schauen 2–3 s). Jetzt zählt ihr Gewicht nur noch mal 36 s durch ihre typische Dauer (höchstens wie bisher), jeder Schatz pausiert nach jedem Mal, das er sich selbst ausgesucht hat, 6 Minuten (jedes Gerät für sich; Vorschau-Knöpfe und Auspacken zählen nicht), und er fängt keinen an, der bis zur nächsten Beschäftigung aus dem Tagesplan nicht fertig wäre (Dauer und 5 s Spielraum; sonst begann die Beschäftigung dort 25–40 s später als auf den anderen Geräten, eine kleine fiel aus). In der Simulation sind es so an trockenen Tagen 9–13 % der freien Zeit, Album 1 behält etwa 30 %.
+
+**Laterne im Abendritual**
+
+- **Auspusten:** Brennt die Laterne noch (am Bau oder wo er sie abgestellt hat), geht er im Abendritual nach der Mütze zu ihr, „pff…“, die Flamme schrumpft und erlischt, ein Rauchfaden steigt auf; dann geht das Ritual weiter wie bisher. Füttern und Streicheln brechen ab wie das Ritual, dann brennt sie weiter, bis er schläft. Mit „Bewegung reduzieren“ ohne Laufen, die Flamme blendet aus, der Rauch blendet am Platz ein und aus. Während er pustet, nimmt sie keinen Tipp an.
+
+**Kleinigkeiten**
+
+- **Schal:** Der Winterschal liegt hinter allem, was der Pika im Maul trägt (Radio, Laterne, Kamera, Bündel, Becken, Seil, Futter); Pinos Halstuch bleibt darunter.
+- **Radio:** Nachts kommt kein Vögelchen auf den Henkel, auch nicht über die Vorschau.
+- **Größer:** Die Glühwürmchen der goldenen Laterne und die Schmetterlinge auf der Picknickdecke sind anderthalbmal so groß.
+- **Sparsamer:** Schlitten und Trampolin rechnen nur noch Bild für Bild, solange sich etwas bewegt; die Nase für das Seil des Schlittens wird je Bild einmal gelesen.
+- **Abräumen:** Wechselt man das Dashboard, räumt auch das Radio vollständig ab (seine Klassen und der Takt am Pika blieben bis 0.48.0 bis zum Ende der nächsten Aktion stehen). Toter Code der Vorschau ist entfernt (`_dbgGimpel`, `_a2CameraDbgMotif`, die Klasse `a2still`).
+- **Vorschau:** Der Inhalt eines Päckchens richtet sich nach dem eingestellten Monat, wie die Schätze.
+- **README:** Mit „Sturm“ meinten die Tabelle von Album 2 und dieser Verlauf bei 0.46 Starkregen, Hagel und Gewitter; die README nennt jetzt die Bedingungen selbst und den Wind mit Zahl (ab 40 km/h; dem Radio macht Wind nichts). Die Laterne brennt nach dem Abstellen höchstens 4 Minuten, nach einem Tipp höchstens 4 Minuten ab dem Tipp. Ein voller Tagesplan mit vollem Album 2 belegt rund 240 der 255 Zeichen (bisher stand dort 232).
+- **Für Entwickler:** Neue Hooks `_a2<Key>Bed` (Abendritual) und `_a2<Key>Parts` (weitere Stücke der Tippfläche), Helfer `_a2Free`, `_a2Room` und `_a2FrAside` in `src/karte/album2.js`, `worldFront` in `src/logik/interaktion.js`.
+
+**Tests**
+
+- Neu: `test/wiederverbinden.test.mjs` (6 Tests), `test/neuere-version.test.mjs` (2), `test/alles-golden.test.mjs` (4), `test/geleert-wiederverbinden.test.mjs` (3, ein von Hand geleerter Helfer bekommt nach dem Wiederverbinden nichts Altes zurück), `test/album2-planschbecken-windrad.test.mjs` (2, auf schmalen Karten findet das Becken seinen Platz rechts vom Windrad). Dazu neue in `test/album2-vogelhaus.test.mjs` (jetzt 11), `test/album2-laterne.test.mjs` (13), `test/album2-schlitten.test.mjs` (17), `test/album2-kamera.test.mjs` (16), `test/album2-radio.test.mjs` (15), `test/album2-trampolin.test.mjs` (16), `test/album2-picknick.test.mjs` (14), `test/album2-planschbecken.test.mjs` (15) und `test/schal.test.mjs` (6). 552 Tests.
+
 ## 0.48.0 (2026-11-23)
 
 Die letzten beiden Schätze für das zweite Album: Picknickdecke und Planschbecken. Damit sind alle acht gebaut.

@@ -122,7 +122,7 @@ const karte = (lv = 1, { geo = 'breit', wx = {}, cls = [], ...extra } = {}) => {
     _mouth: (col) => ruf.push(['maul', !!col]), _cls: (k) => ruf.push(['cls', k]), _interrupt: () => ruf.push(['abbruch']),
     _sparkle: leer, _mimik: leer, _emote: (k) => ruf.push(['emote', k]), _happy: () => ruf.push(['freut']), _hearts: () => ruf.push(['herzen']),
     _peep: (x, y, t) => ruf.push(['piep', t, Math.round(x), Math.round(y)]),
-    _found: (k) => ruf.push(['entdeckt', k]), _away: () => false, _urlaubFern: () => false, _err: (wo, e) => ruf.push(['fehler', wo, String(e)]),
+    _found: (k) => ruf.push(['entdeckt', k]), _away: () => false, _urlaubFern: () => false, _err: (wo, e) => ruf.push(['fehler', wo, String(e)]), _poops: () => ({ piles: [] }),
     ...extra,
   });
   c._giftScene = () => c._a2Scene();
@@ -671,4 +671,32 @@ test('Kamera: Nur die Höhe der Karte ändert sich (H, pW, gy mit ihr) mitten im
   await c._a2CameraPlay({ motif: 'sky' });
   assert.ok(einmal);
   assert.ok(ruf.some((r) => r[0] === 'abbruch'), 'neue Höhe: abbrechen');
+});
+
+// Ein Ding am Boden (wie das Windrad aus Album 1: _gtEls, in .gifts, ohne top) von l bis r
+const amBoden = (c, l, r, t = 1) => {
+  const el = { parentElement: c._el.gifts, offsetLeft: l, offsetWidth: r - l, style: {} };
+  c._gtEls = new Map([...(c._gtEls || []), [t, el]]);
+  return el;
+};
+const frei = (x, w, l, r, pad) => x + w / 2 <= l - pad + 0.01 || x - w / 2 >= r + pad - 0.01;
+
+test('Kamera: steht nicht vor dem, was schon am Boden steht (Himmel, Selfie, Blume; seit 0.48.1)', () => {
+  const { c } = karte(1);
+  const O = c._a2CameraOff();
+  const L0 = c._a2CameraAimSky();
+  amBoden(c, L0.cx - 15, L0.cx + 15);
+  const pad = c._H * 0.015;
+  const L = c._a2CameraAimSky();
+  assert.ok(frei(L.cx, O.w, L0.cx - 15, L0.cx + 15, pad), JSON.stringify([L0.cx, L.cx]));
+  const S = c._a2CameraSelfPlan(null);
+  assert.ok(S && frei(S.cx, O.w, L0.cx - 15, L0.cx + 15, pad), JSON.stringify(S));
+  // Blume: eine, vor der die Kamera auf dem Windrad stünde, nimmt er nicht
+  const { c: b } = karte(1);
+  b._flowers = [{ xf: 0.62, color: '#e33', el: new El() }];
+  const F = b._a2CameraAimFlower();
+  assert.ok(F, 'ohne Sperre geht die Blume');
+  amBoden(b, F.cx - 10, F.cx + 10);
+  const F2 = b._a2CameraAimFlower();
+  assert.ok(!F2 || frei(F2.cx, O.w, F.cx - 10, F.cx + 10, pad), JSON.stringify(F2));
 });

@@ -3,7 +3,7 @@
 import { rnd, pick, clamp } from '../logik/hilfen.js';
 import { calmMotion } from '../logik/bewegung-reduzieren.js';
 import { PET_CLING, PET_CAP, pikaDay } from '../logik/tagesplan.js';
-import { PET_FREE, TOUCH_NEXT, petGain, KRAUL, PRESS_SLOP, worldPick, worldHalo, CHIMNEY } from '../logik/interaktion.js';
+import { PET_FREE, TOUCH_NEXT, petGain, KRAUL, PRESS_SLOP, worldPick, worldFront, worldHalo, CHIMNEY } from '../logik/interaktion.js';
 import { CRIT_KINDS } from '../logik/besucher.js';
 import { BZ } from '../logik/buehne.js';
 import { MOUSE_SVG } from '../grafik/besucher.js';
@@ -564,10 +564,16 @@ export class Interaktion {
       const x = this._sigVacNow(V);
       if (x + V.w > 0 && x < this._W) thing('vac', x, V.top, x + V.w, V.top + V.w * (18 / 44), V.el);
     }
+    // Wollknäuel, Windrad und die Schätze aus Album 2 (mit Hook Tap, src/karte/album2.js): untereinander nach ihrer Ebene,
+    // was vorn liegt, bekommt den Tipp (worldFront)
     const E = this._gtEls;
+    const n0 = Z.length;
     if (E?.has(0)) add('yarn', E.get(0), 8);
     if (E?.has(1)) add('wheel', E.get(1), 4);
-    this._a2Zones(Z, sr); // Album 2: Schätze mit einem Hook Tap (src/karte/album2.js)
+    this._a2Zones(Z, sr);
+    const G = Z.splice(n0);
+    for (const z of G) z.z = Number(getComputedStyle(z.el).zIndex) || 0;
+    Z.push(...worldFront(G));
     if (!sc.classList.contains('snowcover')) {
       for (const f of this._flowers) if (!f.el.classList.contains('picked')) add('flower', f.el, 6);
     }

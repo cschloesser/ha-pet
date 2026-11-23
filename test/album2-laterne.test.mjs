@@ -3,6 +3,7 @@
 // ist die der Welt (W.vor). node --test
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
 import { welt } from './welt.mjs';
 
 const plain = (v) => JSON.parse(JSON.stringify(v));
@@ -484,4 +485,77 @@ test('Laterne: Größe oder Areal geändert – am Bau rückt sie an den neuen P
   d._el.pika.classList.add('a2lsw');
   d._a2LanternDetach();
   assert.ok(!['a2lc', 'a2lsw', 'a2lbig'].some((k) => d._el.pika.classList.contains(k)));
+});
+
+// 0.48.1: Im Abendritual (nach der Mütze, Hook Bed über _a2Bed) pustet er die Laterne aus, die noch am Bau brennt: hin,
+// zu ihr drehen, „pff…“, Flamme schrumpft, Rauchfaden, aus. Abgebrochen (Füttern, Streicheln) brennt sie weiter.
+test('Laterne im Abendritual: hingehen, „pff…“, Flamme schrumpft, Rauchfaden, aus; abgebrochen brennt sie weiter', async () => {
+  const quell = fs.readFileSync(new URL('../src/karte/momente.js', import.meta.url), 'utf8');
+  const r = quell.indexOf("p.classList.add('rcap')");
+  assert.ok(r > 0 && quell.indexOf('await this._a2Bed()', r) > r, 'das Ritual ruft den Hook nach der Mütze');
+  const { c, ruf } = karte(1);
+  c._a2LanternSet(c._a2LanternSpot());
+  c._a2Scene();
+  const S = c._a2LanternStand;
+  const el = c._a2Els.get('lantern');
+  assert.ok(S && el);
+  c._x = 420;
+  let mitten = null;
+  c._wait = async () => {
+    const sm = c._el.fx.kinder.find((k) => k.cls.has('a2lsmoke') && !k.weg);
+    if (sm && !mitten) mitten = { puff: el.cls.has('a2lpuff'), blow: c._a2LanternBlow, tap: c._a2LanternTap({ el }), off: glow(c)?.cls.has('off'), x: c._x, dir: c._dir };
+  };
+  S.until = Date.now() - 1; // (abgelaufen: Die Szene löscht sie nicht unter ihm)
+  c._a2Scene();
+  assert.equal(c._a2LanternStand, S, 'während er pustet, bleibt sie');
+  await c._a2Bed();
+  assert.ok(ruf.some((x) => x[0] === 'sagt' && x[1] === 'pff…'));
+  assert.ok(Math.abs(c._x - S.x) < c._g.pW * 0.85, 'hingegangen: ' + c._x);
+  assert.ok(mitten, 'Rauchfaden');
+  assert.deepEqual(plain(mitten), { puff: true, blow: true, tap: false, off: true, x: c._x, dir: S.x >= c._x ? 1 : -1 });
+  assert.equal(c._a2LanternStand, null, 'aus');
+  assert.ok(el.cls.has('a2out'));
+  assert.equal(c._a2LanternBlow, false);
+  assert.ok(c._el.fx.kinder.filter((k) => k.cls.has('a2lsmoke')).every((k) => k.weg), 'Rauch weg');
+  // nichts zu tun ohne brennende Laterne
+  const n = ruf.length;
+  await c._a2Bed();
+  assert.equal(ruf.length, n);
+  // abgebrochen (beim zweiten Warten): Sie brennt weiter, nichts bleibt hängen
+  const { c: b } = karte(1);
+  b._a2LanternSet(b._a2LanternSpot());
+  b._a2Scene();
+  const el2 = b._a2Els.get('lantern');
+  let k = 0;
+  b._wait = async () => {
+    if (++k >= 2) {
+      b._ac = { signal: { aborted: true } };
+      throw new Error('abgebrochen');
+    }
+  };
+  await assert.rejects(b._a2Bed(), /abgebrochen/);
+  assert.ok(b._a2LanternStand, 'brennt weiter');
+  assert.ok(!el2.cls.has('a2lpuff') && !el2.cls.has('a2out'));
+  assert.ok(!glow(b)?.cls.has('off'));
+  assert.equal(b._a2LanternBlow, false);
+  // ein anderer Fehler im Hook bleibt bei der Laterne, das Ritual geht weiter
+  const { c: e } = karte(1);
+  const err = [];
+  e._err = (wo) => err.push(wo);
+  e._a2LanternSet(e._a2LanternSpot());
+  e._a2Scene();
+  e._walkTo = async () => {
+    throw new Error('kaputt');
+  };
+  e._x = 500;
+  await e._a2Bed();
+  assert.deepEqual(err, ['Album 2 lantern']);
+});
+
+// 0.48.1: Glühwürmchen der Laterne anderthalbmal so groß wie die der Hängematte (eigener Stil, GOLD_FIREFLY bleibt)
+test('Laterne: Glühwürmchen anderthalbmal so groß wie .gfx.hff', () => {
+  const st = fs.readFileSync(new URL('../src/stil/album2-lantern.js', import.meta.url), 'utf8');
+  const pk = fs.readFileSync(new URL('../src/stil/paeckchen.js', import.meta.url), 'utf8');
+  const w = (s, sel) => Number(s.match(new RegExp(sel.replace(/\./g, '\\.') + ' \\{ width: calc\\(var\\(--H\\) \\* ([.\\d]+)\\)'))[1]);
+  assert.ok(Math.abs(w(st, '.gfx.hff.a2lff') / w(pk, '.gfx.hff') - 1.5) < 0.01);
 });

@@ -40,7 +40,7 @@ export class Album2Radio {
   // Größe der Karte geändert, steht es an alten Pixeln: abbrechen (wie _layout bei Requisiten)
   _a2RadioScene(lv) {
     const S = this._a2RadioS;
-    if (S && (S.W !== this._W || S.H !== this._H) && this._a2RadioBusy) this._interrupt();
+    if (S && this._a2RadioBusy && ((S.W !== this._W || S.H !== this._H) || this._a2WxTurned(S))) this._interrupt(); // (neue Größe; Regen setzt ein)
     else if (!S || !(lv > 0)) this._a2RadioEnd();
   }
 
@@ -58,9 +58,27 @@ export class Album2Radio {
     const { w } = this._a2RadioDim();
     // (_besideSpot hält zwischen ihm und der Mitte eines Requisits der Breite q den Abstand q / 2 + 0,45 pW)
     const B = this._besideSpot(Math.random(), Math.random(), (RADIO_FAR - 0.45) * pW * 2);
-    const px = clamp(B.px, hayR + w * 0.6, xR + pW * 0.3);
-    const x = clamp(px - B.dir * pW * RADIO_FAR, pW * 0.45, xR);
+    // (seit 0.48.1 nicht vor dem, was dort steht: Windrad, Vogelhäuschen, Laterne, Festdeko …; er steht auf der Seite, wo
+    // Platz ist)
+    const px = this._a2Free(hayR + w * 0.6, xR + pW * 0.3, w, clamp(B.px, hayR + w * 0.6, xR + pW * 0.3), 'radio');
+    const far = pW * RADIO_FAR;
+    const d = px - B.dir * far >= pW * 0.45 && px - B.dir * far <= xR ? B.dir : -B.dir;
+    const x = clamp(px - d * far, pW * 0.45, xR);
     return { px, x, dir: px >= x ? 1 : -1 };
+  }
+
+  // Gleich neben ihm (nach dem Auspacken, reduzierte Bewegung): zur Seite mit mehr Platz, RADIO_FAR entfernt, aber nicht
+  // vor dem, was dort steht (_a2Free). → Mitte des Radios
+  _a2RadioBeside() {
+    const { pW, xR } = this._g;
+    const d = this._x < this._W / 2 ? 1 : -1;
+    return this._a2Free(pW * 0.5, xR + pW * 0.3, this._a2RadioDim().w, clamp(this._x + d * pW * RADIO_FAR, pW * 0.5, xR + pW * 0.3), 'radio');
+  }
+
+  // Der Freund sitzt nicht auf dem Radio (_a2FrAside)
+  async _a2RadioAside(px) {
+    const { w } = this._a2RadioDim();
+    await this._a2FrAside(px - w * 0.6, px + w * 0.6);
   }
 
   // Radio hinstellen (Element aus _a2El: Tippfläche, Licht, golden) mit der Mitte bei px. pop: ploppt auf, sonst blendet
@@ -72,7 +90,7 @@ export class Album2Radio {
     el.style.left = `${px.toFixed(1)}px`;
     el.style.zIndex = String(RADIO_Z());
     el.style.setProperty('--a2rn', '0px');
-    const S = { W: this._W, H: this._H, el, x: px, st: 0, on: false, gold: false, dance: false, bird: null, t: [] };
+    const S = { W: this._W, H: this._H, wx0: this._a2WxBad(), el, x: px, st: 0, on: false, gold: false, dance: false, bird: null, t: [] };
     this._a2RadioS = S;
     this._a2Scene(); // (golden: .gilt)
     const w = el.querySelector('.a2rw');
@@ -113,6 +131,9 @@ export class Album2Radio {
   // Der Drehtanz ab Stufe 2 etwas seltener als der Tanz
   _a2RadioActs({ wx }, lv) {
     if (!this._a2RadioWeather(wx)) return [];
+    // (findet sich kein freier Platz, lieber nicht: _a2Free, das Vogelhäuschen hinten zählt nicht)
+    const P = this._a2RadioSpot();
+    if (!this._a2Room(P.px, this._a2RadioDim().w, 'radio')) return [];
     const w = 0.3 * (this._el.scene.classList.contains('night') ? 0.5 : 1);
     return [[w, 'a2RadioPlay'], [lv >= 2 ? w * 0.6 : 0, 'a2RadioSpin']];
   }
@@ -133,7 +154,9 @@ export class Album2Radio {
     const lv = this._a2Lv('radio');
     if (!lv || (!this._a2RadioWeather() && !this._forced && !o.short)) return;
     const gold = !!o.gold || (lv >= 3 && this._a2GoldOk('radio'));
-    const bird = !!o.bird || (lv >= 3 && this._a2GoldOk('radio', RADIO_GOLD, 'radio-bird'));
+    // (nachts kommt kein Vögelchen, auch nicht erzwungen; vor _a2GoldOk geprüft, das den Abstand stempelt)
+    const night = this._el.scene.classList.contains('night');
+    const bird = !night && (!!o.bird || (lv >= 3 && this._a2GoldOk('radio', RADIO_GOLD, 'radio-bird')));
     this._a2RadioBusy = true;
     try {
       if (calmMotion()) await this._a2RadioCalm(mode, gold, bird, o);
@@ -150,9 +173,10 @@ export class Album2Radio {
     let P;
     if (o.short) {
       // gleich hier: Es ploppt neben ihm auf (zur Seite mit mehr Platz), er tritt einen Schritt heran
-      const d = this._x < this._W / 2 ? 1 : -1;
-      const px = clamp(this._x + d * pW * RADIO_FAR, pW * 0.5, this._g.xR + pW * 0.3);
+      const px = this._a2RadioBeside();
+      const d = px >= this._x ? 1 : -1;
       P = { px, x: this._x, dir: d };
+      await this._a2RadioAside(px);
       this._face(d);
       this._a2RadioMake(px, true);
       await this._wait(700);
@@ -160,6 +184,7 @@ export class Album2Radio {
     } else {
       await this._a2RadioFetch();
       P = this._a2RadioSpot(); // (erst jetzt: Hat sich die Karte währenddessen verändert, gilt der neue Platz)
+      await this._a2RadioAside(P.px);
       await this._walkTo(P.px - P.dir * pW * RADIO_NEAR, 0.9);
       this._face(P.dir);
       await this._wait(200);
@@ -339,10 +364,13 @@ export class Album2Radio {
     const { pW } = this._g;
     let P;
     if (o.short) {
-      const d = this._x < this._W / 2 ? 1 : -1;
-      P = { x: this._x, px: clamp(this._x + d * pW * RADIO_FAR, pW * 0.5, this._g.xR + pW * 0.3), dir: d };
+      const px = this._a2RadioBeside();
+      P = { x: this._x, px, dir: px >= this._x ? 1 : -1 };
     } else {
       P = this._a2RadioSpot();
+    }
+    await this._a2RadioAside(P.px);
+    if (!o.short) {
       await this._walkTo(P.x, 0.9);
     }
     this._face(P.dir);
@@ -619,18 +647,18 @@ export class Album2Radio {
     if (!this._a2RadioBusy) this._el?.pika?.classList.remove(...RADIO_CLS);
   }
 
-  // Karte aus dem DOM: alles sofort weg
+  // Karte aus dem DOM: alles sofort weg (wie _a2LanternDetach: über End, damit auch die eigenen Klassen und der Takt am
+  // Pika abgehen; bis 0.48.0 blieben sie bis zum Ende der nächsten Aktion stehen)
   _a2RadioDetach() {
     clearTimeout(this._a2RadioTapT);
     const S = this._a2RadioS;
-    if (S) {
-      this._a2RadioBirdGo(false, true, S);
-      this._a2RadioS = null;
-      for (const t of S.t) clearTimeout(t);
-    }
+    if (S) this._a2RadioBirdGo(false, true, S); // (das Vögelchen sofort, nicht davonfliegend)
+    this._a2RadioBusy = false;
+    this._a2RadioEnd(true, true);
+    this._el?.pika?.classList.remove(...RADIO_CLS);
+    this._el?.pika?.style.removeProperty?.('--a2rbt');
     this._a2Drop('radio');
     for (const n of this._a2RadioFx || []) n.remove();
     this._a2RadioFx?.clear();
-    this._a2RadioBusy = false;
   }
 }

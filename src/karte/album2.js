@@ -30,6 +30,11 @@
 //   läuft wie jede Aktion: warten nur mit await this._wait(ms) (bricht mit Cancel ab, wenn etwas dazwischenkommt), sich
 //   bewegen mit _walkTo/_approach/_hopTo/_face, sprechen mit _say/_peep, freuen mit _happy/_jump/_sparkle. Vorschau-
 //   Knöpfe setzen this._next = 'aktion' (dann gilt this._forced: auch ohne passendes Wetter).
+//   Seit 0.48.1 rechnet _a2Acts die Gewichte noch um (A2_REF, A2_DUR, A2_PAUSE, A2_SLOT_GAP unten): Jede Aktion wiegt
+//   höchstens 36 s / ihre typische Dauer (neue Aktionen tragen dort ihre Dauer ein), ein Schatz pausiert nach seinem Mal 6 Minuten,
+//   und nichts wird angeboten, was bis zur nächsten Beschäftigung aus dem Tagesplan nicht fertig wäre. Braucht ein Schatz
+//   Platz am Boden: findet sich mit _a2Free keiner (_a2Hit), Gewicht 0; den Freund vorher beiseite (_a2FrAside); schlägt
+//   das Wetter mitten in der Aktion um, bricht der Hook Scene ab (_a2WxTurned).
 // - _a2<Key>Scene(lv): Szene nachziehen. Läuft bei jedem Takt, jeder Änderung des Plans und nach jedem Auslegen
 //   (_giftScene), auch nachts. Was dauerhaft steht (Vogelhäuschen), legt man mit this._a2El(key, html) an (ein
 //   div.gt.a2-<key> in der Ebene .gifts, Rang schatz, Licht wie die Schätze aus Album 1) und setzt dort left/bottom und
@@ -44,7 +49,13 @@
 //   üblichen Klassen am Pika wie look-up, crouch, happy nimmt _cleanup selbst.)
 // - _a2<Key>Tap(z) → true: Tipp auf sein Element in der Szene (Zone { k: key, el, l, t, r, b } in px der Szene). Nur auf
 //   diesem Gerät, nichts in die Helfer. Mit true zählt die Entdeckung key (find in den Daten). Nur Elemente aus _a2El
-//   bekommen eine Zone, und nur, wenn es den Hook gibt.
+//   bekommen eine Zone, und nur, wenn es den Hook gibt. Die Zone folgt der Zeichnung (je Form ein Rechteck); hat der
+//   Schatz vorn ein zweites Stück außerhalb seines Elements (Rand des Beckens, Bogen des Trampolins), nennt
+//   _a2<Key>Parts() → [Elemente] es, dann zählt dessen Zeichnung mit.
+// - _a2<Key>Bed(lv): async, im Abendritual (_bedRitual in src/karte/momente.js) nach der Mütze, vor Gute Nacht (seit
+//   0.48.1; Vorbild: die Laterne pustet er aus, wenn sie am Bau brennt). Warten mit this._wait: Füttern und Streicheln
+//   brechen das Ritual dort ab (Cancel), aufräumen im finally. Reduzierte Bewegung: ohne Laufen. Nur, wenn der Schatz da
+//   ist; nichts zu tun: sofort zurück.
 // - _a2<Key>Tick(lv): im Takt (alle 20 s, nur sichtbar), für Zugaben, die von selbst kommen (mit _a2GoldOk und R).
 // - _a2<Key>Detach(): Karte aus dem DOM (anderes Dashboard): eigene Zeitgeber abräumen, Teilchen weg.
 // Reduzierte Bewegung (calmMotion aus src/logik/bewegung-reduzieren.js): ohne Flug, Hüpfen, Drehen; Dinge blenden am
@@ -61,13 +72,33 @@
 // Der Schatz bekommt die Stufe, dann läuft die Aktion auf beiden Karten (Stufe 3 mit _dbgGold).
 
 import { calmMotion } from '../logik/bewegung-reduzieren.js';
-import { rnd, clamp, pick } from '../logik/hilfen.js';
+import { Cancel, rnd, clamp, pick, clearSpot } from '../logik/hilfen.js';
 import { goldDue } from '../logik/paeckchen.js';
 import { A2_KEYS, giftLvs2 } from '../logik/album2.js';
 import { A2_ITEMS } from '../grafik/album2.js';
 import { A2_PLATZHALTER } from '../grafik/album2/platzhalter.js';
 
 const cap = (k) => k[0].toUpperCase() + k.slice(1);
+// Schätze, die Platz brauchen, auf dem der Freund stehen könnte (sie rufen _a2FrAside vor dem Aufbau). Ist der Freund
+// gerade beschäftigt (_a2FrBusy), bietet _a2Acts ihre Aktionen nicht an, statt in ihn hineinzubauen.
+const A2_FR_ASIDE = new Set(['sled', 'radio', 'feeder', 'camera', 'tramp', 'pool']);
+// Gleichgewicht (seit 0.48.1): Die Gewichte der Aktionen zählen ihre Dauer nicht mit, Becken, Picknick und Radio dauern
+// aber 30–50 s, idle, look und wander 2–3 s. Bis 0.48.0 nahmen die acht Schätze an trockenen Tagen 35–50 % der freien
+// Zeit ein. Darum wiegt jede Aktion von selbst nur A2_REF / ihre typische Dauer (A2_DUR, gemessen in der Vorschau, s),
+// und nach jedem Mal (von selbst, ab seinem Ende) pausiert der Schatz A2_PAUSE auf diesem Gerät (nichts im Plan oder im Zustand;
+// Vorschau-Knöpfe und Auspacken zählen nicht). Simuliert (freie Wahl ohne Freund, alle mit Trick): A2 9–13 % der
+// Zeit an trockenen Tagen, Album 1 etwa 30 %, Grundverhalten gut die Hälfte (mit 12 s / 12 Min waren es nur 5–8 %).
+const A2_REF = 36;
+const A2_PAUSE = 6 * 6e4;
+const A2_DUR = {
+  a2FeederPlay: 15, a2FeederFill: 21, a2LanternPlay: 23, a2LanternRun: 15, a2SledPlay: 16, a2SledBelly: 16,
+  a2CameraPlay: 13, a2CameraSelfie: 16, a2RadioPlay: 32, a2RadioSpin: 33, a2TrampPlay: 13, a2TrampFlip: 13,
+  a2PicnicPlay: 34, a2PicnicShare: 30, a2PoolPlay: 45, a2PoolBomb: 50,
+};
+// Spielraum bis zur nächsten Beschäftigung aus dem Tagesplan (ms): Eine Aktion, die bis dahin nicht fertig wäre, bietet
+// _a2Acts nicht an (sonst begänne die große Beschäftigung hier 25–40 s später als auf den anderen Geräten, eine kleine
+// fiele aus)
+const A2_SLOT_GAP = 5000;
 
 export class Album2 {
   // Daten des Schatzes t (0–7) oder key. Unbekannt: ein Platzhalter (wirft nicht)
@@ -138,6 +169,51 @@ export class Album2 {
     el.remove();
   }
 
+  // Freier Platz am Boden für ein Ding der Breite w (seit 0.48.1): Mitte möglichst bei want, zwischen lo und hi (Mitte),
+  // neben allem, was dort schon steht (_groundBlocks: Geräte des Haus-Boten, Festdeko, Schätze aus Album 1 und 2, auch
+  // die abgestellte Laterne und das Vogelhäuschen, Häufchen; das Wollknäuel nicht, es liegt auf jedem Gerät woanders).
+  // own: key des Schatzes, dessen eigenes Element nicht zählt; extra: weitere Sperren [l, r] in px. Ist want frei,
+  // bleibt es dabei. Ist nirgends Platz, darf es vor dem Vogelhäuschen stehen (es steht auf der hinteren Reihe, dahinter;
+  // auf 600 px passte die Picknickdecke sonst nie zwischen Windrad und Häuschen), ist auch dann keiner: want (wie bis
+  // 0.48.0; die Hooks Acts bieten die Aktion dann nicht an, _a2Hit mit soft).
+  _a2Free(lo, hi, w, want, own = null, extra = []) {
+    const B = this._a2Blocks(own, extra);
+    const hit = (x, L) => L.some(([l, r]) => x + w / 2 > l + 1e-6 && x - w / 2 < r - 1e-6);
+    const x = clearSpot(want, w, lo, Math.max(lo, hi), B);
+    if (!hit(x, B)) return x;
+    const S = this._a2Blocks(own, extra, true);
+    return clearSpot(want, w, lo, Math.max(lo, hi), S);
+  }
+
+  // Stünde ein Ding der Breite w mit der Mitte x auf etwas (wie _a2Free)? soft: das Vogelhäuschen zählt nicht
+  _a2Hit(x, w, own = null, extra = [], soft = false, tol = 0) {
+    return this._a2Blocks(own, extra, soft).some(([l, r]) => x + w / 2 > l + tol + 1e-6 && x - w / 2 < r - tol - 1e-6);
+  }
+
+  // Ist dort Platz genug, um die Aktion anzubieten (Hooks Acts)? Wie _a2Hit mit soft; den Rand der Sperren (1,5 % von H)
+  // darf es berühren, die Zeichnung daneben nicht
+  _a2Room(x, w, own) {
+    return !this._a2Hit(x, w, own, [], true, this._H * 0.015);
+  }
+
+  _a2Blocks(own, extra, soft = false) {
+    const skip = new Set([own && this._a2Els?.get(own), soft && this._a2Els?.get('feeder')].filter(Boolean));
+    return this._groundBlocks(skip).concat(extra);
+  }
+
+  // Wetterumschwung (seit 0.48.1): Ist das Wetter jetzt schlecht für einen Schatz draußen (Schnee aus den Wolken,
+  // Starkregen, Hagel, Gewitter, Sturm; wetOk false: auch jeder Regen)? Die Schätze merken es sich beim Aufbau (S.wx0) und
+  // brechen in ihrem Hook Scene ab, wenn es erst während der Aktion umschlägt (_a2WxTurned). War es schon beim Aufbau
+  // so (Vorschau-Knopf, Auspacken), bleibt es dabei.
+  _a2WxBad(wetOk = false) {
+    const wx = this._wx || {};
+    return !!((!wetOk && wx.wet) || (wx.snow || 0) > 0 || (wx.rain || 0) > 40 || wx.storm || wx.shelter || wx.hail || wx.flash);
+  }
+
+  _a2WxTurned(S, wetOk = false) {
+    return !!S && !S.wx0 && this._a2WxBad(wetOk);
+  }
+
   // Szene: jeder Schatz zieht seine nach (Hook Scene), dann golden markieren
   _a2Scene() {
     if (!this._el || !this._g) return;
@@ -152,17 +228,57 @@ export class Album2 {
     if (!this._giftOn() || !G?.w || this._gb || this._urlaubFern()) return [];
     const lvs = this._a2Lvs();
     const out = [];
+    const frBusy = this._a2FrBusy();
+    const now = Date.now();
+    const slot = this._a2SlotLeft();
     A2_ITEMS.forEach((it, t) => {
-      if (!(lvs[t] > 0)) return;
+      if (!(lvs[t] > 0) || (frBusy && A2_FR_ASIDE.has(it.key))) return;
+      if (now - (this._a2Last?.[it.key] ?? -Infinity) < A2_PAUSE) return; // (pausiert nach dem letzten Mal)
       const A = this._a2Hook(it.key, 'Acts', ctx, lvs[t]);
-      if (Array.isArray(A)) out.push(...A.filter((a) => Array.isArray(a) && a[0] > 0 && typeof this[`_${a[1]}`] === 'function'));
+      if (!Array.isArray(A)) return;
+      for (const a of A) {
+        if (!Array.isArray(a) || !(a[0] > 0) || typeof this[`_${a[1]}`] !== 'function') continue;
+        const d = A2_DUR[a[1]] ?? A2_REF;
+        if (slot < d * 1000 + A2_SLOT_GAP) continue; // (die nächste Beschäftigung käme mittendrin)
+        out.push([a[0] * Math.min(1, A2_REF / d), a[1]]);
+      }
     });
     return out;
   }
 
-  // Aus _cleanup (Ende oder Abbruch einer Aktion)
+  // Wie lange noch bis zur nächsten Beschäftigung aus dem Tagesplan (ms, Uhr des Plans; _slotArm hat _slotNext eben
+  // in _step gesetzt)? Infinity, wenn keine bekannt ist.
+  _a2SlotLeft() {
+    const n = this._slotNext;
+    if (!Number.isFinite(n) || typeof this._planNow !== 'function') return Infinity;
+    return n - this._planNow();
+  }
+
+  // Aus _cleanup (Ende oder Abbruch einer Aktion). Der freigehaltene Platz (_a2FrAside) gilt nur für die Aktion. War
+  // es eine Aktion eines Schatzes, die er von selbst gewählt hat (nicht aus der Vorschau, _forced), pausiert der
+  // Schatz jetzt A2_PAUSE (Auspacken läuft als giftOpen und zählt nicht).
   _a2Cleanup() {
+    this._frKeep = null;
+    const m = typeof this._action === 'string' && !this._forced && this._action.match(/^a2([A-Z][a-z]+)[A-Z]/);
+    if (m && A2_KEYS.includes(m[1].toLowerCase())) (this._a2Last ??= {})[m[1].toLowerCase()] = Date.now();
     for (const it of A2_ITEMS) this._a2Hook(it.key, 'Cleanup');
+  }
+
+  // Aus dem Abendritual (_bedRitual in src/karte/momente.js, nach der Mütze): Hook Bed jedes Schatzes, der da ist,
+  // nacheinander. Abbruch (Cancel: Füttern, Streicheln) bricht das Ritual ab wie jedes Warten darin; ein anderer Fehler
+  // bleibt beim Schatz (_err), das Ritual geht weiter.
+  async _a2Bed() {
+    const lvs = this._a2Lvs();
+    for (const [t, it] of A2_ITEMS.entries()) {
+      const f = this[`_a2${cap(it.key)}Bed`];
+      if (!(lvs[t] > 0) || typeof f !== 'function') continue;
+      try {
+        await f.call(this, lvs[t]);
+      } catch (e) {
+        if (e instanceof Cancel || this._ac?.signal?.aborted) throw e;
+        this._err(`Album 2 ${it.key}`, e);
+      }
+    }
   }
 
   // Aus _tickGift
@@ -173,17 +289,49 @@ export class Album2 {
 
   // Aus _detachGift
   _a2Detach() {
+    this._frKeep = null;
     for (const it of A2_ITEMS) this._a2Hook(it.key, 'Detach');
   }
 
-  // Tippflächen für _worldZones: jedes Element aus _a2El, dessen Schatz einen Hook Tap hat
+  // Ist der Freund gerade beschäftigt (gemeinsames oder eigenes Spiel, _withFriend), hoppelt er noch herein oder geht er
+  // schon? Dann kein Schatz, der Platz braucht (A2_FR_ASIDE).
+  _a2FrBusy() {
+    const fr = this._fr;
+    return !!fr && (!!fr.busy || !fr.arrived || !!fr.leaving);
+  }
+
+  // Platz von l bis r (px der Szene, vordere Reihe) für einen Schatz freihalten, bevor er dort aufgebaut wird (seit
+  // 0.48.1): Steht der Freund unbeschäftigt darin (oder oben auf dem Stein), hoppelt er beiseite (_frTake beendet seinen
+  // Schritt, _friendIdle führt ihn hinaus), und bis zum Ende der Aktion endet keiner seiner Wege darin (_frKeepX in
+  // src/karte/pino.js; _a2Cleanup gibt den Platz wieder frei). Wartet, bis er draußen ist (höchstens etwa 2,5 s). Nicht für
+  // Selfie und Picknick: Dort stellt die Aktion ihn selbst hin.
+  async _a2FrAside(l, r) {
+    this._frKeep = [Math.min(l, r), Math.max(l, r)];
+    const fr = this._fr;
+    if (!fr || fr.busy || !fr.arrived || fr.leaving || !this._frInKeep?.(fr)) return;
+    this._frTake(fr);
+    for (let i = 0; i < 16 && this._fr === fr && this._frInKeep(fr); i++) await this._wait(160);
+  }
+
+  // Tippflächen für _worldZones: jedes Element aus _a2El, dessen Schatz einen Hook Tap hat. Seit 0.48.1 nur, wo
+  // gezeichnet ist: je Form der Zeichnung ein Rechteck mit 4 px Rand (bis 0.48.0 die ganze Box mit 6 px: Ein Tipp rechts
+  // neben den Pfahl des Vogelhäuschens traf das Häuschen statt des Steins dahinter). Was ausblendet (.a2out) oder
+  // ausgeblendet ist (.a2hid), bekommt keine. Ohne Formen (Attrappen): die Box.
   _a2Zones(Z, sr) {
+    const pad = 4;
     for (const [key, el] of this._a2Els || []) {
       if (typeof this[`_a2${cap(key)}Tap`] !== 'function' || !el.isConnected) continue;
+      if (el.classList?.contains('a2out') || el.classList?.contains('a2hid')) continue;
       const r = el.getBoundingClientRect();
       if (!r.width && !r.height) continue;
-      const pad = 6;
-      Z.push({ k: key, a2: true, el, l: r.left - sr.left - pad, t: r.top - sr.top - pad, r: r.right - sr.left + pad, b: r.bottom - sr.top + pad, pad });
+      const parts = [el, ...(this[`_a2${cap(key)}Parts`]?.() || [])].filter((e) => e?.isConnected);
+      const F = parts.flatMap((e) => [...(e.querySelectorAll?.('path, rect, circle, ellipse, polygon, polyline, line') || [])])
+        .filter((f) => !f.closest?.('defs, clipPath, mask'))
+        .map((f) => f.getBoundingClientRect())
+        .filter((q) => q.width >= 0.5 || q.height >= 0.5);
+      for (const q of F.length ? F : [r]) {
+        Z.push({ k: key, a2: true, el, l: q.left - sr.left - pad, t: q.top - sr.top - pad, r: q.right - sr.left + pad, b: q.bottom - sr.top + pad, pad });
+      }
     }
   }
 

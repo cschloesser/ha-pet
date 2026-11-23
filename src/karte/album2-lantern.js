@@ -16,7 +16,7 @@ import { calmMotion } from '../logik/bewegung-reduzieren.js';
 import { LANE_DY, LANE_S } from '../logik/einstellungen.js';
 import { buehneZ } from '../logik/buehne.js';
 import { GOLD_FIREFLY } from '../grafik/paeckchen.js';
-import { LANTERN_SVG, LANTERN_CARRY, LANTERN_CARRY_GOLD, LANTERN_W, LANTERN_FOOT, LANTERN_GLASS, CARRY_GLASS } from '../grafik/album2/lantern.js';
+import { LANTERN_SVG, LANTERN_CARRY, LANTERN_CARRY_GOLD, LANTERN_W, LANTERN_FOOT, LANTERN_GLASS, CARRY_GLASS, SMOKE_SVG } from '../grafik/album2/lantern.js';
 
 // Glühwürmchen von selbst höchstens alle 3 Minuten und dann zu jeder zweiten Runde (wie GOLD in src/logik/paeckchen.js)
 const LANTERN_GOLD = { cd: 3 * 6e4, p: 0.5 };
@@ -95,7 +95,7 @@ export class Album2Lantern {
   _a2LanternScene(lv) {
     const S = this._a2LanternStand;
     if (!S) return;
-    if (!(lv > 0) || this._asleep || this._urlaubFern() || (!this._a2LanternBusy && Date.now() >= S.until)) {
+    if (!(lv > 0) || this._asleep || this._urlaubFern() || (!this._a2LanternBusy && !this._a2LanternBlow && Date.now() >= S.until)) {
       this._a2LanternOut();
       return;
     }
@@ -452,6 +452,49 @@ export class Album2Lantern {
     await this._a2LanternPlay({ hold, short: true, gold: lv >= 3 });
   }
 
+  // Abendritual (Hook Bed, seit 0.48.1): Brennt sie noch (am Bau oder wo er sie abgestellt hat), geht er hin, dreht sich
+  // zu ihr, „pff…“, die Flamme schrumpft, ein Rauchfaden steigt auf, sie geht aus. Füttern und Streicheln brechen ab wie
+  // das Ritual: Dann brennt sie weiter, bis er schläft (Szene). Reduzierte Bewegung: ohne Laufen, die Flamme blendet aus.
+  async _a2LanternBed() {
+    const S = this._a2LanternStand;
+    const el = this._a2Els?.get('lantern');
+    if (!S || !el || this._a2LanternCarry || !this._g) return;
+    const { pW, xR, gy } = this._g;
+    const H = this._H;
+    const calm = calmMotion();
+    let smoke = null;
+    this._a2LanternBlow = true;
+    try {
+      if (!calm && Math.abs(S.x - this._x) > pW * 0.85) {
+        const d = S.x >= this._x ? 1 : -1;
+        await this._walkTo(clamp(S.x - d * pW * 0.62, pW * 0.45, xR), 0.8);
+      }
+      this._face(S.x >= this._x ? 1 : -1);
+      await this._wait(350);
+      this._say('pff…', 1300);
+      el.classList.add('a2lpuff');
+      this._a2LanternGlow?.classList.add('off');
+      await this._wait(650);
+      smoke = document.createElement('span');
+      smoke.className = `a2lsmoke${calm ? ' still' : ''}`;
+      smoke.innerHTML = SMOKE_SVG;
+      smoke.style.left = `${S.x.toFixed(1)}px`;
+      smoke.style.top = `${(gy - S.foot * H - LANTERN_W * 1.5 * H * (LANTERN_GLASS + 0.12)).toFixed(1)}px`;
+      this._el.fx.appendChild(smoke);
+      await this._wait(500);
+      this._a2LanternOut();
+      await this._wait(900);
+    } finally {
+      this._a2LanternBlow = false;
+      smoke?.remove();
+      if (this._a2LanternStand === S) {
+        // (abgebrochen, bevor sie aus war: Sie brennt weiter)
+        el.classList.remove('a2lpuff');
+        this._a2LanternGlow?.classList.remove('off');
+      }
+    }
+  }
+
   // ---------- Hooks: Tipp, Aufräumen, Abhängen ----------
 
   // Tipp auf die brennende Laterne: Die Flamme flackert auf, der Schein mit, sie wackelt am Fuß; golden kommt (bis zu
@@ -459,7 +502,7 @@ export class Album2Lantern {
   _a2LanternTap(z) {
     const el = z.el;
     const S = this._a2LanternStand;
-    if (!S) return false;
+    if (!S || this._a2LanternBlow) return false; // (er pustet sie gerade aus)
     const calm = calmMotion();
     if (!calm) {
       el.classList.remove('a2ltap');

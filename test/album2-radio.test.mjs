@@ -439,3 +439,165 @@ test('Radio: Nur die Höhe der Karte ändert sich (die Größeneinheit H mit ihr
   c._a2Scene();
   assert.deepEqual(ruf.filter((r) => r[0] === 'abbruch'), [['abbruch']]);
 });
+
+// Ein Ding am Boden (wie das Windrad aus Album 1: _gtEls, in .gifts, ohne top) von l bis r
+const amBoden = (c, l, r, t = 1) => {
+  const el = { parentElement: c._el.gifts, offsetLeft: l, offsetWidth: r - l, style: {} };
+  c._gtEls = new Map([...(c._gtEls || []), [t, el]]);
+  return el;
+};
+const frei = (x, w, l, r, pad) => x + w / 2 <= l - pad + 0.01 || x - w / 2 >= r + pad - 0.01;
+
+test('Radio: steht nicht vor dem, was schon am Boden steht (Windrad, Vogelhäuschen, Laterne …; seit 0.48.1)', () => {
+  for (const geo of [{}, { _W: 380, _H: 184, _g: { gy: 160, pW: 88, pH: 74, hayR: 130, xR: 336, home: 70, rock: { l: 270, w: 110, ku: 1.1, cx: 325 }, hole: { l: 40, r: 95, cx: 68, top: 110 } } }]) {
+    const { c } = karte(1, geo);
+    const { pW, hayR, rock } = c._g;
+    const B = [[hayR - 5, hayR + 25], [rock.l - 10, rock.l + 20]];
+    B.forEach(([l, r], i) => amBoden(c, l, r, i + 1));
+    const pad = c._H * 0.015;
+    const { w } = c._a2RadioDim();
+    for (let k = 0; k < 30; k++) {
+      const P = c._a2RadioSpot();
+      const msg = JSON.stringify([c._W, P]);
+      for (const [l, r] of B) assert.ok(frei(P.px, w, l, r, pad), msg);
+      assert.ok(Math.abs(P.px - P.x) >= pW * 0.6 - 0.5, msg);
+      assert.ok(P.x >= pW * 0.45 - 0.01 && P.x <= c._g.xR + 0.01, msg);
+    }
+    c._x = hayR + pW * 0.2;
+    const px = c._a2RadioBeside();
+    for (const [l, r] of B) assert.ok(frei(px, w, l, r, pad), JSON.stringify([c._W, px]));
+  }
+});
+
+// 0.48.1: Der Freund sitzt nicht auf dem Radio (_a2FrAside): Steht er unbeschäftigt dort, hoppelt er beiseite, und bis
+// zum Ende der Aktion endet keiner seiner Wege dort (_frKeepX); beschäftigt (Spiel, Herein- oder Hinaushoppeln) bietet
+// er das Radio gar nicht erst an.
+test('Radio: Der Freund geht beiseite, bevor es steht, und bleibt draußen; ist er beschäftigt, kein Radio', async () => {
+  const { c, ruf } = karte(1, { _frRange: () => [150, 560] });
+  const fr = { kind: 'pino', x: 352, lane: 0, lift: 0, arrived: true, greeted: true, leaving: false, busy: false };
+  c._fr = fr;
+  c._a2RadioSpot = () => ({ px: 350, x: 267, dir: 1 });
+  c._frTake = (f) => {
+    ruf.push(['freund beiseite']);
+    f.x = c._frKeepX(f.x, ...c._frRange()); // (wie _friendIdle: hinaus an den nächsten Rand)
+  };
+  let K = null;
+  let steht = null;
+  const mk = c._a2RadioMake;
+  c._a2RadioMake = function (...a) {
+    K = c._frKeep && [...c._frKeep];
+    steht = fr.x;
+    return mk.apply(this, a);
+  };
+  await c._a2RadioPlay();
+  const { w } = c._a2RadioDim();
+  assert.ok(ruf.findIndex((r) => r[0] === 'freund beiseite') >= 0 && ruf.findIndex((r) => r[0] === 'freund beiseite') < ruf.findIndex((r) => r[0] === 'maul' && r[1] === null), 'erst beiseite, dann stellt er es ab');
+  assert.ok(K && K[0] <= 350 - w / 2 && K[1] >= 350 + w / 2, JSON.stringify(K));
+  // er steht draußen, als es kommt; Wege in den Bereich enden draußen, solange es steht; danach ist der Platz frei
+  c._frKeep = K;
+  assert.ok((steht < K[0] || steht > K[1]) && c._frKeepX(steht, 150, 560) === steht, 'draußen: ' + steht);
+  assert.ok(Math.abs(c._frKeepX(350, 150, 560) - 350) >= w / 2);
+  c._a2Cleanup();
+  assert.equal(c._frKeep, null);
+  assert.equal(c._frKeepX(350, 150, 560), 350);
+  // beschäftigt: kein Radio (die übrigen Schätze ohne Platzbedarf bleiben)
+  c._el.scene.cls = new Set();
+  assert.deepEqual(plain(c._a2Acts({ wx: {} })).map((a) => a[1]), ['a2RadioPlay']);
+  for (const f of [{ busy: true }, { arrived: false }, { leaving: true }]) {
+    c._fr = { ...fr, ...f };
+    assert.deepEqual(plain(c._a2Acts({ wx: {} })), [], JSON.stringify(f));
+  }
+  c._fr = null;
+});
+
+// 0.48.1: nachts kein Vögelchen auf dem Henkel (auch nicht erzwungen, und ohne den Abstand zu verbrauchen); Abhängen
+// räumt wie bei der Laterne über End ab: auch die Klassen und der Takt am Pika
+test('Radio: nachts kein Vögelchen; Abhängen nimmt auch Klassen und Takt am Pika ab', async () => {
+  const { c } = karte(3, { _dbgGold: true });
+  c._el.scene.cls = new Set(['night']);
+  let kam = false;
+  c._a2RadioBird = () => (kam = true);
+  await c._a2RadioPlay({ bird: true });
+  assert.equal(kam, false);
+  assert.equal(c._goldAt?.['a2:radio-bird'], undefined, 'Abstand nicht verbraucht');
+  // abends (Dämmerung) kommt es wie bisher
+  const { c: d } = karte(3, { _dbgGold: true });
+  d._el.scene.cls = new Set(['dusk']);
+  let kam2 = false;
+  d._a2RadioBird = () => (kam2 = true);
+  await d._a2RadioPlay();
+  assert.equal(kam2, true);
+  // abgehängt mitten im Tanz
+  const { c: a } = karte(1);
+  a._a2RadioMake(300);
+  a._a2RadioBusy = true;
+  a._el.pika.classList.add('a2r-bop', 'a2r-spin');
+  a._el.pika.style.setProperty('--a2rbt', '800ms');
+  a._a2Detach();
+  assert.equal(a._a2RadioS, null);
+  assert.equal(a._a2RadioBusy, false);
+  assert.ok(!a._el.pika.cls.has('a2r-bop') && !a._el.pika.cls.has('a2r-spin'));
+  assert.equal(a._el.pika.style['--a2rbt'], undefined);
+  assert.equal(a._a2Els.has('radio'), false);
+});
+
+// 0.48.1 (Nachtrag A, B, C): Gleichgewicht. Von selbst wiegt jede Aktion nur 36 s / ihre typische Dauer (das Radio
+// dauert etwa 32 s), danach pausiert der Schatz 6 Minuten (nicht nach Vorschau-Knöpfen); kommt die nächste
+// Beschäftigung aus dem Tagesplan, bevor es fertig wäre, bietet er es nicht an; ohne freien Platz auch nicht.
+test('Radio: Gewicht nach Dauer gedämpft, 6 Minuten Pause, nicht kurz vor einer Beschäftigung, nicht ohne Platz', async () => {
+  const { c } = karte(2, { _planNow: () => 1e9 });
+  c._el.scene.cls = new Set();
+  const A = plain(c._a2Acts({ wx: {} }));
+  assert.deepEqual(A.map((a) => a[1]), ['a2RadioPlay', 'a2RadioSpin']);
+  assert.ok(Math.abs(A[0][0] - 0.3 * Math.min(1, 36 / 32)) < 1e-9, String(A[0][0]));
+  assert.ok(Math.abs(A[1][0] - 0.18 * Math.min(1, 36 / 33)) < 1e-9, String(A[1][0]));
+  // von selbst gespielt: Pause (geräteweise, nichts im Plan)
+  const vorher = plain(c._plan);
+  c._action = 'a2RadioPlay';
+  c._a2Cleanup();
+  assert.deepEqual(plain(c._a2Acts({ wx: {} })), []);
+  assert.deepEqual(plain(c._plan), vorher);
+  c._a2Last.radio = Date.now() - 6 * 6e4 + 1000;
+  assert.deepEqual(plain(c._a2Acts({ wx: {} })), [], 'nach 5 Minuten noch nicht');
+  c._a2Last.radio = Date.now() - 6 * 6e4 - 1;
+  assert.equal(c._a2Acts({ wx: {} }).length, 2, 'nach 6 Minuten wieder');
+  // aus der Vorschau (_forced): keine Pause
+  c._a2Last = {};
+  c._forced = true;
+  c._action = 'a2RadioSpin';
+  c._a2Cleanup();
+  c._forced = false;
+  assert.equal(c._a2Acts({ wx: {} }).length, 2);
+  // Beschäftigung in 30 s: das Radio (32 s + 5 s) nicht; in 40 s schon
+  c._slotNext = 1e9 + 30000;
+  assert.deepEqual(plain(c._a2Acts({ wx: {} })), []);
+  c._slotNext = 1e9 + 37500;
+  assert.deepEqual(plain(c._a2Acts({ wx: {} })).map((a) => a[1]), ['a2RadioPlay']);
+  c._slotNext = null;
+  // kein freier Platz (die ganze Wiese belegt): nicht angeboten; erzwungen läuft es trotzdem
+  c._gtEls = new Map([[1, { parentElement: c._el.gifts, offsetLeft: 0, offsetWidth: 600, style: {} }]]);
+  assert.deepEqual(plain(c._a2Acts({ wx: {} })), []);
+  c._forced = true;
+  await c._a2RadioPlay();
+  assert.ok(c._el.gifts.kinder.some((k) => k.je.has('a2-radio')), 'erzwungen: steht trotzdem');
+});
+
+// 0.48.1 (Nachtrag E): Setzt mitten im Tanz Regen ein, endet die Aktion (Abbruch über die Szene); regnete es schon
+// beim Aufbau (Vorschau), nicht.
+test('Radio: Regen setzt mitten im Tanz ein – die Aktion endet; regnete es schon beim Aufbau, bleibt es', () => {
+  const { c, ruf } = karte(1);
+  c._wx = {};
+  c._a2RadioMake(300);
+  c._a2RadioBusy = true;
+  c._a2Scene();
+  assert.equal(ruf.filter((r) => r[0] === 'abbruch').length, 0);
+  c._wx = { wet: true };
+  c._a2Scene();
+  assert.equal(ruf.filter((r) => r[0] === 'abbruch').length, 1);
+  const { c: d, ruf: rd } = karte(1);
+  d._wx = { wet: true };
+  d._a2RadioMake(300);
+  d._a2RadioBusy = true;
+  d._a2Scene();
+  assert.equal(rd.filter((r) => r[0] === 'abbruch').length, 0);
+});

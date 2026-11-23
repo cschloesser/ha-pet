@@ -76,7 +76,7 @@ import {
 import { festDay, festEaster, festAdvent1, FEST_AHEAD, festMoments, festBirthdate } from './logik/feste.js';
 import { FRIEND_LAST, FRIENDS, FRIEND_KEYS, friendKind } from './logik/besucher.js';
 import { boteRow, boteEmptyOn, boteMap, boteLabel, boteLabelMode, boteSmell } from './logik/haus-bote.js';
-import { PET_CALM, petGain, KRAUL, kraulGain, MIMIK, worldPick } from './logik/interaktion.js';
+import { PET_CALM, petGain, KRAUL, kraulGain, MIMIK, worldPick, worldFront } from './logik/interaktion.js';
 import {
   ACT_WIN, ACT_GAP, ACT_WALK, ACT_LEN, ACT_NOJOIN, bigStart, miniStart, miniHas, ACT_SMALL, poopClean, poopWhen,
   WALK_MAX, WALK_LATE, WALK_REJOIN, walkSpeed, HOP_MS, KITE_LEAN, kitePaw, hopRound, JUMPS, EAR_SWING, jumpBusy,
@@ -147,7 +147,7 @@ if (typeof globalThis !== 'undefined' && typeof globalThis.__pikaTest === 'funct
     WIN, winIds, winName, winLage, winSeit, winText,
     freshStats, serialize, parseStats, mergeStats, seedRnd, weightedR,
     sunTimes, festDay, festEaster, festAdvent1, festBirthdate,
-    GAIN, PET_CALM, KRAUL, petGain, kraulGain, worldPick, MIMIK, FINDS, FIND_GROUPS, findsParse, findsSer,
+    GAIN, PET_CALM, KRAUL, petGain, kraulGain, worldPick, worldFront, MIMIK, FINDS, FIND_GROUPS, findsParse, findsSer,
     WEATHER, twilight, wxCover, starOp, hexRgb, seasonPos, seasonKey, seasonPal, landColors, FLOWER_COLORS, FLOWER_SEASON,
     wxLogAdd, wxLogMerge, wxRows, wxTemp, numAttr, WX_HOLD, snowDepth, snowHours, SNOW, rainbow, BOW, skyPos, flightAloft, flightGhost, planeLag,
     planeClock, planeStale, PLANE_OLD,

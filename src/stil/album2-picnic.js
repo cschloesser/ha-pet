@@ -43,7 +43,7 @@ const STYLE_A2_PICNIC = `
   .gifts > .a2pkt.away { opacity: 0; transform: translateY(-40%) scale(.5); }
   .gifts > .a2pkt.still.away { transform: none; }
   /* Schmetterlinge (BFLY_SVG): fliegen per Web Animations heran, sitzen mit langsamem Flügelschlag */
-  .a2pkb { position: absolute; width: calc(var(--H) * .075); pointer-events: none; }
+  .a2pkb { position: absolute; width: calc(var(--H) * .1125); pointer-events: none; } /* (seit 0.48.1 anderthalbmal so groß wie bis 0.48.0) */
   .a2pkb svg { display: block; width: 100%; height: auto; overflow: visible; }
   .a2pkb .bwl, .a2pkb .bwr { transform-box: view-box; transform-origin: 10px 8px; animation: a2pkbw .15s ease-in-out infinite alternate; }
   .a2pkb.rest .bwl, .a2pkb.rest .bwr { animation-duration: 1.3s; }

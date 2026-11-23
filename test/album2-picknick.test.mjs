@@ -3,6 +3,7 @@
 // Elemente sind Attrappen. node --test
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
 import { welt } from './welt.mjs';
 
 const plain = (v) => JSON.parse(JSON.stringify(v));
@@ -81,7 +82,7 @@ const karte = (lv = 1, extra = {}) => {
     _say: (t) => ruf.push(['sagt', t]), _wait: async () => {}, _walkTo: async (x) => ((c._x = x), ruf.push(['geht', Math.round(x)])), _face: (d) => (c._dir = d),
     _enterBurrow: async () => ruf.push(['bau rein']), _comeOut: async () => ruf.push(['bau raus']),
     _eat: async (col, ms, svg) => ruf.push(['isst', col, !!svg]), _mouth: (col, svg) => ruf.push(['maul', col, svg ? svg.slice(0, 40) : null, svg]),
-    _nosePos: () => ({ x: c._x + 30, y: 180 }), _frRange: () => [190, 554], _sparkle: leer, _cls: leer, _mimik: leer, _happy: () => ruf.push(['freut']),
+    _nosePos: () => ({ x: c._x + 30, y: 180 }), _frRange: () => [190, 554], _poops: () => ({ piles: [] }), _sparkle: leer, _cls: leer, _mimik: leer, _happy: () => ruf.push(['freut']),
     _hearts: leer, _jump: leer, _emote: leer, _peep: (x, y, t) => ruf.push(['piep', t]), _tweet: () => ruf.push(['zwitschert']), _found: (k) => ruf.push(['entdeckt', k]),
     _keyTap: leer, _away: () => false, _urlaubFern: () => false, _interrupt: () => ruf.push(['abbruch']),
     _frName: () => 'Pino', _frCall: leer, _frFace: leer, _frLook: leer, _frHappy: leer, _frHearts: leer, _frSay: (fr, t) => ruf.push(['freund sagt', t]),
@@ -510,4 +511,57 @@ test('Picknickdecke: Nur die Höhe der Karte ändert sich (pW, gy neu, Decke und
   c._a2Scene();
   assert.ok(ruf.some((r) => r[0] === 'abbruch'), 'andere Höhe: abbrechen');
   assert.equal(c._a2PicnicS, S);
+});
+
+// Ein Ding am Boden (wie das Windrad aus Album 1: _gtEls, in .gifts, ohne top) von l bis r
+const amBoden = (c, l, r, t = 1) => {
+  const el = { parentElement: c._el.gifts, offsetLeft: l, offsetWidth: r - l, style: {} };
+  c._gtEls = new Map([...(c._gtEls || []), [t, el]]);
+  return el;
+};
+const frei = (x, w, l, r, pad) => x + w / 2 <= l - pad + 0.01 || x - w / 2 >= r + pad - 0.01;
+
+test('Picknickdecke: liegt nicht über dem, was schon am Boden steht (Windrad, Vogelhäuschen …; seit 0.48.1)', () => {
+  const { c } = karte(1);
+  // das Windrad dicht rechts vom Heu: Die Decke rückt nach rechts (notfalls bis vor den Stein)
+  amBoden(c, 210, 250);
+  const pad = c._H * 0.015;
+  for (let k = 0; k < 20; k++) {
+    const P = c._a2PicnicPlan(null);
+    assert.ok(frei(P.bx, P.bw, 210, 250, pad), JSON.stringify(P));
+  }
+  // mit dem Freund: die Decke weicht aus, er sitzt trotzdem an ihr (fx aus der Decke)
+  const P = c._a2PicnicPlan({ kind: 'pino', x: 330 });
+  assert.ok(P && frei(P.bx, P.bw, 210, 250, pad), JSON.stringify(P));
+  // ist nirgends Platz (die ganze Wiese belegt), liegt sie wie bisher
+  amBoden(c, 0, 600, 2);
+  assert.ok(c._a2PicnicPlan(null));
+});
+
+// 0.48.1: Schmetterlinge auf der Decke anderthalbmal so groß (Stil und Platz der Füße gleich gerechnet)
+test('Picknickdecke: Schmetterlinge anderthalbmal so groß wie bis 0.48.0, Füße auf dem Punkt', () => {
+  const st = fs.readFileSync(new URL('../src/stil/album2-picnic.js', import.meta.url), 'utf8');
+  const w = Number(st.match(/\.a2pkb \{ position: absolute; width: calc\(var\(--H\) \* ([.\d]+)\)/)[1]);
+  assert.ok(Math.abs(w / 0.075 - 1.5) < 0.02, String(w));
+  const { c } = karte(3);
+  const S = { fx: new Set(), bf: new Set(), t: [] };
+  const e = c._a2PicnicBfly(S, 300, 200, ['#f00', '#0f0'], 0);
+  assert.equal(e.style.left, (300 - c._H * w / 2).toFixed(1) + 'px');
+});
+
+// 0.48.1 (Nachtrag C): Passt die Decke weder neben das Windrad noch neben das Vogelhäuschen, liegt sie vor dem Häuschen
+// (es steht hinten) und wird angeboten; nur vor dem Windrad nie
+test('Picknickdecke: kein Platz zwischen Windrad und Vogelhäuschen – vor dem Häuschen, angeboten', () => {
+  const { c } = karte(1);
+  amBoden(c, 210, 250);
+  const fe = { parentElement: c._el.gifts, offsetLeft: 430, offsetWidth: 30, style: {}, classList: { contains: () => false, toggle() {}, add() {}, remove() {} } };
+  c._a2Els = new Map([['feeder', fe]]);
+  c._a2FeederScene = () => {};
+  const pad = c._H * 0.015;
+  for (let k = 0; k < 10; k++) {
+    const P = c._a2PicnicPlan(null);
+    assert.ok(frei(P.bx, P.bw, 210, 250, pad), JSON.stringify(P));
+  }
+  c._el.scene.cls = new Set();
+  assert.ok(c._a2PicnicActs({ wx: {}, piles: [] }, 1).length > 0);
 });

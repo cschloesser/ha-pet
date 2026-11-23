@@ -82,29 +82,39 @@ export class Tagesplan {
     if (sent >= 0) {
       const e = this._planSent[sent];
       this._planAck = Math.max(this._planAck, e.at);
+      this._planAcked();
       this._planSent.splice(0, sent + 1);
       this._planFail = 0;
       if (this._echoFremd(e, ctx, e.ms)) fremd = e;
     }
     // Helfer zu kurz für den Plan: er wird nicht beschrieben, sein eingefrorener Stand zählt nicht (sonst sprängen Serie,
     // Album und Vorrat bei jedem Neuladen zurück). Der Plan bleibt im Browser, siehe _planSave.
-    const P = this._planMax() < PLAN_MIN ? null : planParse(st);
+    const lesbar = planParse(st);
+    const P = this._planMax() < PLAN_MIN ? null : lesbar;
     if (st !== undefined) this._planSeen = true;
     // Format einer neueren Karte (höheres Präfix oder mehr Felder, als diese Version kennt): nicht überschreiben.
     // Dieses Gerät plant mit seinem letzten Stand weiter und schreibt nichts, bis es neu geladen ist. (Seit 0.46 kennt
     // planParse acht Abschnitte, der achte ist Album 2: Mehr als acht, oder an achter Stelle etwas anderes, ist neuer.
     // Karten bis 0.45.2 halten schon den Plan mit Album 2 für neuer und schweigen, statt es zu löschen.)
+    // Gefragt wird, ob planParse den Text lesen kann, nicht P: Im zu kurzen Helfer galt sonst bis 0.48.0 jeder Plan
+    // mit sieben oder acht Abschnitten als neuer (falsche Warnung, ein beendeter Urlaub blieb im Plan stehen, und seit
+    // 0.48.1 gäbe es dort keine Päckchen mehr, siehe _careEval).
     if (typeof st === 'string' && st !== 'unknown' && st !== 'unavailable') {
-      const newer = !P && /^p\d+\|/.test(st) && (!st.startsWith('p1|') || st.split('|').length > 6);
+      const newer = !lesbar && /^p\d+\|/.test(st) && (!st.startsWith('p1|') || st.split('|').length > 6);
       if (newer && !this._planNewer) console.warn(`pika-pet-card: ${id} hat das Format einer neueren Karte, dieses Gerät schreibt den Tagesplan nicht mehr. Bitte neu laden.`);
       this._planNewer = newer;
       // Leer oder etwas anderes als ein Plan: Jemand hat den Helfer von Hand geleert oder überschrieben, er will von
       // vorn anfangen. Was dieses Gerät dort zuvor gesehen hat, zählt dann nicht mehr als „stand schon im Helfer“:
       // Den Plan, mit dem ein neu geladenes Gerät danach frisch beginnt, übernimmt es, ohne etwas zurückzuholen.
       // (Der eigene Plan bleibt wie bisher im Speicher, bis ein Stand aus dem Helfer kommt.)
+      // Auch die eigenen, schon bestätigten Änderungen stehen damit nicht mehr im Helfer, und so soll es sein: Sie kommen
+      // nicht auf den frischen Plan (seit 0.48.1 blieben sie sonst bis 15 s nach der Bestätigung, _planNear; nach dem
+      // Wiederverbinden auch bis 30 Min alte, etwa ein Urlaub, den es ohne Verbindung begonnen hatte). Was HA noch nicht
+      // bestätigt hat, bleibt.
       if (!P && !newer && this._planMax() >= PLAN_MIN) {
         this._planKnown = null;
         this._planHeal = false;
+        this._planOps = this._planOps.filter((o) => o.at > this._planAck);
       }
     }
     if (P) {
@@ -119,9 +129,9 @@ export class Tagesplan {
       // Stand aus): behalten und, wenn es sonst keiner tut, wieder hineinschreiben. Verglichen wird mit dem, was dieses
       // Gerät zuletzt im Helfer gesehen hat (alt), nicht mit dem eigenen Plan. Die eigenen Änderungen müssen dabei
       // weiter gelten (verschenkt wird mit laufender Nummer, ein guter Tag zählt einmal):
-      // - Was HA schon bestätigt hat (steckt in alt) und noch keine 15 s alt ist, legt _planCompose ohnehin wieder
-      //   auf den fremden Stand. Darum kommen diese Änderungen zuerst darauf (Q), gerettet wird nur, was dann noch
-      //   fehlt. Fehlt nichts, bleibt alles wie immer: Stand ist der fremde, _planCompose schreibt.
+      // - Was HA schon bestätigt hat (steckt in alt) und das vor keinen 15 s (_planNear), legt _planCompose ohnehin
+      //   wieder auf den fremden Stand. Darum kommen diese Änderungen zuerst darauf (Q), gerettet wird nur, was dann
+      //   noch fehlt. Fehlt nichts, bleibt alles wie immer: Stand ist der fremde, _planCompose schreibt.
       // - Was noch offen ist (unbestätigt, ungesendet), entstand auf dem Stand von alt und kommt danach obendrauf.
       // Auch ein Echo wird so geprüft: War das eigene Schreiben schon unterwegs, als ein fremder Stand eintraf, hat es
       // den im Helfer überschrieben, und dem Echo fehlt, was der fremde brachte. Bis 0.43.0 galt das Echo ungeprüft
@@ -134,7 +144,7 @@ export class Tagesplan {
       const alt = this._planKnown;
       const old = !!alt && (planOld(P, alt) || (sent < 0 && this._planMend()));
       const now = this._haNow();
-      const Q = this._planOps.filter((o) => o.at <= this._planAck && now - o.at < 15000).reduce((X, o) => planApply(X, o, o.at), P);
+      const Q = this._planOps.filter((o) => o.at <= this._planAck && this._planNear(o, now)).reduce((X, o) => planApply(X, o, o.at), P);
       const K = planKeep(Q, alt, old);
       this._planKnown = planKeep(P, alt, old);
       if (K !== Q && !this._planMend()) this._planHealAt = now;
@@ -146,6 +156,7 @@ export class Tagesplan {
       const last = this._planOps.at(-1);
       if (last && last.at > this._planAck && planSer(this._planOps.reduce((Q, o) => planApply(Q, o, o.at), P)) === planSer(P)) {
         this._planAck = last.at;
+        this._planAcked();
       }
     }
     if (st === undefined && !this._planWarned) {
@@ -203,16 +214,34 @@ export class Tagesplan {
     if (this._running && (this._planWaiting || (ACT_SMALL.includes(this._action) && this._slotNow()))) this._interrupt();
   }
 
-  // Plan = letzter bekannter Stand + eigene Änderungen der letzten 15 s. Die kommen auch auf einen fremden Stand
-  // noch einmal obendrauf: Schrieben zwei Geräte fast gleichzeitig, geht so keine verloren. Hat HA eine Änderung
-  // noch nicht bestätigt (Verbindung weg, Fehler), bleibt sie länger (höchstens 30 Min) und wird erneut gesendet.
-  // Behalten wird immer ein zusammenhängendes jüngstes Stück, so bleibt die Reihenfolge beim Wiederholen gleich.
+  // HA hat die Änderungen bis _planAck bestätigt: Ab jetzt laufen für sie die 15 s von _planNear
+  _planAcked() {
+    const now = this._haNow();
+    for (const o of this._planOps) if (o.at <= this._planAck) o.ack ??= now;
+  }
+
+  // Kommt die eigene, schon bestätigte Änderung o noch auf einen fremden Stand obendrauf? 15 s lang, gezählt ab der
+  // Bestätigung (ack), nicht ab ihrem Entstehen: Schreibt ein anderes Gerät fast gleichzeitig, steht sein Stand erst
+  // danach im Helfer, und ihm fehlt die Änderung. Bis 0.48.0 zählte at: Was ohne Verbindung länger als 15 s gewartet
+  // hatte (verschenkt, ausgepackt), fiel mit dem Echo sofort heraus, und verband sich ein zweites Gerät im selben
+  // Augenblick wieder (HA neu gestartet), überschrieb sein Schreiben das Päckchen auf Dauer. 'gbad' und 'gdbg' zählen
+  // weiter ab at (siehe _planCompose).
+  _planNear(o, now) {
+    return now - (o.t === 'gdbg' || o.t === 'gbad' ? o.at : Math.max(o.at, o.ack || 0)) < 15000;
+  }
+
+  // Plan = letzter bekannter Stand + eigene Änderungen der letzten 15 s (seit ihrer Bestätigung, _planNear). Die
+  // kommen auch auf einen fremden Stand noch einmal obendrauf: Schrieben zwei Geräte fast gleichzeitig, geht so keine
+  // verloren. Hat HA eine Änderung noch nicht bestätigt (Verbindung weg, Fehler), bleibt sie länger (höchstens 30 Min)
+  // und wird erneut gesendet. Über 30 Min alt kommt keine mehr obendrauf, auch nicht kurz nach einer späten Bestätigung.
+  // Behalten wird immer ein zusammenhängendes jüngstes Stück, so bleibt die Reihenfolge beim Wiederholen gleich (die
+  // Bestätigung gilt immer für alles bis _planAck, ack wächst also mit at).
   _planCompose(incoming) {
     const now = this._haNow();
     // Nicht länger behalten: 'gbad' (würde eine inzwischen von einem anderen Gerät geschriebene Entwarnung wieder
     // aufheben, die Serie risse) und 'gdbg' (Vorschau, nicht wiederholbar)
-    this._planOps = this._planOps.filter((o) => now - o.at < 15000
-      || (o.at > this._planAck && o.t !== 'gdbg' && o.t !== 'gbad' && now - o.at < 30 * 6e4));
+    this._planOps = this._planOps.filter((o) => now - o.at < 30 * 6e4 && (this._planNear(o, now)
+      || (o.at > this._planAck && o.t !== 'gdbg' && o.t !== 'gbad')));
     let P = this._planBase;
     for (const o of this._planOps) P = planApply(P, o, o.at);
     // Ein Gerät bis 0.18 schrieb den Plan ohne Päckchen zurück: den letzten Stand behalten und wieder eintragen

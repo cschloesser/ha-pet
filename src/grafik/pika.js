@@ -332,18 +332,18 @@ const PIKA_SVG = `
           <path d="M113 51 q4 5 0 10"/><path d="M118 47.5 q6 8.5 0 17"/><path d="M123 44 q8 12 0 24"/>
         </g>
       </g></g>
-      <g class="mfood"><g class="mf-bloom">
-        <path d="M92 58 Q100 58 106 61" stroke="#4f8a3a" stroke-width="1.6" fill="none" stroke-linecap="round"/>
-        <ellipse cx="99" cy="61" rx="4.2" ry="1.7" fill="#6bab4c" transform="rotate(22 99 61)"/>
-        <circle class="mbloom" cx="108" cy="61" r="4.4"/>
-        <circle cx="108" cy="61" r="1.6" fill="#e0a032" opacity=".8"/>
-      </g><g class="mf-item" transform="translate(94.8 52.2) scale(.68)"></g></g>
       <g class="scarf">
         <path d="M68 63 Q87 73 107 63" stroke="#d9534f" stroke-width="6.5" fill="none" stroke-linecap="round"/>
         <path d="M70 64 Q87 73.5 105 64.6" stroke="#f6f1ea" stroke-width="1.6" fill="none" stroke-dasharray="3 4"/>
         <path d="M73 66 L69 80 L76.5 80.6 L79 67.5Z" fill="#d9534f" stroke="#a83a37" stroke-width=".8" stroke-linejoin="round"/>
         <path d="M70.5 75 L77.5 75.6" stroke="#f6f1ea" stroke-width="1.4"/>
       </g>
+      <g class="mfood"><g class="mf-bloom">
+        <path d="M92 58 Q100 58 106 61" stroke="#4f8a3a" stroke-width="1.6" fill="none" stroke-linecap="round"/>
+        <ellipse cx="99" cy="61" rx="4.2" ry="1.7" fill="#6bab4c" transform="rotate(22 99 61)"/>
+        <circle class="mbloom" cx="108" cy="61" r="4.4"/>
+        <circle cx="108" cy="61" r="1.6" fill="#e0a032" opacity=".8"/>
+      </g><g class="mf-item" transform="translate(94.8 52.2) scale(.68)"></g></g>
       <g class="paws" fill="${PK('paw')}" stroke="${OUT}" stroke-width="1.4">
         <ellipse cx="84" cy="61" rx="4" ry="5"/>
         <ellipse cx="98" cy="61" rx="4" ry="5"/>

@@ -311,8 +311,9 @@ export class Tagebuch {
         one.add('parcel');
         const svg = e.alb === 2 ? this._a2Item(e.it).icon : giftItem(e.it)?.svg;
         put(t, 'parcel', this._diaryParcel(e, t), { svg });
-        if (e.all) put(t + 1, 'parcel', tx(e.alb === 2 ? T.allGold2 : T.allGold, 'allg', t), { svg });
-        else if (e.mile) put(t + 1, 'parcel', tx(T.mile, 'mile', t).replace('{z}', e.o), { svg: GIFT_PARCEL });
+        if (e.all) put(t + 1, 'parcel', tx(e.alb === 2 ? T.allGold2 : e.a2 ? T.allGold1 : T.allGold, 'allg', t), { svg });
+        // (auch, wenn dasselbe Päckchen alles golden machte: bis 0.48.0 ging der Meilenstein darin unter)
+        if (e.mile) put(t + (e.all ? 2 : 1), 'parcel', tx(T.mile, 'mile', t).replace('{z}', e.o), { svg: GIFT_PARCEL });
       } else if (e.k === 'urlaub') {
         put(t, 'urlaub', tx(T.urlaub, 'ur', t), { svg: URLAUB_SIGN(fr) });
       } else if (e.k === 'heim') {
@@ -478,7 +479,8 @@ export class Tagebuch {
         : I.have === GIFT_TRE && I.a2 && I.have2 && I.have2 < GIFT_TRE ? `Das sind meine Schätze. Ich hab alle acht, und ${I.have2} von ${GIFT_TRE} im zweiten Album.`
           : I.have === GIFT_TRE ? `Das sind meine Schätze. Ich hab alle acht!${zwei}` : `Das sind meine Schätze. ${I.have} von ${GIFT_TRE} hab ich schon.${zwei}`}</p>`;
       const platz = (svg, lv, name, sub) => `<div class="t ${['miss', '', 'lv2', 'lv2 gilt'][lv]}"><i>${svg}</i><div><b>${esc(lv ? name : '???')}</b><span>${esc(lv ? sub : 'noch ein Geheimnis')}</span></div></div>`;
-      h += `<div class="tre">${GIFT_ITEMS.slice(0, GIFT_TRE).map((it, t) => {
+      // (mit Album 2 darunter bekommt auch Album 1 seine Überschrift)
+      h += `${I.a2 ? '<h3>Album 1</h3>' : ''}<div class="tre">${GIFT_ITEMS.slice(0, GIFT_TRE).map((it, t) => {
         const lv = I.lvs[t];
         const nm = it.key === 'plush' ? `Plüsch-${fr}` : it.name;
         const sub = lv >= 3 ? `golden: ${DIARY_TXT.gold[t]} · Trick: ${GIFT_TRICK[t]}` : lv === 2 ? `Trick: ${GIFT_TRICK[t]}` : DIARY_TXT.treasure[t];

@@ -109,7 +109,8 @@ export class Album2Camera {
 
   // Wo cx (Mitte der Kamera, Linse nach d) liegen darf, damit jedes Stück F ([Abstand von cx in Richtung d, halbe
   // Breite, Art]) auf die Wiese passt: rechts vom Heu (.fore verdeckte, was dahinter steht), im Bild; der Pika bis xR,
-  // der Freund in seinem Bereich (_frRange). → [kleinstes, größtes cx] oder null
+  // der Freund in seinem Bereich (_frRange). → [kleinstes, größtes cx] oder null. Wo darin die Kamera nicht vor etwas
+  // steht, das schon am Boden steht (Windrad, Vogelhäuschen, Laterne, Festdeko …), suchen die Motive mit _a2Free aus.
   _a2CameraRoom(d, F) {
     const { pW, hayR, xR } = this._g;
     let lo = -Infinity;
@@ -168,7 +169,7 @@ export class Album2Camera {
     for (const d of [b.x >= this._x ? 1 : -1, b.x >= this._x ? -1 : 1]) {
       const R = this._a2CameraShotRoom(d);
       if (!R) continue;
-      const cx = clamp(b.x - d * (O.tip + pW * 0.9), R[0], R[1]);
+      const cx = this._a2Free(R[0], R[1], O.w, clamp(b.x - d * (O.tip + pW * 0.9), R[0], R[1]), 'camera');
       const dx = d * (b.x - (cx + d * O.tip));
       if (dx < pW * 0.3) continue;
       const dy = gy - O.lensY - (b.y - this._H * 0.04);
@@ -188,7 +189,8 @@ export class Album2Camera {
       for (const d of [x >= this._x ? 1 : -1, x >= this._x ? -1 : 1]) {
         const R = this._a2CameraShotRoom(d);
         const cx = x - d * (O.tip + pW * 0.4);
-        if (R && cx >= R[0] - 0.01 && cx <= R[1] + 0.01) {
+        // (nicht, wenn die Kamera dort vor etwas stünde, das schon am Boden steht: dann die nächste Blume)
+        if (R && cx >= R[0] - 0.01 && cx <= R[1] + 0.01 && !this._a2Hit(cx, O.w, 'camera')) {
           const o = (this._flowers || []).find((g) => g !== f && Math.abs(g.xf - f.xf) * this._W < pW * 0.8);
           return { d, cx, tilt: 8, M: { k: 'flower', color: f.color, color2: o?.color } };
         }
@@ -203,14 +205,14 @@ export class Album2Camera {
     const pref = this._x + this._dir * this._g.pW * 1.2 <= this._g.xR ? this._dir || 1 : -(this._dir || 1);
     for (const d of [pref, -pref]) {
       const R = this._a2CameraShotRoom(d);
-      if (R) return { d, cx: clamp(this._x + d * O.behind, R[0], R[1]), tilt: -30, M: { k: 'sky' } };
+      if (R) return { d, cx: this._a2Free(R[0], R[1], O.w, clamp(this._x + d * O.behind, R[0], R[1]), 'camera'), tilt: -30, M: { k: 'sky' } };
     }
     // (sehr schmale Wiese: so weit rechts wie möglich, Linse nach links)
     return { d: -1, cx: Math.max(this._g.hayR + O.w / 2, this._W - O.behind - this._g.pW * 0.45), tilt: -30, M: { k: 'sky' } };
   }
 
   // Was er fotografiert: der Vogel vom Besuch am liebsten, dann eine Blume, sonst der Himmel (mit Regenbogen gern).
-  // want: dieses Motiv, wenn es geht (Tests, Vorschau: this._a2CameraDbgMotif)
+  // want: dieses Motiv, wenn es geht (Tests)
   _a2CameraPick(want = null) {
     const C = [];
     const b = this._bird;
@@ -240,7 +242,7 @@ export class Album2Camera {
     for (const d of [pref, -pref]) {
       const R = this._a2CameraRoom(d, F);
       if (!R) continue;
-      const cx = clamp(fr ? fr.x - d * ff : this._x - d * O.front, R[0], R[1]);
+      const cx = this._a2Free(R[0], R[1], O.w, clamp(fr ? fr.x - d * ff : this._x - d * O.front, R[0], R[1]), 'camera');
       return { d, cx, front: cx + d * O.front, pose: cx + d * O.pose, ffx: cx + d * ff };
     }
     return null;
@@ -265,6 +267,8 @@ export class Album2Camera {
   // Hook: Fotos mag er ab und zu; das Selfie selten allein, oft, wenn der Freund da ist (dessen Spiele wiegen 3,5–7)
   _a2CameraActs({ wx }, lv) {
     if (!this._a2CameraWeather(wx)) return [];
+    // (steht die Kamera selbst beim Himmel, wo sie überall stehen darf, vor etwas: kein Platz, lieber nicht)
+    if (!this._a2Room(this._a2CameraAimSky().cx, this._a2CameraOff().w, 'camera')) return [];
     const k = this._el.scene.classList.contains('dusk') ? 0.3 : 1;
     return [[0.3 * k, 'a2CameraPlay'], [lv >= 2 ? (this._a2CameraFriend() ? 1.5 : 0.15) * k : 0, 'a2CameraSelfie']];
   }
@@ -277,8 +281,11 @@ export class Album2Camera {
     const gold = !!o.gold || (lv >= 3 && this._a2GoldOk('camera', CAMERA_GOLD));
     this._a2CameraBusy = true;
     try {
-      const L = this._a2CameraPick(o.motif ?? this._a2CameraDbgMotif ?? null);
+      const L = this._a2CameraPick(o.motif ?? null);
       const O = this._a2CameraOff();
+      // (der Freund steht weder vor der Kamera noch vor der Linse; beim Selfie stellt die Aktion ihn selbst hin)
+      const lens = L.cx + L.d * (O.tip + this._g.pW * 0.4);
+      await this._a2FrAside(Math.min(L.cx - O.w / 2, lens), Math.max(L.cx + O.w / 2, lens));
       await this._a2CameraSetUp(L.cx, L.d, L.cx - L.d * O.behind, o.short);
       await this._a2CameraShoot(L, gold);
     } finally {

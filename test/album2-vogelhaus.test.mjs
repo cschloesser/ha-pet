@@ -2,6 +2,7 @@
 // Tagebuch. Ohne echte Szene: Elemente sind Attrappen. node --test
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
 import { welt } from './welt.mjs';
 
 const plain = (v) => JSON.parse(JSON.stringify(v));
@@ -328,4 +329,80 @@ test('Tagebuch: Album 2 im Verlauf (neu, Trick, golden, alle golden) und die Sä
   assert.match(c._diaryParcel(pk[0], t0), /Drin war ein Vogelhäuschen!$/);
   assert.match(c._diaryParcel(pk[1], t0), /neuen Trick: Körner nachfüllen!$/);
   assert.match(c._diaryParcel(pk[2], t0), /^Ein goldenes Päckchen!.*Jetzt hab ich ein goldenes Vogelhäuschen\.$/);
+});
+
+// 0.48.1: Das Häuschen steht nicht in der Schneewehe des Schlittens. Liegt Schnee (Schlitten da) oder die Wehe, steht
+// es links von ihrem Fuß; ist dort kein Platz, blendet es aus, solange die Wehe liegt.
+test('Vogelhäuschen: links vom Fuß der Schneewehe, sonst während des Rodelns ausgeblendet', () => {
+  const { c } = karte(1);
+  const x0 = c._a2FeederPos().x;
+  c._a2Scene();
+  const el = c._a2Els.get('feeder');
+  assert.ok(el && !el.cls.has('a2hid'));
+  // die Wehe liegt: links von ihrem Fuß
+  c._a2SledS = { drift: {}, u0: c._a2SledU0() };
+  const F = c._a2FeederPos();
+  const foot = c._a2SledFoot();
+  assert.ok(F.x + F.w / 2 <= foot, JSON.stringify([F.x, F.w, foot]));
+  assert.ok(F.x - F.w / 2 >= c._g.hayR, 'nicht im Heu');
+  assert.ok(F.x < x0);
+  c._a2Scene();
+  assert.equal(el.style.left, F.x.toFixed(1) + 'px');
+  assert.ok(!el.cls.has('a2hid'));
+  // Schnee liegt und der Schlitten ist da (ohne Wehe): steht schon dort, rückt beim Rodeln nicht
+  c._a2SledS = null;
+  c._plan.gift.w |= 4;
+  c._wx = { snowcover: true };
+  assert.equal(c._a2FeederPos().x, F.x);
+  // ohne Schnee wieder am Stein
+  c._wx = {};
+  assert.equal(c._a2FeederPos().x, x0);
+  // kein Platz links von der Wehe (das Heu reicht bis kurz davor; mit echten Maßen kommt das nicht vor, der Fuß liegt
+  // immer mindestens 0,6 Pika-Breiten rechts vom Vorrat): ausgeblendet, Tipp ohne Antwort
+  const u0 = c._a2SledU0();
+  c._g = { ...c._g, hayR: foot - 20 };
+  c._a2SledS = { drift: {}, u0 };
+  c._a2FeederTemp = true;
+  c._a2Scene();
+  assert.ok(el.cls.has('a2hid'));
+  assert.equal(c._a2FeederTap({ el }), false);
+  c._a2SledS = null;
+  c._a2Scene();
+  assert.ok(!el.cls.has('a2hid'));
+});
+
+// 0.48.1: toter Code weg (Vorschau-Schalter, die niemand mehr setzt, eine Klasse ohne Stil)
+test('Album 2: kein toter Code mehr (_dbgGimpel, _a2CameraDbgMotif, a2still)', () => {
+  for (const f of ['album2-feeder.js', 'album2-camera.js']) {
+    const s = fs.readFileSync(new URL('../src/karte/' + f, import.meta.url), 'utf8');
+    assert.doesNotMatch(s, /_dbgGimpel|_a2CameraDbgMotif|a2still/, f);
+  }
+});
+
+// 0.48.1 (Nachtrag D): Tippflächen nur, wo gezeichnet ist (je Form ein Rechteck, 4 px Rand), nicht die ganze Box; was
+// ausblendet, bekommt keine
+test('Vogelhäuschen: Tippfläche nur auf der Zeichnung (Pfahl, Dach), nicht rechts neben dem Pfahl; ausgeblendet keine', () => {
+  const { c } = karte(1);
+  c._a2Scene();
+  const el = c._a2Els.get('feeder');
+  const rect = (l, t, r, b) => ({ getBoundingClientRect: () => ({ left: l, top: t, right: r, bottom: b, width: r - l, height: b - t }), closest: () => null });
+  el.getBoundingClientRect = () => ({ left: 100, top: 50, right: 140, bottom: 130, width: 40, height: 80 });
+  el.querySelectorAll = () => [rect(100, 50, 140, 75), rect(117, 75, 123, 130)];
+  const sr = { left: 0, top: 0 };
+  const Z = [];
+  c._a2Zones(Z, sr);
+  assert.equal(Z.length, 2);
+  const T = c.__proto__.constructor ? null : null;
+  const hit = (x, y) => Z.some((z) => x >= z.l && x <= z.r && y >= z.t && y <= z.b);
+  assert.ok(hit(120, 60), 'Dach');
+  assert.ok(hit(120, 110), 'Pfahl');
+  assert.ok(!hit(135, 110), 'rechts neben dem Pfahl: frei (der Stein bekommt den Tipp)');
+  el.classList.add('a2out');
+  const Z2 = [];
+  c._a2Zones(Z2, sr);
+  assert.equal(Z2.length, 0);
+  el.classList.remove('a2out');
+  el.classList.add('a2hid');
+  c._a2Zones(Z2, sr);
+  assert.equal(Z2.length, 0);
 });

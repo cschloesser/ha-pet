@@ -61,7 +61,7 @@
  */
 (() => {
   // src/version.js
-  var VERSION = "0.48.0";
+  var VERSION = "0.48.1";
 
   // src/logik/hilfen.js
   var Cancel = class extends Error {
@@ -1241,6 +1241,7 @@
     }
     return best;
   };
+  var worldFront = (zones) => zones.map((z, i) => [z, i]).sort((a, b) => (b[0].z || 0) - (a[0].z || 0) || a[1] - b[1]).map((x) => x[0]);
   var WORLD_MIN = 40;
   var worldHalo = (l, t, r, b, pad = 0, min = WORLD_MIN) => {
     const px = Math.max(pad, (min - (r - l)) / 2);
@@ -2433,18 +2434,18 @@
           <path d="M113 51 q4 5 0 10"/><path d="M118 47.5 q6 8.5 0 17"/><path d="M123 44 q8 12 0 24"/>
         </g>
       </g></g>
-      <g class="mfood"><g class="mf-bloom">
-        <path d="M92 58 Q100 58 106 61" stroke="#4f8a3a" stroke-width="1.6" fill="none" stroke-linecap="round"/>
-        <ellipse cx="99" cy="61" rx="4.2" ry="1.7" fill="#6bab4c" transform="rotate(22 99 61)"/>
-        <circle class="mbloom" cx="108" cy="61" r="4.4"/>
-        <circle cx="108" cy="61" r="1.6" fill="#e0a032" opacity=".8"/>
-      </g><g class="mf-item" transform="translate(94.8 52.2) scale(.68)"></g></g>
       <g class="scarf">
         <path d="M68 63 Q87 73 107 63" stroke="#d9534f" stroke-width="6.5" fill="none" stroke-linecap="round"/>
         <path d="M70 64 Q87 73.5 105 64.6" stroke="#f6f1ea" stroke-width="1.6" fill="none" stroke-dasharray="3 4"/>
         <path d="M73 66 L69 80 L76.5 80.6 L79 67.5Z" fill="#d9534f" stroke="#a83a37" stroke-width=".8" stroke-linejoin="round"/>
         <path d="M70.5 75 L77.5 75.6" stroke="#f6f1ea" stroke-width="1.4"/>
       </g>
+      <g class="mfood"><g class="mf-bloom">
+        <path d="M92 58 Q100 58 106 61" stroke="#4f8a3a" stroke-width="1.6" fill="none" stroke-linecap="round"/>
+        <ellipse cx="99" cy="61" rx="4.2" ry="1.7" fill="#6bab4c" transform="rotate(22 99 61)"/>
+        <circle class="mbloom" cx="108" cy="61" r="4.4"/>
+        <circle cx="108" cy="61" r="1.6" fill="#e0a032" opacity=".8"/>
+      </g><g class="mf-item" transform="translate(94.8 52.2) scale(.68)"></g></g>
       <g class="paws" fill="${PK("paw")}" stroke="${OUT}" stroke-width="1.4">
         <ellipse cx="84" cy="61" rx="4" ry="5"/>
         <ellipse cx="98" cy="61" rx="4" ry="5"/>
@@ -6289,7 +6290,7 @@
   /* Häuschen auf dem Pfahl, Fuß auf der hinteren Reihe (LANE_DY über der Bodenlinie) */
   .a2-feeder { width: calc(var(--H) * ${FEEDER_W}); margin-left: calc(var(--H) * ${-FEEDER_W / 2}); bottom: calc(var(--gb) + var(--H) * ${LANE_DY});
     transition: opacity .4s, filter 2.5s; }
-  .a2-feeder.a2out { opacity: 0; }
+  .a2-feeder.a2out, .a2-feeder.a2hid { opacity: 0; } /* a2hid: ausgeblendet, solange die Schneewehe liegt */
   .a2-feeder .a2fh { transform-box: view-box; transform-origin: 16px 30px; }
   .a2-feeder.a2tap .a2fh { animation: a2fwob .6s ease-out; }
   @keyframes a2fwob { 20% { transform: rotate(-6deg); } 45% { transform: rotate(4.5deg); } 70% { transform: rotate(-2deg); } }
@@ -6342,6 +6343,7 @@
   var LANTERN_CARRY = carry(PAL);
   var LANTERN_CARRY_GOLD = carry(PAL_GOLD);
   var CARRY_GLASS = [17.8 * CARRY_S * Math.sin(-CARRY_ROT * Math.PI / 180), 17.8 * CARRY_S * Math.cos(CARRY_ROT * Math.PI / 180)];
+  var SMOKE_SVG = '<svg viewBox="0 0 8 28" aria-hidden="true"><path d="M4 28 C1.5 23 6.5 19.5 4 15 C1.5 10.5 6.5 7 4 1" stroke="#cfc9c2" stroke-width="1.5" fill="none" stroke-linecap="round" opacity=".9"/></svg>';
   var A2_LANTERN = {
     key: "lantern",
     name: "Laterne",
@@ -6367,6 +6369,19 @@
   /* Antippen: Die Flamme schießt hoch und duckt sich, die Laterne wackelt auf ihrem Fuß */
   .a2-lantern .a2lfl { transform-box: fill-box; transform-origin: 50% 100%; }
   .a2-lantern.a2ltap .a2lfl { animation: a2lflame .7s ease-out; }
+  /* Auspusten im Abendritual (.a2lpuff): Die Flamme schrumpft und erlischt, ein Rauchfaden (.a2lsmoke in .fx) steigt
+     auf und verweht. Ruhig: Die Flamme blendet nur aus, der Rauch blendet am Platz ein und aus. */
+  .a2-lantern.a2lpuff .a2lfl { transition: transform .6s ease-in, opacity .6s ease-in; transform: scale(.3, .1); opacity: 0; }
+  .a2lsmoke { position: absolute; width: calc(var(--H) * .032); height: calc(var(--H) * .11); margin: calc(var(--H) * -.11) 0 0 calc(var(--H) * -.016);
+    pointer-events: none; transform-origin: 50% 100%; animation: a2lsmoke 1.5s ease-out forwards; }
+  .a2lsmoke svg { display: block; width: 100%; height: 100%; overflow: visible; }
+  @keyframes a2lsmoke {
+    from { opacity: 0; transform: translateY(2px) scaleY(.3); }
+    30% { opacity: .9; }
+    to { opacity: 0; transform: translate(calc(var(--H) * .012), calc(var(--H) * -.06)) scaleY(1.15); }
+  }
+  .a2lsmoke.still { animation: a2lsmoke-still 1.5s ease-in-out forwards; }
+  @keyframes a2lsmoke-still { 0%, 100% { opacity: 0; } 40% { opacity: .8; } }
   @keyframes a2lflame { 25% { transform: scale(1.35, 1.6); } 55% { transform: scale(.85, .75); } 80% { transform: scale(1.1, 1.15); } }
   .a2-lantern.a2ltap svg { transform-origin: 50% 100%; animation: a2lwob .6s ease-out; }
   @keyframes a2lwob { 25% { transform: rotate(-5deg); } 55% { transform: rotate(3.5deg); } 80% { transform: rotate(-1.5deg); } }
@@ -6396,7 +6411,7 @@
 
   /* Glühwürmchen der goldenen Laterne (GOLD_FIREFLY, Aussehen von .gfx.hff): kreisen um das Glas, ohne den Anflug der
      Hängematte; .rev andersherum. Ruhig (.still) sitzen sie still (Platz setzt das Skript) und blenden ein. */
-  .gfx.hff.a2lff { margin: calc(var(--H) * -.012); opacity: 1;
+  .gfx.hff.a2lff { width: calc(var(--H) * .036); height: calc(var(--H) * .036); margin: calc(var(--H) * -.018); opacity: 1; /* anderthalbmal so groß wie .gfx.hff (seit 0.48.1) */
     animation: a2lffin 1s ease-out backwards, a2lorb var(--d, 3.4s) linear infinite, gfx-ffglow 1.9s ease-in-out infinite alternate; }
   .gfx.hff.a2lff.rev { animation-direction: normal, reverse, alternate; }
   @keyframes a2lffin { from { opacity: 0; } }
@@ -6410,6 +6425,7 @@
   @media (prefers-reduced-motion: reduce) {
     .a2-lantern.a2ltap .a2lfl, .a2-lantern.a2ltap svg, .pika.a2lc .mf-item > g > g, .a2lglow .a2lh { animation: none !important; }
     .a2lglow.flare .a2lh { transform: none; }
+    .a2-lantern.a2lpuff .a2lfl { transform: none; }
   }
 `;
 
@@ -6754,7 +6770,7 @@
   .gifts > .a2pkt.away { opacity: 0; transform: translateY(-40%) scale(.5); }
   .gifts > .a2pkt.still.away { transform: none; }
   /* Schmetterlinge (BFLY_SVG): fliegen per Web Animations heran, sitzen mit langsamem Flügelschlag */
-  .a2pkb { position: absolute; width: calc(var(--H) * .075); pointer-events: none; }
+  .a2pkb { position: absolute; width: calc(var(--H) * .1125); pointer-events: none; } /* (seit 0.48.1 anderthalbmal so groß wie bis 0.48.0) */
   .a2pkb svg { display: block; width: 100%; height: auto; overflow: visible; }
   .a2pkb .bwl, .a2pkb .bwr { transform-box: view-box; transform-origin: 10px 8px; animation: a2pkbw .15s ease-in-out infinite alternate; }
   .a2pkb.rest .bwl, .a2pkb.rest .bwr { animation-duration: 1.3s; }
@@ -6957,6 +6973,8 @@
     tonne: ["Die Tonne steht an der Straße. Danke fürs Rausstellen!", "Die Müllabfuhr kann kommen. Die Tonne steht schon draußen."],
     sauger: ["Der Saugroboter war unterwegs. Ich bin hinterhergehoppelt.", "Der Saugroboter hat geputzt. Vielleicht bin ich ein Stück mitgefahren!"],
     allGold: ["Jetzt sind alle meine Schätze golden. Was für ein Fest!"],
+    // (Album 1 golden, und Album 2 hat schon begonnen: „alle“ wären es dann nicht)
+    allGold1: ["Mein erstes Album ist ganz golden. Was für ein Fest!"],
     allGold2: ["Jetzt ist auch mein zweites Album ganz golden. Was für ein Fest!"],
     flowerTaken: ["Ich hab dir eine Blume gepflückt und ins Gras gelegt. Du hast sie genommen!", "Für dich: eine Blume mit Schleife. Du hast sie angenommen, da hab ich mich gefreut."],
     flowerWait: ["Ich hab dir eine Blume ins Gras gelegt. Sie wartet auf dich."],
@@ -7129,7 +7147,8 @@
           maxO = g1.o;
           const { alb, t: it, gold } = giftKind(g1.i);
           const e = pend && pend.z <= g1.o ? pend : { it, ...alb === 2 ? { alb } : {}, gold, what: !alb ? "treat" : "new" };
-          add(t, "parcel", { ...e, o: g1.o, mile: giftMile(g1.o), all: e.what === "gilt" && (e.alb === 2 ? a2AllGold(g1) : giftAllGold(g1)) });
+          const all = e.what === "gilt" && (e.alb === 2 ? a2AllGold(g1) : giftAllGold(g1));
+          add(t, "parcel", { ...e, o: g1.o, mile: giftMile(g1.o), all, ...all && e.alb !== 2 && a2Begun(g1) ? { a2: true } : {} });
           pend = null;
         }
       }
@@ -7749,7 +7768,7 @@
   ].reduce((svg, [a, b]) => svg.split(a).join(b), PIKA_SVG).replace(
     '<g clip-path="url(#bodyclip2)">',
     '$&<ellipse class="blaze" cx="89.5" cy="32.5" rx="4.8" ry="3.2" fill="#fbf0e2" opacity=".92"/>'
-  ).replace('<g class="mfood">', `<g class="bandana">
+  ).replace('<g class="scarf">', `<g class="bandana">
         <path d="M70.5 62 Q87.5 70.5 105 61.6" stroke="${OUT}" stroke-width="5.4" fill="none" stroke-linecap="round"/>
         <path d="M70.5 62 Q87.5 70.5 105 61.6" stroke="#22b5a6" stroke-width="3.8" fill="none" stroke-linecap="round"/>
         <path d="M79.5 65.2 L95.5 65.6 L86.6 76.4Z" fill="#22b5a6" stroke="${OUT}" stroke-width="1.2" stroke-linejoin="round"/>
@@ -13381,9 +13400,13 @@
         if (x + V.w > 0 && x < this._W) thing("vac", x, V.top, x + V.w, V.top + V.w * (18 / 44), V.el);
       }
       const E = this._gtEls;
+      const n0 = Z.length;
       if (E?.has(0)) add("yarn", E.get(0), 8);
       if (E?.has(1)) add("wheel", E.get(1), 4);
       this._a2Zones(Z, sr);
+      const G = Z.splice(n0);
+      for (const z of G) z.z = Number(getComputedStyle(z.el).zIndex) || 0;
+      Z.push(...worldFront(G));
       if (!sc.classList.contains("snowcover")) {
         for (const f3 of this._flowers) if (!f3.el.classList.contains("picked")) add("flower", f3.el, 6);
       }
@@ -14625,8 +14648,8 @@
           one.add("parcel");
           const svg = e.alb === 2 ? this._a2Item(e.it).icon : giftItem(e.it)?.svg;
           put(t, "parcel", this._diaryParcel(e, t), { svg });
-          if (e.all) put(t + 1, "parcel", tx(e.alb === 2 ? T.allGold2 : T.allGold, "allg", t), { svg });
-          else if (e.mile) put(t + 1, "parcel", tx(T.mile, "mile", t).replace("{z}", e.o), { svg: GIFT_PARCEL });
+          if (e.all) put(t + 1, "parcel", tx(e.alb === 2 ? T.allGold2 : e.a2 ? T.allGold1 : T.allGold, "allg", t), { svg });
+          if (e.mile) put(t + (e.all ? 2 : 1), "parcel", tx(T.mile, "mile", t).replace("{z}", e.o), { svg: GIFT_PARCEL });
         } else if (e.k === "urlaub") {
           put(t, "urlaub", tx(T.urlaub, "ur", t), { svg: URLAUB_SIGN(fr) });
         } else if (e.k === "heim") {
@@ -14758,7 +14781,7 @@
         const zwei = !I.a2 ? "" : I.have2 === GIFT_TRE ? " Im zweiten Album auch alle acht!" : ` Im zweiten Album: ${I.have2} von ${GIFT_TRE}.`;
         h += `<p class="fazit">${!I.have ? "Noch hab ich keine Schätze. Sie stecken in den Päckchen." : I.have === GIFT_TRE && I.a2 && I.have2 && I.have2 < GIFT_TRE ? `Das sind meine Schätze. Ich hab alle acht, und ${I.have2} von ${GIFT_TRE} im zweiten Album.` : I.have === GIFT_TRE ? `Das sind meine Schätze. Ich hab alle acht!${zwei}` : `Das sind meine Schätze. ${I.have} von ${GIFT_TRE} hab ich schon.${zwei}`}</p>`;
         const platz = (svg, lv, name, sub) => `<div class="t ${["miss", "", "lv2", "lv2 gilt"][lv]}"><i>${svg}</i><div><b>${esc(lv ? name : "???")}</b><span>${esc(lv ? sub : "noch ein Geheimnis")}</span></div></div>`;
-        h += `<div class="tre">${GIFT_ITEMS.slice(0, GIFT_TRE).map((it, t) => {
+        h += `${I.a2 ? "<h3>Album 1</h3>" : ""}<div class="tre">${GIFT_ITEMS.slice(0, GIFT_TRE).map((it, t) => {
           const lv = I.lvs[t];
           const nm = it.key === "plush" ? `Plüsch-${fr}` : it.name;
           const sub = lv >= 3 ? `golden: ${DIARY_TXT.gold[t]} · Trick: ${GIFT_TRICK[t]}` : lv === 2 ? `Trick: ${GIFT_TRICK[t]}` : DIARY_TXT.treasure[t];
@@ -15546,6 +15569,7 @@
         if (!calm) this._cls("mlem", 950, true);
         p.classList.add("rcap");
         await this._wait(RITUAL.cap);
+        await this._a2Bed();
         if (dbg !== "star" && this._ritPlush(true)) await this._ritRead();
         else await this._ritStar();
         done = true;
@@ -17545,7 +17569,7 @@
       const w = (ms) => this._fw(fr, ms, fr.tok);
       this._frFace(fr, -fr.side);
       this._frSetX(fr, fr.side < 0 ? -fW * 0.7 : W + fW * 0.7);
-      const tx = clamp(W * (fr.side < 0 ? rnd(0.3, 0.42) : rnd(0.6, 0.75)), lo, hi);
+      const tx = this._frKeepX(clamp(W * (fr.side < 0 ? rnd(0.3, 0.42) : rnd(0.6, 0.75)), lo, hi), lo, hi);
       await this._friendWalkTo(fr, tx, 0.9, w, true);
       this._frFace(fr, this._x >= fr.x ? 1 : -1);
       fr.arrived = true;
@@ -17597,6 +17621,7 @@
       const { pW } = this._g;
       const F = fr.el.classList;
       if (fr.lift > 0) return this._frHopDown(fr, w);
+      if (this._frInKeep(fr)) return this._friendWalkTo(fr, fr.x, 1.2, w);
       const toPika = () => this._x >= fr.x ? 1 : -1;
       if (fr.want === "curious") {
         fr.want = null;
@@ -17714,6 +17739,26 @@
       const lo = Math.max(home + pW * 0.8, stash ? 0 : hay + this._H * 0.13 + pW * this._frSc() * 0.3);
       return [lo, Math.max(lo, this._W - pW * this._frSc() * 0.45)];
     }
+    // Freihalten (seit 0.48.1, _a2FrAside in src/karte/album2.js): Solange ein Schatz aus Album 2 dort aufgebaut ist
+    // (this._frKeep = [l, r] in px, bis zum Aufräumen der Aktion), endet kein Weg des Freunds vorn darin: Ziel x geht an
+    // den nächsten Rand außerhalb; reicht [lo, hi] dafür nicht (breiter Bereich, schmale Karte), so weit hinaus wie
+    // möglich, auf der Seite, wo er am wenigsten hineinragt. → x
+    _frKeepX(x, lo, hi) {
+      const K2 = this._frKeep;
+      if (!K2) return x;
+      const m = this._g.pW * this._frSc() * 0.45;
+      if (x <= K2[0] - m || x >= K2[1] + m) return x;
+      const C2 = [[clamp(K2[0] - m, lo, hi), 1], [clamp(K2[1] + m, lo, hi), -1]].map(([v, s]) => [v, Math.max(0, s > 0 ? v + m - K2[0] : K2[1] - v + m)]);
+      C2.sort((p, q) => p[1] - q[1] || Math.abs(p[0] - x) - Math.abs(q[0] - x));
+      return C2[0][1] < Math.min(x + m - K2[0], K2[1] - x + m) ? C2[0][0] : x;
+    }
+    // Steht er vorn im freizuhaltenden Bereich (oder oben auf dem Stein, von wo er hineinhüpfen könnte)?
+    _frInKeep(fr) {
+      if (!this._frKeep || !fr || fr.lane) return false;
+      if (fr.lift > 0) return this._frKeep[1] > this._g.rock.l;
+      const [lo, hi] = this._frRange();
+      return Math.abs(this._frKeepX(fr.x, lo, hi) - fr.x) > 1;
+    }
     // free: ohne Begrenzung auf die Wiese (herein- und hinaushoppeln). lane (Tiefe): 1 = hintere Spur, im Bereich
     // _laneRange; jeder Weg ohne lane führt auf die vordere zurück (wie beim Pika, _walkTo)
     async _friendWalkTo(fr, x, speed = 1, w, free = false, lane = 0) {
@@ -17722,6 +17767,7 @@
       if (!free) {
         const [lo, hi] = lane ? this._laneRange(pW * this._frSc()) : this._frRange();
         x = clamp(x, lo, hi);
+        if (!lane) x = this._frKeepX(x, lo, hi);
       }
       const dx = x - fr.x;
       const dl = lane !== (fr.lane || 0);
@@ -21104,8 +21150,11 @@
     // zugeschaut hat. Läuft vor jeder Änderung (dann steht ein Absinken fest, bevor es überdeckt wird), danach mit user (du
     // hast etwas getan: ist jetzt alles wieder darüber, endet die Lücke) und beim Tick. Im Urlaub (und bis der Zustand
     // danach neu angesetzt ist) ruht alles. → { G, frac, left, warn, broken, grace (restliche Toleranz, ms) }
+    // Steht im Helfer der Plan einer neueren Version (_planNewer), ruht alles: Dieses Gerät schreibt den Plan nicht mehr,
+    // was es verdiente, verschenkte oder belohnte, gälte nur hier (und die Belohnung käme ohne Bestätigung). Bis zum
+    // Neuladen ist der Knopf blass wie im Urlaub, im Reiter Schätze steht „bitte neu laden“.
     _careEval(user = false) {
-      if (!this._giftOn() || !this._stats || !this._plan || !this._planOk || this._planStale) return null;
+      if (!this._giftOn() || !this._stats || !this._plan || !this._planOk || this._planStale || this._planNewer) return null;
       if (this._cfg.entity && !this._noEntity && !this._synced) return null;
       if (this._urlaubOn() || this._urlaubStale()) return null;
       const now2 = this._haNow();
@@ -21233,7 +21282,7 @@
       const full = G.n >= GIFT.max;
       b.classList.toggle("wait", !this._care && !full);
       if (!this._care) this._careSoon();
-      const away = this._urlaubOn();
+      const away = this._urlaubOn() || !!this._planNewer;
       b.classList.toggle("away", away);
       b.style.setProperty("--gp", ((full ? 1 : c.warn ? c.grace / GIFT.grace : c.frac || 0) * 100).toFixed(1));
       b.classList.toggle("warn", !!c.warn && !away);
@@ -21252,7 +21301,7 @@
       b.style.setProperty("--gpr", pr);
       b.querySelector(".gnum").textContent = n ? String(n) : "";
       const tol = c.warn && !away ? `, noch ${Math.max(1, Math.round(c.grace / 6e4))} Min. Toleranz` : "";
-      b.title = away ? `Päckchen: ${this._cfg.name} ist verreist, lang drücken: Schätze` : n ? `Päckchen schenken (${n} da${tol}), lang drücken: Schätze` : `Päckchen: gerade keins da${tol}, lang drücken: Schätze`;
+      b.title = this._planNewer ? "Päckchen ruhen: Der Tagesplan ist von einer neueren Version, bitte neu laden. Lang drücken: Schätze" : away ? `Päckchen: ${this._cfg.name} ist verreist, lang drücken: Schätze` : n ? `Päckchen schenken (${n} da${tol}), lang drücken: Schätze` : `Päckchen: gerade keins da${tol}, lang drücken: Schätze`;
     }
     _onGiftBtn() {
       if (this._albumHeld) {
@@ -21266,7 +21315,7 @@
         void b.offsetWidth;
         b.classList.add("no");
       };
-      if (!G || !this._g || !this._planOk || G.z > G.o || !(G.n > 0 || G.y > 0) || this._urlaubOn()) return no();
+      if (!G || !this._g || !this._planOk || this._planNewer || G.z > G.o || !(G.n > 0 || G.y > 0) || this._urlaubOn()) return no();
       const gold = G.y > 0;
       const z = G.z + 1;
       const i = this._giftPick(G, z, gold) + (gold ? 16 : 0);
@@ -21285,7 +21334,7 @@
       const o = this._giftOwn;
       if (!o) return;
       const H = this._cfg.plan_entity && this._planMax() >= PLAN_MIN ? planParse(this._planSt) : null;
-      const G = (H || this._planBase)?.gift;
+      const G = this._planNewer ? null : (H || this._planBase)?.gift;
       if (G && G.z >= o.z) {
         this._giftOwn = null;
         if (G.z !== o.z || G.x !== o.x || G.i !== o.i || G.r != null && G.r !== o.r) return;
@@ -21304,7 +21353,7 @@
     _giftPick(G, z, gold) {
       if (this._dbgTreat != null) return this._dbgTreat;
       const south = (this._hass?.config?.latitude ?? 50) < 0;
-      const mo = ((/* @__PURE__ */ new Date()).getMonth() + (south ? 6 : 0)) % 12;
+      const mo = (new Date(this._dbgDate ?? Date.now()).getMonth() + (south ? 6 : 0)) % 12;
       const tre = giftPickTre(G, z, gold, A2_INFO, mo);
       return tre != null ? tre : this._giftTreat(z, mo);
     }
@@ -21620,7 +21669,7 @@
       };
       burst();
       this._happy(2400);
-      this._say(what === "gold2" ? "Album 2 ganz golden!" : gold ? "Alles golden!" : `Mein ${what}. Päckchen!`, 2200);
+      this._say(what === "gold2" ? "Album 2 ganz golden!" : gold ? a2Begun(this._plan?.gift) ? "Album 1 ganz golden!" : "Alles golden!" : `Mein ${what}. Päckchen!`, 2200);
       this._jump("binky");
       if (gold) for (const el of els?.values() || []) el.classList.add("new");
       await this._wait(900);
@@ -21906,13 +21955,14 @@
       const lw = c.warn || c.broken ? this._giftLow().map((k) => GIFT_LOW[k][0]) : [];
       const low = lw.length > 1 ? `${lw.slice(0, -1).join(", ")} und ${lw.at(-1)}` : lw[0] || "";
       const away = this._urlaubOn();
-      const next = away ? `ruht, solange ich bei ${this._frName()} bin` : G.n >= GIFT.max ? `Vorrat voll${low ? ` · bitte ${low}` : ""}` : c.broken ? `die Serie fängt neu an, sobald alles über 50 % ist${low ? `: bitte ${low}` : ""}` : c.warn ? low ? `noch ${fmt(c.grace ?? GIFT.grace)} Toleranz: bitte ${low}` : "einmal kümmern, dann läuft sie weiter" : `nächstes in ${fmt(c.left ?? GIFT.every)} Wachzeit`;
+      const next = this._planNewer ? "ruht: Der Tagesplan ist von einer neueren Version, bitte neu laden" : away ? `ruht, solange ich bei ${this._frName()} bin` : G.n >= GIFT.max ? `Vorrat voll${low ? ` · bitte ${low}` : ""}` : c.broken ? `die Serie fängt neu an, sobald alles über 50 % ist${low ? `: bitte ${low}` : ""}` : c.warn ? low ? `noch ${fmt(c.grace ?? GIFT.grace)} Toleranz: bitte ${low}` : "einmal kümmern, dann läuft sie weiter" : `nächstes in ${fmt(c.left ?? GIFT.every)} Wachzeit`;
       const f3 = G.f ?? 0;
+      const lvs2 = giftLvs2(G);
       return {
         G,
         lvs,
         next,
-        warn: !!(c.warn || c.broken) && !away,
+        warn: !!(c.warn || c.broken) && !away && !this._planNewer,
         away,
         have: lvs.filter((lv) => lv > 0).length,
         // Freundschaftstage: alle, die bis zum nächsten goldenen fehlen, und was heute schon da ist
@@ -21920,12 +21970,14 @@
         dots: f3 % GIFT.goldDays,
         today: this._careToday(),
         mile: [10, 25, 50, 100].find((m) => m > G.o) ?? (Math.floor(G.o / 100) + 1) * 100,
-        allGold: giftAllGold(G),
-        // Album 2 (seit 0.46): begonnen, Stufen wie ausgepackt, wie viele da, alle golden
-        a2: a2Begun(G),
-        lvs2: giftLvs2(G),
-        have2: giftLvs2(G).filter((lv) => lv > 0).length,
-        allGold2: a2AllGold(G)
+        // Alles aus den Stufen, wie sie ausgepackt sind (wie lvs): Fliegt der letzte goldene noch im Ballon, ist noch
+        // nicht alles golden (bis 0.48.0 zählten hier die rohen Bits, a2Begun und a2AllGold)
+        allGold: lvs.every((lv) => lv === 3),
+        // Album 2 (seit 0.46): begonnen (wie a2Begun), Stufen wie ausgepackt, wie viele da, alle golden
+        a2: lvs2.some((lv) => lv > 0) || lvs.every((lv) => lv >= 2),
+        lvs2,
+        have2: lvs2.filter((lv) => lv > 0).length,
+        allGold2: lvs2.every((lv) => lv === 3)
       };
     }
   };
@@ -22744,19 +22796,22 @@
       if (sent >= 0) {
         const e = this._planSent[sent];
         this._planAck = Math.max(this._planAck, e.at);
+        this._planAcked();
         this._planSent.splice(0, sent + 1);
         this._planFail = 0;
         if (this._echoFremd(e, ctx, e.ms)) fremd = e;
       }
-      const P = this._planMax() < PLAN_MIN ? null : planParse(st);
+      const lesbar = planParse(st);
+      const P = this._planMax() < PLAN_MIN ? null : lesbar;
       if (st !== void 0) this._planSeen = true;
       if (typeof st === "string" && st !== "unknown" && st !== "unavailable") {
-        const newer = !P && /^p\d+\|/.test(st) && (!st.startsWith("p1|") || st.split("|").length > 6);
+        const newer = !lesbar && /^p\d+\|/.test(st) && (!st.startsWith("p1|") || st.split("|").length > 6);
         if (newer && !this._planNewer) console.warn(`pika-pet-card: ${id} hat das Format einer neueren Karte, dieses Gerät schreibt den Tagesplan nicht mehr. Bitte neu laden.`);
         this._planNewer = newer;
         if (!P && !newer && this._planMax() >= PLAN_MIN) {
           this._planKnown = null;
           this._planHeal = false;
+          this._planOps = this._planOps.filter((o) => o.at > this._planAck);
         }
       }
       if (P) {
@@ -22767,7 +22822,7 @@
         const alt = this._planKnown;
         const old = !!alt && (planOld(P, alt) || sent < 0 && this._planMend());
         const now2 = this._haNow();
-        const Q = this._planOps.filter((o) => o.at <= this._planAck && now2 - o.at < 15e3).reduce((X, o) => planApply(X, o, o.at), P);
+        const Q = this._planOps.filter((o) => o.at <= this._planAck && this._planNear(o, now2)).reduce((X, o) => planApply(X, o, o.at), P);
         const K2 = planKeep(Q, alt, old);
         this._planKnown = planKeep(P, alt, old);
         if (K2 !== Q && !this._planMend()) this._planHealAt = now2;
@@ -22777,6 +22832,7 @@
         const last = this._planOps.at(-1);
         if (last && last.at > this._planAck && planSer(this._planOps.reduce((Q2, o) => planApply(Q2, o, o.at), P)) === planSer(P)) {
           this._planAck = last.at;
+          this._planAcked();
         }
       }
       if (st === void 0 && !this._planWarned) {
@@ -22824,13 +22880,29 @@
       this._planCompose(true);
       if (this._running && (this._planWaiting || ACT_SMALL.includes(this._action) && this._slotNow())) this._interrupt();
     }
-    // Plan = letzter bekannter Stand + eigene Änderungen der letzten 15 s. Die kommen auch auf einen fremden Stand
-    // noch einmal obendrauf: Schrieben zwei Geräte fast gleichzeitig, geht so keine verloren. Hat HA eine Änderung
-    // noch nicht bestätigt (Verbindung weg, Fehler), bleibt sie länger (höchstens 30 Min) und wird erneut gesendet.
-    // Behalten wird immer ein zusammenhängendes jüngstes Stück, so bleibt die Reihenfolge beim Wiederholen gleich.
+    // HA hat die Änderungen bis _planAck bestätigt: Ab jetzt laufen für sie die 15 s von _planNear
+    _planAcked() {
+      const now2 = this._haNow();
+      for (const o of this._planOps) if (o.at <= this._planAck) o.ack ??= now2;
+    }
+    // Kommt die eigene, schon bestätigte Änderung o noch auf einen fremden Stand obendrauf? 15 s lang, gezählt ab der
+    // Bestätigung (ack), nicht ab ihrem Entstehen: Schreibt ein anderes Gerät fast gleichzeitig, steht sein Stand erst
+    // danach im Helfer, und ihm fehlt die Änderung. Bis 0.48.0 zählte at: Was ohne Verbindung länger als 15 s gewartet
+    // hatte (verschenkt, ausgepackt), fiel mit dem Echo sofort heraus, und verband sich ein zweites Gerät im selben
+    // Augenblick wieder (HA neu gestartet), überschrieb sein Schreiben das Päckchen auf Dauer. 'gbad' und 'gdbg' zählen
+    // weiter ab at (siehe _planCompose).
+    _planNear(o, now2) {
+      return now2 - (o.t === "gdbg" || o.t === "gbad" ? o.at : Math.max(o.at, o.ack || 0)) < 15e3;
+    }
+    // Plan = letzter bekannter Stand + eigene Änderungen der letzten 15 s (seit ihrer Bestätigung, _planNear). Die
+    // kommen auch auf einen fremden Stand noch einmal obendrauf: Schrieben zwei Geräte fast gleichzeitig, geht so keine
+    // verloren. Hat HA eine Änderung noch nicht bestätigt (Verbindung weg, Fehler), bleibt sie länger (höchstens 30 Min)
+    // und wird erneut gesendet. Über 30 Min alt kommt keine mehr obendrauf, auch nicht kurz nach einer späten Bestätigung.
+    // Behalten wird immer ein zusammenhängendes jüngstes Stück, so bleibt die Reihenfolge beim Wiederholen gleich (die
+    // Bestätigung gilt immer für alles bis _planAck, ack wächst also mit at).
     _planCompose(incoming) {
       const now2 = this._haNow();
-      this._planOps = this._planOps.filter((o) => now2 - o.at < 15e3 || o.at > this._planAck && o.t !== "gdbg" && o.t !== "gbad" && now2 - o.at < 30 * 6e4);
+      this._planOps = this._planOps.filter((o) => now2 - o.at < 30 * 6e4 && (this._planNear(o, now2) || o.at > this._planAck && o.t !== "gdbg" && o.t !== "gbad"));
       let P = this._planBase;
       for (const o of this._planOps) P = planApply(P, o, o.at);
       const keep = this._giftKeep && this._planKeyGift === this._planKey ? this._giftKeep : null;
@@ -23108,8 +23180,8 @@
     // und liegende Häufchen. Das steht in der Regel überall an derselben Stelle; gerechnet wird aber mit dem, was
     // jetzt da ist: Ein Gerät, das später einsteigt, kann die Pfütze woanders hinlegen, wenn inzwischen ein Gerät des
     // Haus-Boten fertig wurde oder ein Häufchen dazukam. Das Wollknäuel zählt nicht: Es liegt nach einem Tipp auf
-    // jedem Gerät woanders.
-    _groundBlocks() {
+    // jedem Gerät woanders. skip: Elemente aus Album 2, die nicht zählen (Set; das eigene, wenn ein Schatz umzieht).
+    _groundBlocks(skip = null) {
       const H = this._H;
       const pad = H * 0.015;
       const out = [];
@@ -23120,7 +23192,7 @@
         if (el.parentElement === this._el.gifts && !el.style.top) out.push([el.offsetLeft - pad, el.offsetLeft + el.offsetWidth + pad]);
       }
       for (const el of this._a2Els?.values() || []) {
-        if (el.parentElement === this._el.gifts && !el.style.top) out.push([el.offsetLeft - pad, el.offsetLeft + el.offsetWidth + pad]);
+        if (!skip?.has?.(el) && el.parentElement === this._el.gifts && !el.style.top) out.push([el.offsetLeft - pad, el.offsetLeft + el.offsetWidth + pad]);
       }
       for (const q of this._poops().piles) out.push([this._pileX(q) - H * 0.05, this._pileX(q) + H * 0.05]);
       return out;
@@ -25783,6 +25855,28 @@
 
   // src/karte/album2.js
   var cap = (k) => k[0].toUpperCase() + k.slice(1);
+  var A2_FR_ASIDE = /* @__PURE__ */ new Set(["sled", "radio", "feeder", "camera", "tramp", "pool"]);
+  var A2_REF = 36;
+  var A2_PAUSE = 6 * 6e4;
+  var A2_DUR = {
+    a2FeederPlay: 15,
+    a2FeederFill: 21,
+    a2LanternPlay: 23,
+    a2LanternRun: 15,
+    a2SledPlay: 16,
+    a2SledBelly: 16,
+    a2CameraPlay: 13,
+    a2CameraSelfie: 16,
+    a2RadioPlay: 32,
+    a2RadioSpin: 33,
+    a2TrampPlay: 13,
+    a2TrampFlip: 13,
+    a2PicnicPlay: 34,
+    a2PicnicShare: 30,
+    a2PoolPlay: 45,
+    a2PoolBomb: 50
+  };
+  var A2_SLOT_GAP = 5e3;
   var Album2 = class {
     // Daten des Schatzes t (0–7) oder key. Unbekannt: ein Platzhalter (wirft nicht)
     _a2Item(t) {
@@ -25844,6 +25938,45 @@
       this._a2Els.delete(key);
       el.remove();
     }
+    // Freier Platz am Boden für ein Ding der Breite w (seit 0.48.1): Mitte möglichst bei want, zwischen lo und hi (Mitte),
+    // neben allem, was dort schon steht (_groundBlocks: Geräte des Haus-Boten, Festdeko, Schätze aus Album 1 und 2, auch
+    // die abgestellte Laterne und das Vogelhäuschen, Häufchen; das Wollknäuel nicht, es liegt auf jedem Gerät woanders).
+    // own: key des Schatzes, dessen eigenes Element nicht zählt; extra: weitere Sperren [l, r] in px. Ist want frei,
+    // bleibt es dabei. Ist nirgends Platz, darf es vor dem Vogelhäuschen stehen (es steht auf der hinteren Reihe, dahinter;
+    // auf 600 px passte die Picknickdecke sonst nie zwischen Windrad und Häuschen), ist auch dann keiner: want (wie bis
+    // 0.48.0; die Hooks Acts bieten die Aktion dann nicht an, _a2Hit mit soft).
+    _a2Free(lo, hi, w, want, own = null, extra = []) {
+      const B = this._a2Blocks(own, extra);
+      const hit = (x2, L) => L.some(([l, r]) => x2 + w / 2 > l + 1e-6 && x2 - w / 2 < r - 1e-6);
+      const x = clearSpot(want, w, lo, Math.max(lo, hi), B);
+      if (!hit(x, B)) return x;
+      const S = this._a2Blocks(own, extra, true);
+      return clearSpot(want, w, lo, Math.max(lo, hi), S);
+    }
+    // Stünde ein Ding der Breite w mit der Mitte x auf etwas (wie _a2Free)? soft: das Vogelhäuschen zählt nicht
+    _a2Hit(x, w, own = null, extra = [], soft = false, tol = 0) {
+      return this._a2Blocks(own, extra, soft).some(([l, r]) => x + w / 2 > l + tol + 1e-6 && x - w / 2 < r - tol - 1e-6);
+    }
+    // Ist dort Platz genug, um die Aktion anzubieten (Hooks Acts)? Wie _a2Hit mit soft; den Rand der Sperren (1,5 % von H)
+    // darf es berühren, die Zeichnung daneben nicht
+    _a2Room(x, w, own) {
+      return !this._a2Hit(x, w, own, [], true, this._H * 0.015);
+    }
+    _a2Blocks(own, extra, soft = false) {
+      const skip = new Set([own && this._a2Els?.get(own), soft && this._a2Els?.get("feeder")].filter(Boolean));
+      return this._groundBlocks(skip).concat(extra);
+    }
+    // Wetterumschwung (seit 0.48.1): Ist das Wetter jetzt schlecht für einen Schatz draußen (Schnee aus den Wolken,
+    // Starkregen, Hagel, Gewitter, Sturm; wetOk false: auch jeder Regen)? Die Schätze merken es sich beim Aufbau (S.wx0) und
+    // brechen in ihrem Hook Scene ab, wenn es erst während der Aktion umschlägt (_a2WxTurned). War es schon beim Aufbau
+    // so (Vorschau-Knopf, Auspacken), bleibt es dabei.
+    _a2WxBad(wetOk = false) {
+      const wx = this._wx || {};
+      return !!(!wetOk && wx.wet || (wx.snow || 0) > 0 || (wx.rain || 0) > 40 || wx.storm || wx.shelter || wx.hail || wx.flash);
+    }
+    _a2WxTurned(S, wetOk = false) {
+      return !!S && !S.wx0 && this._a2WxBad(wetOk);
+    }
     // Szene: jeder Schatz zieht seine nach (Hook Scene), dann golden markieren
     _a2Scene() {
       if (!this._el || !this._g) return;
@@ -25857,16 +25990,54 @@
       if (!this._giftOn() || !G?.w || this._gb || this._urlaubFern()) return [];
       const lvs = this._a2Lvs();
       const out = [];
+      const frBusy = this._a2FrBusy();
+      const now2 = Date.now();
+      const slot = this._a2SlotLeft();
       A2_ITEMS.forEach((it, t) => {
-        if (!(lvs[t] > 0)) return;
+        if (!(lvs[t] > 0) || frBusy && A2_FR_ASIDE.has(it.key)) return;
+        if (now2 - (this._a2Last?.[it.key] ?? -Infinity) < A2_PAUSE) return;
         const A = this._a2Hook(it.key, "Acts", ctx, lvs[t]);
-        if (Array.isArray(A)) out.push(...A.filter((a) => Array.isArray(a) && a[0] > 0 && typeof this[`_${a[1]}`] === "function"));
+        if (!Array.isArray(A)) return;
+        for (const a of A) {
+          if (!Array.isArray(a) || !(a[0] > 0) || typeof this[`_${a[1]}`] !== "function") continue;
+          const d = A2_DUR[a[1]] ?? A2_REF;
+          if (slot < d * 1e3 + A2_SLOT_GAP) continue;
+          out.push([a[0] * Math.min(1, A2_REF / d), a[1]]);
+        }
       });
       return out;
     }
-    // Aus _cleanup (Ende oder Abbruch einer Aktion)
+    // Wie lange noch bis zur nächsten Beschäftigung aus dem Tagesplan (ms, Uhr des Plans; _slotArm hat _slotNext eben
+    // in _step gesetzt)? Infinity, wenn keine bekannt ist.
+    _a2SlotLeft() {
+      const n = this._slotNext;
+      if (!Number.isFinite(n) || typeof this._planNow !== "function") return Infinity;
+      return n - this._planNow();
+    }
+    // Aus _cleanup (Ende oder Abbruch einer Aktion). Der freigehaltene Platz (_a2FrAside) gilt nur für die Aktion. War
+    // es eine Aktion eines Schatzes, die er von selbst gewählt hat (nicht aus der Vorschau, _forced), pausiert der
+    // Schatz jetzt A2_PAUSE (Auspacken läuft als giftOpen und zählt nicht).
     _a2Cleanup() {
+      this._frKeep = null;
+      const m = typeof this._action === "string" && !this._forced && this._action.match(/^a2([A-Z][a-z]+)[A-Z]/);
+      if (m && A2_KEYS.includes(m[1].toLowerCase())) (this._a2Last ??= {})[m[1].toLowerCase()] = Date.now();
       for (const it of A2_ITEMS) this._a2Hook(it.key, "Cleanup");
+    }
+    // Aus dem Abendritual (_bedRitual in src/karte/momente.js, nach der Mütze): Hook Bed jedes Schatzes, der da ist,
+    // nacheinander. Abbruch (Cancel: Füttern, Streicheln) bricht das Ritual ab wie jedes Warten darin; ein anderer Fehler
+    // bleibt beim Schatz (_err), das Ritual geht weiter.
+    async _a2Bed() {
+      const lvs = this._a2Lvs();
+      for (const [t, it] of A2_ITEMS.entries()) {
+        const f3 = this[`_a2${cap(it.key)}Bed`];
+        if (!(lvs[t] > 0) || typeof f3 !== "function") continue;
+        try {
+          await f3.call(this, lvs[t]);
+        } catch (e) {
+          if (e instanceof Cancel || this._ac?.signal?.aborted) throw e;
+          this._err(`Album 2 ${it.key}`, e);
+        }
+      }
     }
     // Aus _tickGift
     _a2Tick() {
@@ -25875,16 +26046,43 @@
     }
     // Aus _detachGift
     _a2Detach() {
+      this._frKeep = null;
       for (const it of A2_ITEMS) this._a2Hook(it.key, "Detach");
     }
-    // Tippflächen für _worldZones: jedes Element aus _a2El, dessen Schatz einen Hook Tap hat
+    // Ist der Freund gerade beschäftigt (gemeinsames oder eigenes Spiel, _withFriend), hoppelt er noch herein oder geht er
+    // schon? Dann kein Schatz, der Platz braucht (A2_FR_ASIDE).
+    _a2FrBusy() {
+      const fr = this._fr;
+      return !!fr && (!!fr.busy || !fr.arrived || !!fr.leaving);
+    }
+    // Platz von l bis r (px der Szene, vordere Reihe) für einen Schatz freihalten, bevor er dort aufgebaut wird (seit
+    // 0.48.1): Steht der Freund unbeschäftigt darin (oder oben auf dem Stein), hoppelt er beiseite (_frTake beendet seinen
+    // Schritt, _friendIdle führt ihn hinaus), und bis zum Ende der Aktion endet keiner seiner Wege darin (_frKeepX in
+    // src/karte/pino.js; _a2Cleanup gibt den Platz wieder frei). Wartet, bis er draußen ist (höchstens etwa 2,5 s). Nicht für
+    // Selfie und Picknick: Dort stellt die Aktion ihn selbst hin.
+    async _a2FrAside(l, r) {
+      this._frKeep = [Math.min(l, r), Math.max(l, r)];
+      const fr = this._fr;
+      if (!fr || fr.busy || !fr.arrived || fr.leaving || !this._frInKeep?.(fr)) return;
+      this._frTake(fr);
+      for (let i = 0; i < 16 && this._fr === fr && this._frInKeep(fr); i++) await this._wait(160);
+    }
+    // Tippflächen für _worldZones: jedes Element aus _a2El, dessen Schatz einen Hook Tap hat. Seit 0.48.1 nur, wo
+    // gezeichnet ist: je Form der Zeichnung ein Rechteck mit 4 px Rand (bis 0.48.0 die ganze Box mit 6 px: Ein Tipp rechts
+    // neben den Pfahl des Vogelhäuschens traf das Häuschen statt des Steins dahinter). Was ausblendet (.a2out) oder
+    // ausgeblendet ist (.a2hid), bekommt keine. Ohne Formen (Attrappen): die Box.
     _a2Zones(Z, sr) {
+      const pad = 4;
       for (const [key, el] of this._a2Els || []) {
         if (typeof this[`_a2${cap(key)}Tap`] !== "function" || !el.isConnected) continue;
+        if (el.classList?.contains("a2out") || el.classList?.contains("a2hid")) continue;
         const r = el.getBoundingClientRect();
         if (!r.width && !r.height) continue;
-        const pad = 6;
-        Z.push({ k: key, a2: true, el, l: r.left - sr.left - pad, t: r.top - sr.top - pad, r: r.right - sr.left + pad, b: r.bottom - sr.top + pad, pad });
+        const parts = [el, ...this[`_a2${cap(key)}Parts`]?.() || []].filter((e) => e?.isConnected);
+        const F = parts.flatMap((e) => [...e.querySelectorAll?.("path, rect, circle, ellipse, polygon, polyline, line") || []]).filter((f3) => !f3.closest?.("defs, clipPath, mask")).map((f3) => f3.getBoundingClientRect()).filter((q) => q.width >= 0.5 || q.height >= 0.5);
+        for (const q of F.length ? F : [r]) {
+          Z.push({ k: key, a2: true, el, l: q.left - sr.left - pad, t: q.top - sr.top - pad, r: q.right - sr.left + pad, b: q.bottom - sr.top + pad, pad });
+        }
       }
     }
     // Tipp auf eine Zone aus _a2Zones → true, wenn der Schatz geantwortet hat
@@ -25959,8 +26157,20 @@
       const w = H * FEEDER_W;
       const h = w * 2;
       const foot = gy - H * LANE_DY;
-      const x = Math.max(hayR + w, rock.l + rock.ku * 6);
+      const D = this._a2FeederDrift();
+      const x = typeof D === "number" ? D : Math.max(hayR + w, rock.l + rock.ku * 6);
       return { x, w, h, left: x - w / 2, top: foot - h, foot };
+    }
+    // Schneewehe des Schlittens (seit 0.48.1): Am Fuß des Steins läge das Häuschen in der Wehe, der Schlitten führe darüber.
+    // Liegt Schnee (und der Schlitten ist da) oder liegt die Wehe gerade, steht es links von ihrem Fuß, wenn dort Platz
+    // ist (→ x); sonst ist es ausgeblendet, solange die Wehe liegt ('hide'). Ohne Wehe und Schnee: null (wie immer).
+    _a2FeederDrift() {
+      const drift = !!this._a2SledS?.drift;
+      if (!drift && !(this._wx?.snowcover && this._a2Lv("sled") > 0)) return null;
+      const w = this._H * FEEDER_W;
+      const x = this._a2SledFoot() - w * 0.9;
+      if (x >= this._g.hayR + w) return x;
+      return drift ? "hide" : null;
     }
     // Ist dort ein ruhiger Platz? Genug Wiese zwischen Vorrat und Stein (auf schmalen Karten nicht) und keine Festdeko
     _a2FeederRoom() {
@@ -25978,6 +26188,7 @@
       const el = this._a2El("feeder", FEEDER_SVG);
       el.style.left = `${this._a2FeederPos().x.toFixed(1)}px`;
       el.style.zIndex = String(FEEDER_Z());
+      el.classList.toggle("a2hid", this._a2FeederDrift() === "hide");
     }
     // Für eine Aktion: steht es nicht, holt er es heraus (ploppt auf). → true, wenn es nur für diesen Moment da ist
     _a2FeederShow() {
@@ -25992,6 +26203,11 @@
         setTimeout(() => el.classList.remove("new"), 800);
       }
       return true;
+    }
+    // Der Freund verdeckt das Häuschen nicht, solange die Vögel kommen (_a2FrAside)
+    async _a2FeederAside() {
+      const F = this._a2FeederPos();
+      await this._a2FrAside(F.left - F.w * 0.3, F.left + F.w * 1.3);
     }
     // Moment vorbei: Vögel fliegen weg, ein nur hervorgeholtes Häuschen verschwindet wieder
     _a2FeederEnd() {
@@ -26032,6 +26248,7 @@
       this._a2FeederBusy = true;
       try {
         this._a2FeederShow();
+        await this._a2FeederAside();
         await this._a2FeederGo();
         await this._wait(300);
         await this._a2FeederWatch(o);
@@ -26044,8 +26261,7 @@
     async _a2FeederWatch(o = {}) {
       const p = this._el.pika;
       const lv = this._a2Lv("feeder");
-      const gold = !!o.gimpel || this._dbgGimpel || lv >= 3 && this._a2GoldOk("feeder", FEEDER_GOLD);
-      this._dbgGimpel = false;
+      const gold = !!o.gimpel || lv >= 3 && this._a2GoldOk("feeder", FEEDER_GOLD);
       const n = clamp(o.n ?? 1 + (Math.random() < 0.6 ? 1 : 0) + (!gold && this._a2FeederWinter() && Math.random() < 0.6 ? 1 : 0), 1, gold ? 2 : 3);
       const plan = [...Array(n).keys()].map((i) => [i, pick(BIRDS)]);
       if (gold) plan.push([2, GIMPEL]);
@@ -26093,6 +26309,7 @@
       let el = null;
       try {
         this._a2FeederShow();
+        await this._a2FeederAside();
         el = this._a2Els?.get("feeder");
         el?.classList.add("leer");
         await this._a2FeederGo(true);
@@ -26139,7 +26356,7 @@
       const y = F.top + fy * F.h;
       const calm = calmMotion();
       const el = document.createElement("div");
-      el.className = `bird a2b${calm ? " a2still" : " flying"}`;
+      el.className = `bird a2b${calm ? "" : " flying"}`;
       el.innerHTML = `<div class="bw" role="button" aria-label="${v.name}"><div class="bf"><div class="bb">${BIRD_SVG(v)}</div></div></div>`;
       el.style.left = `${x.toFixed(1)}px`;
       el.style.top = `${y.toFixed(1)}px`;
@@ -26284,6 +26501,7 @@
     // Tipp aufs Häuschen: Es wackelt am Pfahl, ein paar Körner rieseln, Vögel darauf hüpfen kurz
     _a2FeederTap(z) {
       const el = z.el;
+      if (el.classList.contains("a2hid")) return false;
       if (!calmMotion()) {
         el.classList.remove("a2tap");
         void el.offsetWidth;
@@ -26389,7 +26607,7 @@
     _a2LanternScene(lv) {
       const S = this._a2LanternStand;
       if (!S) return;
-      if (!(lv > 0) || this._asleep || this._urlaubFern() || !this._a2LanternBusy && Date.now() >= S.until) {
+      if (!(lv > 0) || this._asleep || this._urlaubFern() || !this._a2LanternBusy && !this._a2LanternBlow && Date.now() >= S.until) {
         this._a2LanternOut();
         return;
       }
@@ -26713,13 +26931,54 @@
       await this._wait(900);
       await this._a2LanternPlay({ hold, short: true, gold: lv >= 3 });
     }
+    // Abendritual (Hook Bed, seit 0.48.1): Brennt sie noch (am Bau oder wo er sie abgestellt hat), geht er hin, dreht sich
+    // zu ihr, „pff…“, die Flamme schrumpft, ein Rauchfaden steigt auf, sie geht aus. Füttern und Streicheln brechen ab wie
+    // das Ritual: Dann brennt sie weiter, bis er schläft (Szene). Reduzierte Bewegung: ohne Laufen, die Flamme blendet aus.
+    async _a2LanternBed() {
+      const S = this._a2LanternStand;
+      const el = this._a2Els?.get("lantern");
+      if (!S || !el || this._a2LanternCarry || !this._g) return;
+      const { pW, xR, gy } = this._g;
+      const H = this._H;
+      const calm = calmMotion();
+      let smoke = null;
+      this._a2LanternBlow = true;
+      try {
+        if (!calm && Math.abs(S.x - this._x) > pW * 0.85) {
+          const d = S.x >= this._x ? 1 : -1;
+          await this._walkTo(clamp(S.x - d * pW * 0.62, pW * 0.45, xR), 0.8);
+        }
+        this._face(S.x >= this._x ? 1 : -1);
+        await this._wait(350);
+        this._say("pff…", 1300);
+        el.classList.add("a2lpuff");
+        this._a2LanternGlow?.classList.add("off");
+        await this._wait(650);
+        smoke = document.createElement("span");
+        smoke.className = `a2lsmoke${calm ? " still" : ""}`;
+        smoke.innerHTML = SMOKE_SVG;
+        smoke.style.left = `${S.x.toFixed(1)}px`;
+        smoke.style.top = `${(gy - S.foot * H - LANTERN_W * 1.5 * H * (LANTERN_GLASS + 0.12)).toFixed(1)}px`;
+        this._el.fx.appendChild(smoke);
+        await this._wait(500);
+        this._a2LanternOut();
+        await this._wait(900);
+      } finally {
+        this._a2LanternBlow = false;
+        smoke?.remove();
+        if (this._a2LanternStand === S) {
+          el.classList.remove("a2lpuff");
+          this._a2LanternGlow?.classList.remove("off");
+        }
+      }
+    }
     // ---------- Hooks: Tipp, Aufräumen, Abhängen ----------
     // Tipp auf die brennende Laterne: Die Flamme flackert auf, der Schein mit, sie wackelt am Fuß; golden kommt (bis zu
     // vier) ein Glühwürmchen dazu. Sie brennt danach eine Minute länger (höchstens LANTERN_STAY ab jetzt).
     _a2LanternTap(z) {
       const el = z.el;
       const S = this._a2LanternStand;
-      if (!S) return false;
+      if (!S || this._a2LanternBlow) return false;
       const calm = calmMotion();
       if (!calm) {
         el.classList.remove("a2ltap");
@@ -26801,7 +27060,7 @@
       rope.style.background = SEIL;
       rope.hidden = true;
       this._el.gifts.appendChild(rope);
-      const S = { W: this._W, H: this._H, el, rope, x, fdir: 0, ang: 0, ride: false, tow: false, line: false, drive: null, ctl: false, u0: DRIFT_U0, drift: null, raf: 0, fx: /* @__PURE__ */ new Set(), t: [] };
+      const S = { W: this._W, H: this._H, el, rope, x, fdir: 0, ang: 0, ride: false, tow: false, line: false, drive: null, ctl: false, u0: DRIFT_U0, drift: null, raf: 0, fm: null, fx: /* @__PURE__ */ new Set(), t: [] };
       this._a2SledS = S;
       this._a2SledFace(fdir, true);
       this._a2Scene();
@@ -26836,6 +27095,7 @@
       const w = (40 - u0) * ku;
       S.drift = this._aprop("a2sl-drift", DRIFT_SVG(u0), rock.l + (u0 - 2) * ku + w / 2, w, 36 * ku, false, ku);
       S.drift.style.zIndex = String(DRIFT_Z());
+      this._a2Scene();
     }
     // Fuß der Wehe in Einheiten des Steins (negativ, links von ihm), auch bevor sie liegt
     _a2SledU0() {
@@ -26889,7 +27149,9 @@
       this._el.pika.style.removeProperty("--a2sla");
     }
     // ---------- Takt ----------
-    // Bild für Bild: laufender Abschnitt (drive), Seil ziehen, Schlitten und Seil stellen
+    // Bild für Bild: laufender Abschnitt (drive), Seil ziehen, Schlitten und Seil stellen. Seit 0.48.1 nur, solange sich
+    // etwas bewegen kann (ein Abschnitt läuft oder das Seil hängt an seinem Maul: dann geht er mit _walkTo, und Seil und
+    // Schlitten folgen der Nase); Drive und Hold starten den Takt wieder. Die Nase wird je Bild einmal gelesen (S.fm).
     _a2SledRun() {
       const S = this._a2SledS;
       if (!S || S.raf || typeof requestAnimationFrame !== "function") return;
@@ -26898,13 +27160,16 @@
         S.raf = 0;
         try {
           if (S.drive) S.drive.step(clamp((now2 - S.drive.t0) / S.drive.ms, 0, 1));
+          S.fm = S.line ? this._a2SledMouth() : null;
           if (S.tow) this._a2SledTow();
           this._a2SledPlace();
         } catch (e) {
           this._err?.("Album 2 sled", e);
           return;
+        } finally {
+          S.fm = null;
         }
-        S.raf = requestAnimationFrame(frame);
+        if (S.drive || S.line) S.raf = requestAnimationFrame(frame);
       };
       S.raf = requestAnimationFrame(frame);
     }
@@ -26914,6 +27179,7 @@
       if (!S) return;
       const t0 = typeof performance !== "undefined" ? performance.now() : Date.now();
       S.drive = { t0, ms, step };
+      this._a2SledRun();
       step(0);
       try {
         await this._wait(ms);
@@ -26935,6 +27201,8 @@
     }
     // Wo das Seil im Maul steckt (Szene-Pixel): etwas unter der Nasenspitze
     _a2SledMouth() {
+      const F = this._a2SledS?.fm;
+      if (F) return F;
       const n = this._nosePos();
       return { x: n.x - this._dir * this._g.pW * 0.02, y: n.y + this._g.pH * 0.06 };
     }
@@ -26982,6 +27250,7 @@
       p.classList.toggle("carry", on);
       this._mouth(on ? SEIL : null, on ? ROPE_MOUTH : null);
       this._a2SledPlace();
+      if (on) this._a2SledRun();
     }
     // ---------- Was er damit tut ----------
     // Rodelwetter: Schnee liegt, kein Regen darauf (wie bei Schneeengel und Schneeball, miniProg), kein Sturm, nicht
@@ -27011,6 +27280,9 @@
       const gold = !!o.gold || lv >= 3 && this._a2GoldOk("sled");
       this._a2SledBusy = true;
       try {
+        const { rock, pW, hayR } = this._g;
+        const end = Math.max(this._a2SledFoot() - pW * 1.9, hayR + pW * 0.25, pW * 0.5);
+        await this._a2FrAside(end - pW * 0.4, rock.cx + rock.ku * 4 + pW * 0.2);
         if (calmMotion()) await this._a2SledCalm(mode, gold, o);
         else await this._a2SledRide(mode, gold, o);
       } finally {
@@ -27165,6 +27437,7 @@
       this._a2SledHold(true);
       this._apropsAway(S.drift);
       S.drift = null;
+      this._a2Scene();
       await this._walkTo(this._g.hole.cx + pW * 0.9, 0.9);
       await this._wait(300);
     }
@@ -27200,9 +27473,20 @@
       this._a2SledBusy = true;
       const p = this._el.pika;
       try {
-        const { pW, hole } = this._g;
-        const d = this._x - pW * 0.9 > hole.r ? -1 : 1;
-        const S = this._a2SledMake(this._x + d * pW * 0.73, -d, !calmMotion());
+        const { pW, hole, xR } = this._g;
+        let d = this._x - pW * 0.9 > hole.r ? -1 : 1;
+        const pad = this._H * 0.015;
+        const sx = this._a2Free(pW * 0.5, xR + pW * 0.2, this._a2SledDim().w, this._x + d * pW * 0.73, "sled", [[hole.l - pad, hole.r + pad]]);
+        if (Math.abs(Math.abs(sx - this._x) - pW * 0.73) > pW * 0.25) {
+          d = this._x <= sx ? 1 : -1;
+          const ok = (x2) => x2 >= pW * 0.45 && x2 <= xR;
+          if (!ok(sx - d * pW * 0.73)) d = -d;
+          const x = clamp(sx - d * pW * 0.73, pW * 0.45, xR);
+          if (calmMotion()) this._setX(x, true);
+          else await this._walkTo(x, 1);
+        }
+        d = sx >= this._x ? 1 : -1;
+        const S = this._a2SledMake(sx, -d, !calmMotion());
         this._face(d);
         this._say(lv >= 3 ? pick(["goldig!", "der glänzt!"]) : pick(["zum Rodeln!", "für den Winter!"]), 1300);
         await this._wait(1e3);
@@ -27310,7 +27594,10 @@
         this._a2SledS = null;
       }
       p.style.removeProperty("--a2sla");
-      if (S.drift) this._apropsAway(S.drift);
+      if (S.drift) {
+        this._apropsAway(S.drift);
+        this._a2Scene();
+      }
       const el = S.el;
       if (el.isConnected && !calmMotion() && this._a2Els?.get("sled") === el) {
         el.classList.add("a2out");
@@ -27403,7 +27690,8 @@
     // ---------- Platz ----------
     // Wo cx (Mitte der Kamera, Linse nach d) liegen darf, damit jedes Stück F ([Abstand von cx in Richtung d, halbe
     // Breite, Art]) auf die Wiese passt: rechts vom Heu (.fore verdeckte, was dahinter steht), im Bild; der Pika bis xR,
-    // der Freund in seinem Bereich (_frRange). → [kleinstes, größtes cx] oder null
+    // der Freund in seinem Bereich (_frRange). → [kleinstes, größtes cx] oder null. Wo darin die Kamera nicht vor etwas
+    // steht, das schon am Boden steht (Windrad, Vogelhäuschen, Laterne, Festdeko …), suchen die Motive mit _a2Free aus.
     _a2CameraRoom(d, F) {
       const { pW, hayR, xR } = this._g;
       let lo = -Infinity;
@@ -27464,7 +27752,7 @@
       for (const d of [b.x >= this._x ? 1 : -1, b.x >= this._x ? -1 : 1]) {
         const R2 = this._a2CameraShotRoom(d);
         if (!R2) continue;
-        const cx = clamp(b.x - d * (O.tip + pW * 0.9), R2[0], R2[1]);
+        const cx = this._a2Free(R2[0], R2[1], O.w, clamp(b.x - d * (O.tip + pW * 0.9), R2[0], R2[1]), "camera");
         const dx = d * (b.x - (cx + d * O.tip));
         if (dx < pW * 0.3) continue;
         const dy = gy - O.lensY - (b.y - this._H * 0.04);
@@ -27482,7 +27770,7 @@
         for (const d of [x >= this._x ? 1 : -1, x >= this._x ? -1 : 1]) {
           const R2 = this._a2CameraShotRoom(d);
           const cx = x - d * (O.tip + pW * 0.4);
-          if (R2 && cx >= R2[0] - 0.01 && cx <= R2[1] + 0.01) {
+          if (R2 && cx >= R2[0] - 0.01 && cx <= R2[1] + 0.01 && !this._a2Hit(cx, O.w, "camera")) {
             const o = (this._flowers || []).find((g) => g !== f3 && Math.abs(g.xf - f3.xf) * this._W < pW * 0.8);
             return { d, cx, tilt: 8, M: { k: "flower", color: f3.color, color2: o?.color } };
           }
@@ -27496,12 +27784,12 @@
       const pref = this._x + this._dir * this._g.pW * 1.2 <= this._g.xR ? this._dir || 1 : -(this._dir || 1);
       for (const d of [pref, -pref]) {
         const R2 = this._a2CameraShotRoom(d);
-        if (R2) return { d, cx: clamp(this._x + d * O.behind, R2[0], R2[1]), tilt: -30, M: { k: "sky" } };
+        if (R2) return { d, cx: this._a2Free(R2[0], R2[1], O.w, clamp(this._x + d * O.behind, R2[0], R2[1]), "camera"), tilt: -30, M: { k: "sky" } };
       }
       return { d: -1, cx: Math.max(this._g.hayR + O.w / 2, this._W - O.behind - this._g.pW * 0.45), tilt: -30, M: { k: "sky" } };
     }
     // Was er fotografiert: der Vogel vom Besuch am liebsten, dann eine Blume, sonst der Himmel (mit Regenbogen gern).
-    // want: dieses Motiv, wenn es geht (Tests, Vorschau: this._a2CameraDbgMotif)
+    // want: dieses Motiv, wenn es geht (Tests)
     _a2CameraPick(want = null) {
       const C2 = [];
       const b = this._bird;
@@ -27530,7 +27818,7 @@
       for (const d of [pref, -pref]) {
         const R2 = this._a2CameraRoom(d, F);
         if (!R2) continue;
-        const cx = clamp(fr ? fr.x - d * ff : this._x - d * O.front, R2[0], R2[1]);
+        const cx = this._a2Free(R2[0], R2[1], O.w, clamp(fr ? fr.x - d * ff : this._x - d * O.front, R2[0], R2[1]), "camera");
         return { d, cx, front: cx + d * O.front, pose: cx + d * O.pose, ffx: cx + d * ff };
       }
       return null;
@@ -27550,6 +27838,7 @@
     // Hook: Fotos mag er ab und zu; das Selfie selten allein, oft, wenn der Freund da ist (dessen Spiele wiegen 3,5–7)
     _a2CameraActs({ wx }, lv) {
       if (!this._a2CameraWeather(wx)) return [];
+      if (!this._a2Room(this._a2CameraAimSky().cx, this._a2CameraOff().w, "camera")) return [];
       const k = this._el.scene.classList.contains("dusk") ? 0.3 : 1;
       return [[0.3 * k, "a2CameraPlay"], [lv >= 2 ? (this._a2CameraFriend() ? 1.5 : 0.15) * k : 0, "a2CameraSelfie"]];
     }
@@ -27561,8 +27850,10 @@
       const gold = !!o.gold || lv >= 3 && this._a2GoldOk("camera", CAMERA_GOLD);
       this._a2CameraBusy = true;
       try {
-        const L = this._a2CameraPick(o.motif ?? this._a2CameraDbgMotif ?? null);
+        const L = this._a2CameraPick(o.motif ?? null);
         const O = this._a2CameraOff();
+        const lens = L.cx + L.d * (O.tip + this._g.pW * 0.4);
+        await this._a2FrAside(Math.min(L.cx - O.w / 2, lens), Math.max(L.cx + O.w / 2, lens));
         await this._a2CameraSetUp(L.cx, L.d, L.cx - L.d * O.behind, o.short);
         await this._a2CameraShoot(L, gold);
       } finally {
@@ -27902,7 +28193,7 @@
     // Größe der Karte geändert, steht es an alten Pixeln: abbrechen (wie _layout bei Requisiten)
     _a2RadioScene(lv) {
       const S = this._a2RadioS;
-      if (S && (S.W !== this._W || S.H !== this._H) && this._a2RadioBusy) this._interrupt();
+      if (S && this._a2RadioBusy && (S.W !== this._W || S.H !== this._H || this._a2WxTurned(S))) this._interrupt();
       else if (!S || !(lv > 0)) this._a2RadioEnd();
     }
     // Maße in der Szene (px)
@@ -27917,9 +28208,23 @@
       const { pW, hayR, xR } = this._g;
       const { w } = this._a2RadioDim();
       const B = this._besideSpot(Math.random(), Math.random(), (RADIO_FAR - 0.45) * pW * 2);
-      const px = clamp(B.px, hayR + w * 0.6, xR + pW * 0.3);
-      const x = clamp(px - B.dir * pW * RADIO_FAR, pW * 0.45, xR);
+      const px = this._a2Free(hayR + w * 0.6, xR + pW * 0.3, w, clamp(B.px, hayR + w * 0.6, xR + pW * 0.3), "radio");
+      const far = pW * RADIO_FAR;
+      const d = px - B.dir * far >= pW * 0.45 && px - B.dir * far <= xR ? B.dir : -B.dir;
+      const x = clamp(px - d * far, pW * 0.45, xR);
       return { px, x, dir: px >= x ? 1 : -1 };
+    }
+    // Gleich neben ihm (nach dem Auspacken, reduzierte Bewegung): zur Seite mit mehr Platz, RADIO_FAR entfernt, aber nicht
+    // vor dem, was dort steht (_a2Free). → Mitte des Radios
+    _a2RadioBeside() {
+      const { pW, xR } = this._g;
+      const d = this._x < this._W / 2 ? 1 : -1;
+      return this._a2Free(pW * 0.5, xR + pW * 0.3, this._a2RadioDim().w, clamp(this._x + d * pW * RADIO_FAR, pW * 0.5, xR + pW * 0.3), "radio");
+    }
+    // Der Freund sitzt nicht auf dem Radio (_a2FrAside)
+    async _a2RadioAside(px) {
+      const { w } = this._a2RadioDim();
+      await this._a2FrAside(px - w * 0.6, px + w * 0.6);
     }
     // Radio hinstellen (Element aus _a2El: Tippfläche, Licht, golden) mit der Mitte bei px. pop: ploppt auf, sonst blendet
     // es ein (reduzierte Bewegung) oder ist einfach da (aus dem Maul abgestellt: fade = false)
@@ -27930,7 +28235,7 @@
       el.style.left = `${px.toFixed(1)}px`;
       el.style.zIndex = String(RADIO_Z());
       el.style.setProperty("--a2rn", "0px");
-      const S = { W: this._W, H: this._H, el, x: px, st: 0, on: false, gold: false, dance: false, bird: null, t: [] };
+      const S = { W: this._W, H: this._H, wx0: this._a2WxBad(), el, x: px, st: 0, on: false, gold: false, dance: false, bird: null, t: [] };
       this._a2RadioS = S;
       this._a2Scene();
       const w = el.querySelector(".a2rw");
@@ -27965,6 +28270,8 @@
     // Der Drehtanz ab Stufe 2 etwas seltener als der Tanz
     _a2RadioActs({ wx }, lv) {
       if (!this._a2RadioWeather(wx)) return [];
+      const P = this._a2RadioSpot();
+      if (!this._a2Room(P.px, this._a2RadioDim().w, "radio")) return [];
       const w = 0.3 * (this._el.scene.classList.contains("night") ? 0.5 : 1);
       return [[w, "a2RadioPlay"], [lv >= 2 ? w * 0.6 : 0, "a2RadioSpin"]];
     }
@@ -27982,7 +28289,8 @@
       const lv = this._a2Lv("radio");
       if (!lv || !this._a2RadioWeather() && !this._forced && !o.short) return;
       const gold = !!o.gold || lv >= 3 && this._a2GoldOk("radio");
-      const bird = !!o.bird || lv >= 3 && this._a2GoldOk("radio", RADIO_GOLD, "radio-bird");
+      const night = this._el.scene.classList.contains("night");
+      const bird = !night && (!!o.bird || lv >= 3 && this._a2GoldOk("radio", RADIO_GOLD, "radio-bird"));
       this._a2RadioBusy = true;
       try {
         if (calmMotion()) await this._a2RadioCalm(mode, gold, bird, o);
@@ -27997,9 +28305,10 @@
       const { pW } = this._g;
       let P;
       if (o.short) {
-        const d = this._x < this._W / 2 ? 1 : -1;
-        const px = clamp(this._x + d * pW * RADIO_FAR, pW * 0.5, this._g.xR + pW * 0.3);
+        const px = this._a2RadioBeside();
+        const d = px >= this._x ? 1 : -1;
         P = { px, x: this._x, dir: d };
+        await this._a2RadioAside(px);
         this._face(d);
         this._a2RadioMake(px, true);
         await this._wait(700);
@@ -28007,6 +28316,7 @@
       } else {
         await this._a2RadioFetch();
         P = this._a2RadioSpot();
+        await this._a2RadioAside(P.px);
         await this._walkTo(P.px - P.dir * pW * RADIO_NEAR, 0.9);
         this._face(P.dir);
         await this._wait(200);
@@ -28176,10 +28486,13 @@
       const { pW } = this._g;
       let P;
       if (o.short) {
-        const d = this._x < this._W / 2 ? 1 : -1;
-        P = { x: this._x, px: clamp(this._x + d * pW * RADIO_FAR, pW * 0.5, this._g.xR + pW * 0.3), dir: d };
+        const px = this._a2RadioBeside();
+        P = { x: this._x, px, dir: px >= this._x ? 1 : -1 };
       } else {
         P = this._a2RadioSpot();
+      }
+      await this._a2RadioAside(P.px);
+      if (!o.short) {
         await this._walkTo(P.x, 0.9);
       }
       this._face(P.dir);
@@ -28440,19 +28753,19 @@
       this._a2RadioEnd();
       if (!this._a2RadioBusy) this._el?.pika?.classList.remove(...RADIO_CLS);
     }
-    // Karte aus dem DOM: alles sofort weg
+    // Karte aus dem DOM: alles sofort weg (wie _a2LanternDetach: über End, damit auch die eigenen Klassen und der Takt am
+    // Pika abgehen; bis 0.48.0 blieben sie bis zum Ende der nächsten Aktion stehen)
     _a2RadioDetach() {
       clearTimeout(this._a2RadioTapT);
       const S = this._a2RadioS;
-      if (S) {
-        this._a2RadioBirdGo(false, true, S);
-        this._a2RadioS = null;
-        for (const t of S.t) clearTimeout(t);
-      }
+      if (S) this._a2RadioBirdGo(false, true, S);
+      this._a2RadioBusy = false;
+      this._a2RadioEnd(true, true);
+      this._el?.pika?.classList.remove(...RADIO_CLS);
+      this._el?.pika?.style.removeProperty?.("--a2rbt");
       this._a2Drop("radio");
       for (const n of this._a2RadioFx || []) n.remove();
       this._a2RadioFx?.clear();
-      this._a2RadioBusy = false;
     }
   };
 
@@ -28473,22 +28786,38 @@
     // Größe der Karte geändert, steht es an alten Pixeln: abbrechen (wie der Schlitten)
     _a2TrampScene(lv) {
       const S = this._a2TrampS;
-      if (S && (S.W !== this._W || S.H !== this._H) && this._a2TrampBusy) this._interrupt();
+      if (S && this._a2TrampBusy && (S.W !== this._W || S.H !== this._H || this._a2WxTurned(S))) this._interrupt();
       else if (!S || !(lv > 0)) this._a2TrampEnd();
       if (S && this._a2TrampS === S) S.front.classList.toggle("gilt", lv >= 3);
     }
     // Wo es steht: auf der Wiese zwischen Vorrat und Stein, neben allem, was dort schon steht (_groundSpot, bevor es selbst
     // dort steht). Auf schmalen Karten, wo die Wiese nicht reicht, bis auf drei Viertel kleiner. → { x: Mitte, w: Breite }
+    // Seit 0.48.1: Steht es dort auf etwas (auf schmalen Karten das Windrad dicht am Heu), darf es nach rechts bis vor den
+    // Fuß des Steins rücken (der steht dahinter, wie beim Becken), wenn dort Platz ist (_a2Free).
     _a2TrampSpot() {
-      const { pW } = this._g;
+      const { pW, hayR, rock } = this._g;
       const U = this._groundSpot(Math.random(), pW * TRAMP_W * 1.06, 0.75);
-      return { x: U.x, w: U.w / 1.06 };
+      const w = U.w / 1.06;
+      if (!this._a2Hit(U.x, w, "tramp", [], true)) return { x: U.x, w };
+      const lo = hayR + w / 2;
+      const hi = Math.min(this._W - w / 2 - 2, rock.l + rock.w * 0.3);
+      return { x: this._a2Free(lo, Math.max(lo, hi), w, clamp(U.x, lo, Math.max(lo, hi)), "tramp"), w };
     }
     // Wie hoch er über dem Tuch höchstens springt (px): Der Kopf bleibt im Bild, auch quer im Salto (dann ragt er um
-    // etwa 0,13 Pika-Höhen weiter hinauf), mit einem Rand oben; höchstens 0,8 Pika-Höhen
-    _a2TrampTop(mat) {
-      const { gy, pH } = this._g;
-      const free = gy - pH * 0.945 - mat - Math.max(6, (this._Hs || this._H) * 0.04) - pH * 0.13;
+    // etwa 0,13 Pika-Höhen weiter hinauf), mit einem Rand oben; höchstens 0,8 Pika-Höhen. Seit 0.48.1 zählt oben die
+    // Unterkante der Statusleiste, wenn sie zu sehen ist und er unter ihr springt (x: Mitte des Trampolins; auf schmalen
+    // Karten tauchte er sonst hinter ihr durch)
+    _a2TrampTop(mat, x = null) {
+      const { gy, pH, pW } = this._g;
+      let top = 0;
+      const st = this._el?.stats;
+      if (x != null && st && !st.hidden) {
+        const l = st.offsetLeft;
+        const r = l + st.offsetWidth;
+        const b = st.offsetTop + st.offsetHeight;
+        if (Number.isFinite(l) && Number.isFinite(r) && Number.isFinite(b) && st.offsetHeight > 0 && x - pW * 0.6 < r && x + pW * 0.6 > l) top = b;
+      }
+      const free = gy - pH * 0.945 - mat - top - Math.max(6, (this._Hs || this._H) * 0.04) - pH * 0.13;
       return clamp(free, pH * 0.2, pH * 0.8);
     }
     // Trampolin anlegen (Element aus _a2El: Tippfläche, Licht, golden; dazu der vordere Bogen) mit Mitte x, Breite w.
@@ -28517,6 +28846,7 @@
       const S = {
         W: this._W,
         H: this._H,
+        wx0: this._a2WxBad(),
         el,
         front,
         x,
@@ -28539,7 +28869,7 @@
         hp: 0,
         folded: false
       };
-      S.top = this._a2TrampTop(S.mat);
+      S.top = this._a2TrampTop(S.mat, x);
       this._a2TrampS = S;
       this._a2Scene();
       for (const e of [el, front]) e.classList.add(calmMotion() ? "a2out" : "fold");
@@ -28557,7 +28887,8 @@
       S.folded = on;
     }
     // ---------- Takt ----------
-    // Bild für Bild: laufender Abschnitt (drive), dann Pika, Tuch und Schatten stellen
+    // Bild für Bild: laufender Abschnitt (drive), dann Pika, Tuch und Schatten stellen. Seit 0.48.1 nur, solange sich
+    // etwas bewegt (ein Abschnitt läuft oder das Tuch federt nach einem Tipp); Drive und Tipp starten den Takt wieder.
     _a2TrampRun() {
       const S = this._a2TrampS;
       if (!S || S.raf || typeof requestAnimationFrame !== "function") return;
@@ -28571,7 +28902,7 @@
           this._err?.("Album 2 tramp", e);
           return;
         }
-        S.raf = requestAnimationFrame(frame);
+        if (S.drive || S.spring) S.raf = requestAnimationFrame(frame);
       };
       S.raf = requestAnimationFrame(frame);
     }
@@ -28580,6 +28911,7 @@
       const S = this._a2TrampS;
       if (!S) return;
       S.drive = { t0: now(), ms, step };
+      this._a2TrampRun();
       step(0);
       try {
         await this._wait(ms);
@@ -28657,6 +28989,8 @@
     // Hook: nur bei Trampolinwetter; der Salto erst ab Stufe 2
     _a2TrampActs({ wx }, lv) {
       if (!this._a2TrampWeather(wx)) return [];
+      const T = this._a2TrampSpot();
+      if (!this._a2Room(T.x, T.w, "tramp")) return [];
       return [[0.35, "a2TrampPlay"], [lv >= 2 ? 0.25 : 0, "a2TrampFlip"]];
     }
     // Stufe 1 (Aktion 'a2TrampPlay'): springen, immer höher. o: { short: nach dem Auspacken (weniger Sprünge), gold:
@@ -28689,6 +29023,7 @@
     async _a2TrampOut() {
       const { pW, xR } = this._g;
       const T = this._a2TrampSpot();
+      await this._a2FrAside(T.x - T.w / 2, T.x + T.w / 2);
       const off = T.w / 2 + pW * 0.38;
       const ok = (x) => x >= pW * 0.45 && x <= xR;
       let side = this._x < T.x ? -1 : 1;
@@ -28919,6 +29254,10 @@
       }
     }
     // ---------- Hooks: Tipp, Aufräumen, Abhängen ----------
+    // Der vordere Bogen liegt in einem eigenen Element (.a2-trampf): Seine Zeichnung gehört zur Tippfläche (seit 0.48.1)
+    _a2TrampParts() {
+      return [this._a2TrampS?.front];
+    }
     // Tipp aufs Trampolin (nur, solange es draußen steht): Das Tuch federt nach, steht er darauf, wippt er mit
     _a2TrampTap(z) {
       const S = this._a2TrampS;
@@ -28926,6 +29265,7 @@
       const calm = calmMotion();
       S.spring = { t0: now(), amp: calm ? 1 : 2.6, calm };
       this._a2TrampPlace();
+      this._a2TrampRun();
       const off = Math.max(S.w * 0.46, this._g.pW * 0.56);
       if (z) this._peep(S.x + (S.x + off < this._W - 30 ? off : -off), this._g.gy - S.mat * 0.6, pick(["boing!", "federt!", "bouing!"]));
       return true;
@@ -29005,7 +29345,7 @@
     _a2PicnicScene(lv) {
       const S = this._a2PicnicS;
       if (!S) return;
-      if ((S.W !== this._W || S.H !== this._H) && this._a2PicnicBusy) this._interrupt();
+      if (this._a2PicnicBusy && (S.W !== this._W || S.H !== this._H || this._a2WxTurned(S))) this._interrupt();
       else if (!(lv > 0) || !this._a2PicnicBusy) this._a2PicnicEnd();
     }
     // Maße zur Decke P (px): Höhe bh, Versenkung der Unterkante sink, Breite des Korbs kw, Fuß des Korbs (y), Rand des
@@ -29020,7 +29360,9 @@
     // Wo die Decke liegt: { d: sein Blick (zum Korb bzw. Freund), bx: Mitte, bw: Breite, px: sein Platz, kx: Mitte des
     // Korbs, fx: Platz des Freunds }. Die Decke ganz auf der Wiese (rechts vom Heu, das davor liegt, im Bild), am liebsten
     // vor dem Aussichtsstein zu Ende (sonst läge sie über seinem Fuß), er bis xR, der Freund in seinem Bereich
-    // (_frRange). Zu zweit nahe beim Freund, sonst irgendwo (near: neben ihm). → null, wenn es nicht passt
+    // (_frRange). Zu zweit nahe beim Freund, sonst irgendwo (near: neben ihm). Seit 0.48.1 nicht über dem, was schon am
+    // Boden steht (_a2Free): Lieber reicht sie bis vor den Stein als über das Windrad; geht beides nicht, wie bisher.
+    // → null, wenn es nicht passt
     _a2PicnicPlan(fr = null, near = false) {
       const { pW, hayR, xR, rock } = this._g;
       const bw = pW * (fr ? PK_W2 : PK_W1);
@@ -29029,6 +29371,8 @@
       const hi0 = this._W - bw / 2 - 3;
       const pref = fr ? fr.x >= this._x ? 1 : -1 : this._x < this._W * 0.55 ? 1 : -1;
       const ends = rock ? [rock.l + rock.w * 0.12 - bw / 2, Infinity] : [Infinity];
+      let first = null;
+      let soft = null;
       for (const [end, d] of ends.flatMap((e) => [[e, pref], [e, -pref]])) {
         let lo = Math.max(lo0, pW * 0.45 - d * O.p * bw);
         let hi = Math.min(hi0, end, xR - d * O.p * bw);
@@ -29040,10 +29384,13 @@
         if (lo > hi + 0.01) continue;
         hi = Math.max(lo, hi);
         const want = fr ? fr.x - d * O.f * bw : near ? this._x - d * O.p * bw : lo + (hi - lo) * rnd(0.2, 0.8);
-        const bx = clamp(want, lo, hi);
-        return { d, bx, bw, px: bx + d * O.p * bw, kx: bx + d * O.k * bw, fx: fr ? bx + d * O.f * bw : null };
+        const bx = this._a2Free(lo, hi, bw, clamp(want, lo, hi), "picnic");
+        const P = { d, bx, bw, px: bx + d * O.p * bw, kx: bx + d * O.k * bw, fx: fr ? bx + d * O.f * bw : null };
+        if (!this._a2Hit(bx, bw, "picnic")) return P;
+        if (!this._a2Hit(bx, bw, "picnic", [], true)) soft ??= P;
+        first ??= P;
       }
-      return null;
+      return soft ?? first;
     }
     // Passt nicht einmal die Decke für einen (sehr schmale Wiese): so weit rechts vom Heu wie nötig
     _a2PicnicFallback() {
@@ -29063,7 +29410,7 @@
       el.classList.remove("a2out", "open", "a2tap", "a2roll", "rolled", "pop");
       el.classList.toggle("a2left", P.d < 0);
       el.style.zIndex = String(PK_Z());
-      const S = { W: this._W, H: this._H, el, P, lid: false, t: [], fx: /* @__PURE__ */ new Set(), bf: /* @__PURE__ */ new Set(), off: /* @__PURE__ */ new Set(), treat: null };
+      const S = { W: this._W, H: this._H, wx0: this._a2WxBad(), el, P, lid: false, t: [], fx: /* @__PURE__ */ new Set(), bf: /* @__PURE__ */ new Set(), off: /* @__PURE__ */ new Set(), treat: null };
       this._a2PicnicS = S;
       const fade = () => el.animate?.([{ opacity: 0 }, { opacity: 1 }], { duration: 500, fill: "backwards" });
       if (mode.startsWith("bundle")) {
@@ -29196,6 +29543,8 @@
     // ohnehin sauber gemacht (Vorschau und Auspacken dürfen trotzdem)
     _a2PicnicActs({ wx, piles }, lv) {
       if (!this._a2PicnicWeather(wx) || piles?.length) return [];
+      const P = this._a2PicnicPlan(null);
+      if (!P || !this._a2Room(P.bx, P.bw, "picnic")) return [];
       const fr = !!this._a2PicnicFriend();
       return [[fr ? 0.8 : 0.3, "a2PicnicPlay"], [lv >= 2 ? fr ? 1 : this._a2PicnicGuest() ? 0.5 : 0.15 : 0, "a2PicnicShare"]];
     }
@@ -29474,7 +29823,7 @@
     // Die Füße (Körper unten in der Mitte von BFLY_SVG, 20 × 16) auf dem Punkt
     _a2PicnicBfly(S, x, y, c, i) {
       const calm = calmMotion();
-      const w = this._H * 0.075;
+      const w = this._H * 0.1125;
       const e = document.createElement("div");
       e.className = `a2pkb${calm ? " still rest" : ""}`;
       e.innerHTML = BFLY_SVG(c);
@@ -29712,7 +30061,7 @@
     _a2PoolScene(lv) {
       const S = this._a2PoolS;
       if (!S) return;
-      if ((S.W !== this._W || S.H !== this._H) && this._a2PoolBusy) this._interrupt();
+      if (this._a2PoolBusy && (S.W !== this._W || S.H !== this._H || this._a2WxTurned(S, true))) this._interrupt();
       else if (!(lv > 0) || !this._a2PoolBusy) this._a2PoolEnd();
     }
     // Maße (px): Breite, Höhe, Einheit der viewBox
@@ -29723,18 +30072,23 @@
     // Wo es liegt: Mitte cx, und wo er daneben steht (sx, auf der Seite side, Blick zum Becken: -side). Rechts vom Heu
     // (.fore verdeckte, was dahinter liegt), über den Stein darf es ragen (der steht dahinter). Er steht lieber links
     // (zum Bau hin), wenn er dort nicht im Heu steht, sonst rechts; auf schmalen Karten rückt das Becken dafür nach links.
+    // Seit 0.48.1 nicht über dem, was schon am Boden steht (_a2Free): Auf schmalen Karten liegt es dann rechts vom
+    // Windrad, er steht links davon zwischen beiden.
     _a2PoolSpot() {
       const { pW, hayR, xR } = this._g;
       const { w } = this._a2PoolDim();
       const H = this._H;
       const lo = hayR + w / 2 + H * 0.01;
       const hi = Math.max(lo, this._W - w / 2 - H * 0.02);
-      let cx = clamp(this._groundSpot(rnd(0.2, 0.8), w, 1).x, lo, hi);
       const gap = w / 2 + pW * 0.3;
-      let side = cx - gap >= hayR + pW * 0.15 ? -1 : cx + gap <= xR ? 1 : 0;
+      const sideAt = (x) => x - gap >= hayR + pW * 0.15 - 0.01 ? -1 : x + gap <= xR + 0.01 ? 1 : 0;
+      let cx = this._a2Free(lo, hi, w, clamp(this._groundSpot(rnd(0.2, 0.8), w, 1).x, lo, hi), "pool");
+      let side = sideAt(cx);
       if (!side) {
-        cx = clamp(xR - gap, lo, hi);
-        side = 1;
+        const left = clamp(xR - gap, lo, hi);
+        const right = clamp(hayR + pW * 0.15 + gap, lo, hi);
+        cx = [left, right, this._a2Free(lo, left, w, left, "pool"), this._a2Free(right, hi, w, right, "pool")].find((x) => sideAt(x) && !this._a2Hit(x, w, "pool")) ?? left;
+        side = sideAt(cx) || 1;
       }
       return { cx, w, side, sx: clamp(cx + side * gap, pW * 0.45, xR) };
     }
@@ -29763,7 +30117,7 @@
         e.style.zIndex = String(POOL_Z());
         e.style.setProperty("--a2plf", flat ? "0" : "1");
       }
-      const S = { W: this._W, H: this._H, el, fr, duck: null, cx: P.cx, w, u, side: P.side, sx: P.sx, flat, ctl: false, can: null, fx: /* @__PURE__ */ new Set(), t: [] };
+      const S = { W: this._W, H: this._H, wx0: this._a2WxBad(true), el, fr, duck: null, cx: P.cx, w, u, side: P.side, sx: P.sx, flat, ctl: false, can: null, fx: /* @__PURE__ */ new Set(), t: [] };
       this._a2PoolS = S;
       this._a2Scene();
       fr.classList.toggle("gilt", el.classList.contains("gilt"));
@@ -29863,6 +30217,8 @@
     // Liegt ein Häufchen, nicht (das Becken stünde auf schmalen Karten darüber, und erst wird sauber gemacht)
     _a2PoolActs({ wx, piles }, lv) {
       if (!this._a2PoolWeather(wx) || piles?.length) return [];
+      const P = this._a2PoolSpot();
+      if (!this._a2Room(P.cx, P.w, "pool")) return [];
       const w = ((this._a2PoolTemp() ?? 0) >= 30 ? 0.8 : 0.45) * (wx.wet ? 0.4 : 1);
       return [[w, "a2PoolPlay"], [lv >= 2 ? w * 0.6 : 0, "a2PoolBomb"]];
     }
@@ -29900,6 +30256,7 @@
       const { hole, pW } = this._g;
       const calm = calmMotion();
       const P = this._a2PoolSpot();
+      await this._a2FrAside(P.cx - P.w / 2, P.cx + P.w / 2);
       const can = short ? null : this._a2PoolCan();
       const fetch = !short && !calm;
       if (fetch) {
@@ -30173,6 +30530,7 @@
       const p = this._el.pika;
       try {
         const P = this._a2PoolSpot();
+        await this._a2FrAside(P.cx - P.w / 2, P.cx + P.w / 2);
         await this._walkTo(P.sx, 1);
         this._face(-P.side);
         this._a2PoolMake(P, { pop: !calmMotion(), gold: lv >= 3 });
@@ -30270,6 +30628,10 @@
       }
     }
     // ---------- Hooks: Tipp, Aufräumen, Abhängen ----------
+    // Der vordere Rand liegt in einem eigenen Element (.a2plf): Seine Zeichnung gehört zur Tippfläche (seit 0.48.1)
+    _a2PoolParts() {
+      return [this._a2PoolS?.fr];
+    }
     // Tipp ins Becken (nur, solange es steht und aufgeblasen ist): Ring auf dem Wasser, plitsch, ein paar Tropfen
     _a2PoolTap() {
       const S = this._a2PoolS;
@@ -30841,6 +31203,7 @@
       petGain,
       kraulGain,
       worldPick,
+      worldFront,
       MIMIK,
       FINDS,
       FIND_GROUPS,

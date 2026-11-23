@@ -365,7 +365,7 @@ export class Pino {
     const w = (ms) => this._fw(fr, ms, fr.tok);
     this._frFace(fr, -fr.side);
     this._frSetX(fr, fr.side < 0 ? -fW * 0.7 : W + fW * 0.7);
-    const tx = clamp(W * (fr.side < 0 ? rnd(0.3, 0.42) : rnd(0.6, 0.75)), lo, hi);
+    const tx = this._frKeepX(clamp(W * (fr.side < 0 ? rnd(0.3, 0.42) : rnd(0.6, 0.75)), lo, hi), lo, hi);
     await this._friendWalkTo(fr, tx, 0.9, w, true);
     this._frFace(fr, this._x >= fr.x ? 1 : -1);
     fr.arrived = true;
@@ -423,6 +423,8 @@ export class Pino {
     const { pW } = this._g;
     const F = fr.el.classList;
     if (fr.lift > 0) return this._frHopDown(fr, w);
+    // ein Schatz aus Album 2 braucht den Platz (_frKeep): erst beiseite
+    if (this._frInKeep(fr)) return this._friendWalkTo(fr, fr.x, 1.2, w);
     const toPika = () => (this._x >= fr.x ? 1 : -1);
     if (fr.want === 'curious') {
       // der Pika wird gestreichelt: neugierig näher und zuschauen
@@ -558,6 +560,29 @@ export class Pino {
     return [lo, Math.max(lo, this._W - pW * this._frSc() * 0.45)];
   }
 
+  // Freihalten (seit 0.48.1, _a2FrAside in src/karte/album2.js): Solange ein Schatz aus Album 2 dort aufgebaut ist
+  // (this._frKeep = [l, r] in px, bis zum Aufräumen der Aktion), endet kein Weg des Freunds vorn darin: Ziel x geht an
+  // den nächsten Rand außerhalb; reicht [lo, hi] dafür nicht (breiter Bereich, schmale Karte), so weit hinaus wie
+  // möglich, auf der Seite, wo er am wenigsten hineinragt. → x
+  _frKeepX(x, lo, hi) {
+    const K = this._frKeep;
+    if (!K) return x;
+    const m = this._g.pW * this._frSc() * 0.45;
+    if (x <= K[0] - m || x >= K[1] + m) return x;
+    const C = [[clamp(K[0] - m, lo, hi), 1], [clamp(K[1] + m, lo, hi), -1]]
+      .map(([v, s]) => [v, Math.max(0, s > 0 ? v + m - K[0] : K[1] - v + m)]);
+    C.sort((p, q) => p[1] - q[1] || Math.abs(p[0] - x) - Math.abs(q[0] - x));
+    return C[0][1] < Math.min(x + m - K[0], K[1] - x + m) ? C[0][0] : x;
+  }
+
+  // Steht er vorn im freizuhaltenden Bereich (oder oben auf dem Stein, von wo er hineinhüpfen könnte)?
+  _frInKeep(fr) {
+    if (!this._frKeep || !fr || fr.lane) return false;
+    if (fr.lift > 0) return this._frKeep[1] > this._g.rock.l; // (oben auf dem Stein: nur, wenn der Bereich an den Stein reicht)
+    const [lo, hi] = this._frRange();
+    return Math.abs(this._frKeepX(fr.x, lo, hi) - fr.x) > 1;
+  }
+
   // free: ohne Begrenzung auf die Wiese (herein- und hinaushoppeln). lane (Tiefe): 1 = hintere Spur, im Bereich
   // _laneRange; jeder Weg ohne lane führt auf die vordere zurück (wie beim Pika, _walkTo)
   async _friendWalkTo(fr, x, speed = 1, w, free = false, lane = 0) {
@@ -566,6 +591,7 @@ export class Pino {
     if (!free) {
       const [lo, hi] = lane ? this._laneRange(pW * this._frSc()) : this._frRange();
       x = clamp(x, lo, hi);
+      if (!lane) x = this._frKeepX(x, lo, hi);
     }
     const dx = x - fr.x;
     const dl = lane !== (fr.lane || 0);

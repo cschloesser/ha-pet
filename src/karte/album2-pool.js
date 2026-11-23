@@ -51,7 +51,8 @@ export class Album2Pool {
   _a2PoolScene(lv) {
     const S = this._a2PoolS;
     if (!S) return;
-    if ((S.W !== this._W || S.H !== this._H) && this._a2PoolBusy) this._interrupt();
+    // (neue Größe; Schnee, Starkregen oder Gewitter setzen ein: Regen allein darf, darin planscht er auch)
+    if (this._a2PoolBusy && ((S.W !== this._W || S.H !== this._H) || this._a2WxTurned(S, true))) this._interrupt();
     else if (!(lv > 0) || !this._a2PoolBusy) this._a2PoolEnd();
   }
 
@@ -64,18 +65,28 @@ export class Album2Pool {
   // Wo es liegt: Mitte cx, und wo er daneben steht (sx, auf der Seite side, Blick zum Becken: -side). Rechts vom Heu
   // (.fore verdeckte, was dahinter liegt), über den Stein darf es ragen (der steht dahinter). Er steht lieber links
   // (zum Bau hin), wenn er dort nicht im Heu steht, sonst rechts; auf schmalen Karten rückt das Becken dafür nach links.
+  // Seit 0.48.1 nicht über dem, was schon am Boden steht (_a2Free): Auf schmalen Karten liegt es dann rechts vom
+  // Windrad, er steht links davon zwischen beiden.
   _a2PoolSpot() {
     const { pW, hayR, xR } = this._g;
     const { w } = this._a2PoolDim();
     const H = this._H;
     const lo = hayR + w / 2 + H * 0.01;
     const hi = Math.max(lo, this._W - w / 2 - H * 0.02);
-    let cx = clamp(this._groundSpot(rnd(0.2, 0.8), w, 1).x, lo, hi);
     const gap = w / 2 + pW * 0.3;
-    let side = cx - gap >= hayR + pW * 0.15 ? -1 : cx + gap <= xR ? 1 : 0;
+    // (mit 0,01 px Spiel: right unten liegt genau auf der Grenze, und x - gap fiel durch Rundung knapp darunter; auf 380 px
+    // lag das Becken dann über dem Windrad, und von selbst kam es nie, _a2Room)
+    const sideAt = (x) => (x - gap >= hayR + pW * 0.15 - 0.01 ? -1 : x + gap <= xR + 0.01 ? 1 : 0);
+    let cx = this._a2Free(lo, hi, w, clamp(this._groundSpot(rnd(0.2, 0.8), w, 1).x, lo, hi), 'pool');
+    let side = sideAt(cx);
     if (!side) {
-      cx = clamp(xR - gap, lo, hi);
-      side = 1;
+      // (kein Platz für ihn daneben: so weit nach links, dass er rechts steht, oder so weit nach rechts, dass er links
+      // steht; was davon frei ist)
+      const left = clamp(xR - gap, lo, hi);
+      const right = clamp(hayR + pW * 0.15 + gap, lo, hi);
+      cx = [left, right, this._a2Free(lo, left, w, left, 'pool'), this._a2Free(right, hi, w, right, 'pool')]
+        .find((x) => sideAt(x) && !this._a2Hit(x, w, 'pool')) ?? left;
+      side = sideAt(cx) || 1;
     }
     return { cx, w, side, sx: clamp(cx + side * gap, pW * 0.45, xR) };
   }
@@ -106,7 +117,7 @@ export class Album2Pool {
       e.style.zIndex = String(POOL_Z());
       e.style.setProperty('--a2plf', flat ? '0' : '1');
     }
-    const S = { W: this._W, H: this._H, el, fr, duck: null, cx: P.cx, w, u, side: P.side, sx: P.sx, flat, ctl: false, can: null, fx: new Set(), t: [] };
+    const S = { W: this._W, H: this._H, wx0: this._a2WxBad(true), el, fr, duck: null, cx: P.cx, w, u, side: P.side, sx: P.sx, flat, ctl: false, can: null, fx: new Set(), t: [] };
     this._a2PoolS = S;
     this._a2Scene(); // (golden: .gilt am hinteren Stück, das vordere bekommt es hier)
     fr.classList.toggle('gilt', el.classList.contains('gilt'));
@@ -222,6 +233,8 @@ export class Album2Pool {
   // Liegt ein Häufchen, nicht (das Becken stünde auf schmalen Karten darüber, und erst wird sauber gemacht)
   _a2PoolActs({ wx, piles }, lv) {
     if (!this._a2PoolWeather(wx) || piles?.length) return [];
+    const P = this._a2PoolSpot(); // (kein freier Platz: lieber nicht)
+    if (!this._a2Room(P.cx, P.w, 'pool')) return [];
     const w = ((this._a2PoolTemp() ?? 0) >= 30 ? 0.8 : 0.45) * (wx.wet ? 0.4 : 1);
     return [[w, 'a2PoolPlay'], [lv >= 2 ? w * 0.6 : 0, 'a2PoolBomb']];
   }
@@ -263,6 +276,7 @@ export class Album2Pool {
     const { hole, pW } = this._g;
     const calm = calmMotion();
     const P = this._a2PoolSpot();
+    await this._a2FrAside(P.cx - P.w / 2, P.cx + P.w / 2); // (der Freund steht nicht darin)
     const can = short ? null : this._a2PoolCan();
     const fetch = !short && !calm;
     if (fetch) {
@@ -547,6 +561,7 @@ export class Album2Pool {
     const p = this._el.pika;
     try {
       const P = this._a2PoolSpot();
+      await this._a2FrAside(P.cx - P.w / 2, P.cx + P.w / 2);
       await this._walkTo(P.sx, 1);
       this._face(-P.side);
       this._a2PoolMake(P, { pop: !calmMotion(), gold: lv >= 3 });
@@ -650,6 +665,11 @@ export class Album2Pool {
   }
 
   // ---------- Hooks: Tipp, Aufräumen, Abhängen ----------
+
+  // Der vordere Rand liegt in einem eigenen Element (.a2plf): Seine Zeichnung gehört zur Tippfläche (seit 0.48.1)
+  _a2PoolParts() {
+    return [this._a2PoolS?.fr];
+  }
 
   // Tipp ins Becken (nur, solange es steht und aufgeblasen ist): Ring auf dem Wasser, plitsch, ein paar Tropfen
   _a2PoolTap() {

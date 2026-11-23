@@ -29,8 +29,21 @@ export class Album2Feeder {
     const w = H * FEEDER_W;
     const h = w * 2;
     const foot = gy - H * LANE_DY;
-    const x = Math.max(hayR + w, rock.l + rock.ku * 6);
+    const D = this._a2FeederDrift();
+    const x = typeof D === 'number' ? D : Math.max(hayR + w, rock.l + rock.ku * 6);
     return { x, w, h, left: x - w / 2, top: foot - h, foot };
+  }
+
+  // Schneewehe des Schlittens (seit 0.48.1): Am Fuß des Steins läge das Häuschen in der Wehe, der Schlitten führe darüber.
+  // Liegt Schnee (und der Schlitten ist da) oder liegt die Wehe gerade, steht es links von ihrem Fuß, wenn dort Platz
+  // ist (→ x); sonst ist es ausgeblendet, solange die Wehe liegt ('hide'). Ohne Wehe und Schnee: null (wie immer).
+  _a2FeederDrift() {
+    const drift = !!this._a2SledS?.drift;
+    if (!drift && !(this._wx?.snowcover && this._a2Lv('sled') > 0)) return null;
+    const w = this._H * FEEDER_W;
+    const x = this._a2SledFoot() - w * 0.9;
+    if (x >= this._g.hayR + w) return x;
+    return drift ? 'hide' : null;
   }
 
   // Ist dort ein ruhiger Platz? Genug Wiese zwischen Vorrat und Stein (auf schmalen Karten nicht) und keine Festdeko
@@ -50,6 +63,8 @@ export class Album2Feeder {
     const el = this._a2El('feeder', FEEDER_SVG);
     el.style.left = `${this._a2FeederPos().x.toFixed(1)}px`;
     el.style.zIndex = String(FEEDER_Z());
+    // (kein Platz links von der Wehe: blendet aus, solange gerodelt wird)
+    el.classList.toggle('a2hid', this._a2FeederDrift() === 'hide');
   }
 
   // Für eine Aktion: steht es nicht, holt er es heraus (ploppt auf). → true, wenn es nur für diesen Moment da ist
@@ -65,6 +80,12 @@ export class Album2Feeder {
       setTimeout(() => el.classList.remove('new'), 800);
     }
     return true;
+  }
+
+  // Der Freund verdeckt das Häuschen nicht, solange die Vögel kommen (_a2FrAside)
+  async _a2FeederAside() {
+    const F = this._a2FeederPos();
+    await this._a2FrAside(F.left - F.w * 0.3, F.left + F.w * 1.3);
   }
 
   // Moment vorbei: Vögel fliegen weg, ein nur hervorgeholtes Häuschen verschwindet wieder
@@ -111,6 +132,7 @@ export class Album2Feeder {
     this._a2FeederBusy = true;
     try {
       this._a2FeederShow();
+      await this._a2FeederAside();
       await this._a2FeederGo();
       await this._wait(300);
       await this._a2FeederWatch(o);
@@ -124,8 +146,7 @@ export class Album2Feeder {
   async _a2FeederWatch(o = {}) {
     const p = this._el.pika;
     const lv = this._a2Lv('feeder');
-    const gold = !!o.gimpel || this._dbgGimpel || (lv >= 3 && this._a2GoldOk('feeder', FEEDER_GOLD));
-    this._dbgGimpel = false;
+    const gold = !!o.gimpel || (lv >= 3 && this._a2GoldOk('feeder', FEEDER_GOLD));
     const n = clamp(o.n ?? 1 + (Math.random() < 0.6 ? 1 : 0) + (!gold && this._a2FeederWinter() && Math.random() < 0.6 ? 1 : 0), 1, gold ? 2 : 3);
     // Plätze: erst das Futterbrett links und rechts, dann der First (golden: der Platz des Gimpels)
     const plan = [...Array(n).keys()].map((i) => [i, pick(BIRDS)]);
@@ -175,6 +196,7 @@ export class Album2Feeder {
     let el = null;
     try {
       this._a2FeederShow();
+      await this._a2FeederAside();
       el = this._a2Els?.get('feeder');
       el?.classList.add('leer');
       await this._a2FeederGo(true);
@@ -224,7 +246,7 @@ export class Album2Feeder {
     const y = F.top + fy * F.h;
     const calm = calmMotion();
     const el = document.createElement('div');
-    el.className = `bird a2b${calm ? ' a2still' : ' flying'}`;
+    el.className = `bird a2b${calm ? '' : ' flying'}`;
     el.innerHTML = `<div class="bw" role="button" aria-label="${v.name}"><div class="bf"><div class="bb">${BIRD_SVG(v)}</div></div></div>`;
     el.style.left = `${x.toFixed(1)}px`;
     el.style.top = `${y.toFixed(1)}px`;
@@ -379,6 +401,7 @@ export class Album2Feeder {
   // Tipp aufs Häuschen: Es wackelt am Pfahl, ein paar Körner rieseln, Vögel darauf hüpfen kurz
   _a2FeederTap(z) {
     const el = z.el;
+    if (el.classList.contains('a2hid')) return false; // (ausgeblendet, solange die Schneewehe liegt)
     if (!calmMotion()) {
       el.classList.remove('a2tap');
       void el.offsetWidth;

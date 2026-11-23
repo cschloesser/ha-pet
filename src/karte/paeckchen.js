@@ -27,8 +27,11 @@ export class Paeckchen {
   // zugeschaut hat. Läuft vor jeder Änderung (dann steht ein Absinken fest, bevor es überdeckt wird), danach mit user (du
   // hast etwas getan: ist jetzt alles wieder darüber, endet die Lücke) und beim Tick. Im Urlaub (und bis der Zustand
   // danach neu angesetzt ist) ruht alles. → { G, frac, left, warn, broken, grace (restliche Toleranz, ms) }
+  // Steht im Helfer der Plan einer neueren Version (_planNewer), ruht alles: Dieses Gerät schreibt den Plan nicht mehr,
+  // was es verdiente, verschenkte oder belohnte, gälte nur hier (und die Belohnung käme ohne Bestätigung). Bis zum
+  // Neuladen ist der Knopf blass wie im Urlaub, im Reiter Schätze steht „bitte neu laden“.
   _careEval(user = false) {
-    if (!this._giftOn() || !this._stats || !this._plan || !this._planOk || this._planStale) return null;
+    if (!this._giftOn() || !this._stats || !this._plan || !this._planOk || this._planStale || this._planNewer) return null;
     if (this._cfg.entity && !this._noEntity && !this._synced) return null;
     if (this._urlaubOn() || this._urlaubStale()) return null;
     const now = this._haNow();
@@ -175,7 +178,7 @@ export class Paeckchen {
     if (!this._care) this._careSoon();
     // Im Urlaub blass, der Ring steht. Läuft die Toleranz, zeigt der Ring ruhig in Orange, wie viel davon noch übrig
     // ist (er wird kürzer), statt zu pulsieren.
-    const away = this._urlaubOn();
+    const away = this._urlaubOn() || !!this._planNewer; // (neuere Version im Helfer: blass wie im Urlaub, _careEval)
     b.classList.toggle('away', away);
     b.style.setProperty('--gp', ((full ? 1 : c.warn ? c.grace / GIFT.grace : c.frac || 0) * 100).toFixed(1));
     b.classList.toggle('warn', !!c.warn && !away);
@@ -195,7 +198,8 @@ export class Paeckchen {
     b.style.setProperty('--gpr', pr);
     b.querySelector('.gnum').textContent = n ? String(n) : '';
     const tol = c.warn && !away ? `, noch ${Math.max(1, Math.round(c.grace / 6e4))} Min. Toleranz` : '';
-    b.title = away ? `Päckchen: ${this._cfg.name} ist verreist, lang drücken: Schätze`
+    b.title = this._planNewer ? 'Päckchen ruhen: Der Tagesplan ist von einer neueren Version, bitte neu laden. Lang drücken: Schätze'
+      : away ? `Päckchen: ${this._cfg.name} ist verreist, lang drücken: Schätze`
       : n ? `Päckchen schenken (${n} da${tol}), lang drücken: Schätze` : `Päckchen: gerade keins da${tol}, lang drücken: Schätze`;
   }
 
@@ -212,7 +216,7 @@ export class Paeckchen {
       b.classList.add('no');
     };
     // Höchstens ein Ballon zugleich
-    if (!G || !this._g || !this._planOk || G.z > G.o || !(G.n > 0 || G.y > 0) || this._urlaubOn()) return no();
+    if (!G || !this._g || !this._planOk || this._planNewer || G.z > G.o || !(G.n > 0 || G.y > 0) || this._urlaubOn()) return no();
     const gold = G.y > 0;
     const z = G.z + 1;
     const i = this._giftPick(G, z, gold) + (gold ? 16 : 0);
@@ -236,7 +240,8 @@ export class Paeckchen {
     const o = this._giftOwn;
     if (!o) return;
     const H = this._cfg.plan_entity && this._planMax() >= PLAN_MIN ? planParse(this._planSt) : null;
-    const G = (H || this._planBase)?.gift;
+    // (neuere Version im Helfer: nichts gilt als bestätigt, siehe _careEval; nach 30 Min ist es vergessen)
+    const G = this._planNewer ? null : (H || this._planBase)?.gift;
     if (G && G.z >= o.z) {
       this._giftOwn = null;
       // (r fehlt, wenn eine ältere Karte den Plan inzwischen geschrieben hat: dann wie bisher)
@@ -258,7 +263,8 @@ export class Paeckchen {
   _giftPick(G, z, gold) {
     if (this._dbgTreat != null) return this._dbgTreat; // Vorschau: dieses Leckerli (oder dieser Schatz), gleich welcher Monat
     const south = (this._hass?.config?.latitude ?? 50) < 0;
-    const mo = (new Date().getMonth() + (south ? 6 : 0)) % 12;
+    // (Monat wie bei den Schätzen: in der Vorschau der eingestellte Tag)
+    const mo = (new Date(this._dbgDate ?? Date.now()).getMonth() + (south ? 6 : 0)) % 12;
     const tre = giftPickTre(G, z, gold, A2_INFO, mo);
     return tre != null ? tre : this._giftTreat(z, mo);
   }
@@ -601,7 +607,9 @@ export class Paeckchen {
     };
     burst();
     this._happy(2400);
-    this._say(what === 'gold2' ? 'Album 2 ganz golden!' : gold ? 'Alles golden!' : `Mein ${what}. Päckchen!`, 2200);
+    // (Album 1 ganz golden: Album 2 hat dann begonnen, „alles“ wäre es nicht)
+    this._say(what === 'gold2' ? 'Album 2 ganz golden!' : gold ? (a2Begun(this._plan?.gift) ? 'Album 1 ganz golden!' : 'Alles golden!')
+      : `Mein ${what}. Päckchen!`, 2200);
     this._jump('binky');
     if (gold) for (const el of els?.values() || []) el.classList.add('new');
     await this._wait(900);
@@ -918,20 +926,25 @@ export class Paeckchen {
     const lw = c.warn || c.broken ? this._giftLow().map((k) => GIFT_LOW[k][0]) : [];
     const low = lw.length > 1 ? `${lw.slice(0, -1).join(', ')} und ${lw.at(-1)}` : lw[0] || '';
     const away = this._urlaubOn();
-    const next = away ? `ruht, solange ich bei ${this._frName()} bin` : G.n >= GIFT.max ? `Vorrat voll${low ? ` · bitte ${low}` : ''}`
+    const next = this._planNewer ? 'ruht: Der Tagesplan ist von einer neueren Version, bitte neu laden'
+      : away ? `ruht, solange ich bei ${this._frName()} bin` : G.n >= GIFT.max ? `Vorrat voll${low ? ` · bitte ${low}` : ''}`
       : c.broken ? `die Serie fängt neu an, sobald alles über 50 % ist${low ? `: bitte ${low}` : ''}`
         : c.warn ? (low ? `noch ${fmt(c.grace ?? GIFT.grace)} Toleranz: bitte ${low}` : 'einmal kümmern, dann läuft sie weiter')
           : `nächstes in ${fmt(c.left ?? GIFT.every)} Wachzeit`;
     const f = G.f ?? 0;
+    const lvs2 = giftLvs2(G);
     return {
-      G, lvs, next, warn: !!(c.warn || c.broken) && !away, away,
+      G, lvs, next, warn: !!(c.warn || c.broken) && !away && !this._planNewer, away,
       have: lvs.filter((lv) => lv > 0).length,
       // Freundschaftstage: alle, die bis zum nächsten goldenen fehlen, und was heute schon da ist
       friends: f, dots: f % GIFT.goldDays, today: this._careToday(),
       mile: [10, 25, 50, 100].find((m) => m > G.o) ?? (Math.floor(G.o / 100) + 1) * 100,
-      allGold: giftAllGold(G),
-      // Album 2 (seit 0.46): begonnen, Stufen wie ausgepackt, wie viele da, alle golden
-      a2: a2Begun(G), lvs2: giftLvs2(G), have2: giftLvs2(G).filter((lv) => lv > 0).length, allGold2: a2AllGold(G),
+      // Alles aus den Stufen, wie sie ausgepackt sind (wie lvs): Fliegt der letzte goldene noch im Ballon, ist noch
+      // nicht alles golden (bis 0.48.0 zählten hier die rohen Bits, a2Begun und a2AllGold)
+      allGold: lvs.every((lv) => lv === 3),
+      // Album 2 (seit 0.46): begonnen (wie a2Begun), Stufen wie ausgepackt, wie viele da, alle golden
+      a2: lvs2.some((lv) => lv > 0) || lvs.every((lv) => lv >= 2), lvs2, have2: lvs2.filter((lv) => lv > 0).length,
+      allGold2: lvs2.every((lv) => lv === 3),
     };
   }
 }

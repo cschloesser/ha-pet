@@ -60,6 +60,8 @@ const LANTERN_CARRY = carry(PAL);
 const LANTERN_CARRY_GOLD = carry(PAL_GOLD);
 // Mitte des Glases im Maul, vom Maul aus in Einheiten des Felds (vor dem Verkleinern um 0,68): [nach vorn, nach unten]
 const CARRY_GLASS = [17.8 * CARRY_S * Math.sin((-CARRY_ROT * Math.PI) / 180), 17.8 * CARRY_S * Math.cos((CARRY_ROT * Math.PI) / 180)];
+// Rauchfaden nach dem Auspusten (Abendritual, .a2lsmoke; viewBox 8 × 28, unten in der Mitte die Flamme)
+const SMOKE_SVG = '<svg viewBox="0 0 8 28" aria-hidden="true"><path d="M4 28 C1.5 23 6.5 19.5 4 15 C1.5 10.5 6.5 7 4 1" stroke="#cfc9c2" stroke-width="1.5" fill="none" stroke-linecap="round" opacity=".9"/></svg>';
 
 const A2_LANTERN = {
   key: 'lantern', name: 'Laterne', say: 'eine Laterne!', built: true, mo: null,
@@ -71,4 +73,4 @@ const A2_LANTERN = {
   dbg: [['Laterne tragen', 'a2LanternPlay', 1], ['Laternenlauf', 'a2LanternRun', 2], ['Glühwürmchen (golden)', 'a2LanternPlay', 3]],
 };
 
-export { A2_LANTERN, LANTERN_SVG, LANTERN_CARRY, LANTERN_CARRY_GOLD, LANTERN_W, LANTERN_FOOT, LANTERN_GLASS, CARRY_GLASS };
+export { A2_LANTERN, LANTERN_SVG, LANTERN_CARRY, LANTERN_CARRY_GOLD, LANTERN_W, LANTERN_FOOT, LANTERN_GLASS, CARRY_GLASS, SMOKE_SVG };

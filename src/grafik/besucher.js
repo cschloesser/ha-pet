@@ -14,8 +14,8 @@ const FRIEND_SVG = [
 ].reduce((svg, [a, b]) => svg.split(a).join(b), PIKA_SVG)
   .replace('<g clip-path="url(#bodyclip2)">',
     '$&<ellipse class="blaze" cx="89.5" cy="32.5" rx="4.8" ry="3.2" fill="#fbf0e2" opacity=".92"/>')
-  // Halstuch unter dem Kinn, hinter Pfoten und Blume (vor .mfood), der Winterschal liegt darüber
-  .replace('<g class="mfood">', `<g class="bandana">
+  // Halstuch unter dem Kinn, hinter Pfoten und Blume (vor dem Winterschal, der darüber liegt; .mfood folgt danach)
+  .replace('<g class="scarf">', `<g class="bandana">
         <path d="M70.5 62 Q87.5 70.5 105 61.6" stroke="${OUT}" stroke-width="5.4" fill="none" stroke-linecap="round"/>
         <path d="M70.5 62 Q87.5 70.5 105 61.6" stroke="#22b5a6" stroke-width="3.8" fill="none" stroke-linecap="round"/>
         <path d="M79.5 65.2 L95.5 65.6 L86.6 76.4Z" fill="#22b5a6" stroke="${OUT}" stroke-width="1.2" stroke-linejoin="round"/>

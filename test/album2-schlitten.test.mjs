@@ -64,6 +64,7 @@ class El {
 // selbst (lauf() lässt die gestellten laufen)
 const ruhe = { matches: false };
 let wecker = [];
+let takt = null;
 let T = null;
 vm.runInNewContext(fs.readFileSync(new URL('../pika-pet-card.js', import.meta.url), 'utf8'), {
   window: { matchMedia: () => ruhe, customCards: [] },
@@ -78,6 +79,8 @@ vm.runInNewContext(fs.readFileSync(new URL('../pika-pet-card.js', import.meta.ur
     if (w && typeof w === 'object') w.aus = true;
   },
   setInterval: () => 0, clearInterval() {}, queueMicrotask, Date, Math, JSON, Promise, Intl, AbortController, performance,
+  // Bild-für-Bild-Takt nur, wenn ein Test ihn einschaltet (takt = []): er sammelt die Rückrufe, bild() lässt einen laufen
+  requestAnimationFrame: (f) => (takt ? takt.push(f) : 0), cancelAnimationFrame: (i) => takt && (takt[i - 1] = null),
   __pikaTest: (x) => (T = x),
 }, { filename: 'pika-pet-card.js' });
 const lauf = () => {
@@ -119,7 +122,7 @@ const karte = (lv = 1, { wx = { snowcover: true }, geo = 'breit', ...extra } = {
     _nosePos: () => ({ x: c._x + c._dir * G.pW * 0.258, y: G.gy - c._lift - G.pH * 0.43 }),
     _mouth: (col, svg) => ruf.push(['maul', !!col]),
     _sparkle: leer, _mimik: leer, _happy: () => ruf.push(['freut']), _jump: leer, _peep: (x, y, t) => ruf.push(['piep', t]),
-    _found: (k) => ruf.push(['entdeckt', k]), _away: () => false, _urlaubFern: () => false, _err: (w, e) => ruf.push(['fehler', w, String(e)]),
+    _found: (k) => ruf.push(['entdeckt', k]), _away: () => false, _urlaubFern: () => false, _err: (w, e) => ruf.push(['fehler', w, String(e)]), _poops: () => ({ piles: [] }),
     ...extra,
   });
   c._giftScene = () => c._a2Scene();
@@ -456,5 +459,106 @@ test('Schlitten auspacken nachts, wenn Schnee liegt: nur zeigen, aber er wartet 
     assert.ok(!sagt.some((t) => /kein Schnee|wo bleibt|schneit/.test(t)), sagt.join(' / '));
     assert.ok(!sagt.some((t) => /juhuu|wiii|hui/.test(t)), 'keine Fahrt');
     sauber(c, `nachts, Stufe ${lv}`);
+  }
+});
+
+// 0.48.1: Der Freund steht nicht auf der Wehe (_a2FrAside vor dem Rodeln): Sein nächster Weg führt ihn hinaus, auch der
+// Weg, den er selbst wählt (_friendWalkTo mit _frKeepX).
+test('Schlitten: Der Freund geht von der Wehe, bevor er rodelt; seine Wege enden nicht darauf', async () => {
+  const { c, G } = karte(1);
+  const foot = c._a2SledFoot();
+  const fr = { kind: 'kirby', x: foot + 10, lane: 0, lift: 0, arrived: true, greeted: true, leaving: false, busy: false, el: { classList: { add() {}, remove() {} } } };
+  c._fr = fr;
+  c._cfg = { ...(c._cfg || {}), depth: true };
+  c._frRange = () => [G.pW, G.W - G.pW * 0.4];
+  let weg = 0;
+  c._frTake = () => weg++;
+  c._frFace = () => {};
+  c._frSetX = (f, x) => (f.x = x);
+  // er hoppelt (wie _friendIdle es täte) in den Bereich: Er landet am Rand
+  const K = [];
+  c._wait = async () => {
+    if (c._frKeep && !K.length) {
+      K.push(...c._frKeep);
+      await c._friendWalkTo(fr, foot + 5, 1, async () => {});
+    }
+  };
+  await c._a2SledPlay({ short: true });
+  assert.ok(weg >= 1, 'beiseite gebeten');
+  assert.ok(K.length === 2 && K[0] < foot && K[1] > foot, JSON.stringify(K));
+  // (auf 600 px reicht die Wiese links nicht ganz: so weit hinaus wie möglich, am Ende des Auslaufs)
+  assert.ok(fr.x < foot - G.pW && fr.x <= K[0] + G.pW * 0.45, 'draußen: ' + fr.x + ' ' + JSON.stringify(K));
+  assert.equal(c._frKeepX(fr.x, ...c._frRange()), fr.x);
+  c._a2Cleanup(); // (wie _cleanup am Ende der Aktion)
+  assert.equal(c._frKeep, null, 'nach dem Rodeln frei');
+});
+
+// 0.48.1: Der Schlitten, den er nach dem Auspacken (ohne Schnee) neben sich stellt, steht nicht vor der Tür des Baus und
+// nicht vor der Laterne, die dort brennt.
+test('Schlitten auspacken ohne Schnee: nicht vor Bautür und Laterne geparkt', async () => {
+  const { c, G } = karte(1, { wx: {} });
+  const lat = { parentElement: c._el.gifts, offsetLeft: G.hole.r + 6, offsetWidth: 22, style: {} };
+  c._gtEls = new Map([[1, lat]]);
+  c._x = G.hole.r + G.pW * 0.95;
+  let S = null;
+  c._wait = async () => {
+    S ??= c._a2SledS && { x: c._a2SledS.x };
+  };
+  await c._a2SledStow(1);
+  const { w } = c._a2SledDim();
+  const pad = G.H * 0.015;
+  const frei = (l, r) => S.x + w / 2 <= l - pad + 0.01 || S.x - w / 2 >= r + pad - 0.01;
+  assert.ok(S && frei(G.hole.l, G.hole.r), 'nicht vor der Tür: ' + JSON.stringify(S));
+  assert.ok(frei(lat.offsetLeft, lat.offsetLeft + lat.offsetWidth), 'nicht vor der Laterne');
+});
+
+// Takt einschalten: wartend() zählt die angeforderten Bilder, bild() lässt sie laufen
+const taktAn = () => {
+  takt = [];
+  const wartend = () => takt.filter(Boolean).length;
+  const bild = () => {
+    const F = takt.map((f, i) => [f, i]).filter(([f]) => f);
+    for (const [, i] of F) takt[i] = null;
+    for (const [f] of F) f(performance.now());
+  };
+  return { wartend, bild };
+};
+
+// 0.48.1: Der Takt läuft nur, solange sich etwas bewegen kann (ein Abschnitt oder das Seil im Maul), und liest die Nase
+// je Bild einmal
+test('Schlitten: Bild-für-Bild-Takt nur, solange sich etwas bewegt; die Nase einmal je Bild', async () => {
+  const { c } = karte(1);
+  const { wartend, bild } = taktAn();
+  try {
+    let nase = 0;
+    const np = c._nosePos;
+    c._nosePos = () => (nase++, np());
+    const S = c._a2SledMake(300, 1);
+    assert.equal(wartend(), 1);
+    bild();
+    assert.equal(wartend(), 0, 'liegt still: kein Takt');
+    c._a2SledHold(true);
+    assert.equal(wartend(), 1, 'Seil im Maul: Takt');
+    nase = 0;
+    bild();
+    assert.equal(nase, 1, 'Nase einmal je Bild (Ziehen und Stellen)');
+    assert.equal(wartend(), 1);
+    c._a2SledHold(false);
+    bild();
+    assert.equal(wartend(), 0);
+    // ein Abschnitt startet ihn wieder, danach ruht er
+    let n = 0;
+    c._wait = async () => {
+      bild();
+      bild();
+    };
+    await c._a2SledDrive(500, () => n++);
+    assert.ok(n >= 3, 'Bilder während des Abschnitts');
+    bild();
+    assert.equal(wartend(), 0);
+    assert.equal(S.fm, null);
+    c._a2SledEnd(true);
+  } finally {
+    takt = null;
   }
 });
