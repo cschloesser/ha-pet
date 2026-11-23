@@ -15,7 +15,7 @@
 import { rnd, pick, clamp } from '../logik/hilfen.js';
 import { calmMotion } from '../logik/bewegung-reduzieren.js';
 import { buehneZ, REIHE } from '../logik/buehne.js';
-import { BIRDS, BIRD_SVG } from '../grafik/besucher.js';
+import { BIRDS } from '../grafik/besucher.js';
 import { RADIO_SVG, RADIO_CARRY, RADIO_W, RADIO_H, RADIO_HANDLE, RADIO_SPEAKER, RADIO_SENDER, NOTE_SVG } from '../grafik/album2/radio.js';
 
 // Das Vögelchen auf dem Henkel kommt höchstens alle 3 Minuten und dann zu jedem zweiten Tanz (wie GOLD in
@@ -151,20 +151,15 @@ export class Album2Radio {
   }
 
   async _a2RadioGo(mode, o) {
-    const lv = this._a2Lv('radio');
-    if (!lv || (!this._a2RadioWeather() && !this._forced && !o.short)) return;
-    const gold = !!o.gold || (lv >= 3 && this._a2GoldOk('radio'));
+    const gold = this._a2Gate('radio', o);
+    if (gold == null) return;
     // (nachts kommt kein Vögelchen, auch nicht erzwungen; vor _a2GoldOk geprüft, das den Abstand stempelt)
     const night = this._el.scene.classList.contains('night');
-    const bird = !night && (!!o.bird || (lv >= 3 && this._a2GoldOk('radio', RADIO_GOLD, 'radio-bird')));
-    this._a2RadioBusy = true;
-    try {
+    const bird = !night && (!!o.bird || (this._a2Lv('radio') >= 3 && this._a2GoldOk('radio', RADIO_GOLD, 'radio-bird')));
+    return this._a2Busy('radio', async () => {
       if (calmMotion()) await this._a2RadioCalm(mode, gold, bird, o);
       else await this._a2RadioMove(mode, gold, bird, o);
-    } finally {
-      this._a2RadioBusy = false;
-      this._a2RadioEnd(true);
-    }
+    });
   }
 
   // Mit Bewegung: holen, hinstellen, einschalten, zurücktreten, tanzen, ausschalten, wegbringen
@@ -212,10 +207,7 @@ export class Album2Radio {
     // wegbringen: ins Maul und zurück in den Bau
     await this._walkTo(P.px - P.dir * pW * RADIO_NEAR, 0.6);
     this._face(P.dir);
-    const p = this._el.pika;
-    p.classList.add('crouch');
-    await this._wait(320);
-    p.classList.remove('crouch');
+    await this._a2Duck(320);
     this._a2RadioEnd(true, true);
     this._a2RadioHold(true);
     await this._wait(250);
@@ -337,9 +329,7 @@ export class Album2Radio {
     const p = this._el.pika;
     p.classList.remove('a2r-bop');
     this._say(pick(['Drehtanz!', 'und… dreh!', 'Pirouette!']), 1300);
-    p.classList.add('crouch');
-    await this._wait(300);
-    p.classList.remove('crouch');
+    await this._a2Duck(300);
     for (const ms of [900, 700]) {
       p.style.setProperty('--a2rsp', `${ms}ms`);
       p.classList.remove('a2r-spin');
@@ -420,8 +410,7 @@ export class Album2Radio {
   // Regnet es, nur kurz zeigen: Es ploppt neben ihm auf, rauscht, eine Note, „bei Regen lieber nicht“, weg.
   async _a2RadioStow(lv) {
     if (this._a2RadioWeather()) return lv === 2 ? this._a2RadioSpin({ short: true }) : this._a2RadioPlay({ short: true, gold: lv >= 3, bird: lv >= 3 });
-    this._a2RadioBusy = true;
-    try {
+    return this._a2Busy('radio', async () => {
       const { pW } = this._g;
       const d = this._x < this._W / 2 ? 1 : -1;
       const S = this._a2RadioMake(clamp(this._x + d * pW * RADIO_FAR, pW * 0.5, this._g.xR + pW * 0.3), true);
@@ -446,10 +435,7 @@ export class Album2Radio {
       this._say(pick(['wenn die Sonne scheint!', 'bald!']), 1300);
       this._happy(1000);
       await this._wait(1300);
-    } finally {
-      this._a2RadioBusy = false;
-      this._a2RadioEnd(true);
-    }
+    });
   }
 
   // ---------- Noten ----------
@@ -509,12 +495,7 @@ export class Album2Radio {
     const v = pick(BIRDS);
     const T = this._a2RadioAt(RADIO_HANDLE);
     const calm = calmMotion();
-    const el = document.createElement('div');
-    el.className = `bird a2rb${calm ? '' : ' flying'}`;
-    el.innerHTML = `<div class="bw" role="button" aria-label="${v.name}"><div class="bf"><div class="bb">${BIRD_SVG(v)}</div></div></div>`;
-    el.style.left = `${T.x.toFixed(1)}px`;
-    el.style.top = `${T.y.toFixed(1)}px`;
-    el.style.zIndex = String(RADIO_BZ());
+    const el = this._a2BirdEl(v, 'a2rb', T.x, T.y, RADIO_BZ());
     el.style.setProperty('--a2rbt', `${RADIO_SENDER[S.st].beat * 2}ms`);
     const dir = this._x >= T.x ? 1 : -1;
     const b = { el, v, x: T.x, y: T.y, dir, sitting: false, gone: false, t: null, fly: null };
@@ -549,12 +530,7 @@ export class Album2Radio {
     const dx = -dir * this._W * rnd(0.3, 0.45);
     const dy = -T.y - this._H * 0.1;
     const dur = rnd(1300, 1700);
-    b.fly = el.animate([
-      { transform: `translate(${dx.toFixed(1)}px, ${dy.toFixed(1)}px)` },
-      { transform: `translate(${(dx * 0.4).toFixed(1)}px, ${(dy * 0.3).toFixed(1)}px)`, offset: 0.55 },
-      { transform: `translate(${(dx * 0.08).toFixed(1)}px, ${(-this._H * 0.04).toFixed(1)}px)`, offset: 0.88 },
-      { transform: 'translate(0, 0)' },
-    ], { duration: dur, easing: 'ease-out' });
+    b.fly = this._a2BirdIn(el, dx, dy, dur);
     b.t = setTimeout(land, dur);
   }
 
@@ -578,11 +554,7 @@ export class Album2Radio {
     const out = b.x > this._W / 2 ? 1 : -1;
     el.classList.toggle('left', out < 0);
     const dur = fast ? 800 : rnd(1100, 1500);
-    el.animate([
-      { transform: 'translate(0, 0)' },
-      { transform: `translate(${(out * this._W * 0.06).toFixed(1)}px, ${(-this._H * 0.07).toFixed(1)}px)`, offset: 0.25 },
-      { transform: `translate(${(out * this._W * 0.55).toFixed(1)}px, ${(-b.y - this._H * 0.2).toFixed(1)}px)` },
-    ], { duration: dur, easing: 'ease-in', fill: 'forwards' });
+    this._a2BirdOut(el, out, b.y, dur);
     setTimeout(() => el.remove(), dur + 40);
   }
 
@@ -621,10 +593,8 @@ export class Album2Radio {
   // finally selbst auf, nur nach einem Abbruch gleich. now: sofort weg (er nimmt es ins Maul), sonst blendet es aus
   _a2RadioEnd(force = false, now = false) {
     const S = this._a2RadioS;
-    if (!S) return;
-    if (!force && this._a2RadioBusy && !this._ac?.signal?.aborted) return;
-    this._a2RadioS = null;
-    for (const t of S.t) clearTimeout(t);
+    if (!S || this._a2Held('radio', force)) return;
+    this._a2Clear('radio', S);
     clearTimeout(this._a2RadioTapT);
     this._a2RadioBirdGo(false, false, S);
     const p = this._el.pika;

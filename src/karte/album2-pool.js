@@ -206,16 +206,14 @@ export class Album2Pool {
 
   // Temperatur in °C (roh aus der Wetter-Entität wie bei der Sonnenbrille, _tickGift; die Vorschau mit _dbgWeather)
   _a2PoolTemp() {
-    const t = { ...(this._wxRaw || {}), ...(this._dbgWeather || {}) }.temp;
+    const t = this._a2Raw().temp;
     return Number.isFinite(t) ? t : null;
   }
 
   // Seine Jahreszeit: die Monate aus den Daten (Juni bis August; Südhalbkugel versetzt wie beim Vogelhäuschen). Nur für
   // das Vertrösten nach dem Auspacken („im Sommer!“)
   _a2PoolSummer() {
-    const south = (this._hass?.config?.latitude ?? 50) < 0;
-    const mo = (new Date(this._dbgDate ?? Date.now()).getMonth() + (south ? 6 : 0)) % 12;
-    return A2_POOL.mo.includes(mo);
+    return A2_POOL.mo.includes(this._a2Mon());
   }
 
   // Planschwetter: ab 25 °C bei Tag; kein Gewitter, kein Starkregen, Hagel oder Schnee, kaum Wind. Leichter Regen
@@ -252,21 +250,16 @@ export class Album2Pool {
   }
 
   async _a2PoolGo(mode, o) {
-    const lv = this._a2Lv('pool');
-    if (!lv || (!this._a2PoolWeather() && !this._forced && !o.short)) return;
-    const gold = !!o.gold || (lv >= 3 && this._a2GoldOk('pool', POOL_GOLD));
-    this._a2PoolBusy = true;
-    try {
+    const gold = this._a2Gate('pool', o, POOL_GOLD);
+    if (gold == null) return;
+    return this._a2Busy('pool', async () => {
       await this._a2PoolSetUp(!!o.short, gold);
       if (mode === 'bomb' && !calmMotion()) await this._a2PoolCannon();
       else await this._a2PoolGetIn(mode === 'bomb');
       await this._a2PoolSplashes(mode, !!o.short);
       await this._a2PoolGetOut();
       if (!o.short) await this._a2PoolPack();
-    } finally {
-      this._a2PoolBusy = false;
-      this._a2PoolEnd(true);
-    }
+    });
   }
 
   // Holen, hinlegen, aufblasen, füllen. short (nach dem Auspacken) und Bewegung reduzieren: kein Holen, kein Aufblasen,
@@ -284,18 +277,14 @@ export class Album2Pool {
       this._face(-1);
       this._say(pick(['Planschbecken holen!', 'wo ist es…', 'Badezeit!']), 1300);
       await this._wait(700);
-      p.classList.add('crouch');
-      await this._wait(260);
-      p.classList.remove('crouch');
+      await this._a2Duck(260);
       this._a2PoolCarry(true);
       await this._wait(300);
     }
     await this._walkTo(P.sx, 1);
     this._face(-P.side);
     if (this._a2PoolCarrying) {
-      p.classList.add('crouch');
-      await this._wait(260);
-      p.classList.remove('crouch');
+      await this._a2Duck(260);
       this._a2PoolCarry(false);
     }
     this._a2PoolMake(P, { flat: fetch, empty: !!can, pop: !calm, gold });
@@ -343,9 +332,7 @@ export class Album2Pool {
       d.className = 'gdrop';
       d.style.left = `${(sx + rnd(-pW * 0.05, pW * 0.05)).toFixed(1)}px`;
       d.style.top = `${(gy - this._H * 0.14 + rnd(-2, 2)).toFixed(1)}px`;
-      this._el.fx.appendChild(d);
-      S.fx.add(d);
-      S.t.push(setTimeout(() => (d.remove(), S.fx.delete(d)), 600));
+      this._a2Fx(S, d, 600);
       await this._wait(180);
     }
     p.classList.remove('pour');
@@ -379,9 +366,7 @@ export class Album2Pool {
       return;
     }
     this._say(pick(['rein!', 'eins, zwei…', 'hopp!']), 1000);
-    p.classList.add('crouch');
-    await this._wait(180);
-    p.classList.remove('crouch');
+    await this._a2Duck(180);
     S.t.push(setTimeout(() => this._a2PoolS === S && this._a2PoolFront(true), 200));
     this._a2PoolPika(S.cx, sink, 550, HOP_EASE);
     this._jump('hop1', true);
@@ -404,9 +389,7 @@ export class Album2Pool {
     this._say(pick(['Arschbombe!', 'jetzt kommt\'s!', 'aufgepasst!']), 1200);
     await this._wait(700);
     // auf den Rand
-    p.classList.add('crouch');
-    await this._wait(200);
-    p.classList.remove('crouch');
+    await this._a2Duck(200);
     this._a2PoolPika(rx, -lift, 550, HOP_EASE);
     this._jump('hop1', true);
     await this._wait(650);
@@ -416,9 +399,7 @@ export class Album2Pool {
     await this._wait(1100);
     p.classList.remove('a2pl-wob');
     this._say('…drei!', 800);
-    p.classList.add('crouch');
-    await this._wait(240);
-    p.classList.remove('crouch');
+    await this._a2Duck(240);
     // hinein, zusammengerollt
     p.classList.add('a2pl-ball');
     S.t.push(setTimeout(() => this._a2PoolS === S && this._a2PoolFront(true), 300));
@@ -495,9 +476,7 @@ export class Album2Pool {
       await this._wait(1000);
       return;
     }
-    p.classList.add('crouch');
-    await this._wait(180);
-    p.classList.remove('crouch');
+    await this._a2Duck(180);
     this._a2PoolPika(S.sx, 0, 550, HOP_EASE);
     this._jump('hop1', true);
     this._a2PoolSplash(2);
@@ -526,7 +505,6 @@ export class Album2Pool {
   async _a2PoolPack() {
     const S = this._a2PoolS;
     if (!S || calmMotion()) return;
-    const p = this._el.pika;
     const { hole, pW } = this._g;
     this._face(-S.side);
     this._a2PoolWater(false);
@@ -536,17 +514,13 @@ export class Album2Pool {
     this._a2PoolInflate(0);
     const n = this._nosePos();
     this._peep(n.x, n.y - this._H * 0.05, 'pfffff…');
-    p.classList.add('crouch');
-    await this._wait(1000);
-    p.classList.remove('crouch');
+    await this._a2Duck(1000);
     this._a2PoolEnd(true, true);
     this._a2PoolCarry(true);
     await this._wait(250);
     await this._walkTo(hole.cx + pW * 0.75, 1);
     this._face(-1);
-    p.classList.add('crouch');
-    await this._wait(260);
-    p.classList.remove('crouch');
+    await this._a2Duck(260);
     this._a2PoolCarry(false);
     this._say(pick(['bis zum nächsten Mal!', 'aufgeräumt!', 'das war schön!']), 1300);
     await this._wait(900);
@@ -557,9 +531,8 @@ export class Album2Pool {
   // Wetter dafür), er vertröstet. Golden schwimmt die Ente schon („die Ente darf!“).
   async _a2PoolStow(lv) {
     if (this._a2PoolWeather()) return lv === 2 ? this._a2PoolBomb({ short: true }) : this._a2PoolPlay({ short: true, gold: lv >= 3 });
-    this._a2PoolBusy = true;
     const p = this._el.pika;
-    try {
+    return this._a2Busy('pool', async () => {
       const P = this._a2PoolSpot();
       await this._a2FrAside(P.cx - P.w / 2, P.cx + P.w / 2);
       await this._walkTo(P.sx, 1);
@@ -585,10 +558,7 @@ export class Album2Pool {
       this._say(why === 'sommer' ? pick(['im Sommer!', 'bis zum Sommer!']) : why === 'kalt' ? pick(['wenn\'s heiß ist!', 'ab 25 Grad!']) : pick(['bald!', 'wenn die Sonne scheint!']), 1400);
       this._happy(1000);
       await this._wait(1500);
-    } finally {
-      this._a2PoolBusy = false;
-      this._a2PoolEnd(true);
-    }
+    });
   }
 
   // ---------- Wasser, Tropfen ----------
@@ -623,9 +593,7 @@ export class Album2Pool {
       s.style.top = `${(y - pH * 0.04).toFixed(1)}px`;
       s.style.setProperty('--dx', `${(side * rnd(0.1, 0.42) * pW * k).toFixed(1)}px`);
       s.style.setProperty('--dy', `${(-rnd(0.22, 0.55) * pH * k).toFixed(1)}px`);
-      this._el.fx.appendChild(s);
-      S.fx.add(s);
-      S.t.push(setTimeout(() => (s.remove(), S.fx.delete(s)), 800));
+      this._a2Fx(S, s, 800);
     }
   }
 
@@ -639,9 +607,7 @@ export class Album2Pool {
     s.innerHTML = DROP_SVG;
     s.style.left = `${(this._x + rnd(-0.3, 0.3) * pW).toFixed(1)}px`;
     s.style.top = `${(gy - pH * rnd(0.15, 0.55)).toFixed(1)}px`;
-    this._el.fx.appendChild(s);
-    S.fx.add(s);
-    S.t.push(setTimeout(() => (s.remove(), S.fx.delete(s)), 900));
+    this._a2Fx(S, s, 900);
   }
 
   // Schütteln: Tropfen fliegen nach beiden Seiten aus dem Fell
@@ -658,9 +624,7 @@ export class Album2Pool {
       s.style.top = `${(gy - pH * rnd(0.3, 0.6)).toFixed(1)}px`;
       s.style.setProperty('--dx', `${(side * rnd(0.3, 0.6) * pW).toFixed(1)}px`);
       s.style.setProperty('--dy', `${(-rnd(0.08, 0.25) * pH).toFixed(1)}px`);
-      this._el.fx.appendChild(s);
-      S.fx.add(s);
-      S.t.push(setTimeout(() => (s.remove(), S.fx.delete(s)), 800));
+      this._a2Fx(S, s, 800);
     }
   }
 
@@ -689,9 +653,7 @@ export class Album2Pool {
         s.style.top = `${(y - pH * 0.03).toFixed(1)}px`;
         s.style.setProperty('--dx', `${((i ? 1 : -1) * rnd(0.08, 0.2) * pW).toFixed(1)}px`);
         s.style.setProperty('--dy', `${(-rnd(0.12, 0.25) * pH).toFixed(1)}px`);
-        this._el.fx.appendChild(s);
-        S.fx.add(s);
-        S.t.push(setTimeout(() => (s.remove(), S.fx.delete(s)), 800));
+        this._a2Fx(S, s, 800);
       }
     }
     return true;
@@ -702,15 +664,13 @@ export class Album2Pool {
   // normal am Boden. (force: aus der eigenen Aktion. Sonst, mitten in ihr, aus Szene oder Aufräumen: nichts, sie räumt
   // in ihrem finally selbst auf; nur nach einem Abbruch gleich.) now: sofort, ohne Ausblenden
   _a2PoolEnd(force = false, now = false) {
-    if (!force && this._a2PoolBusy && !this._ac?.signal?.aborted) return;
+    if (this._a2Held('pool', force)) return;
     const p = this._el.pika;
     if (this._a2PoolCarrying) this._a2PoolCarry(false);
     p.classList.remove(...POOL_CLS);
     const S = this._a2PoolS;
     if (!S) return;
-    this._a2PoolS = null;
-    for (const t of S.t) clearTimeout(t);
-    for (const e of S.fx) e.remove();
+    this._a2Clear('pool', S);
     if (S.can) {
       S.can.classList.remove('away');
       p.classList.remove('wcan', 'pour');
@@ -720,16 +680,12 @@ export class Album2Pool {
       this._setX(this._x, true);
     }
     const fr = S.fr;
-    const el = S.el;
     if (now || !fr.isConnected) fr.remove();
     else {
       fr.classList.add('a2out');
       setTimeout(() => fr.remove(), 450);
     }
-    if (!now && el.isConnected && this._a2Els?.get('pool') === el) {
-      el.classList.add('a2out');
-      setTimeout(() => !this._a2PoolS && this._a2Drop('pool'), 450);
-    } else this._a2Drop('pool');
+    this._a2Out('pool', S.el, !now);
   }
 
   _a2PoolCleanup() {

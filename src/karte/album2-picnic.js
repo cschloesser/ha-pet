@@ -221,9 +221,7 @@ export class Album2Picnic {
 
   // Monat dieses Geräts in der Jahreszeit des Schatzes (A2_PICNIC.mo; Südhalbkugel ein halbes Jahr versetzt)?
   _a2PicnicSeason() {
-    const south = (this._hass?.config?.latitude ?? 50) < 0;
-    const mo = (new Date(this._dbgDate ?? Date.now()).getMonth() + (south ? 6 : 0)) % 12;
-    return A2_PICNIC.mo.includes(mo);
+    return A2_PICNIC.mo.includes(this._a2Mon());
   }
 
   // Picknickwetter: bei Tag (nicht in der Dämmerung), trocken (kein Regen, Schnee, Nebel, nichts liegt), Wind unter
@@ -234,7 +232,7 @@ export class Album2Picnic {
     if (sc.contains('night') || sc.contains('dusk')) return false;
     if (wx.wet || wx.storm || wx.shelter || wx.hail || wx.fog || wx.snow > 0 || wx.snowcover) return false;
     if ((this._wind || 0) >= PICNIC_WIND) return false;
-    const raw = { ...(this._wxRaw || {}), ...(this._dbgWeather || {}) };
+    const raw = this._a2Raw();
     if (raw.cond != null ? !PICNIC_COND.includes(raw.cond) : !this._a2PicnicSeason()) return false;
     return raw.temp != null ? raw.temp >= PICNIC_MIN_T : this._a2PicnicSeason();
   }
@@ -242,7 +240,7 @@ export class Album2Picnic {
   // Nach dem Auspacken: Warum jetzt kein Picknick? 'season' (nicht die Jahreszeit), 'cold' (unter PICNIC_MIN_T), 'later'
   // (Regen, Schnee, Sturm, Nacht), sonst null. Wolken und Wind stören hier nicht, das Picknick ist dann kurz.
   _a2PicnicNotNow() {
-    const raw = { ...(this._wxRaw || {}), ...(this._dbgWeather || {}) };
+    const raw = this._a2Raw();
     const wx = this._wx || {};
     if (!this._a2PicnicSeason()) return 'season';
     if (raw.temp != null && raw.temp < PICNIC_MIN_T) return 'cold';
@@ -269,8 +267,7 @@ export class Album2Picnic {
 
   // Leckerli der Jahreszeit aus dem Korb: Erdbeere (April bis Juni), Himbeeren (Juli bis September), sonst Apfelschnitz
   _a2PicnicTreat() {
-    const south = (this._hass?.config?.latitude ?? 50) < 0;
-    const mo = (new Date(this._dbgDate ?? Date.now()).getMonth() + (south ? 6 : 0)) % 12;
+    const mo = this._a2Mon();
     const key = mo >= 3 && mo <= 5 ? 'straw' : mo >= 6 && mo <= 8 ? 'rasp' : 'apple';
     return GIFT_ITEMS.find((x) => x.key === key) || GIFT_ITEMS.find((x) => x.color);
   }
@@ -302,12 +299,10 @@ export class Album2Picnic {
   }
 
   async _a2PicnicGo(mode, o) {
-    const lv = this._a2Lv('picnic');
-    if (!lv || (!this._a2PicnicWeather() && !this._forced && !o.short)) return;
-    const gold = !!o.gold || (lv >= 3 && this._a2GoldOk('picnic', PICNIC_GOLD));
+    const gold = this._a2Gate('picnic', o, PICNIC_GOLD);
+    if (gold == null) return;
     const quick = !!o.short || calmMotion();
-    this._a2PicnicBusy = true;
-    try {
+    return this._a2Busy('picnic', async () => {
       if (!quick) await this._a2PicnicFetch();
       // (erst jetzt: Wer jetzt da ist, kommt mit, und hat sich die Karte verändert, gilt der neue Platz)
       let fr = o.solo ? null : this._a2PicnicFriend();
@@ -335,10 +330,7 @@ export class Album2Picnic {
       }
       if (!ran) await this._a2PicnicWith(P, null, (ms) => this._wait(ms), mode, gold, o);
       await this._a2PicnicPack(this._a2PicnicS, quick);
-    } finally {
-      this._a2PicnicBusy = false;
-      this._a2PicnicEnd(true);
-    }
+    });
   }
 
   // Aus dem Bau holen: Er kramt drinnen und kommt mit dem Bündel im Maul heraus
@@ -420,9 +412,7 @@ export class Album2Picnic {
     const F = pick([FOOD.lz, FOOD.klee]);
     const ms = o.short ? 1500 : rnd(2200, 3000);
     this._a2PicnicLid(S, true);
-    p.classList.add('crouch');
-    await w(320);
-    p.classList.remove('crouch');
+    await this._a2Duck(320, w);
     this._a2PicnicLid(S, false);
     this._say(F === FOOD.lz ? pick(['Löwenzahn!', 'mmh, Löwenzahn']) : pick(['Klee!', 'mmh, Klee']), 1200);
     if (fr) this._frEat(fr, (F === FOOD.lz ? FOOD.klee : FOOD.lz).color, ms);
@@ -440,9 +430,7 @@ export class Album2Picnic {
     const P = S.P;
     const T = this._a2PicnicTreat();
     this._a2PicnicLid(S, true);
-    p.classList.add('crouch');
-    await w(320);
-    p.classList.remove('crouch');
+    await this._a2Duck(320, w);
     this._a2PicnicLid(S, false);
     this._a2PicnicHold(T);
     this._say(`${T.name}!`, 1100);
@@ -487,9 +475,7 @@ export class Album2Picnic {
     } else {
       this._say(pick(['eins für später!', 'das heb ich auf!']), 1400);
       await w(800);
-      p.classList.add('crouch');
-      await w(300);
-      p.classList.remove('crouch');
+      await this._a2Duck(300, w);
       this._a2PicnicHold(null);
       this._a2PicnicKeep(S, T);
       this._happy(900);
@@ -650,9 +636,7 @@ export class Album2Picnic {
       await this._wait(500);
       return;
     }
-    p.classList.add('crouch');
-    await this._wait(300);
-    p.classList.remove('crouch');
+    await this._a2Duck(300);
     S.el.querySelector('.a2pkk')?.animate?.([{ opacity: 1 }, { opacity: 0 }], { duration: 300, fill: 'forwards' });
     this._a2PicnicRoll(S, true);
     await this._wait(850);
@@ -680,8 +664,7 @@ export class Album2Picnic {
   async _a2PicnicShow(lv, why) {
     const p = this._el.pika;
     const { pW, hayR } = this._g;
-    this._a2PicnicBusy = true;
-    try {
+    return this._a2Busy('picnic', async () => {
       const d = this._x < this._W / 2 ? 1 : -1;
       const x = clamp(this._x + d * pW * 0.6, hayR + pW * 0.2, this._W - pW * 0.25);
       this._face(x >= this._x ? 1 : -1);
@@ -696,10 +679,7 @@ export class Album2Picnic {
       this._happy(1000);
       await this._wait(1900);
       p.classList.remove('look-f');
-    } finally {
-      this._a2PicnicBusy = false;
-      this._a2PicnicEnd(true);
-    }
+    });
   }
 
   // ---------- Hooks: Tipp, Aufräumen, Abhängen ----------
@@ -767,14 +747,13 @@ export class Album2Picnic {
   // Zeitgeber, Bündel im Maul weg (force: aus der eigenen Aktion. Sonst, mitten in ihr, aus Szene oder Aufräumen:
   // nichts, sie räumt in ihrem finally selbst auf; nur nach einem Abbruch gleich). now: sofort, ohne Ausblenden
   _a2PicnicEnd(force = false, now = false) {
-    if (!force && this._a2PicnicBusy && !this._ac?.signal?.aborted) return;
+    if (this._a2Held('picnic', force)) return;
     if (this._a2PicnicHolding) this._a2PicnicHold(null);
     this._el.pika.classList.remove(...PICNIC_CLS);
     const S = this._a2PicnicS;
     if (!S) return;
-    this._a2PicnicS = null;
+    this._a2Clear('picnic', S, false);
     clearTimeout(this._a2PicnicLidT);
-    for (const t of S.t) clearTimeout(t);
     for (const e of S.fx) {
       // (wer schon davonfliegt, fliegt zu Ende: sein eigener Zeitgeber nimmt ihn weg)
       if (S.off.has(e) && !now) continue;
@@ -794,10 +773,7 @@ export class Album2Picnic {
     }
     const el = S.el;
     el.classList.remove('open', 'a2tap', 'a2roll', 'pop');
-    if (!now && el.isConnected && this._a2Els?.get('picnic') === el) {
-      el.classList.add('a2out');
-      setTimeout(() => !this._a2PicnicS && this._a2Drop('picnic'), 450);
-    } else this._a2Drop('picnic');
+    this._a2Out('picnic', el, !now);
   }
 
   _a2PicnicCleanup() {

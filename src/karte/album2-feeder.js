@@ -10,7 +10,7 @@ import { rnd, pick, clamp } from '../logik/hilfen.js';
 import { calmMotion } from '../logik/bewegung-reduzieren.js';
 import { LANE_DY } from '../logik/einstellungen.js';
 import { buehneZ } from '../logik/buehne.js';
-import { BIRDS, BIRD_SVG } from '../grafik/besucher.js';
+import { BIRDS } from '../grafik/besucher.js';
 import { FEEDER_SVG, FEEDER_SPOTS, FEEDER_W, GIMPEL, SEED_SVG } from '../grafik/album2/feeder.js';
 
 // Der Gimpel kommt höchstens alle 3 Minuten und dann zu jedem zweiten Mal Zuschauen (wie GOLD in src/logik/paeckchen.js)
@@ -111,8 +111,7 @@ export class Album2Feeder {
   }
 
   _a2FeederWinter() {
-    const south = (this._hass?.config?.latitude ?? 50) < 0;
-    const mo = (new Date(this._dbgDate ?? Date.now()).getMonth() + (south ? 6 : 0)) % 12;
+    const mo = this._a2Mon();
     return mo >= 10 || mo <= 1 || !!this._wx?.snowcover;
   }
 
@@ -129,17 +128,13 @@ export class Album2Feeder {
   // o: { n: so viele Vögel, gimpel: der Gimpel kommt sicher, short: kurz (nach dem Auspacken) }
   async _a2FeederPlay(o = {}) {
     if (!this._a2Lv('feeder')) return;
-    this._a2FeederBusy = true;
-    try {
+    return this._a2Busy('feeder', async () => {
       this._a2FeederShow();
       await this._a2FeederAside();
       await this._a2FeederGo();
       await this._wait(300);
       await this._a2FeederWatch(o);
-    } finally {
-      this._a2FeederBusy = false;
-      this._a2FeederEnd();
-    }
+    }, () => this._a2FeederEnd());
   }
 
   // Zuschauen (er steht schon da): Vögel kommen nacheinander, der Gimpel (golden) zuletzt aufs Dach
@@ -191,10 +186,9 @@ export class Album2Feeder {
   // die Vögel
   async _a2FeederFill() {
     if (this._a2Lv('feeder') < 2) return;
-    this._a2FeederBusy = true;
     const p = this._el.pika;
     let el = null;
-    try {
+    return this._a2Busy('feeder', async () => {
       this._a2FeederShow();
       await this._a2FeederAside();
       el = this._a2Els?.get('feeder');
@@ -220,11 +214,10 @@ export class Album2Feeder {
       await this._wait(500);
       await this._a2FeederGo();
       await this._a2FeederWatch({ n: 2 });
-    } finally {
+    }, () => {
       el?.classList.remove('leer', 'fill');
-      this._a2FeederBusy = false;
       this._a2FeederEnd();
-    }
+    });
   }
 
   // Nach dem Auspacken (Hook): Stufe 1 ein Vogel kommt gleich, 2 der Trick, 3 der Gimpel
@@ -245,12 +238,7 @@ export class Album2Feeder {
     const x = F.left + fx * F.w;
     const y = F.top + fy * F.h;
     const calm = calmMotion();
-    const el = document.createElement('div');
-    el.className = `bird a2b${calm ? '' : ' flying'}`;
-    el.innerHTML = `<div class="bw" role="button" aria-label="${v.name}"><div class="bf"><div class="bb">${BIRD_SVG(v)}</div></div></div>`;
-    el.style.left = `${x.toFixed(1)}px`;
-    el.style.top = `${y.toFixed(1)}px`;
-    el.style.zIndex = String(FEEDER_BZ());
+    const el = this._a2BirdEl(v, 'a2b', x, y, FEEDER_BZ());
     const b = { el, x, y, dir: 1, sitting: false, gone: false, roof: i === 2, t: null };
     // Antippen: Er fliegt weg (wie ein Besuch)
     el.querySelector('.bw').addEventListener('click', (e) => {
@@ -281,12 +269,7 @@ export class Album2Feeder {
       b.dir = -side;
       el.classList.toggle('left', b.dir < 0);
       const dur = rnd(1300, 1800);
-      b.fly = el.animate?.([
-        { transform: `translate(${dx.toFixed(1)}px, ${dy.toFixed(1)}px)` },
-        { transform: `translate(${(dx * 0.4).toFixed(1)}px, ${(dy * 0.3).toFixed(1)}px)`, offset: 0.55 },
-        { transform: `translate(${(dx * 0.08).toFixed(1)}px, ${(-this._H * 0.04).toFixed(1)}px)`, offset: 0.88 },
-        { transform: 'translate(0, 0)' },
-      ], { duration: dur, easing: 'ease-out' });
+      b.fly = this._a2BirdIn(el, dx, dy, dur);
       b.t = setTimeout(() => {
         b.fly = null;
         this._a2FeederFace(b, i === 0 ? 1 : i === 1 ? -1 : this._x >= x ? 1 : -1);
@@ -349,11 +332,7 @@ export class Album2Feeder {
     const out = b.x > this._W / 2 ? 1 : -1;
     this._a2FeederFace(b, out);
     const dur = fast ? 800 : rnd(1100, 1500);
-    el.animate([
-      { transform: 'translate(0, 0)' },
-      { transform: `translate(${(out * this._W * 0.06).toFixed(1)}px, ${(-this._H * 0.07).toFixed(1)}px)`, offset: 0.25 },
-      { transform: `translate(${(out * this._W * 0.55).toFixed(1)}px, ${(-b.y - this._H * 0.2).toFixed(1)}px)` },
-    ], { duration: dur, easing: 'ease-in', fill: 'forwards' });
+    this._a2BirdOut(el, out, b.y, dur);
     setTimeout(done, dur + 40);
   }
 

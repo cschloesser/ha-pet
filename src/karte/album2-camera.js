@@ -276,11 +276,9 @@ export class Album2Camera {
   // Stufe 1 (Aktion 'a2CameraPlay'). o: { short: nach dem Auspacken (die Kamera kommt gleich neben ihn, auch bei
   // jedem Wetter), gold: goldener Rahmen sicher, motif: dieses Motiv, wenn es geht }
   async _a2CameraPlay(o = {}) {
-    const lv = this._a2Lv('camera');
-    if (!lv || (!this._a2CameraWeather() && !this._forced && !o.short)) return;
-    const gold = !!o.gold || (lv >= 3 && this._a2GoldOk('camera', CAMERA_GOLD));
-    this._a2CameraBusy = true;
-    try {
+    const gold = this._a2Gate('camera', o, CAMERA_GOLD);
+    if (gold == null) return;
+    return this._a2Busy('camera', async () => {
       const L = this._a2CameraPick(o.motif ?? null);
       const O = this._a2CameraOff();
       // (der Freund steht weder vor der Kamera noch vor der Linse; beim Selfie stellt die Aktion ihn selbst hin)
@@ -288,27 +286,19 @@ export class Album2Camera {
       await this._a2FrAside(Math.min(L.cx - O.w / 2, lens), Math.max(L.cx + O.w / 2, lens));
       await this._a2CameraSetUp(L.cx, L.d, L.cx - L.d * O.behind, o.short);
       await this._a2CameraShoot(L, gold);
-    } finally {
-      this._a2CameraBusy = false;
-      this._a2CameraEnd(true);
-    }
+    });
   }
 
   // Stufe 2, der Trick (Aktion 'a2CameraSelfie'): mit dem Freund, wenn er da ist (o.solo: allein)
   async _a2CameraSelfie(o = {}) {
-    const lv = this._a2Lv('camera');
-    if (lv < 2 || (!this._a2CameraWeather() && !this._forced && !o.short)) return;
-    const gold = !!o.gold || (lv >= 3 && this._a2GoldOk('camera', CAMERA_GOLD));
+    const gold = this._a2Gate('camera', o, CAMERA_GOLD, 2);
+    if (gold == null) return;
     let fr = o.solo ? null : this._a2CameraFriend();
     if (fr && !this._a2CameraSelfPlan(fr)) fr = null; // (kein Platz für beide: allein)
-    this._a2CameraBusy = true;
-    try {
+    return this._a2Busy('camera', async () => {
       if (fr) await this._withFriend((f, w) => this._a2CameraSelf(f, w, gold, o));
       else await this._a2CameraSelf(null, (ms) => this._wait(ms), gold, o);
-    } finally {
-      this._a2CameraBusy = false;
-      this._a2CameraEnd(true);
-    }
+    });
   }
 
   // Nach dem Auspacken (Hook): Stufe 1 gleich ein Foto, 2 das Selfie, 3 ein Foto im goldenen Rahmen
@@ -322,7 +312,6 @@ export class Album2Camera {
   // Holen und aufstellen: zum Bau, Kamera am Riemen ins Maul, zum Platz (x), absetzen; die Kamera steht bei cx, Linse
   // nach d. short (nach dem Auspacken) und Bewegung reduzieren: kein Holen, sie kommt neben ihm (ruhig: blendet ein)
   async _a2CameraSetUp(cx, d, x, short = false) {
-    const p = this._el.pika;
     const { hole, pW } = this._g;
     const calm = calmMotion();
     if (!short && !calm) {
@@ -330,18 +319,14 @@ export class Album2Camera {
       this._face(-1);
       this._say(pick(['Kamera holen!', 'wo ist sie…', 'Fotozeit!']), 1300);
       await this._wait(700);
-      p.classList.add('crouch');
-      await this._wait(260);
-      p.classList.remove('crouch');
+      await this._a2Duck(260);
       this._a2CameraCarry(true);
       await this._wait(300);
     }
     await this._walkTo(x, 1);
     this._face(cx >= this._x ? 1 : -1);
     if (this._a2CameraCarrying) {
-      p.classList.add('crouch');
-      await this._wait(260);
-      p.classList.remove('crouch');
+      await this._a2Duck(260);
       this._a2CameraCarry(false);
     }
     this._a2CameraMake(cx, d, !calm);
@@ -604,14 +589,12 @@ export class Album2Camera {
   // Maul weg (force: aus der eigenen Aktion. Sonst, mitten in ihr, aus Szene oder Aufräumen: nichts, sie räumt in
   // ihrem finally selbst auf; nur nach einem Abbruch gleich). now: sofort, ohne Ausblenden (Karte aus dem DOM)
   _a2CameraEnd(force = false, now = false) {
-    if (!force && this._a2CameraBusy && !this._ac?.signal?.aborted) return;
+    if (this._a2Held('camera', force)) return;
     if (this._a2CameraCarrying) this._a2CameraCarry(false);
     this._el.pika.classList.remove(...CAMERA_CLS);
     const S = this._a2CameraS;
     if (!S) return;
-    this._a2CameraS = null;
-    for (const t of S.t) clearTimeout(t);
-    for (const e of S.fx) e.remove();
+    this._a2Clear('camera', S);
     const ph = S.ph;
     if (ph) {
       if (now || !ph.isConnected) ph.remove();
@@ -622,10 +605,7 @@ export class Album2Camera {
     }
     const el = S.el;
     el.classList.remove('timer', 'glow', 'snap', 'a2pop');
-    if (!now && el.isConnected && this._a2Els?.get('camera') === el) {
-      el.classList.add('a2out');
-      setTimeout(() => !this._a2CameraS && this._a2Drop('camera'), 450);
-    } else this._a2Drop('camera');
+    this._a2Out('camera', el, !now);
   }
 
   _a2CameraCleanup() {

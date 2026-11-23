@@ -67,6 +67,9 @@
 // src/karte/pino.js, beides nimmt _cleanup ab). Wo es gerade ist (z. B. für einen Lichtschein in .fx): this._nosePos().
 // Was am Boden steht, während er es benutzt, ist ein Element aus _a2El oder ein Requisit (_aprop in
 // src/karte/beschaeftigungen-klein.js). Ein Test verbietet Kommentare im PIKA_SVG.
+// Gerüst (seit 0.49, unten): Ein Schatz, der nur für seinen Moment kommt, prüft mit _a2Gate (Stufe, Wetter, Gold),
+// läuft in _a2Busy (Merker this._a2<Key>Busy, danach _a2<Key>End(true)) und räumt in End mit _a2Held, _a2Clear und
+// _a2Out ab; Teilchen mit _a2Fx, Ducken mit _a2Duck, Takt mit _a2Frames/_a2Drive, Vögel mit _a2BirdEl/In/Out.
 //
 // Vorschau: die Knöpfe der Leiste „Album 2“ in preview.html entstehen aus dbg in den Daten ([Text, Aktion, Stufe]):
 // Der Schatz bekommt die Stufe, dann läuft die Aktion auf beiden Karten (Stufe 3 mit _dbgGold).
@@ -76,6 +79,7 @@ import { Cancel, rnd, clamp, pick, clearSpot } from '../logik/hilfen.js';
 import { goldDue } from '../logik/paeckchen.js';
 import { A2_KEYS, giftLvs2 } from '../logik/album2.js';
 import { A2_ITEMS } from '../grafik/album2.js';
+import { BIRD_SVG } from '../grafik/besucher.js';
 import { A2_PLATZHALTER } from '../grafik/album2/platzhalter.js';
 
 const cap = (k) => k[0].toUpperCase() + k.slice(1);
@@ -212,6 +216,154 @@ export class Album2 {
 
   _a2WxTurned(S, wetOk = false) {
     return !!S && !S.wx0 && this._a2WxBad(wetOk);
+  }
+
+  // Wetter, wie es die Entität meldet (temp, cond), die Vorschau mit _dbgWeather darüber
+  _a2Raw() {
+    return { ...(this._wxRaw || {}), ...(this._dbgWeather || {}) };
+  }
+
+  // Monat dieses Geräts (0–11, die Vorschau mit _dbgDate), auf der Südhalbkugel ein halbes Jahr versetzt: So gelten die
+  // Monate in den Daten der Schätze (mo) überall für dieselbe Jahreszeit
+  _a2Mon() {
+    const south = (this._hass?.config?.latitude ?? 50) < 0;
+    return (new Date(this._dbgDate ?? Date.now()).getMonth() + (south ? 6 : 0)) % 12;
+  }
+
+  // ---------- Gerüst der Aktionen (seit 0.49) ----------
+  // Ein Schatz, der nur für seinen Moment kommt, merkt sich, was steht, in this._a2<Key>S (mit Zeitgebern S.t,
+  // Teilchen S.fx, Takt S.raf) und in this._a2<Key>Busy, dass seine Aktion läuft; this._a2<Key>End(force) räumt ab.
+  // Die Teile hier tun nur, was bei allen gleich ist; was ein Schatz anders macht, steht weiter in seiner Datei.
+
+  // Darf die Aktion des Schatzes key jetzt? Stufe ab min und sein Wetter (Hook Weather; die Vorschau mit _forced und
+  // das Vorführen nach dem Auspacken mit o.short auch ohne). → ob golden mit Zugabe (o.gold, sonst Stufe 3 und
+  // _a2GoldOk mit R), null: nicht
+  _a2Gate(key, o, R = null, min = 1) {
+    const lv = this._a2Lv(key);
+    if (lv < min || (!this[`_a2${cap(key)}Weather`]() && !this._forced && !o.short)) return null;
+    return !!o.gold || (lv >= 3 && this._a2GoldOk(key, R));
+  }
+
+  // Die Aktion body mit dem Merker this._a2<Key>Busy (solange räumen Szene und Aufräumen nicht ab, außer nach einem
+  // Abbruch). Danach, auch nach einem Abbruch: Merker aus, dann end (ohne: this._a2<Key>End(true)). → was body gibt
+  async _a2Busy(key, body, end = null) {
+    const busy = `_a2${cap(key)}Busy`;
+    this[busy] = true;
+    try {
+      return await body();
+    } finally {
+      this[busy] = false;
+      if (end) end();
+      else this[`_a2${cap(key)}End`](true);
+    }
+  }
+
+  // Für _a2<Key>End: Läuft die eigene Aktion noch (ohne force, ohne Abbruch)? Dann wartet das Ende, ihr finally räumt
+  // selbst auf (aus Szene oder Aufräumen mitten in ihr)
+  _a2Held(key, force) {
+    return !force && !!this[`_a2${cap(key)}Busy`] && !this._ac?.signal?.aborted;
+  }
+
+  // Für _a2<Key>End: Zustand S vergessen, Takt (S.raf) und Zeitgeber (S.t) aus, Teilchen (S.fx) weg (fx false: die
+  // räumt der Schatz selbst)
+  _a2Clear(key, S, fx = true) {
+    this[`_a2${cap(key)}S`] = null;
+    if (S.raf && typeof cancelAnimationFrame === 'function') cancelAnimationFrame(S.raf);
+    for (const t of S.t) clearTimeout(t);
+    if (fx && S.fx) for (const e of S.fx) e.remove();
+  }
+
+  // Für _a2<Key>End: das Element el des Schatzes ausblenden (.a2out) und nach 450 ms weg, wenn bis dahin kein neuer
+  // Zustand da ist. Ohne fade, nicht mehr in der Szene oder nicht mehr seins: gleich weg
+  _a2Out(key, el, fade = true) {
+    if (fade && el.isConnected && this._a2Els?.get(key) === el) {
+      el.classList.add('a2out');
+      setTimeout(() => !this[`_a2${cap(key)}S`] && this._a2Drop(key), 450);
+    } else this._a2Drop(key);
+  }
+
+  // Takt für den Zustand S des Schatzes key (Schlitten, Trampolin): Bild für Bild erst der laufende Abschnitt (S.drive,
+  // _a2Drive), dann draw(); weiter, solange more() gilt und S noch sein Zustand ist. Ein Fehler beendet den Takt
+  // (_err). Ohne requestAnimationFrame (Tests, verborgene Karte) nichts: _a2Drive stellt jeden Abschnitt am Ende selbst.
+  _a2Frames(key, S, draw, more) {
+    if (!S || S.raf || typeof requestAnimationFrame !== 'function') return;
+    const frame = (t) => {
+      if (this[`_a2${cap(key)}S`] !== S) return;
+      S.raf = 0;
+      try {
+        if (S.drive) S.drive.step(clamp((t - S.drive.t0) / S.drive.ms, 0, 1));
+        draw();
+      } catch (e) {
+        this._err?.(`Album 2 ${key}`, e);
+        return;
+      }
+      if (more()) S.raf = requestAnimationFrame(frame);
+    };
+    S.raf = requestAnimationFrame(frame);
+  }
+
+  // Ein Abschnitt von ms Dauer im Takt: step(f) mit f von 0 bis 1 stellt alles, am Ende gilt step(1) sicher. run
+  // startet den Takt (_a2Frames), draw stellt zum Schluss
+  async _a2Drive(S, ms, step, run, draw) {
+    if (!S) return;
+    S.drive = { t0: typeof performance !== 'undefined' ? performance.now() : Date.now(), ms, step };
+    run();
+    step(0);
+    try {
+      await this._wait(ms);
+    } finally {
+      if (S.drive?.step === step) S.drive = null;
+    }
+    step(1);
+    draw();
+  }
+
+  // Kurz ducken (aufheben, absetzen, Anlauf): crouch für ms, gewartet mit w (mit dem Freund: dessen w). Bricht das
+  // Warten ab, bleibt crouch stehen wie zuvor (_cleanup nimmt es)
+  async _a2Duck(ms, w = null) {
+    const p = this._el.pika;
+    p.classList.add('crouch');
+    await (w ? w(ms) : this._wait(ms));
+    p.classList.remove('crouch');
+  }
+
+  // Ein Vogel der Schätze (Vogelhäuschen, Radio; Farben v aus BIRDS) für .birds bei x, y in der Ebene z, mit der
+  // Klasse cls; ohne reduzierte Bewegung fliegt er an (.flying). → das Element
+  _a2BirdEl(v, cls, x, y, z) {
+    const el = document.createElement('div');
+    el.className = `bird ${cls}${calmMotion() ? '' : ' flying'}`;
+    el.innerHTML = `<div class="bw" role="button" aria-label="${v.name}"><div class="bf"><div class="bb">${BIRD_SVG(v)}</div></div></div>`;
+    el.style.left = `${x.toFixed(1)}px`;
+    el.style.top = `${y.toFixed(1)}px`;
+    el.style.zIndex = String(z);
+    return el;
+  }
+
+  // Sein Anflug: von dx, dy (px) schräg oben auf seinen Platz, dur ms. → die Animation
+  _a2BirdIn(el, dx, dy, dur) {
+    return el.animate?.([
+      { transform: `translate(${dx.toFixed(1)}px, ${dy.toFixed(1)}px)` },
+      { transform: `translate(${(dx * 0.4).toFixed(1)}px, ${(dy * 0.3).toFixed(1)}px)`, offset: 0.55 },
+      { transform: `translate(${(dx * 0.08).toFixed(1)}px, ${(-this._H * 0.04).toFixed(1)}px)`, offset: 0.88 },
+      { transform: 'translate(0, 0)' },
+    ], { duration: dur, easing: 'ease-out' });
+  }
+
+  // Sein Abflug von der Höhe y zur Seite out (±1) über den Rand, dur ms
+  _a2BirdOut(el, out, y, dur) {
+    el.animate([
+      { transform: 'translate(0, 0)' },
+      { transform: `translate(${(out * this._W * 0.06).toFixed(1)}px, ${(-this._H * 0.07).toFixed(1)}px)`, offset: 0.25 },
+      { transform: `translate(${(out * this._W * 0.55).toFixed(1)}px, ${(-y - this._H * 0.2).toFixed(1)}px)` },
+    ], { duration: dur, easing: 'ease-in', fill: 'forwards' });
+  }
+
+  // Ein Teilchen el in .fx, das zum Zustand S gehört: nach ms weg, sonst mit S (_a2Clear). → el
+  _a2Fx(S, el, ms) {
+    this._el.fx.appendChild(el);
+    S.fx.add(el);
+    S.t.push(setTimeout(() => (el.remove(), S.fx.delete(el)), ms));
+    return el;
   }
 
   // Szene: jeder Schatz zieht seine nach (Hook Scene), dann golden markieren

@@ -2,6 +2,22 @@
 
 Jede Version der Pika Pet Card, die neueste zuerst.
 
+## 0.49.0 (2026-11-23)
+
+Aufräumen in Album 2: Was die acht Schätze bisher je für sich gleich machten, steht jetzt einmal in `src/karte/album2.js`. Das Verhalten bleibt, bis auf einen behobenen Fehler bei der Laterne. Am Format von Tagesplan und Zustand ändert sich nichts.
+
+**Behoben**
+
+- **Laterne:** Wechselte man das Dashboard, während er mit Schlitten oder Vogelhäuschen beschäftigt war und die Laterne am Boden brannte, blieb ihr Lichtschein ohne Laterne in der Szene liegen, jedes Mal einer mehr (schon bis 0.48.1).
+
+**Für Entwickler**
+
+- **Gerüst der Aktionen:** `_a2Gate(key, o, R, min)` prüft Stufe und Wetter (außer bei Vorschau-Knöpfen und nach dem Auspacken) und sagt, ob es golden wird; `_a2Busy(key, body, end)` setzt den Merker `_a2<Key>Busy` und ruft danach `_a2<Key>End(true)` (oder `end`).
+- **Ende einer Aktion:** `_a2Held` (läuft die eigene Aktion noch, räumt sie selbst auf), `_a2Clear` (Zustand, Zeitgeber, Teilchen, Takt weg) und `_a2Out` (ausblenden, dann weg). Die Reihenfolge, in der jeder Schatz seine Klassen, sein Getragenes und seine Stücke abnimmt, bleibt in seiner Datei.
+- **Kleine Helfer:** `_a2Fx` (Teilchen), `_a2Duck` (kurz ducken), `_a2Frames`/`_a2Drive` (Takt von Schlitten und Trampolin), `_a2BirdEl`/`_a2BirdIn`/`_a2BirdOut` (die Vögel von Vogelhäuschen und Radio), `_a2Mon` (Monat, auch auf der Südhalbkugel) und `_a2Raw` (Wetter der Entität, in der Vorschau das eingestellte).
+- Hooks, Aktionsnamen und Felder bleiben, wie sie waren. Netto gut 75 Zeilen weniger.
+- **Geprüft:** Vor und nach dem Umbau dasselbe Raster (224 532 Kombinationen aus Stufe, Wetter, Wind, Temperatur, Tageszeit, Monat und Halbkugel für Wahl und Wetterprüfung; 30 744 Abläufe aller 16 Aktionen, des Auspackens und des Abendrituals, mit Abbruch, Dashboard-Wechsel, Tipp und Größenänderung an jeder Wartestelle): byte-gleich. 553 Tests, neu einer in `test/album2-laterne.test.mjs`.
+
 ## 0.48.1 (2026-11-23)
 
 Nachbesserung aus dem Abschluss-Audit von Album 2: Beim gleichzeitigen Wiederverbinden geht kein Päckchen mehr verloren, die acht Schätze nehmen in der Szene Rücksicht und kommen seltener, und im Abendritual pustet er die Laterne aus. Am Format von Tagesplan und Zustand ändert sich nichts.

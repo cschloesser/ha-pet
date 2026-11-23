@@ -171,41 +171,20 @@ export class Album2Sled {
   // Schlitten folgen der Nase); Drive und Hold starten den Takt wieder. Die Nase wird je Bild einmal gelesen (S.fm).
   _a2SledRun() {
     const S = this._a2SledS;
-    if (!S || S.raf || typeof requestAnimationFrame !== 'function') return;
-    const frame = (now) => {
-      if (this._a2SledS !== S) return;
-      S.raf = 0;
+    this._a2Frames('sled', S, () => {
       try {
-        if (S.drive) S.drive.step(clamp((now - S.drive.t0) / S.drive.ms, 0, 1));
         S.fm = S.line ? this._a2SledMouth() : null;
         if (S.tow) this._a2SledTow();
         this._a2SledPlace();
-      } catch (e) {
-        this._err?.('Album 2 sled', e);
-        return;
       } finally {
         S.fm = null;
       }
-      if (S.drive || S.line) S.raf = requestAnimationFrame(frame);
-    };
-    S.raf = requestAnimationFrame(frame);
+    }, () => S.drive || S.line);
   }
 
   // Ein Abschnitt von ms Dauer: step(f) mit f von 0 bis 1 stellt alles; am Ende gilt step(1) sicher
-  async _a2SledDrive(ms, step) {
-    const S = this._a2SledS;
-    if (!S) return;
-    const t0 = typeof performance !== 'undefined' ? performance.now() : Date.now();
-    S.drive = { t0, ms, step };
-    this._a2SledRun();
-    step(0);
-    try {
-      await this._wait(ms);
-    } finally {
-      if (S.drive?.step === step) S.drive = null;
-    }
-    step(1);
-    this._a2SledPlace();
+  _a2SledDrive(ms, step) {
+    return this._a2Drive(this._a2SledS, ms, step, () => this._a2SledRun(), () => this._a2SledPlace());
   }
 
   // Das Seil zieht: Wird es länger als SLED_ROPE, rutscht der Schlitten nach (nur gezogen, nie geschoben)
@@ -305,11 +284,9 @@ export class Album2Sled {
   }
 
   async _a2SledGo(mode, o) {
-    const lv = this._a2Lv('sled');
-    if (!lv || (!this._a2SledWeather() && !this._forced && !o.short)) return;
-    const gold = !!o.gold || (lv >= 3 && this._a2GoldOk('sled'));
-    this._a2SledBusy = true;
-    try {
+    const gold = this._a2Gate('sled', o);
+    if (gold == null) return;
+    return this._a2Busy('sled', async () => {
       // (der Freund steht nicht auf der Wehe und nicht dort, wo der Schlitten ausrollt und er absteigt; wie xEnd in
       // _a2SledRide, Bauchrutscher)
       const { rock, pW, hayR } = this._g;
@@ -317,10 +294,7 @@ export class Album2Sled {
       await this._a2FrAside(end - pW * 0.4, rock.cx + rock.ku * 4 + pW * 0.2);
       if (calmMotion()) await this._a2SledCalm(mode, gold, o);
       else await this._a2SledRide(mode, gold, o);
-    } finally {
-      this._a2SledBusy = false;
-      this._a2SledEnd(true);
-    }
+    });
   }
 
   // Holen: zum Bau, der Schlitten ploppt vor dem Eingang auf, Seil ins Maul. short: gleich neben ihm, erst links vor
@@ -346,9 +320,7 @@ export class Album2Sled {
       await this._wait(800);
       this._face(1);
     }
-    this._el.pika.classList.add('crouch');
-    await this._wait(260);
-    this._el.pika.classList.remove('crouch');
+    await this._a2Duck(260);
     this._a2SledHold(true);
     await this._wait(200);
   }
@@ -517,9 +489,8 @@ export class Album2Sled {
   // Sonst nur zeigen: Der Schlitten kommt neben ihn, er setzt sich kurz hinein, schaut sich um und vertröstet.
   async _a2SledStow(lv) {
     if (this._a2SledWeather()) return lv === 2 ? this._a2SledBelly({ short: true }) : this._a2SledPlay({ short: true, gold: lv >= 3 });
-    this._a2SledBusy = true;
     const p = this._el.pika;
-    try {
+    return this._a2Busy('sled', async () => {
       const { pW, hole, xR } = this._g;
       // neben ihm, aber nicht vor der Tür des Baus, der Laterne, der Festdeko oder sonst etwas am Boden (_a2Free, seit
       // 0.48.1); steht er selbst davor, geht er erst ein Stück
@@ -564,10 +535,7 @@ export class Album2Sled {
       this._say(snow ? pick(['bald!', 'im Schnee!']) : pick(['wenn\'s schneit!', 'bald!', 'im Schnee!']), 1300);
       this._happy(1000);
       await this._wait(1400);
-    } finally {
-      this._a2SledBusy = false;
-      this._a2SledEnd(true);
-    }
+    });
   }
 
   // ---------- Schnee und Funken ----------
@@ -584,9 +552,7 @@ export class Album2Sled {
       el.style.left = `${(x + side * rnd(0, H * 0.03)).toFixed(1)}px`;
       el.style.top = `${(y - H * 0.03).toFixed(1)}px`;
       el.style.setProperty('--px', `${(side * H * (0.03 + v * 0.05) * rnd(0.6, 1)).toFixed(1)}px`);
-      this._el.fx.appendChild(el);
-      S.fx.add(el);
-      S.t.push(setTimeout(() => (el.remove(), S.fx.delete(el)), 650));
+      this._a2Fx(S, el, 650);
     }
   }
 
@@ -600,9 +566,7 @@ export class Album2Sled {
     el.style.left = `${(x + rnd(-3, 3)).toFixed(1)}px`;
     el.style.top = `${(y + rnd(-3, 3)).toFixed(1)}px`;
     el.style.setProperty('--sk', rnd(0.6, 1.1).toFixed(2));
-    this._el.fx.appendChild(el);
-    S.fx.add(el);
-    S.t.push(setTimeout(() => (el.remove(), S.fx.delete(el)), 1300));
+    this._a2Fx(S, el, 1300);
   }
 
   // ---------- Hooks: Tipp, Aufräumen, Abhängen ----------
@@ -631,12 +595,8 @@ export class Album2Sled {
   // selbst auf; nur nach einem Abbruch gleich)
   _a2SledEnd(force = false) {
     const S = this._a2SledS;
-    if (!S) return;
-    if (!force && this._a2SledBusy && !this._ac?.signal?.aborted) return;
-    this._a2SledS = null;
-    if (S.raf && typeof cancelAnimationFrame === 'function') cancelAnimationFrame(S.raf);
-    for (const t of S.t) clearTimeout(t);
-    for (const el of S.fx) el.remove();
+    if (!S || this._a2Held('sled', force)) return;
+    this._a2Clear('sled', S);
     S.rope.remove();
     const p = this._el.pika;
     p.classList.remove(...SLED_CLS);
@@ -655,11 +615,7 @@ export class Album2Sled {
       this._apropsAway(S.drift);
       this._a2Scene(); // (das Vogelhäuschen wieder an seinen Platz)
     }
-    const el = S.el;
-    if (el.isConnected && !calmMotion() && this._a2Els?.get('sled') === el) {
-      el.classList.add('a2out');
-      setTimeout(() => !this._a2SledS && this._a2Drop('sled'), 450);
-    } else this._a2Drop('sled');
+    this._a2Out('sled', S.el, !calmMotion());
   }
 
   _a2SledCleanup() {

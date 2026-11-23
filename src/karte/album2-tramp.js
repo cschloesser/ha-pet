@@ -136,36 +136,12 @@ export class Album2Tramp {
   // etwas bewegt (ein Abschnitt läuft oder das Tuch federt nach einem Tipp); Drive und Tipp starten den Takt wieder.
   _a2TrampRun() {
     const S = this._a2TrampS;
-    if (!S || S.raf || typeof requestAnimationFrame !== 'function') return;
-    const frame = (t) => {
-      if (this._a2TrampS !== S) return;
-      S.raf = 0;
-      try {
-        if (S.drive) S.drive.step(clamp((t - S.drive.t0) / S.drive.ms, 0, 1));
-        this._a2TrampPlace();
-      } catch (e) {
-        this._err?.('Album 2 tramp', e);
-        return;
-      }
-      if (S.drive || S.spring) S.raf = requestAnimationFrame(frame);
-    };
-    S.raf = requestAnimationFrame(frame);
+    this._a2Frames('tramp', S, () => this._a2TrampPlace(), () => S.drive || S.spring);
   }
 
   // Ein Abschnitt von ms Dauer: step(f) mit f von 0 bis 1 stellt alles; am Ende gilt step(1) sicher
-  async _a2TrampDrive(ms, step) {
-    const S = this._a2TrampS;
-    if (!S) return;
-    S.drive = { t0: now(), ms, step };
-    this._a2TrampRun();
-    step(0);
-    try {
-      await this._wait(ms);
-    } finally {
-      if (S.drive?.step === step) S.drive = null;
-    }
-    step(1);
-    this._a2TrampPlace();
+  _a2TrampDrive(ms, step) {
+    return this._a2Drive(this._a2TrampS, ms, step, () => this._a2TrampRun(), () => this._a2TrampPlace());
   }
 
   // Wie weit das Tuch gerade nachfedert (nach einem Tipp): gedämpfte Schwingung, ruhig nur ein sanftes Nachgeben
@@ -263,19 +239,14 @@ export class Album2Tramp {
   }
 
   async _a2TrampGo(flip, o) {
-    const lv = this._a2Lv('tramp');
-    if (!lv || (!this._a2TrampWeather() && !this._forced && !o.short)) return;
-    const gold = !!o.gold || (lv >= 3 && this._a2GoldOk('tramp', TRAMP_GOLD));
-    this._a2TrampBusy = true;
-    try {
+    const gold = this._a2Gate('tramp', o, TRAMP_GOLD);
+    if (gold == null) return;
+    return this._a2Busy('tramp', async () => {
       await this._a2TrampOut();
       if (calmMotion()) await this._a2TrampCalm(flip, gold);
       else await this._a2TrampJump(flip, gold, o);
       await this._a2TrampAway();
-    } finally {
-      this._a2TrampBusy = false;
-      this._a2TrampEnd(true);
-    }
+    });
   }
 
   // Holen: neben die Stelle, es liegt zusammengeklappt da, er klappt es auf (bzw. es blendet ein). Er steht auf der
@@ -317,11 +288,7 @@ export class Album2Tramp {
     S.from = this._x;
     const calm = calmMotion();
     const ms = calm ? 700 : 560;
-    if (!calm) {
-      p.classList.add('crouch');
-      await this._wait(180);
-      p.classList.remove('crouch');
-    }
+    if (!calm) await this._a2Duck(180);
     p.style.transition = `transform ${ms}ms ${calm ? 'ease-in-out' : 'linear'}`;
     this._setX(S.x);
     this._a2TrampCtl(true);
@@ -475,9 +442,8 @@ export class Album2Tramp {
   // Sternchen). Sonst nur zeigen: Es klappt neben ihm auf, er drückt mit den Pfoten aufs Tuch, es federt, er vertröstet.
   async _a2TrampStow(lv) {
     if (this._a2TrampWeather()) return lv === 2 ? this._a2TrampFlip({ short: true }) : this._a2TrampPlay({ short: true, gold: lv >= 3 });
-    this._a2TrampBusy = true;
     const p = this._el.pika;
-    try {
+    return this._a2Busy('tramp', async () => {
       const S = await this._a2TrampOut();
       if (lv >= 3) this._a2TrampStars(-1);
       this._say(lv >= 3 ? pick(['goldig!', 'das glänzt!']) : lv === 2 ? pick(['für den Salto!', 'damit geht ein Salto!']) : pick(['zum Hüpfen!', 'ein Trampolin!']), 1300);
@@ -494,10 +460,7 @@ export class Album2Tramp {
       this._happy(1000);
       await this._wait(700);
       if (S) await this._a2TrampAway();
-    } finally {
-      this._a2TrampBusy = false;
-      this._a2TrampEnd(true);
-    }
+    });
   }
 
   // ---------- Sternchen ----------
@@ -552,11 +515,8 @@ export class Album2Tramp {
   // selbst auf; nur nach einem Abbruch gleich)
   _a2TrampEnd(force = false) {
     const S = this._a2TrampS;
-    if (!S) return;
-    if (!force && this._a2TrampBusy && !this._ac?.signal?.aborted) return;
-    this._a2TrampS = null;
-    if (S.raf && typeof cancelAnimationFrame === 'function') cancelAnimationFrame(S.raf);
-    for (const t of S.t) clearTimeout(t);
+    if (!S || this._a2Held('tramp', force)) return;
+    this._a2Clear('tramp', S);
     this._goldDrop?.(S.F);
     const p = this._el.pika;
     if (S.ctl) {

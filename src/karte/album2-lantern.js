@@ -117,6 +117,7 @@ export class Album2Lantern {
   _a2LanternGlowAt(x, y, mv) {
     let g = this._a2LanternGlow;
     if (!g || !g.isConnected) {
+      g?.remove(); // (Karte abgehängt: Er liegt noch in .fx und bliebe sonst dort)
       g = document.createElement('span');
       g.className = 'a2lglow';
       g.innerHTML = '<i class="a2lh"></i>';
@@ -337,9 +338,8 @@ export class Album2Lantern {
   // stellen, kurz daneben sitzen. o: { hold: hat sie schon im Maul (Auspacken), short: kurz, gold: Glühwürmchen sicher }
   async _a2LanternPlay(o = {}) {
     if (!this._a2Lv('lantern')) return;
-    this._a2LanternBusy = true;
     const p = this._el.pika;
-    try {
+    return this._a2Busy('lantern', async () => {
       if (o.hold) this._a2LanternHold(true);
       else await this._a2LanternFetch();
       if (this._wx?.wet) return await this._a2LanternWet();
@@ -370,10 +370,7 @@ export class Album2Lantern {
       this._happy(1000);
       await this._wait(o.short ? 900 : rnd(1500, 2400));
       p.classList.remove('content');
-    } finally {
-      this._a2LanternBusy = false;
-      this._a2LanternDropHere();
-    }
+    }, () => this._a2LanternDropHere());
   }
 
   // Stufe 2, der Trick (Aktion 'a2LanternRun'): Laternenlauf. Er trägt sie eine Runde über die Wiese und lässt sie
@@ -381,10 +378,9 @@ export class Album2Lantern {
   // (Hüpfer), dann stellt er sie neben den Bau. o wie bei _a2LanternPlay.
   async _a2LanternRun(o = {}) {
     if (this._a2Lv('lantern') < 2) return;
-    this._a2LanternBusy = true;
     const p = this._el.pika;
     const calm = calmMotion();
-    try {
+    return this._a2Busy('lantern', async () => {
       if (o.hold) this._a2LanternHold(true);
       else await this._a2LanternFetch();
       if (this._wx?.wet) return await this._a2LanternWet();
@@ -433,11 +429,10 @@ export class Album2Lantern {
       p.classList.add('content');
       await this._wait(o.short ? 800 : rnd(1300, 2000));
       p.classList.remove('content');
-    } finally {
-      this._a2LanternBusy = false;
+    }, () => {
       p.classList.remove('a2lsw', 'a2lbig');
       this._a2LanternDropHere();
-    }
+    });
   }
 
   // Nach dem Auspacken (Hook): Das Bild ist beim Pika verblasst, er hat sie schon im Maul. Stufe 1 die Runde kurz, 2 der

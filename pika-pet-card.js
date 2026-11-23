@@ -61,7 +61,7 @@
  */
 (() => {
   // src/version.js
-  var VERSION = "0.48.1";
+  var VERSION = "0.49.0";
 
   // src/logik/hilfen.js
   var Cancel = class extends Error {
@@ -25977,6 +25977,139 @@
     _a2WxTurned(S, wetOk = false) {
       return !!S && !S.wx0 && this._a2WxBad(wetOk);
     }
+    // Wetter, wie es die Entität meldet (temp, cond), die Vorschau mit _dbgWeather darüber
+    _a2Raw() {
+      return { ...this._wxRaw || {}, ...this._dbgWeather || {} };
+    }
+    // Monat dieses Geräts (0–11, die Vorschau mit _dbgDate), auf der Südhalbkugel ein halbes Jahr versetzt: So gelten die
+    // Monate in den Daten der Schätze (mo) überall für dieselbe Jahreszeit
+    _a2Mon() {
+      const south = (this._hass?.config?.latitude ?? 50) < 0;
+      return (new Date(this._dbgDate ?? Date.now()).getMonth() + (south ? 6 : 0)) % 12;
+    }
+    // ---------- Gerüst der Aktionen (seit 0.49) ----------
+    // Ein Schatz, der nur für seinen Moment kommt, merkt sich, was steht, in this._a2<Key>S (mit Zeitgebern S.t,
+    // Teilchen S.fx, Takt S.raf) und in this._a2<Key>Busy, dass seine Aktion läuft; this._a2<Key>End(force) räumt ab.
+    // Die Teile hier tun nur, was bei allen gleich ist; was ein Schatz anders macht, steht weiter in seiner Datei.
+    // Darf die Aktion des Schatzes key jetzt? Stufe ab min und sein Wetter (Hook Weather; die Vorschau mit _forced und
+    // das Vorführen nach dem Auspacken mit o.short auch ohne). → ob golden mit Zugabe (o.gold, sonst Stufe 3 und
+    // _a2GoldOk mit R), null: nicht
+    _a2Gate(key, o, R2 = null, min = 1) {
+      const lv = this._a2Lv(key);
+      if (lv < min || !this[`_a2${cap(key)}Weather`]() && !this._forced && !o.short) return null;
+      return !!o.gold || lv >= 3 && this._a2GoldOk(key, R2);
+    }
+    // Die Aktion body mit dem Merker this._a2<Key>Busy (solange räumen Szene und Aufräumen nicht ab, außer nach einem
+    // Abbruch). Danach, auch nach einem Abbruch: Merker aus, dann end (ohne: this._a2<Key>End(true)). → was body gibt
+    async _a2Busy(key, body2, end = null) {
+      const busy = `_a2${cap(key)}Busy`;
+      this[busy] = true;
+      try {
+        return await body2();
+      } finally {
+        this[busy] = false;
+        if (end) end();
+        else this[`_a2${cap(key)}End`](true);
+      }
+    }
+    // Für _a2<Key>End: Läuft die eigene Aktion noch (ohne force, ohne Abbruch)? Dann wartet das Ende, ihr finally räumt
+    // selbst auf (aus Szene oder Aufräumen mitten in ihr)
+    _a2Held(key, force) {
+      return !force && !!this[`_a2${cap(key)}Busy`] && !this._ac?.signal?.aborted;
+    }
+    // Für _a2<Key>End: Zustand S vergessen, Takt (S.raf) und Zeitgeber (S.t) aus, Teilchen (S.fx) weg (fx false: die
+    // räumt der Schatz selbst)
+    _a2Clear(key, S, fx = true) {
+      this[`_a2${cap(key)}S`] = null;
+      if (S.raf && typeof cancelAnimationFrame === "function") cancelAnimationFrame(S.raf);
+      for (const t of S.t) clearTimeout(t);
+      if (fx && S.fx) for (const e of S.fx) e.remove();
+    }
+    // Für _a2<Key>End: das Element el des Schatzes ausblenden (.a2out) und nach 450 ms weg, wenn bis dahin kein neuer
+    // Zustand da ist. Ohne fade, nicht mehr in der Szene oder nicht mehr seins: gleich weg
+    _a2Out(key, el, fade = true) {
+      if (fade && el.isConnected && this._a2Els?.get(key) === el) {
+        el.classList.add("a2out");
+        setTimeout(() => !this[`_a2${cap(key)}S`] && this._a2Drop(key), 450);
+      } else this._a2Drop(key);
+    }
+    // Takt für den Zustand S des Schatzes key (Schlitten, Trampolin): Bild für Bild erst der laufende Abschnitt (S.drive,
+    // _a2Drive), dann draw(); weiter, solange more() gilt und S noch sein Zustand ist. Ein Fehler beendet den Takt
+    // (_err). Ohne requestAnimationFrame (Tests, verborgene Karte) nichts: _a2Drive stellt jeden Abschnitt am Ende selbst.
+    _a2Frames(key, S, draw, more) {
+      if (!S || S.raf || typeof requestAnimationFrame !== "function") return;
+      const frame = (t) => {
+        if (this[`_a2${cap(key)}S`] !== S) return;
+        S.raf = 0;
+        try {
+          if (S.drive) S.drive.step(clamp((t - S.drive.t0) / S.drive.ms, 0, 1));
+          draw();
+        } catch (e) {
+          this._err?.(`Album 2 ${key}`, e);
+          return;
+        }
+        if (more()) S.raf = requestAnimationFrame(frame);
+      };
+      S.raf = requestAnimationFrame(frame);
+    }
+    // Ein Abschnitt von ms Dauer im Takt: step(f) mit f von 0 bis 1 stellt alles, am Ende gilt step(1) sicher. run
+    // startet den Takt (_a2Frames), draw stellt zum Schluss
+    async _a2Drive(S, ms, step, run, draw) {
+      if (!S) return;
+      S.drive = { t0: typeof performance !== "undefined" ? performance.now() : Date.now(), ms, step };
+      run();
+      step(0);
+      try {
+        await this._wait(ms);
+      } finally {
+        if (S.drive?.step === step) S.drive = null;
+      }
+      step(1);
+      draw();
+    }
+    // Kurz ducken (aufheben, absetzen, Anlauf): crouch für ms, gewartet mit w (mit dem Freund: dessen w). Bricht das
+    // Warten ab, bleibt crouch stehen wie zuvor (_cleanup nimmt es)
+    async _a2Duck(ms, w = null) {
+      const p = this._el.pika;
+      p.classList.add("crouch");
+      await (w ? w(ms) : this._wait(ms));
+      p.classList.remove("crouch");
+    }
+    // Ein Vogel der Schätze (Vogelhäuschen, Radio; Farben v aus BIRDS) für .birds bei x, y in der Ebene z, mit der
+    // Klasse cls; ohne reduzierte Bewegung fliegt er an (.flying). → das Element
+    _a2BirdEl(v, cls, x, y, z) {
+      const el = document.createElement("div");
+      el.className = `bird ${cls}${calmMotion() ? "" : " flying"}`;
+      el.innerHTML = `<div class="bw" role="button" aria-label="${v.name}"><div class="bf"><div class="bb">${BIRD_SVG(v)}</div></div></div>`;
+      el.style.left = `${x.toFixed(1)}px`;
+      el.style.top = `${y.toFixed(1)}px`;
+      el.style.zIndex = String(z);
+      return el;
+    }
+    // Sein Anflug: von dx, dy (px) schräg oben auf seinen Platz, dur ms. → die Animation
+    _a2BirdIn(el, dx, dy, dur) {
+      return el.animate?.([
+        { transform: `translate(${dx.toFixed(1)}px, ${dy.toFixed(1)}px)` },
+        { transform: `translate(${(dx * 0.4).toFixed(1)}px, ${(dy * 0.3).toFixed(1)}px)`, offset: 0.55 },
+        { transform: `translate(${(dx * 0.08).toFixed(1)}px, ${(-this._H * 0.04).toFixed(1)}px)`, offset: 0.88 },
+        { transform: "translate(0, 0)" }
+      ], { duration: dur, easing: "ease-out" });
+    }
+    // Sein Abflug von der Höhe y zur Seite out (±1) über den Rand, dur ms
+    _a2BirdOut(el, out, y, dur) {
+      el.animate([
+        { transform: "translate(0, 0)" },
+        { transform: `translate(${(out * this._W * 0.06).toFixed(1)}px, ${(-this._H * 0.07).toFixed(1)}px)`, offset: 0.25 },
+        { transform: `translate(${(out * this._W * 0.55).toFixed(1)}px, ${(-y - this._H * 0.2).toFixed(1)}px)` }
+      ], { duration: dur, easing: "ease-in", fill: "forwards" });
+    }
+    // Ein Teilchen el in .fx, das zum Zustand S gehört: nach ms weg, sonst mit S (_a2Clear). → el
+    _a2Fx(S, el, ms) {
+      this._el.fx.appendChild(el);
+      S.fx.add(el);
+      S.t.push(setTimeout(() => (el.remove(), S.fx.delete(el)), ms));
+      return el;
+    }
     // Szene: jeder Schatz zieht seine nach (Hook Scene), dann golden markieren
     _a2Scene() {
       if (!this._el || !this._g) return;
@@ -26229,8 +26362,7 @@
       return [[w, "a2FeederPlay"], [lv >= 2 ? w * 0.5 : 0, "a2FeederFill"]];
     }
     _a2FeederWinter() {
-      const south = (this._hass?.config?.latitude ?? 50) < 0;
-      const mo = (new Date(this._dbgDate ?? Date.now()).getMonth() + (south ? 6 : 0)) % 12;
+      const mo = this._a2Mon();
       return mo >= 10 || mo <= 1 || !!this._wx?.snowcover;
     }
     // Wo er zuschaut: links vom Häuschen mit Abstand (so sieht man es), auf schmalen Karten so weit es geht
@@ -26245,17 +26377,13 @@
     // o: { n: so viele Vögel, gimpel: der Gimpel kommt sicher, short: kurz (nach dem Auspacken) }
     async _a2FeederPlay(o = {}) {
       if (!this._a2Lv("feeder")) return;
-      this._a2FeederBusy = true;
-      try {
+      return this._a2Busy("feeder", async () => {
         this._a2FeederShow();
         await this._a2FeederAside();
         await this._a2FeederGo();
         await this._wait(300);
         await this._a2FeederWatch(o);
-      } finally {
-        this._a2FeederBusy = false;
-        this._a2FeederEnd();
-      }
+      }, () => this._a2FeederEnd());
     }
     // Zuschauen (er steht schon da): Vögel kommen nacheinander, der Gimpel (golden) zuletzt aufs Dach
     async _a2FeederWatch(o = {}) {
@@ -26304,10 +26432,9 @@
     // die Vögel
     async _a2FeederFill() {
       if (this._a2Lv("feeder") < 2) return;
-      this._a2FeederBusy = true;
       const p = this._el.pika;
       let el = null;
-      try {
+      return this._a2Busy("feeder", async () => {
         this._a2FeederShow();
         await this._a2FeederAside();
         el = this._a2Els?.get("feeder");
@@ -26333,11 +26460,10 @@
         await this._wait(500);
         await this._a2FeederGo();
         await this._a2FeederWatch({ n: 2 });
-      } finally {
+      }, () => {
         el?.classList.remove("leer", "fill");
-        this._a2FeederBusy = false;
         this._a2FeederEnd();
-      }
+      });
     }
     // Nach dem Auspacken (Hook): Stufe 1 ein Vogel kommt gleich, 2 der Trick, 3 der Gimpel
     async _a2FeederStow(lv) {
@@ -26355,12 +26481,7 @@
       const x = F.left + fx * F.w;
       const y = F.top + fy * F.h;
       const calm = calmMotion();
-      const el = document.createElement("div");
-      el.className = `bird a2b${calm ? "" : " flying"}`;
-      el.innerHTML = `<div class="bw" role="button" aria-label="${v.name}"><div class="bf"><div class="bb">${BIRD_SVG(v)}</div></div></div>`;
-      el.style.left = `${x.toFixed(1)}px`;
-      el.style.top = `${y.toFixed(1)}px`;
-      el.style.zIndex = String(FEEDER_BZ());
+      const el = this._a2BirdEl(v, "a2b", x, y, FEEDER_BZ());
       const b = { el, x, y, dir: 1, sitting: false, gone: false, roof: i === 2, t: null };
       el.querySelector(".bw").addEventListener("click", (e) => {
         e.stopPropagation();
@@ -26388,12 +26509,7 @@
         b.dir = -side;
         el.classList.toggle("left", b.dir < 0);
         const dur = rnd(1300, 1800);
-        b.fly = el.animate?.([
-          { transform: `translate(${dx.toFixed(1)}px, ${dy.toFixed(1)}px)` },
-          { transform: `translate(${(dx * 0.4).toFixed(1)}px, ${(dy * 0.3).toFixed(1)}px)`, offset: 0.55 },
-          { transform: `translate(${(dx * 0.08).toFixed(1)}px, ${(-this._H * 0.04).toFixed(1)}px)`, offset: 0.88 },
-          { transform: "translate(0, 0)" }
-        ], { duration: dur, easing: "ease-out" });
+        b.fly = this._a2BirdIn(el, dx, dy, dur);
         b.t = setTimeout(() => {
           b.fly = null;
           this._a2FeederFace(b, i === 0 ? 1 : i === 1 ? -1 : this._x >= x ? 1 : -1);
@@ -26453,11 +26569,7 @@
       const out = b.x > this._W / 2 ? 1 : -1;
       this._a2FeederFace(b, out);
       const dur = fast ? 800 : rnd(1100, 1500);
-      el.animate([
-        { transform: "translate(0, 0)" },
-        { transform: `translate(${(out * this._W * 0.06).toFixed(1)}px, ${(-this._H * 0.07).toFixed(1)}px)`, offset: 0.25 },
-        { transform: `translate(${(out * this._W * 0.55).toFixed(1)}px, ${(-b.y - this._H * 0.2).toFixed(1)}px)` }
-      ], { duration: dur, easing: "ease-in", fill: "forwards" });
+      this._a2BirdOut(el, out, b.y, dur);
       setTimeout(done, dur + 40);
     }
     // Alle Vögel am Häuschen fliegen weg
@@ -26626,6 +26738,7 @@
     _a2LanternGlowAt(x, y, mv) {
       let g = this._a2LanternGlow;
       if (!g || !g.isConnected) {
+        g?.remove();
         g = document.createElement("span");
         g.className = "a2lglow";
         g.innerHTML = '<i class="a2lh"></i>';
@@ -26827,9 +26940,8 @@
     // stellen, kurz daneben sitzen. o: { hold: hat sie schon im Maul (Auspacken), short: kurz, gold: Glühwürmchen sicher }
     async _a2LanternPlay(o = {}) {
       if (!this._a2Lv("lantern")) return;
-      this._a2LanternBusy = true;
       const p = this._el.pika;
-      try {
+      return this._a2Busy("lantern", async () => {
         if (o.hold) this._a2LanternHold(true);
         else await this._a2LanternFetch();
         if (this._wx?.wet) return await this._a2LanternWet();
@@ -26857,20 +26969,16 @@
         this._happy(1e3);
         await this._wait(o.short ? 900 : rnd(1500, 2400));
         p.classList.remove("content");
-      } finally {
-        this._a2LanternBusy = false;
-        this._a2LanternDropHere();
-      }
+      }, () => this._a2LanternDropHere());
     }
     // Stufe 2, der Trick (Aktion 'a2LanternRun'): Laternenlauf. Er trägt sie eine Runde über die Wiese und lässt sie
     // schwingen: mit depth vorn hin und auf der hinteren Spur zurück, ohne hin und zurück. Am Ende hält er sie hoch
     // (Hüpfer), dann stellt er sie neben den Bau. o wie bei _a2LanternPlay.
     async _a2LanternRun(o = {}) {
       if (this._a2Lv("lantern") < 2) return;
-      this._a2LanternBusy = true;
       const p = this._el.pika;
       const calm = calmMotion();
-      try {
+      return this._a2Busy("lantern", async () => {
         if (o.hold) this._a2LanternHold(true);
         else await this._a2LanternFetch();
         if (this._wx?.wet) return await this._a2LanternWet();
@@ -26914,11 +27022,10 @@
         p.classList.add("content");
         await this._wait(o.short ? 800 : rnd(1300, 2e3));
         p.classList.remove("content");
-      } finally {
-        this._a2LanternBusy = false;
+      }, () => {
         p.classList.remove("a2lsw", "a2lbig");
         this._a2LanternDropHere();
-      }
+      });
     }
     // Nach dem Auspacken (Hook): Das Bild ist beim Pika verblasst, er hat sie schon im Maul. Stufe 1 die Runde kurz, 2 der
     // Laternenlauf, 3 mit Glühwürmchen
@@ -27154,40 +27261,19 @@
     // Schlitten folgen der Nase); Drive und Hold starten den Takt wieder. Die Nase wird je Bild einmal gelesen (S.fm).
     _a2SledRun() {
       const S = this._a2SledS;
-      if (!S || S.raf || typeof requestAnimationFrame !== "function") return;
-      const frame = (now2) => {
-        if (this._a2SledS !== S) return;
-        S.raf = 0;
+      this._a2Frames("sled", S, () => {
         try {
-          if (S.drive) S.drive.step(clamp((now2 - S.drive.t0) / S.drive.ms, 0, 1));
           S.fm = S.line ? this._a2SledMouth() : null;
           if (S.tow) this._a2SledTow();
           this._a2SledPlace();
-        } catch (e) {
-          this._err?.("Album 2 sled", e);
-          return;
         } finally {
           S.fm = null;
         }
-        if (S.drive || S.line) S.raf = requestAnimationFrame(frame);
-      };
-      S.raf = requestAnimationFrame(frame);
+      }, () => S.drive || S.line);
     }
     // Ein Abschnitt von ms Dauer: step(f) mit f von 0 bis 1 stellt alles; am Ende gilt step(1) sicher
-    async _a2SledDrive(ms, step) {
-      const S = this._a2SledS;
-      if (!S) return;
-      const t0 = typeof performance !== "undefined" ? performance.now() : Date.now();
-      S.drive = { t0, ms, step };
-      this._a2SledRun();
-      step(0);
-      try {
-        await this._wait(ms);
-      } finally {
-        if (S.drive?.step === step) S.drive = null;
-      }
-      step(1);
-      this._a2SledPlace();
+    _a2SledDrive(ms, step) {
+      return this._a2Drive(this._a2SledS, ms, step, () => this._a2SledRun(), () => this._a2SledPlace());
     }
     // Das Seil zieht: Wird es länger als SLED_ROPE, rutscht der Schlitten nach (nur gezogen, nie geschoben)
     _a2SledTow() {
@@ -27275,20 +27361,15 @@
       return this._a2SledGo("belly", o);
     }
     async _a2SledGo(mode, o) {
-      const lv = this._a2Lv("sled");
-      if (!lv || !this._a2SledWeather() && !this._forced && !o.short) return;
-      const gold = !!o.gold || lv >= 3 && this._a2GoldOk("sled");
-      this._a2SledBusy = true;
-      try {
+      const gold = this._a2Gate("sled", o);
+      if (gold == null) return;
+      return this._a2Busy("sled", async () => {
         const { rock, pW, hayR } = this._g;
         const end = Math.max(this._a2SledFoot() - pW * 1.9, hayR + pW * 0.25, pW * 0.5);
         await this._a2FrAside(end - pW * 0.4, rock.cx + rock.ku * 4 + pW * 0.2);
         if (calmMotion()) await this._a2SledCalm(mode, gold, o);
         else await this._a2SledRide(mode, gold, o);
-      } finally {
-        this._a2SledBusy = false;
-        this._a2SledEnd(true);
-      }
+      });
     }
     // Holen: zum Bau, der Schlitten ploppt vor dem Eingang auf, Seil ins Maul. short: gleich neben ihm, erst links vor
     // die Wehe (er zieht ihn nach rechts hinauf), mit Platz für den Schlitten links von ihm
@@ -27313,9 +27394,7 @@
         await this._wait(800);
         this._face(1);
       }
-      this._el.pika.classList.add("crouch");
-      await this._wait(260);
-      this._el.pika.classList.remove("crouch");
+      await this._a2Duck(260);
       this._a2SledHold(true);
       await this._wait(200);
     }
@@ -27470,9 +27549,8 @@
     // Sonst nur zeigen: Der Schlitten kommt neben ihn, er setzt sich kurz hinein, schaut sich um und vertröstet.
     async _a2SledStow(lv) {
       if (this._a2SledWeather()) return lv === 2 ? this._a2SledBelly({ short: true }) : this._a2SledPlay({ short: true, gold: lv >= 3 });
-      this._a2SledBusy = true;
       const p = this._el.pika;
-      try {
+      return this._a2Busy("sled", async () => {
         const { pW, hole, xR } = this._g;
         let d = this._x - pW * 0.9 > hole.r ? -1 : 1;
         const pad = this._H * 0.015;
@@ -27513,10 +27591,7 @@
         this._say(snow ? pick(["bald!", "im Schnee!"]) : pick(["wenn's schneit!", "bald!", "im Schnee!"]), 1300);
         this._happy(1e3);
         await this._wait(1400);
-      } finally {
-        this._a2SledBusy = false;
-        this._a2SledEnd(true);
-      }
+      });
     }
     // ---------- Schnee und Funken ----------
     // Schnee stiebt bei x, y (Szene-Pixel): n Flöckchen, v: wie schnell er gerade ist (0–1). Bewegung reduzieren: keine.
@@ -27531,9 +27606,7 @@
         el.style.left = `${(x + side * rnd(0, H * 0.03)).toFixed(1)}px`;
         el.style.top = `${(y - H * 0.03).toFixed(1)}px`;
         el.style.setProperty("--px", `${(side * H * (0.03 + v * 0.05) * rnd(0.6, 1)).toFixed(1)}px`);
-        this._el.fx.appendChild(el);
-        S.fx.add(el);
-        S.t.push(setTimeout(() => (el.remove(), S.fx.delete(el)), 650));
+        this._a2Fx(S, el, 650);
       }
     }
     // Ein Schneefunke der goldenen Spur: blitzt auf und verglimmt an seiner Stelle
@@ -27546,9 +27619,7 @@
       el.style.left = `${(x + rnd(-3, 3)).toFixed(1)}px`;
       el.style.top = `${(y + rnd(-3, 3)).toFixed(1)}px`;
       el.style.setProperty("--sk", rnd(0.6, 1.1).toFixed(2));
-      this._el.fx.appendChild(el);
-      S.fx.add(el);
-      S.t.push(setTimeout(() => (el.remove(), S.fx.delete(el)), 1300));
+      this._a2Fx(S, el, 1300);
     }
     // ---------- Hooks: Tipp, Aufräumen, Abhängen ----------
     // Tipp auf den Schlitten (nur, solange er draußen ist): Er wackelt, Schnee stiebt auf
@@ -27574,12 +27645,8 @@
     // selbst auf; nur nach einem Abbruch gleich)
     _a2SledEnd(force = false) {
       const S = this._a2SledS;
-      if (!S) return;
-      if (!force && this._a2SledBusy && !this._ac?.signal?.aborted) return;
-      this._a2SledS = null;
-      if (S.raf && typeof cancelAnimationFrame === "function") cancelAnimationFrame(S.raf);
-      for (const t of S.t) clearTimeout(t);
-      for (const el2 of S.fx) el2.remove();
+      if (!S || this._a2Held("sled", force)) return;
+      this._a2Clear("sled", S);
       S.rope.remove();
       const p = this._el.pika;
       p.classList.remove(...SLED_CLS);
@@ -27598,11 +27665,7 @@
         this._apropsAway(S.drift);
         this._a2Scene();
       }
-      const el = S.el;
-      if (el.isConnected && !calmMotion() && this._a2Els?.get("sled") === el) {
-        el.classList.add("a2out");
-        setTimeout(() => !this._a2SledS && this._a2Drop("sled"), 450);
-      } else this._a2Drop("sled");
+      this._a2Out("sled", S.el, !calmMotion());
     }
     _a2SledCleanup() {
       this._a2SledEnd();
@@ -27845,37 +27908,27 @@
     // Stufe 1 (Aktion 'a2CameraPlay'). o: { short: nach dem Auspacken (die Kamera kommt gleich neben ihn, auch bei
     // jedem Wetter), gold: goldener Rahmen sicher, motif: dieses Motiv, wenn es geht }
     async _a2CameraPlay(o = {}) {
-      const lv = this._a2Lv("camera");
-      if (!lv || !this._a2CameraWeather() && !this._forced && !o.short) return;
-      const gold = !!o.gold || lv >= 3 && this._a2GoldOk("camera", CAMERA_GOLD);
-      this._a2CameraBusy = true;
-      try {
+      const gold = this._a2Gate("camera", o, CAMERA_GOLD);
+      if (gold == null) return;
+      return this._a2Busy("camera", async () => {
         const L = this._a2CameraPick(o.motif ?? null);
         const O = this._a2CameraOff();
         const lens = L.cx + L.d * (O.tip + this._g.pW * 0.4);
         await this._a2FrAside(Math.min(L.cx - O.w / 2, lens), Math.max(L.cx + O.w / 2, lens));
         await this._a2CameraSetUp(L.cx, L.d, L.cx - L.d * O.behind, o.short);
         await this._a2CameraShoot(L, gold);
-      } finally {
-        this._a2CameraBusy = false;
-        this._a2CameraEnd(true);
-      }
+      });
     }
     // Stufe 2, der Trick (Aktion 'a2CameraSelfie'): mit dem Freund, wenn er da ist (o.solo: allein)
     async _a2CameraSelfie(o = {}) {
-      const lv = this._a2Lv("camera");
-      if (lv < 2 || !this._a2CameraWeather() && !this._forced && !o.short) return;
-      const gold = !!o.gold || lv >= 3 && this._a2GoldOk("camera", CAMERA_GOLD);
+      const gold = this._a2Gate("camera", o, CAMERA_GOLD, 2);
+      if (gold == null) return;
       let fr = o.solo ? null : this._a2CameraFriend();
       if (fr && !this._a2CameraSelfPlan(fr)) fr = null;
-      this._a2CameraBusy = true;
-      try {
+      return this._a2Busy("camera", async () => {
         if (fr) await this._withFriend((f3, w) => this._a2CameraSelf(f3, w, gold, o));
         else await this._a2CameraSelf(null, (ms) => this._wait(ms), gold, o);
-      } finally {
-        this._a2CameraBusy = false;
-        this._a2CameraEnd(true);
-      }
+      });
     }
     // Nach dem Auspacken (Hook): Stufe 1 gleich ein Foto, 2 das Selfie, 3 ein Foto im goldenen Rahmen
     async _a2CameraStow(lv) {
@@ -27887,7 +27940,6 @@
     // Holen und aufstellen: zum Bau, Kamera am Riemen ins Maul, zum Platz (x), absetzen; die Kamera steht bei cx, Linse
     // nach d. short (nach dem Auspacken) und Bewegung reduzieren: kein Holen, sie kommt neben ihm (ruhig: blendet ein)
     async _a2CameraSetUp(cx, d, x, short = false) {
-      const p = this._el.pika;
       const { hole, pW } = this._g;
       const calm = calmMotion();
       if (!short && !calm) {
@@ -27895,18 +27947,14 @@
         this._face(-1);
         this._say(pick(["Kamera holen!", "wo ist sie…", "Fotozeit!"]), 1300);
         await this._wait(700);
-        p.classList.add("crouch");
-        await this._wait(260);
-        p.classList.remove("crouch");
+        await this._a2Duck(260);
         this._a2CameraCarry(true);
         await this._wait(300);
       }
       await this._walkTo(x, 1);
       this._face(cx >= this._x ? 1 : -1);
       if (this._a2CameraCarrying) {
-        p.classList.add("crouch");
-        await this._wait(260);
-        p.classList.remove("crouch");
+        await this._a2Duck(260);
         this._a2CameraCarry(false);
       }
       this._a2CameraMake(cx, d, !calm);
@@ -28146,14 +28194,12 @@
     // Maul weg (force: aus der eigenen Aktion. Sonst, mitten in ihr, aus Szene oder Aufräumen: nichts, sie räumt in
     // ihrem finally selbst auf; nur nach einem Abbruch gleich). now: sofort, ohne Ausblenden (Karte aus dem DOM)
     _a2CameraEnd(force = false, now2 = false) {
-      if (!force && this._a2CameraBusy && !this._ac?.signal?.aborted) return;
+      if (this._a2Held("camera", force)) return;
       if (this._a2CameraCarrying) this._a2CameraCarry(false);
       this._el.pika.classList.remove(...CAMERA_CLS);
       const S = this._a2CameraS;
       if (!S) return;
-      this._a2CameraS = null;
-      for (const t of S.t) clearTimeout(t);
-      for (const e of S.fx) e.remove();
+      this._a2Clear("camera", S);
       const ph = S.ph;
       if (ph) {
         if (now2 || !ph.isConnected) ph.remove();
@@ -28164,10 +28210,7 @@
       }
       const el = S.el;
       el.classList.remove("timer", "glow", "snap", "a2pop");
-      if (!now2 && el.isConnected && this._a2Els?.get("camera") === el) {
-        el.classList.add("a2out");
-        setTimeout(() => !this._a2CameraS && this._a2Drop("camera"), 450);
-      } else this._a2Drop("camera");
+      this._a2Out("camera", el, !now2);
     }
     _a2CameraCleanup() {
       this._a2CameraEnd();
@@ -28286,19 +28329,14 @@
       return this._a2RadioGo("spin", o);
     }
     async _a2RadioGo(mode, o) {
-      const lv = this._a2Lv("radio");
-      if (!lv || !this._a2RadioWeather() && !this._forced && !o.short) return;
-      const gold = !!o.gold || lv >= 3 && this._a2GoldOk("radio");
+      const gold = this._a2Gate("radio", o);
+      if (gold == null) return;
       const night = this._el.scene.classList.contains("night");
-      const bird = !night && (!!o.bird || lv >= 3 && this._a2GoldOk("radio", RADIO_GOLD, "radio-bird"));
-      this._a2RadioBusy = true;
-      try {
+      const bird = !night && (!!o.bird || this._a2Lv("radio") >= 3 && this._a2GoldOk("radio", RADIO_GOLD, "radio-bird"));
+      return this._a2Busy("radio", async () => {
         if (calmMotion()) await this._a2RadioCalm(mode, gold, bird, o);
         else await this._a2RadioMove(mode, gold, bird, o);
-      } finally {
-        this._a2RadioBusy = false;
-        this._a2RadioEnd(true);
-      }
+      });
     }
     // Mit Bewegung: holen, hinstellen, einschalten, zurücktreten, tanzen, ausschalten, wegbringen
     async _a2RadioMove(mode, gold, bird, o) {
@@ -28320,12 +28358,12 @@
         await this._walkTo(P.px - P.dir * pW * RADIO_NEAR, 0.9);
         this._face(P.dir);
         await this._wait(200);
-        const p2 = this._el.pika;
-        p2.classList.add("crouch");
+        const p = this._el.pika;
+        p.classList.add("crouch");
         await this._wait(320);
         this._a2RadioHold(false);
         this._a2RadioMake(P.px);
-        p2.classList.remove("crouch");
+        p.classList.remove("crouch");
         await this._wait(250);
         await this._walkTo(P.px - P.dir * pW * RADIO_TOUCH, 0.6, true, 0, true);
       }
@@ -28341,10 +28379,7 @@
       if (o.short) return;
       await this._walkTo(P.px - P.dir * pW * RADIO_NEAR, 0.6);
       this._face(P.dir);
-      const p = this._el.pika;
-      p.classList.add("crouch");
-      await this._wait(320);
-      p.classList.remove("crouch");
+      await this._a2Duck(320);
       this._a2RadioEnd(true, true);
       this._a2RadioHold(true);
       await this._wait(250);
@@ -28460,9 +28495,7 @@
       const p = this._el.pika;
       p.classList.remove("a2r-bop");
       this._say(pick(["Drehtanz!", "und… dreh!", "Pirouette!"]), 1300);
-      p.classList.add("crouch");
-      await this._wait(300);
-      p.classList.remove("crouch");
+      await this._a2Duck(300);
       for (const ms of [900, 700]) {
         p.style.setProperty("--a2rsp", `${ms}ms`);
         p.classList.remove("a2r-spin");
@@ -28541,8 +28574,7 @@
     // Regnet es, nur kurz zeigen: Es ploppt neben ihm auf, rauscht, eine Note, „bei Regen lieber nicht“, weg.
     async _a2RadioStow(lv) {
       if (this._a2RadioWeather()) return lv === 2 ? this._a2RadioSpin({ short: true }) : this._a2RadioPlay({ short: true, gold: lv >= 3, bird: lv >= 3 });
-      this._a2RadioBusy = true;
-      try {
+      return this._a2Busy("radio", async () => {
         const { pW } = this._g;
         const d = this._x < this._W / 2 ? 1 : -1;
         const S = this._a2RadioMake(clamp(this._x + d * pW * RADIO_FAR, pW * 0.5, this._g.xR + pW * 0.3), true);
@@ -28567,10 +28599,7 @@
         this._say(pick(["wenn die Sonne scheint!", "bald!"]), 1300);
         this._happy(1e3);
         await this._wait(1300);
-      } finally {
-        this._a2RadioBusy = false;
-        this._a2RadioEnd(true);
-      }
+      });
     }
     // ---------- Noten ----------
     // Eine Note steigt aus dem Lautsprecher (gold: golden, weiter und höher). Bewegung reduzieren: Sie blendet über dem
@@ -28624,12 +28653,7 @@
       const v = pick(BIRDS);
       const T = this._a2RadioAt(RADIO_HANDLE);
       const calm = calmMotion();
-      const el = document.createElement("div");
-      el.className = `bird a2rb${calm ? "" : " flying"}`;
-      el.innerHTML = `<div class="bw" role="button" aria-label="${v.name}"><div class="bf"><div class="bb">${BIRD_SVG(v)}</div></div></div>`;
-      el.style.left = `${T.x.toFixed(1)}px`;
-      el.style.top = `${T.y.toFixed(1)}px`;
-      el.style.zIndex = String(RADIO_BZ());
+      const el = this._a2BirdEl(v, "a2rb", T.x, T.y, RADIO_BZ());
       el.style.setProperty("--a2rbt", `${RADIO_SENDER[S.st].beat * 2}ms`);
       const dir = this._x >= T.x ? 1 : -1;
       const b = { el, v, x: T.x, y: T.y, dir, sitting: false, gone: false, t: null, fly: null };
@@ -28662,12 +28686,7 @@
       const dx = -dir * this._W * rnd(0.3, 0.45);
       const dy = -T.y - this._H * 0.1;
       const dur = rnd(1300, 1700);
-      b.fly = el.animate([
-        { transform: `translate(${dx.toFixed(1)}px, ${dy.toFixed(1)}px)` },
-        { transform: `translate(${(dx * 0.4).toFixed(1)}px, ${(dy * 0.3).toFixed(1)}px)`, offset: 0.55 },
-        { transform: `translate(${(dx * 0.08).toFixed(1)}px, ${(-this._H * 0.04).toFixed(1)}px)`, offset: 0.88 },
-        { transform: "translate(0, 0)" }
-      ], { duration: dur, easing: "ease-out" });
+      b.fly = this._a2BirdIn(el, dx, dy, dur);
       b.t = setTimeout(land, dur);
     }
     // Das Vögelchen fliegt weg (fast: erschrocken); now: sofort weg (Karte aus dem DOM)
@@ -28690,11 +28709,7 @@
       const out = b.x > this._W / 2 ? 1 : -1;
       el.classList.toggle("left", out < 0);
       const dur = fast ? 800 : rnd(1100, 1500);
-      el.animate([
-        { transform: "translate(0, 0)" },
-        { transform: `translate(${(out * this._W * 0.06).toFixed(1)}px, ${(-this._H * 0.07).toFixed(1)}px)`, offset: 0.25 },
-        { transform: `translate(${(out * this._W * 0.55).toFixed(1)}px, ${(-b.y - this._H * 0.2).toFixed(1)}px)` }
-      ], { duration: dur, easing: "ease-in", fill: "forwards" });
+      this._a2BirdOut(el, out, b.y, dur);
       setTimeout(() => el.remove(), dur + 40);
     }
     // ---------- Hooks: Tipp, Aufräumen, Abhängen ----------
@@ -28730,10 +28745,8 @@
     // finally selbst auf, nur nach einem Abbruch gleich. now: sofort weg (er nimmt es ins Maul), sonst blendet es aus
     _a2RadioEnd(force = false, now2 = false) {
       const S = this._a2RadioS;
-      if (!S) return;
-      if (!force && this._a2RadioBusy && !this._ac?.signal?.aborted) return;
-      this._a2RadioS = null;
-      for (const t of S.t) clearTimeout(t);
+      if (!S || this._a2Held("radio", force)) return;
+      this._a2Clear("radio", S);
       clearTimeout(this._a2RadioTapT);
       this._a2RadioBirdGo(false, false, S);
       const p = this._el.pika;
@@ -28891,35 +28904,11 @@
     // etwas bewegt (ein Abschnitt läuft oder das Tuch federt nach einem Tipp); Drive und Tipp starten den Takt wieder.
     _a2TrampRun() {
       const S = this._a2TrampS;
-      if (!S || S.raf || typeof requestAnimationFrame !== "function") return;
-      const frame = (t) => {
-        if (this._a2TrampS !== S) return;
-        S.raf = 0;
-        try {
-          if (S.drive) S.drive.step(clamp((t - S.drive.t0) / S.drive.ms, 0, 1));
-          this._a2TrampPlace();
-        } catch (e) {
-          this._err?.("Album 2 tramp", e);
-          return;
-        }
-        if (S.drive || S.spring) S.raf = requestAnimationFrame(frame);
-      };
-      S.raf = requestAnimationFrame(frame);
+      this._a2Frames("tramp", S, () => this._a2TrampPlace(), () => S.drive || S.spring);
     }
     // Ein Abschnitt von ms Dauer: step(f) mit f von 0 bis 1 stellt alles; am Ende gilt step(1) sicher
-    async _a2TrampDrive(ms, step) {
-      const S = this._a2TrampS;
-      if (!S) return;
-      S.drive = { t0: now(), ms, step };
-      this._a2TrampRun();
-      step(0);
-      try {
-        await this._wait(ms);
-      } finally {
-        if (S.drive?.step === step) S.drive = null;
-      }
-      step(1);
-      this._a2TrampPlace();
+    _a2TrampDrive(ms, step) {
+      return this._a2Drive(this._a2TrampS, ms, step, () => this._a2TrampRun(), () => this._a2TrampPlace());
     }
     // Wie weit das Tuch gerade nachfedert (nach einem Tipp): gedämpfte Schwingung, ruhig nur ein sanftes Nachgeben
     _a2TrampSpring(S, t = now()) {
@@ -29004,19 +28993,14 @@
       return this._a2TrampGo(true, o);
     }
     async _a2TrampGo(flip, o) {
-      const lv = this._a2Lv("tramp");
-      if (!lv || !this._a2TrampWeather() && !this._forced && !o.short) return;
-      const gold = !!o.gold || lv >= 3 && this._a2GoldOk("tramp", TRAMP_GOLD);
-      this._a2TrampBusy = true;
-      try {
+      const gold = this._a2Gate("tramp", o, TRAMP_GOLD);
+      if (gold == null) return;
+      return this._a2Busy("tramp", async () => {
         await this._a2TrampOut();
         if (calmMotion()) await this._a2TrampCalm(flip, gold);
         else await this._a2TrampJump(flip, gold, o);
         await this._a2TrampAway();
-      } finally {
-        this._a2TrampBusy = false;
-        this._a2TrampEnd(true);
-      }
+      });
     }
     // Holen: neben die Stelle, es liegt zusammengeklappt da, er klappt es auf (bzw. es blendet ein). Er steht auf der
     // Seite, von der er kommt, außer dort ist kein Platz (Kartenrand). → der Zustand
@@ -29056,11 +29040,7 @@
       S.from = this._x;
       const calm = calmMotion();
       const ms = calm ? 700 : 560;
-      if (!calm) {
-        p.classList.add("crouch");
-        await this._wait(180);
-        p.classList.remove("crouch");
-      }
+      if (!calm) await this._a2Duck(180);
       p.style.transition = `transform ${ms}ms ${calm ? "ease-in-out" : "linear"}`;
       this._setX(S.x);
       this._a2TrampCtl(true);
@@ -29205,9 +29185,8 @@
     // Sternchen). Sonst nur zeigen: Es klappt neben ihm auf, er drückt mit den Pfoten aufs Tuch, es federt, er vertröstet.
     async _a2TrampStow(lv) {
       if (this._a2TrampWeather()) return lv === 2 ? this._a2TrampFlip({ short: true }) : this._a2TrampPlay({ short: true, gold: lv >= 3 });
-      this._a2TrampBusy = true;
       const p = this._el.pika;
-      try {
+      return this._a2Busy("tramp", async () => {
         const S = await this._a2TrampOut();
         if (lv >= 3) this._a2TrampStars(-1);
         this._say(lv >= 3 ? pick(["goldig!", "das glänzt!"]) : lv === 2 ? pick(["für den Salto!", "damit geht ein Salto!"]) : pick(["zum Hüpfen!", "ein Trampolin!"]), 1300);
@@ -29224,10 +29203,7 @@
         this._happy(1e3);
         await this._wait(700);
         if (S) await this._a2TrampAway();
-      } finally {
-        this._a2TrampBusy = false;
-        this._a2TrampEnd(true);
-      }
+      });
     }
     // ---------- Sternchen ----------
     // Goldene Sternchen um ihn, h px über dem Tuch (oben im Sprung; −1: um das Tuch, er steht daneben). Ruhig blenden sie
@@ -29276,11 +29252,8 @@
     // selbst auf; nur nach einem Abbruch gleich)
     _a2TrampEnd(force = false) {
       const S = this._a2TrampS;
-      if (!S) return;
-      if (!force && this._a2TrampBusy && !this._ac?.signal?.aborted) return;
-      this._a2TrampS = null;
-      if (S.raf && typeof cancelAnimationFrame === "function") cancelAnimationFrame(S.raf);
-      for (const t of S.t) clearTimeout(t);
+      if (!S || this._a2Held("tramp", force)) return;
+      this._a2Clear("tramp", S);
       this._goldDrop?.(S.F);
       const p = this._el.pika;
       if (S.ctl) {
@@ -29488,9 +29461,7 @@
     // ---------- Wann ----------
     // Monat dieses Geräts in der Jahreszeit des Schatzes (A2_PICNIC.mo; Südhalbkugel ein halbes Jahr versetzt)?
     _a2PicnicSeason() {
-      const south = (this._hass?.config?.latitude ?? 50) < 0;
-      const mo = (new Date(this._dbgDate ?? Date.now()).getMonth() + (south ? 6 : 0)) % 12;
-      return A2_PICNIC.mo.includes(mo);
+      return A2_PICNIC.mo.includes(this._a2Mon());
     }
     // Picknickwetter: bei Tag (nicht in der Dämmerung), trocken (kein Regen, Schnee, Nebel, nichts liegt), Wind unter
     // PICNIC_WIND, sonnig oder heiter und mindestens PICNIC_MIN_T. Ohne Wetterlage oder Temperatur (keine Entität, kein
@@ -29500,14 +29471,14 @@
       if (sc.contains("night") || sc.contains("dusk")) return false;
       if (wx.wet || wx.storm || wx.shelter || wx.hail || wx.fog || wx.snow > 0 || wx.snowcover) return false;
       if ((this._wind || 0) >= PICNIC_WIND) return false;
-      const raw = { ...this._wxRaw || {}, ...this._dbgWeather || {} };
+      const raw = this._a2Raw();
       if (raw.cond != null ? !PICNIC_COND.includes(raw.cond) : !this._a2PicnicSeason()) return false;
       return raw.temp != null ? raw.temp >= PICNIC_MIN_T : this._a2PicnicSeason();
     }
     // Nach dem Auspacken: Warum jetzt kein Picknick? 'season' (nicht die Jahreszeit), 'cold' (unter PICNIC_MIN_T), 'later'
     // (Regen, Schnee, Sturm, Nacht), sonst null. Wolken und Wind stören hier nicht, das Picknick ist dann kurz.
     _a2PicnicNotNow() {
-      const raw = { ...this._wxRaw || {}, ...this._dbgWeather || {} };
+      const raw = this._a2Raw();
       const wx = this._wx || {};
       if (!this._a2PicnicSeason()) return "season";
       if (raw.temp != null && raw.temp < PICNIC_MIN_T) return "cold";
@@ -29531,8 +29502,7 @@
     }
     // Leckerli der Jahreszeit aus dem Korb: Erdbeere (April bis Juni), Himbeeren (Juli bis September), sonst Apfelschnitz
     _a2PicnicTreat() {
-      const south = (this._hass?.config?.latitude ?? 50) < 0;
-      const mo = (new Date(this._dbgDate ?? Date.now()).getMonth() + (south ? 6 : 0)) % 12;
+      const mo = this._a2Mon();
       const key = mo >= 3 && mo <= 5 ? "straw" : mo >= 6 && mo <= 8 ? "rasp" : "apple";
       return GIFT_ITEMS.find((x) => x.key === key) || GIFT_ITEMS.find((x) => x.color);
     }
@@ -29559,12 +29529,10 @@
       return this._a2PicnicGo("share", o);
     }
     async _a2PicnicGo(mode, o) {
-      const lv = this._a2Lv("picnic");
-      if (!lv || !this._a2PicnicWeather() && !this._forced && !o.short) return;
-      const gold = !!o.gold || lv >= 3 && this._a2GoldOk("picnic", PICNIC_GOLD);
+      const gold = this._a2Gate("picnic", o, PICNIC_GOLD);
+      if (gold == null) return;
       const quick = !!o.short || calmMotion();
-      this._a2PicnicBusy = true;
-      try {
+      return this._a2Busy("picnic", async () => {
         if (!quick) await this._a2PicnicFetch();
         let fr = o.solo ? null : this._a2PicnicFriend();
         let P = fr ? this._a2PicnicPlan(fr, !!o.short) : null;
@@ -29590,10 +29558,7 @@
         }
         if (!ran) await this._a2PicnicWith(P, null, (ms) => this._wait(ms), mode, gold, o);
         await this._a2PicnicPack(this._a2PicnicS, quick);
-      } finally {
-        this._a2PicnicBusy = false;
-        this._a2PicnicEnd(true);
-      }
+      });
     }
     // Aus dem Bau holen: Er kramt drinnen und kommt mit dem Bündel im Maul heraus
     async _a2PicnicFetch() {
@@ -29669,9 +29634,7 @@
       const F = pick([FOOD.lz, FOOD.klee]);
       const ms = o.short ? 1500 : rnd(2200, 3e3);
       this._a2PicnicLid(S, true);
-      p.classList.add("crouch");
-      await w(320);
-      p.classList.remove("crouch");
+      await this._a2Duck(320, w);
       this._a2PicnicLid(S, false);
       this._say(F === FOOD.lz ? pick(["Löwenzahn!", "mmh, Löwenzahn"]) : pick(["Klee!", "mmh, Klee"]), 1200);
       if (fr) this._frEat(fr, (F === FOOD.lz ? FOOD.klee : FOOD.lz).color, ms);
@@ -29688,9 +29651,7 @@
       const P = S.P;
       const T = this._a2PicnicTreat();
       this._a2PicnicLid(S, true);
-      p.classList.add("crouch");
-      await w(320);
-      p.classList.remove("crouch");
+      await this._a2Duck(320, w);
       this._a2PicnicLid(S, false);
       this._a2PicnicHold(T);
       this._say(`${T.name}!`, 1100);
@@ -29735,9 +29696,7 @@
       } else {
         this._say(pick(["eins für später!", "das heb ich auf!"]), 1400);
         await w(800);
-        p.classList.add("crouch");
-        await w(300);
-        p.classList.remove("crouch");
+        await this._a2Duck(300, w);
         this._a2PicnicHold(null);
         this._a2PicnicKeep(S, T);
         this._happy(900);
@@ -29893,9 +29852,7 @@
         await this._wait(500);
         return;
       }
-      p.classList.add("crouch");
-      await this._wait(300);
-      p.classList.remove("crouch");
+      await this._a2Duck(300);
       S.el.querySelector(".a2pkk")?.animate?.([{ opacity: 1 }, { opacity: 0 }], { duration: 300, fill: "forwards" });
       this._a2PicnicRoll(S, true);
       await this._wait(850);
@@ -29921,8 +29878,7 @@
     async _a2PicnicShow(lv, why) {
       const p = this._el.pika;
       const { pW, hayR } = this._g;
-      this._a2PicnicBusy = true;
-      try {
+      return this._a2Busy("picnic", async () => {
         const d = this._x < this._W / 2 ? 1 : -1;
         const x = clamp(this._x + d * pW * 0.6, hayR + pW * 0.2, this._W - pW * 0.25);
         this._face(x >= this._x ? 1 : -1);
@@ -29937,10 +29893,7 @@
         this._happy(1e3);
         await this._wait(1900);
         p.classList.remove("look-f");
-      } finally {
-        this._a2PicnicBusy = false;
-        this._a2PicnicEnd(true);
-      }
+      });
     }
     // ---------- Hooks: Tipp, Aufräumen, Abhängen ----------
     // Tipp auf Decke oder Korb (nur, solange sie liegt): Der Deckel hebt sich kurz, Krümel hüpfen heraus, der Korb hüpft.
@@ -30004,14 +29957,13 @@
     // Zeitgeber, Bündel im Maul weg (force: aus der eigenen Aktion. Sonst, mitten in ihr, aus Szene oder Aufräumen:
     // nichts, sie räumt in ihrem finally selbst auf; nur nach einem Abbruch gleich). now: sofort, ohne Ausblenden
     _a2PicnicEnd(force = false, now2 = false) {
-      if (!force && this._a2PicnicBusy && !this._ac?.signal?.aborted) return;
+      if (this._a2Held("picnic", force)) return;
       if (this._a2PicnicHolding) this._a2PicnicHold(null);
       this._el.pika.classList.remove(...PICNIC_CLS);
       const S = this._a2PicnicS;
       if (!S) return;
-      this._a2PicnicS = null;
+      this._a2Clear("picnic", S, false);
       clearTimeout(this._a2PicnicLidT);
-      for (const t of S.t) clearTimeout(t);
       for (const e of S.fx) {
         if (S.off.has(e) && !now2) continue;
         if (now2 || !S.bf.has(e)) e.remove();
@@ -30030,10 +29982,7 @@
       }
       const el = S.el;
       el.classList.remove("open", "a2tap", "a2roll", "pop");
-      if (!now2 && el.isConnected && this._a2Els?.get("picnic") === el) {
-        el.classList.add("a2out");
-        setTimeout(() => !this._a2PicnicS && this._a2Drop("picnic"), 450);
-      } else this._a2Drop("picnic");
+      this._a2Out("picnic", el, !now2);
     }
     _a2PicnicCleanup() {
       this._a2PicnicEnd();
@@ -30196,15 +30145,13 @@
     // ---------- Wetter ----------
     // Temperatur in °C (roh aus der Wetter-Entität wie bei der Sonnenbrille, _tickGift; die Vorschau mit _dbgWeather)
     _a2PoolTemp() {
-      const t = { ...this._wxRaw || {}, ...this._dbgWeather || {} }.temp;
+      const t = this._a2Raw().temp;
       return Number.isFinite(t) ? t : null;
     }
     // Seine Jahreszeit: die Monate aus den Daten (Juni bis August; Südhalbkugel versetzt wie beim Vogelhäuschen). Nur für
     // das Vertrösten nach dem Auspacken („im Sommer!“)
     _a2PoolSummer() {
-      const south = (this._hass?.config?.latitude ?? 50) < 0;
-      const mo = (new Date(this._dbgDate ?? Date.now()).getMonth() + (south ? 6 : 0)) % 12;
-      return A2_POOL.mo.includes(mo);
+      return A2_POOL.mo.includes(this._a2Mon());
     }
     // Planschwetter: ab 25 °C bei Tag; kein Gewitter, kein Starkregen, Hagel oder Schnee, kaum Wind. Leichter Regen
     // (rainy, 40) geht.
@@ -30233,21 +30180,16 @@
       return this._a2PoolGo("bomb", o);
     }
     async _a2PoolGo(mode, o) {
-      const lv = this._a2Lv("pool");
-      if (!lv || !this._a2PoolWeather() && !this._forced && !o.short) return;
-      const gold = !!o.gold || lv >= 3 && this._a2GoldOk("pool", POOL_GOLD);
-      this._a2PoolBusy = true;
-      try {
+      const gold = this._a2Gate("pool", o, POOL_GOLD);
+      if (gold == null) return;
+      return this._a2Busy("pool", async () => {
         await this._a2PoolSetUp(!!o.short, gold);
         if (mode === "bomb" && !calmMotion()) await this._a2PoolCannon();
         else await this._a2PoolGetIn(mode === "bomb");
         await this._a2PoolSplashes(mode, !!o.short);
         await this._a2PoolGetOut();
         if (!o.short) await this._a2PoolPack();
-      } finally {
-        this._a2PoolBusy = false;
-        this._a2PoolEnd(true);
-      }
+      });
     }
     // Holen, hinlegen, aufblasen, füllen. short (nach dem Auspacken) und Bewegung reduzieren: kein Holen, kein Aufblasen,
     // es kommt neben ihm (ruhig: blendet ein); nach dem Auspacken ist es gleich voll
@@ -30264,18 +30206,14 @@
         this._face(-1);
         this._say(pick(["Planschbecken holen!", "wo ist es…", "Badezeit!"]), 1300);
         await this._wait(700);
-        p.classList.add("crouch");
-        await this._wait(260);
-        p.classList.remove("crouch");
+        await this._a2Duck(260);
         this._a2PoolCarry(true);
         await this._wait(300);
       }
       await this._walkTo(P.sx, 1);
       this._face(-P.side);
       if (this._a2PoolCarrying) {
-        p.classList.add("crouch");
-        await this._wait(260);
-        p.classList.remove("crouch");
+        await this._a2Duck(260);
         this._a2PoolCarry(false);
       }
       this._a2PoolMake(P, { flat: fetch, empty: !!can, pop: !calm, gold });
@@ -30321,9 +30259,7 @@
         d.className = "gdrop";
         d.style.left = `${(sx + rnd(-pW * 0.05, pW * 0.05)).toFixed(1)}px`;
         d.style.top = `${(gy - this._H * 0.14 + rnd(-2, 2)).toFixed(1)}px`;
-        this._el.fx.appendChild(d);
-        S.fx.add(d);
-        S.t.push(setTimeout(() => (d.remove(), S.fx.delete(d)), 600));
+        this._a2Fx(S, d, 600);
         await this._wait(180);
       }
       p.classList.remove("pour");
@@ -30356,9 +30292,7 @@
         return;
       }
       this._say(pick(["rein!", "eins, zwei…", "hopp!"]), 1e3);
-      p.classList.add("crouch");
-      await this._wait(180);
-      p.classList.remove("crouch");
+      await this._a2Duck(180);
       S.t.push(setTimeout(() => this._a2PoolS === S && this._a2PoolFront(true), 200));
       this._a2PoolPika(S.cx, sink, 550, HOP_EASE);
       this._jump("hop1", true);
@@ -30379,9 +30313,7 @@
       const rx = S.cx + S.side * (POOL.rim.rx - 3) * S.u;
       this._say(pick(["Arschbombe!", "jetzt kommt's!", "aufgepasst!"]), 1200);
       await this._wait(700);
-      p.classList.add("crouch");
-      await this._wait(200);
-      p.classList.remove("crouch");
+      await this._a2Duck(200);
       this._a2PoolPika(rx, -lift, 550, HOP_EASE);
       this._jump("hop1", true);
       await this._wait(650);
@@ -30391,9 +30323,7 @@
       await this._wait(1100);
       p.classList.remove("a2pl-wob");
       this._say("…drei!", 800);
-      p.classList.add("crouch");
-      await this._wait(240);
-      p.classList.remove("crouch");
+      await this._a2Duck(240);
       p.classList.add("a2pl-ball");
       S.t.push(setTimeout(() => this._a2PoolS === S && this._a2PoolFront(true), 300));
       this._a2PoolPika(S.cx, sink, 760, "cubic-bezier(.45, 0, .7, .5)");
@@ -30467,9 +30397,7 @@
         await this._wait(1e3);
         return;
       }
-      p.classList.add("crouch");
-      await this._wait(180);
-      p.classList.remove("crouch");
+      await this._a2Duck(180);
       this._a2PoolPika(S.sx, 0, 550, HOP_EASE);
       this._jump("hop1", true);
       this._a2PoolSplash(2);
@@ -30496,7 +30424,6 @@
     async _a2PoolPack() {
       const S = this._a2PoolS;
       if (!S || calmMotion()) return;
-      const p = this._el.pika;
       const { hole, pW } = this._g;
       this._face(-S.side);
       this._a2PoolWater(false);
@@ -30506,17 +30433,13 @@
       this._a2PoolInflate(0);
       const n = this._nosePos();
       this._peep(n.x, n.y - this._H * 0.05, "pfffff…");
-      p.classList.add("crouch");
-      await this._wait(1e3);
-      p.classList.remove("crouch");
+      await this._a2Duck(1e3);
       this._a2PoolEnd(true, true);
       this._a2PoolCarry(true);
       await this._wait(250);
       await this._walkTo(hole.cx + pW * 0.75, 1);
       this._face(-1);
-      p.classList.add("crouch");
-      await this._wait(260);
-      p.classList.remove("crouch");
+      await this._a2Duck(260);
       this._a2PoolCarry(false);
       this._say(pick(["bis zum nächsten Mal!", "aufgeräumt!", "das war schön!"]), 1300);
       await this._wait(900);
@@ -30526,9 +30449,8 @@
     // Wetter dafür), er vertröstet. Golden schwimmt die Ente schon („die Ente darf!“).
     async _a2PoolStow(lv) {
       if (this._a2PoolWeather()) return lv === 2 ? this._a2PoolBomb({ short: true }) : this._a2PoolPlay({ short: true, gold: lv >= 3 });
-      this._a2PoolBusy = true;
       const p = this._el.pika;
-      try {
+      return this._a2Busy("pool", async () => {
         const P = this._a2PoolSpot();
         await this._a2FrAside(P.cx - P.w / 2, P.cx + P.w / 2);
         await this._walkTo(P.sx, 1);
@@ -30553,10 +30475,7 @@
         this._say(why === "sommer" ? pick(["im Sommer!", "bis zum Sommer!"]) : why === "kalt" ? pick(["wenn's heiß ist!", "ab 25 Grad!"]) : pick(["bald!", "wenn die Sonne scheint!"]), 1400);
         this._happy(1e3);
         await this._wait(1500);
-      } finally {
-        this._a2PoolBusy = false;
-        this._a2PoolEnd(true);
-      }
+      });
     }
     // ---------- Wasser, Tropfen ----------
     // Ringe laufen über das Wasser (big: ein zweiter, größerer, und das Wasser schwappt), die Ente hüpft; n Tropfen
@@ -30589,9 +30508,7 @@
         s.style.top = `${(y - pH * 0.04).toFixed(1)}px`;
         s.style.setProperty("--dx", `${(side * rnd(0.1, 0.42) * pW * k).toFixed(1)}px`);
         s.style.setProperty("--dy", `${(-rnd(0.22, 0.55) * pH * k).toFixed(1)}px`);
-        this._el.fx.appendChild(s);
-        S.fx.add(s);
-        S.t.push(setTimeout(() => (s.remove(), S.fx.delete(s)), 800));
+        this._a2Fx(S, s, 800);
       }
     }
     // Ein Tropfen fällt aus dem Fell (nach dem Planschen)
@@ -30604,9 +30521,7 @@
       s.innerHTML = DROP_SVG;
       s.style.left = `${(this._x + rnd(-0.3, 0.3) * pW).toFixed(1)}px`;
       s.style.top = `${(gy - pH * rnd(0.15, 0.55)).toFixed(1)}px`;
-      this._el.fx.appendChild(s);
-      S.fx.add(s);
-      S.t.push(setTimeout(() => (s.remove(), S.fx.delete(s)), 900));
+      this._a2Fx(S, s, 900);
     }
     // Schütteln: Tropfen fliegen nach beiden Seiten aus dem Fell
     _a2PoolShake() {
@@ -30622,9 +30537,7 @@
         s.style.top = `${(gy - pH * rnd(0.3, 0.6)).toFixed(1)}px`;
         s.style.setProperty("--dx", `${(side * rnd(0.3, 0.6) * pW).toFixed(1)}px`);
         s.style.setProperty("--dy", `${(-rnd(0.08, 0.25) * pH).toFixed(1)}px`);
-        this._el.fx.appendChild(s);
-        S.fx.add(s);
-        S.t.push(setTimeout(() => (s.remove(), S.fx.delete(s)), 800));
+        this._a2Fx(S, s, 800);
       }
     }
     // ---------- Hooks: Tipp, Aufräumen, Abhängen ----------
@@ -30650,9 +30563,7 @@
           s.style.top = `${(y - pH * 0.03).toFixed(1)}px`;
           s.style.setProperty("--dx", `${((i ? 1 : -1) * rnd(0.08, 0.2) * pW).toFixed(1)}px`);
           s.style.setProperty("--dy", `${(-rnd(0.12, 0.25) * pH).toFixed(1)}px`);
-          this._el.fx.appendChild(s);
-          S.fx.add(s);
-          S.t.push(setTimeout(() => (s.remove(), S.fx.delete(s)), 800));
+          this._a2Fx(S, s, 800);
         }
       }
       return true;
@@ -30662,15 +30573,13 @@
     // normal am Boden. (force: aus der eigenen Aktion. Sonst, mitten in ihr, aus Szene oder Aufräumen: nichts, sie räumt
     // in ihrem finally selbst auf; nur nach einem Abbruch gleich.) now: sofort, ohne Ausblenden
     _a2PoolEnd(force = false, now2 = false) {
-      if (!force && this._a2PoolBusy && !this._ac?.signal?.aborted) return;
+      if (this._a2Held("pool", force)) return;
       const p = this._el.pika;
       if (this._a2PoolCarrying) this._a2PoolCarry(false);
       p.classList.remove(...POOL_CLS);
       const S = this._a2PoolS;
       if (!S) return;
-      this._a2PoolS = null;
-      for (const t of S.t) clearTimeout(t);
-      for (const e of S.fx) e.remove();
+      this._a2Clear("pool", S);
       if (S.can) {
         S.can.classList.remove("away");
         p.classList.remove("wcan", "pour");
@@ -30680,16 +30589,12 @@
         this._setX(this._x, true);
       }
       const fr = S.fr;
-      const el = S.el;
       if (now2 || !fr.isConnected) fr.remove();
       else {
         fr.classList.add("a2out");
         setTimeout(() => fr.remove(), 450);
       }
-      if (!now2 && el.isConnected && this._a2Els?.get("pool") === el) {
-        el.classList.add("a2out");
-        setTimeout(() => !this._a2PoolS && this._a2Drop("pool"), 450);
-      } else this._a2Drop("pool");
+      this._a2Out("pool", S.el, !now2);
     }
     _a2PoolCleanup() {
       this._a2PoolEnd();

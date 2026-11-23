@@ -559,3 +559,19 @@ test('Laterne: Glühwürmchen anderthalbmal so groß wie .gfx.hff', () => {
   const w = (s, sel) => Number(s.match(new RegExp(sel.replace(/\./g, '\\.') + ' \\{ width: calc\\(var\\(--H\\) \\* ([.\\d]+)\\)'))[1]);
   assert.ok(Math.abs(w(st, '.gfx.hff.a2lff') / w(pk, '.gfx.hff') - 1.5) < 0.01);
 });
+
+// 0.49.0: Beim Abhängen räumt eine andere Aktion (Schlitten, Vogelhäuschen) noch die Szene auf, während die Karte schon
+// nicht mehr im DOM hängt: Der Schein der stehenden Laterne gilt dann als verloren und wird neu angelegt. Der alte darf
+// nicht in .fx liegen bleiben (er leuchtete dort für immer, bei jedem Mal einer mehr)
+test('Laterne: Szene nach dem Abhängen legt keinen zweiten Schein an, der liegen bleibt', () => {
+  const { c } = karte(1);
+  c._a2LanternSet(c._a2LanternSpot());
+  const alle = () => c._el.fx.kinder.filter((k) => k.cls.has('a2lglow') && !k.weg);
+  assert.equal(alle().length, 1);
+  alle()[0].isConnected = false; // (die Karte hängt nicht mehr im DOM, das Element liegt aber noch in .fx)
+  c._a2Scene(); // (Aufräumen einer anderen Aktion)
+  assert.equal(alle().length, 1, 'nur ein Schein');
+  assert.equal(alle()[0], c._a2LanternGlow);
+  c._a2LanternDetach();
+  assert.equal(alle().length, 0, 'nach dem Abhängen keiner');
+});
